@@ -1,0 +1,2 @@
+# scitex-dev audit config — tracked so CI applies the same whitelist as local.
+# Add root-whitelist entries here if a non-conventional top-level file is needed.
