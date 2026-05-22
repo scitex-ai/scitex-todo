@@ -40,8 +40,13 @@ docs = [
     "sphinx-copybutton>=0.5",
     "sphinx-autodoc-typehints>=1.25",
 ]
+web = [
+    "django>=4.2",
+    "scitex-app",
+    "scitex-ui",
+]
 all = [
-    "scitex-todo[dev,docs]",
+    "scitex-todo[dev,docs,web]",
 ]
 
 [project.scripts]
@@ -61,6 +66,13 @@ scitex-todo = "scitex_todo"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/scitex_todo"]
+# Bundle the Django app's non-Python assets (manifest, templates, built
+# frontend) into the wheel so `scitex-todo board` works from a pip install.
+artifacts = [
+    "src/scitex_todo/_django/manifest.json",
+    "src/scitex_todo/_django/templates/**/*",
+    "src/scitex_todo/_django/static/**/*",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -92,6 +92,60 @@ def list_cmd(tasks_path: str | None) -> None:
         click.echo(f"{task['id']:<24} {task['status']:<12} {task['title']}")
 
 
+@main.command(
+    "board",
+    help=(
+        "Launch the dependency-graph board in a browser (read-only).\n\n"
+        "Requires the web extra: pip install scitex-todo[web]\n\n"
+        "Example:\n  scitex-todo board --port 8051"
+    ),
+)
+@click.option(
+    "--tasks",
+    "tasks_path",
+    default=None,
+    help="Path to tasks.yaml (default: project -> user -> bundled example, "
+    "or $SCITEX_TODO_TASKS).",
+)
+@click.option(
+    "--port",
+    type=int,
+    default=8051,
+    show_default=True,
+    help="Server port.",
+)
+@click.option(
+    "--no-browser",
+    is_flag=True,
+    help="Don't open a browser automatically.",
+)
+def board_cmd(tasks_path: str | None, port: int, no_browser: bool) -> None:
+    """Launch the standalone scitex-todo board server."""
+    import os
+
+    try:
+        import django  # noqa: F401
+    except ImportError:
+        raise click.ClickException(
+            "The board needs the web extra. Install it with:\n"
+            "  pip install scitex-todo[web]"
+        ) from None
+
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "scitex_todo._django.settings")
+
+    import django as _dj
+
+    _dj.setup()
+    from django.core.management import call_command
+
+    args = ["scitex_todo_board", "--port", str(port)]
+    if tasks_path:
+        args += ["--tasks", tasks_path]
+    if no_browser:
+        args += ["--no-browser"]
+    call_command(*args)
+
+
 if __name__ == "__main__":
     main()
 
