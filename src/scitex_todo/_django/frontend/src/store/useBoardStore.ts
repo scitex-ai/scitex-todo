@@ -1,9 +1,15 @@
-/** Zustand store for the board: loaded graph payload + load / reorder actions.
+/** Zustand store for the board: loaded graph payload + load / reorder /
+ * select actions.
  *
  * `reorderPriority` POSTs an ordered list of task ids to the backend
  * `/priority` endpoint (which assigns priority = 1..N in array order and
  * writes the YAML via `save_tasks`), then reloads the graph so the UI
  * reflects the new ordering from the canonical source of truth.
+ *
+ * `selectedNodeId` drives the right-side detail drawer (NodeDetailPanel) —
+ * clicking a graph or pool card sets it, click-away / Escape / × clears it.
+ * Held in the global store (not local component state) so a graph reload
+ * after a successful drag-reorder preserves the open drawer.
  */
 
 import { create } from "zustand";
@@ -17,8 +23,12 @@ interface BoardStore {
    * the initial load spinner doesn't double-fire during interaction. */
   saving: boolean;
   error: string | null;
+  /** Task id currently displayed in the detail drawer, or null if closed. */
+  selectedNodeId: string | null;
   load: () => Promise<void>;
   reorderPriority: (order: string[]) => Promise<void>;
+  selectNode: (id: string) => void;
+  clearSelection: () => void;
 }
 
 export const useBoardStore = create<BoardStore>((set, get) => ({
@@ -26,6 +36,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   loading: false,
   saving: false,
   error: null,
+  selectedNodeId: null,
   load: async () => {
     set({ loading: true, error: null });
     try {
@@ -50,4 +61,6 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
       void get().load();
     }
   },
+  selectNode: (id: string) => set({ selectedNodeId: id }),
+  clearSelection: () => set({ selectedNodeId: null }),
 }));

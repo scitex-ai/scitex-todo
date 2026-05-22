@@ -16,7 +16,13 @@
  * UI to the canonical layout).
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import {
   Background,
   Controls,
@@ -31,6 +37,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { buildFlow, nodeStyle, partitionNodes } from "./layout";
 import { InhibitionEdge, INHIBITION_EDGE_TYPE } from "./InhibitionEdge";
+import { NodeDetailPanelContainer } from "./NodeDetailPanel";
 import { useBoardStore } from "./store/useBoardStore";
 import type { GraphPayload } from "./types/board";
 
@@ -75,10 +82,12 @@ export function nodesToPriorityOrder(nodes: Node[]): string[] {
  *
  * SPACE ONLY for now — listing the uncategorized tasks inside one clearly
  * bordered box. Drag-out / drop-in interactivity is a later phase; nothing
- * here is draggable.
+ * here is draggable. Each item IS clickable: click → opens the same
+ * NodeDetailPanel as the graph nodes (markdown note + metadata).
  */
 function UncategorizedPool({ graph }: { graph: GraphPayload }) {
   const poolNodes = useMemo(() => partitionNodes(graph).poolNodes, [graph]);
+  const selectNode = useBoardStore((s) => s.selectNode);
   if (poolNodes.length === 0) return null;
 
   return (
@@ -88,14 +97,17 @@ function UncategorizedPool({ graph }: { graph: GraphPayload }) {
         {poolNodes.map((n) => {
           const prio = n.priority != null ? ` · p${n.priority}` : "";
           return (
-            <div
+            <button
+              type="button"
               key={n.id}
               className="stx-todo-pool__item"
               style={nodeStyle(graph.status_colors[n.status])}
+              onClick={() => selectNode(n.id)}
+              aria-label={`Open details for ${n.title}`}
             >
               {n.title}
               {prio}
-            </div>
+            </button>
           );
         })}
       </div>
@@ -106,6 +118,7 @@ function UncategorizedPool({ graph }: { graph: GraphPayload }) {
 export function GraphView({ graph }: { graph: GraphPayload }) {
   const reorderPriority = useBoardStore((s) => s.reorderPriority);
   const saving = useBoardStore((s) => s.saving);
+  const selectNode = useBoardStore((s) => s.selectNode);
 
   // Seed from buildFlow each time the canonical graph payload changes — that
   // covers both initial load and reload-after-save. Node positions are then
@@ -139,6 +152,20 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
     });
   }, [reorderPriority]);
 
+  /** Click on a graph node → open the detail drawer for that task. React
+   * Flow fires this on mouseup AFTER the (possibly zero-distance) drag, so
+   * single clicks reliably reach here. The drag-end handler does its own
+   * persistence work and they don't conflict — clicks that don't move past
+   * the dnd threshold result in a no-op `onNodeDragStop` (the order is
+   * unchanged, so the POSTed array equals the current state).
+   */
+  const onNodeClick = useCallback(
+    (_event: ReactMouseEvent, node: Node) => {
+      selectNode(node.id);
+    },
+    [selectNode],
+  );
+
   return (
     <div className={`stx-todo-flow${saving ? " stx-todo-flow--saving" : ""}`}>
       <ReactFlow
@@ -147,6 +174,7 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
         edgeTypes={EDGE_TYPES}
         onNodesChange={onNodesChange}
         onNodeDragStop={onNodeDragStop}
+        onNodeClick={onNodeClick}
         fitView
         nodesDraggable={true}
         nodesConnectable={false}
@@ -165,6 +193,7 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
         />
       </ReactFlow>
       <UncategorizedPool graph={graph} />
+      <NodeDetailPanelContainer />
     </div>
   );
 }
