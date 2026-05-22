@@ -78,7 +78,21 @@ export function InhibitionEdge({
   targetY,
   targetPosition,
   style,
+  // Intentionally swallow markerEnd / markerStart so they CANNOT reach
+  // BaseEdge. React Flow's EdgeWrapper resolves an edge's `markerEnd` (set
+  // in layout.ts) into a `url('#…')` string and passes it as a prop to the
+  // custom edge — if we forwarded that prop, BaseEdge would render the
+  // depends_on arrowhead at the target endpoint AND our perpendicular tee
+  // would draw at the same spot, producing the overlapping ↦+⊣ artifact
+  // the operator reported on 2026-05-22. The inhibition edge's end-cap is
+  // the tee ALONE; no arrowhead, ever. Renamed with a leading underscore
+  // so TS treats them as deliberately unused.
+  markerEnd: _markerEnd,
+  markerStart: _markerStart,
 }: EdgeProps) {
+  void _markerEnd;
+  void _markerStart;
+
   const [edgePath] = getSmoothStepPath({
     sourceX,
     sourceY,
@@ -93,6 +107,10 @@ export function InhibitionEdge({
   // BaseEdge handles the body path (the React Flow way to draw an edge);
   // the perpendicular tee is a separate <line> drawn at the same position.
   // Body and tee share EDGE_COLOR_BLOCKS so the whole edge reads as one mark.
+  //
+  // markerEnd / markerStart are explicitly set to `undefined` on BaseEdge —
+  // belt-and-braces alongside the destructure-and-swallow above, so even a
+  // future caller that adds `...rest` cannot smuggle a marker through.
   return (
     <>
       <BaseEdge
@@ -102,6 +120,8 @@ export function InhibitionEdge({
           strokeWidth: EDGE_STROKE_WIDTH,
           ...style,
         }}
+        markerEnd={undefined}
+        markerStart={undefined}
       />
       <line
         x1={bar.x1}
