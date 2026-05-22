@@ -8,12 +8,14 @@ Exports the ``HANDLERS`` dict consumed by the catch-all dispatcher in
 """
 
 from .graph import handle_graph, handle_ping, handle_tasks
+from .priority import handle_priority
 
 # endpoint string -> handler function
 HANDLERS = {
     "graph": handle_graph,
     "tasks": handle_tasks,
     "ping": handle_ping,
+    "priority": handle_priority,
 }
 
 # Endpoints that work without a loaded board (health checks).

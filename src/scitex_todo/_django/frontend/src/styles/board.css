@@ -75,6 +75,15 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   height: 100%;
 }
 
+/* While a drag-reorder is being persisted (POST /priority -> save_tasks ->
+ * reload graph), dim the canvas slightly so the operator sees the save in
+ * progress. Pointer-events stay enabled — the saving window is short and
+ * blocking input would feel laggy. */
+.stx-todo-flow--saving {
+  opacity: 0.85;
+  transition: opacity 0.12s linear;
+}
+
 /* ── Uncategorized staging pool (Fix #1) ─────────────────────────────────
  * A single bordered box listing tasks that are not connected into the
  * dependency graph (note == "uncategorized" or no edges). SPACE ONLY —
