@@ -5,6 +5,27 @@
   height: 100%;
 }
 
+/* ── Full-screen standalone (Fix #2) ─────────────────────────────────────
+ * The scitex-ui standalone shell wraps the board in a three-column layout
+ * (Console/Chat | Files | Viewer | App Content). For the standalone todo
+ * board those three sidebars are dead weight — hide them so the board's
+ * #main-content (flex: 1) fills the full viewport width.
+ *
+ * Scoped via :has(#app-mount[data-app-name="scitex-todo"]) so it ONLY
+ * applies to the standalone todo board, NEVER to the embedded scitex-hub
+ * multi-app workspace (where the sidebars are wanted). */
+body:has(#app-mount[data-app-name="scitex-todo"]) .ws-ai-pane,
+body:has(#app-mount[data-app-name="scitex-todo"]) .ws-worktree-pane,
+body:has(#app-mount[data-app-name="scitex-todo"]) .ws-viewer-pane {
+  display: none !important;
+}
+
+body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
+  flex: 1 1 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
 .stx-todo-board {
   display: flex;
   flex-direction: column;
@@ -44,6 +65,57 @@
 .stx-todo-board__canvas {
   flex: 1;
   min-height: 0;
+  position: relative;
+}
+
+/* React Flow fills the canvas; the pool overlays it. */
+.stx-todo-flow {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Uncategorized staging pool (Fix #1) ─────────────────────────────────
+ * A single bordered box listing tasks that are not connected into the
+ * dependency graph (note == "uncategorized" or no edges). SPACE ONLY —
+ * drag-out / drop-in is a later interactivity phase. Bottom-left so it
+ * doesn't collide with the bottom-right MiniMap. */
+.stx-todo-pool {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 5;
+  max-width: 280px;
+  max-height: 45%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 2px dashed var(--stx-border, #6a6a82);
+  border-radius: 10px;
+  background: rgba(27, 27, 41, 0.92);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  overflow: auto;
+}
+
+.stx-todo-pool__title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #a0a0b0;
+}
+
+.stx-todo-pool__items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stx-todo-pool__item {
+  /* nodeStyle() provides background/border/color; size to the pool here. */
+  width: auto !important;
+  box-sizing: border-box;
 }
 
 .stx-todo-legend {
