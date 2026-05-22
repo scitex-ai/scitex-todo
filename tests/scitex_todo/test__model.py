@@ -234,4 +234,80 @@ def test_save_tasks_writes_fresh_store_when_absent(tmp_path):
     assert reloaded[0]["id"] == "a"
 
 
+def test_load_tasks_accepts_string_parent(tmp_path):
+    # Arrange — additive-optional `parent` is a task-id string identifying the
+    # node this task nests under (drill-down view follows this relation).
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - {id: hub, title: Hub, status: goal}\n"
+        "  - {id: child, title: Child, status: pending, parent: hub}\n",
+    )
+    # Act
+    tasks = load_tasks(store)
+    # Assert
+    by_id = {t["id"]: t for t in tasks}
+    assert by_id["child"]["parent"] == "hub"
+    assert by_id["hub"].get("parent") is None
+
+
+def test_load_tasks_treats_missing_parent_as_optional(tmp_path):
+    # Arrange — pre-`parent` YAML must keep loading unchanged.
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: solo, title: Solo, status: pending}\n",
+    )
+    # Act
+    tasks = load_tasks(store)
+    # Assert
+    assert "parent" not in tasks[0]
+
+
+def test_load_tasks_raises_on_non_string_parent(tmp_path):
+    # Arrange — a non-string parent (here: an int) is a structural fault.
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: a, title: First, status: done, parent: 7}\n",
+    )
+    # Act
+    ctx = pytest.raises(TaskValidationError)
+    # Assert
+    with ctx:
+        load_tasks(store)
+
+
+def test_load_tasks_raises_on_empty_string_parent(tmp_path):
+    # Arrange — explicit empty-string parent is ambiguous; reject so the
+    # operator sees the typo rather than getting a silently top-level node.
+    store = _write(
+        tmp_path,
+        'tasks:\n  - {id: a, title: First, status: done, parent: ""}\n',
+    )
+    # Act
+    ctx = pytest.raises(TaskValidationError)
+    # Assert
+    with ctx:
+        load_tasks(store)
+
+
+def test_save_tasks_round_trip_preserves_parent(tmp_path):
+    # Arrange
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - {id: hub, title: Hub, status: goal}\n"
+        "  - {id: child, title: Child, status: pending, parent: hub}\n",
+    )
+    tasks = load_tasks(store)
+    # Act — touch an unrelated field and rewrite; `parent` must survive.
+    for task in tasks:
+        if task["id"] == "child":
+            task["priority"] = 2
+    save_tasks(tasks, store)
+    reloaded = load_tasks(store)
+    # Assert
+    child = next(t for t in reloaded if t["id"] == "child")
+    assert child["parent"] == "hub"
+
+
 # EOF

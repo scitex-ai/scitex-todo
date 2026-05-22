@@ -84,6 +84,67 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   transition: opacity 0.12s linear;
 }
 
+/* ── Drill-down breadcrumb ───────────────────────────────────────────────
+ * Bar above the canvas (overlayed) that shows the descent path the user has
+ * taken into nested subgraphs: `Home / <parent> / <…> / <current>`. Click
+ * any past crumb to pop back to that level; the current crumb is rendered
+ * as non-interactive text. Hidden at the top-level (no path to show).
+ *
+ * Top-positioned so it sits ABOVE the React Flow canvas chrome (controls,
+ * minimap) without resizing the canvas itself — keeps `fitView` honest.
+ */
+.stx-todo-breadcrumb {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 6px 12px;
+  border: 1px solid var(--stx-border, #3a3a4a);
+  border-radius: 999px;
+  background: rgba(27, 27, 41, 0.92);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  font-size: 0.78rem;
+  color: #d0d0e0;
+  font-family: -apple-system, system-ui, sans-serif;
+}
+
+.stx-todo-breadcrumb__crumb {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: #a78bfa;
+  font: inherit;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.stx-todo-breadcrumb__crumb:hover,
+.stx-todo-breadcrumb__crumb:focus-visible {
+  background: #2d2d42;
+  color: #fff;
+  outline: none;
+}
+
+.stx-todo-breadcrumb__crumb--current {
+  color: #f0e7ff;
+  cursor: default;
+  font-weight: 600;
+}
+
+.stx-todo-breadcrumb__crumb--current:hover {
+  background: transparent;
+}
+
+.stx-todo-breadcrumb__sep {
+  color: #6a6a82;
+  padding: 0 2px;
+}
+
 /* ── Uncategorized staging pool (Fix #1) ─────────────────────────────────
  * A single bordered box listing tasks that are not connected into the
  * dependency graph (note == "uncategorized" or no edges). SPACE ONLY —

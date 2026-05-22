@@ -198,4 +198,56 @@ def test_standalone_template_does_not_leak_django_comment(store):
     assert b"scitex-dev brand" not in body
 
 
+# --- nested-graph drill-down: parent field on graph payload ---------------
+
+
+_NESTED_STORE_TEXT = (
+    "tasks:\n"
+    "  - {id: hub, title: Hub, status: goal}\n"
+    "  - {id: child-a, title: Child A, status: pending, parent: hub}\n"
+    "  - {id: child-b, title: Child B, status: in_progress, parent: hub}\n"
+    "  - {id: solo, title: Solo top-level, status: pending}\n"
+)
+
+
+@pytest.fixture
+def nested_store(tmp_path):
+    """Tmp store with a parent + two children + an unrelated top-level node."""
+    path = tmp_path / "tasks-nested.yaml"
+    path.write_text(_NESTED_STORE_TEXT, encoding="utf-8")
+    _reset_cache()
+    yield str(path)
+    _reset_cache()
+
+
+def test_graph_endpoint_exposes_parent_field_on_child_nodes(nested_store):
+    # Arrange
+    request = RequestFactory().get(f"/graph?store={nested_store}")
+    # Act
+    response = views.api_dispatch(request, "graph")
+    payload = json.loads(response.content)
+    by_id = {n["id"]: n for n in payload["nodes"]}
+    # Assert — child carries parent, hub/solo do not.
+    assert by_id["child-a"]["parent"] == "hub"
+    assert by_id["child-b"]["parent"] == "hub"
+    assert by_id["hub"]["parent"] is None
+    assert by_id["solo"]["parent"] is None
+
+
+def test_graph_endpoint_parent_field_present_when_absent_in_yaml(store):
+    """A store with NO `parent` field anywhere still emits `parent: null` per
+    node, so the frontend can treat the field as always-present and safely
+    fall back to the top-level view.
+    """
+    # Arrange
+    request = RequestFactory().get(f"/graph?store={store}")
+    # Act
+    response = views.api_dispatch(request, "graph")
+    payload = json.loads(response.content)
+    # Assert
+    for node in payload["nodes"]:
+        assert "parent" in node
+        assert node["parent"] is None
+
+
 # EOF

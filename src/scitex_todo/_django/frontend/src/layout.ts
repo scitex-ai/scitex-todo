@@ -7,6 +7,14 @@
  *
  * Uncategorized tasks (see `partitionNodes`) are excluded from the graph
  * entirely; they are rendered separately in the bordered staging pool.
+ *
+ * Nested-graph drill-down: at any given moment the canvas shows ONE scope —
+ * either the top-level (`scope: null` → nodes whose `parent` is null/absent)
+ * or a parent's children (`scope: <parent-id>` → nodes whose `parent`
+ * equals that id). `buildFlow` and `partitionNodes` are both
+ * scope-parameterized so the same renderer drives every level. Edges
+ * between visible nodes are kept; edges that cross the scope boundary are
+ * dropped (siblings only). See `scopeNodes` and `nodeHasChildren`.
  */
 
 import type { CSSProperties } from "react";
@@ -44,30 +52,72 @@ export function nodeStyle(color: StatusColor | undefined): CSSProperties {
   };
 }
 
+/** Restrict `graph.nodes` to those visible at the given drill-down scope.
+ *
+ * `scope === null` ⇒ top-level: nodes whose `parent` is null/undefined.
+ * `scope === <id>` ⇒ children of <id>: nodes whose `parent` equals <id>.
+ *
+ * A node whose `parent` references an id not present in `graph.nodes` is
+ * "orphaned"; we hoist it to the top level so it stays reachable even if
+ * the operator deletes the umbrella mid-edit (same lenient stance as edges
+ * to unknown ids, which the backend drops).
+ */
+export function scopeNodes(
+  graph: GraphPayload,
+  scope: string | null,
+): GraphNode[] {
+  const ids = new Set(graph.nodes.map((n) => n.id));
+  return graph.nodes.filter((n) => {
+    const parent = n.parent ?? null;
+    if (scope === null) {
+      // Top-level: explicit `parent: null` OR an orphaned reference.
+      return parent === null || !ids.has(parent);
+    }
+    return parent === scope;
+  });
+}
+
+/** Does `node` have at least one child task (any `parent === node.id`)?
+ *
+ * Used by the click handler to decide between drill-down (has children) and
+ * the markdown detail drawer (leaf node — existing #9 behavior).
+ */
+export function nodeHasChildren(graph: GraphPayload, nodeId: string): boolean {
+  return graph.nodes.some((n) => n.parent === nodeId);
+}
+
 /** Split nodes into the connected dependency graph vs the uncategorized pool.
+ *
+ * Scope-parameterized: operates only on nodes visible at the given drill-down
+ * scope. Edges between two scope-visible nodes count for "connected"; edges
+ * crossing the scope boundary are ignored (a child node connected ONLY to a
+ * sibling at another level is treated as disconnected for THIS view).
  *
  * A node is "uncategorized" (belongs in the staging pool) when EITHER:
  *   - its note is exactly "uncategorized", OR
- *   - it has no dependency edges connecting it to the graph: it declares no
- *     `depends_on` AND no other task references it via `depends_on`/`blocks`.
- *
- * Edge participation is derived from `graph.edges` so the rule matches whatever
- * the backend actually emitted (a `depends_on`/`blocks` to a missing id is
- * dropped server-side, so such a node is correctly treated as disconnected).
+ *   - it has no dependency edges connecting it to the graph at this scope.
  */
-export function partitionNodes(graph: GraphPayload): {
+export function partitionNodes(
+  graph: GraphPayload,
+  scope: string | null = null,
+): {
   graphNodes: GraphNode[];
   poolNodes: GraphNode[];
 } {
+  const visible = scopeNodes(graph, scope);
+  const visibleIds = new Set(visible.map((n) => n.id));
+
   const connected = new Set<string>();
   for (const e of graph.edges) {
-    connected.add(e.source);
-    connected.add(e.target);
+    if (visibleIds.has(e.source) && visibleIds.has(e.target)) {
+      connected.add(e.source);
+      connected.add(e.target);
+    }
   }
 
   const graphNodes: GraphNode[] = [];
   const poolNodes: GraphNode[] = [];
-  for (const n of graph.nodes) {
+  for (const n of visible) {
     const taggedUncategorized = (n.note ?? "").trim() === "uncategorized";
     const disconnected = !connected.has(n.id);
     if (taggedUncategorized || disconnected) {
@@ -79,11 +129,14 @@ export function partitionNodes(graph: GraphPayload): {
   return { graphNodes, poolNodes };
 }
 
-export function buildFlow(graph: GraphPayload): {
+export function buildFlow(
+  graph: GraphPayload,
+  scope: string | null = null,
+): {
   nodes: Node[];
   edges: Edge[];
 } {
-  const { graphNodes } = partitionNodes(graph);
+  const { graphNodes } = partitionNodes(graph, scope);
   const inGraph = new Set(graphNodes.map((n) => n.id));
 
   const g = new dagre.graphlib.Graph();
@@ -107,7 +160,11 @@ export function buildFlow(graph: GraphPayload): {
   const nodes: Node[] = graphNodes.map((n) => {
     const pos = g.node(n.id);
     const prio = n.priority != null ? ` · p${n.priority}` : "";
-    const label = `${n.title}${prio}`;
+    // Affordance: a "▾" glyph after the title hints that clicking this node
+    // will drill in (vs. opening the markdown drawer for a leaf). Cheap +
+    // unambiguous; no extra DOM, survives React Flow's default label render.
+    const drillHint = nodeHasChildren(graph, n.id) ? " ▾" : "";
+    const label = `${n.title}${drillHint}${prio}`;
     return {
       id: n.id,
       position: {
