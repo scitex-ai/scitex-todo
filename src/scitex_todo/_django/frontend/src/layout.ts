@@ -13,20 +13,22 @@ import type { CSSProperties } from "react";
 import dagre from "dagre";
 import { MarkerType, type Edge, type Node } from "@xyflow/react";
 import type { GraphNode, GraphPayload, StatusColor } from "./types/board";
+import { INHIBITION_EDGE_TYPE } from "./InhibitionEdge";
 
 const NODE_W = 200;
 const NODE_H = 60;
 
-/** Edge colors — kept in sync with the SVG marker defs in GraphView.tsx.
+/** Edge colors.
  *
- * `depends_on` (→) is the default neutral arrow; `blocks` (⊣) uses the
- * inhibition T-bar end-cap defined as a custom SVG <marker> with id
- * EDGE_MARKER_INHIBIT_ID. Both edges share the same body line style so they
- * read as siblings — only the end-cap and color distinguish them.
+ * `depends_on` (→) is the default neutral arrow; `blocks` (⊣) is rendered by
+ * the custom `InhibitionEdge` component (full-length solid line + perpendicular
+ * tee at the target endpoint, NO text label — see InhibitionEdge.tsx for why
+ * we own the rendering instead of using `markerEnd: url(#…)`). Both edges share
+ * the same body weight so they read as siblings — only the color and the
+ * end-cap (arrowhead vs tee) distinguish them.
  */
 export const EDGE_COLOR_DEPENDS = "#607d8b";
 export const EDGE_COLOR_BLOCKS = "#c62828";
-export const EDGE_MARKER_INHIBIT_ID = "stx-todo-inhibit";
 
 export function nodeStyle(color: StatusColor | undefined): CSSProperties {
   const c = color ?? { fill: "#eceff1", stroke: "#90a4ae", dashed: false };
@@ -124,31 +126,22 @@ export function buildFlow(graph: GraphPayload): {
     .filter((e) => inGraph.has(e.source) && inGraph.has(e.target))
     .map((e, i) => {
       const isBlock = e.kind === "blocks";
-      // Body line is the SAME shape/weight for both edge kinds — only the
-      // end-cap and color carry the semantic. The "blocks" T-bar marker is a
-      // custom SVG <marker> emitted once from GraphView; we reference it by
-      // its id here so React Flow draws it at the edge's target endpoint.
+      // depends_on: default smoothstep edge with an arrowhead marker.
+      // blocks:    custom `inhibition` edge (InhibitionEdge.tsx) — same body
+      //            line as depends_on but with a perpendicular tee instead of
+      //            an arrowhead, and NO text label (bar alone carries it).
       return {
         id: `e${i}-${e.source}-${e.target}`,
         source: e.source,
         target: e.target,
-        type: "smoothstep",
+        type: isBlock ? INHIBITION_EDGE_TYPE : "smoothstep",
         animated: false,
-        label: isBlock ? "blocks" : undefined,
-        labelStyle: isBlock
-          ? { fill: EDGE_COLOR_BLOCKS, fontSize: 10, fontWeight: 600 }
-          : undefined,
-        labelBgStyle: isBlock
-          ? { fill: "#1b1b29", fillOpacity: 0.85 }
-          : undefined,
-        labelBgPadding: isBlock ? ([4, 2] as [number, number]) : undefined,
-        labelBgBorderRadius: isBlock ? 3 : undefined,
         style: {
           stroke: isBlock ? EDGE_COLOR_BLOCKS : EDGE_COLOR_DEPENDS,
           strokeWidth: 2,
         },
         markerEnd: isBlock
-          ? `url(#${EDGE_MARKER_INHIBIT_ID})`
+          ? undefined
           : { type: MarkerType.ArrowClosed, color: EDGE_COLOR_DEPENDS },
       };
     });

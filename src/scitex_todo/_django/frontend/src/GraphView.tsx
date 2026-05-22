@@ -7,16 +7,12 @@ import {
   MiniMap,
   ReactFlow,
   type Edge,
+  type EdgeTypes,
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import {
-  buildFlow,
-  EDGE_COLOR_BLOCKS,
-  EDGE_MARKER_INHIBIT_ID,
-  nodeStyle,
-  partitionNodes,
-} from "./layout";
+import { buildFlow, nodeStyle, partitionNodes } from "./layout";
+import { InhibitionEdge, INHIBITION_EDGE_TYPE } from "./InhibitionEdge";
 import type { GraphPayload } from "./types/board";
 
 /** Dark-theme tokens for React Flow chrome (minimap / controls / background). */
@@ -30,50 +26,15 @@ const FLOW_DARK = {
   bgDots: "#33334a",
 };
 
-/** Inhibition T-bar end-cap for `blocks` edges (⊣ — biology / circuit notation).
+/** Custom edge-type registry — `blocks` edges render via InhibitionEdge.
  *
- * Rendered as a hidden inline <svg><defs> next to the React Flow canvas; edges
- * reference it by url(#stx-todo-inhibit) via markerEnd. Same body line as
- * depends_on, but the perpendicular bar reads as "this blocks that" at a
- * glance — visually distinct from the → arrowhead.
- *
- * Sizing: markerUnits="userSpaceOnUse" keeps the bar a constant on-screen size
- * regardless of edge strokeWidth. orient="auto" rotates it so the bar is
- * always perpendicular to the edge's local direction at its endpoint.
+ * Defined at module scope (not inline in the JSX) so the object identity is
+ * stable across renders. React Flow warns when `edgeTypes` is a fresh object
+ * each render — it forces a full edge-component re-mount.
  */
-function InhibitionMarkerDefs() {
-  return (
-    <svg
-      width={0}
-      height={0}
-      style={{ position: "absolute", overflow: "hidden" }}
-      aria-hidden="true"
-    >
-      <defs>
-        <marker
-          id={EDGE_MARKER_INHIBIT_ID}
-          viewBox="-6 -8 12 16"
-          refX={0}
-          refY={0}
-          markerWidth={14}
-          markerHeight={14}
-          orient="auto"
-          markerUnits="userSpaceOnUse"
-        >
-          <line
-            x1={0}
-            y1={-7}
-            x2={0}
-            y2={7}
-            stroke={EDGE_COLOR_BLOCKS}
-            strokeWidth={2.5}
-            strokeLinecap="round"
-          />
-        </marker>
-      </defs>
-    </svg>
-  );
-}
+const EDGE_TYPES: EdgeTypes = {
+  [INHIBITION_EDGE_TYPE]: InhibitionEdge,
+};
 
 /** Bordered staging pool for tasks not connected into the dependency graph.
  *
@@ -115,10 +76,10 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
 
   return (
     <div className="stx-todo-flow">
-      <InhibitionMarkerDefs />
       <ReactFlow
         nodes={nodes}
         edges={edges}
+        edgeTypes={EDGE_TYPES}
         fitView
         nodesDraggable={false}
         nodesConnectable={false}

@@ -1,6 +1,12 @@
 {% extends "scitex_ui/standalone_shell.html" %}
 {% load static %}
 {% block extra_css %}
+    {# SciTeX "S" snake favicon (scitex-dev brand). The parent shell template
+       has no favicon block, so we inject the <link> here — extra_css is in
+       the <head>, so the link lands correctly. #}
+    <link rel="icon"
+          type="image/svg+xml"
+          href="{% static 'scitex_todo/favicon.svg' %}">
     <link rel="stylesheet"
           crossorigin
           href="{% static 'scitex_todo/assets/index.css' %}">

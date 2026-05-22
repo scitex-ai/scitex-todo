@@ -10,7 +10,7 @@ are absent). ``api_dispatch`` routes ``/<endpoint>`` to the ``HANDLERS`` dict.
 import logging
 from pathlib import Path
 
-from django.http import HttpResponse, JsonResponse
+from django.http import FileResponse, HttpResponse, HttpResponseNotFound, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
 from .handlers import HANDLERS, NO_BOARD_ENDPOINTS
@@ -19,11 +19,27 @@ from .services import get_board
 logger = logging.getLogger(__name__)
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static" / "scitex_todo"
+_FAVICON_PATH = _STATIC_DIR / "favicon.svg"
 
 
 def _tasks_path_from_request(request):
     """Optional explicit store path from the ``?store=`` query param."""
     return request.GET.get("store") or None
+
+
+def favicon_view(request):
+    """Serve the bundled SciTeX "S" SVG for the implicit `/favicon.ico` request.
+
+    Modern browsers honor `Content-Type: image/svg+xml` for `.ico` URLs, so we
+    serve the SVG directly. The standalone template also declares a
+    `<link rel="icon" type="image/svg+xml">`, but browsers still request
+    `/favicon.ico` on first visit before parsing <head>; without this route
+    that request would fall through to `api_dispatch` and 404 (operator 3683).
+    """
+    if not _FAVICON_PATH.exists():
+        return HttpResponseNotFound()
+    # FileResponse handles streaming and the Content-Length header for us.
+    return FileResponse(_FAVICON_PATH.open("rb"), content_type="image/svg+xml")
 
 
 def board_page(request):
