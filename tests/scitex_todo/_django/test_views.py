@@ -148,4 +148,34 @@ def test_tasks_endpoint_returns_raw_task_list(store):
     assert [t["id"] for t in payload["tasks"]] == ["north", "build", "gate"]
 
 
+def test_favicon_view_serves_svg_with_correct_content_type():
+    # Arrange
+    request = RequestFactory().get("/favicon.ico")
+    # Act
+    response = views.favicon_view(request)
+    # Assert
+    assert response.status_code == 200
+    assert response["Content-Type"] == "image/svg+xml"
+
+
+def test_favicon_view_body_is_scitex_s_svg():
+    # Arrange
+    request = RequestFactory().get("/favicon.ico")
+    # Act
+    response = views.favicon_view(request)
+    # Drain FileResponse iterator into bytes.
+    body = b"".join(response.streaming_content)
+    # Assert — the bundled scitex-dev brand SVG declares id="scitex-logo".
+    assert b'id="scitex-logo"' in body
+
+
+def test_standalone_template_links_svg_favicon(store):
+    # Arrange
+    request = RequestFactory().get(f"/?store={store}")
+    # Act
+    response = views.board_page(request)
+    # Assert — head should declare the SVG favicon (operator 3683).
+    assert b"scitex_todo/favicon.svg" in response.content
+
+
 # EOF
