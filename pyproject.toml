@@ -1,0 +1,82 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "scitex-todo"
+version = "0.1.0"
+description = "Canonical YAML task store with pluggable adapters (mermaid dependency graphs)"
+readme = "README.md"
+license = "AGPL-3.0-only"
+requires-python = ">=3.10"
+authors = [
+    { name = "Yusuke Watanabe" },
+]
+keywords = ["todo", "tasks", "dependency-graph", "mermaid", "science"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = ["pyyaml", "click"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "scitex-dev>=0.11.7",
+]
+docs = [
+    "sphinx>=7.0",
+    "sphinx-rtd-theme>=2.0",
+    "myst-parser>=2.0",
+    "sphinx-copybutton>=0.5",
+    "sphinx-autodoc-typehints>=1.25",
+]
+all = [
+    "scitex-todo[dev,docs]",
+]
+
+[project.scripts]
+scitex-todo = "scitex_todo._cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ywatanabe1989/scitex-todo"
+Repository = "https://github.com/ywatanabe1989/scitex-todo"
+Issues = "https://github.com/ywatanabe1989/scitex-todo/issues"
+Documentation = "https://scitex-todo.readthedocs.io"
+
+[project.entry-points."scitex_dev.docs"]
+scitex-todo = "scitex_todo"
+
+[project.entry-points."scitex_dev.skills"]
+scitex-todo = "scitex_todo"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/scitex_todo"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-x -q"
+
+[tool.coverage.run]
+parallel = true
+source = ["scitex_todo"]
+concurrency = ["multiprocessing", "thread"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.scitex-linter]
+library_dirs = ["src", "tests", "examples"]
