@@ -1,9 +1,16 @@
 {% extends "scitex_ui/standalone_shell.html" %}
 {% load static %}
 {% block extra_css %}
-    {# SciTeX "S" snake favicon (scitex-dev brand). The parent shell template
-       has no favicon block, so we inject the <link> here — extra_css is in
-       the <head>, so the link lands correctly. #}
+    {% comment %}
+      SciTeX "S" snake favicon (scitex-dev brand). The parent shell template
+      has no favicon block, so we inject the link below here — extra_css is
+      in the head, so the link lands correctly.
+
+      NB: Django's single-hash comment syntax is single-line only — a
+      multi-line single-hash block leaks its body into the rendered HTML
+      (operator-visible bug, fixed in this PR). Use this comment tag for any
+      multi-line note inside a template.
+    {% endcomment %}
     <link rel="icon"
           type="image/svg+xml"
           href="{% static 'scitex_todo/favicon.svg' %}">

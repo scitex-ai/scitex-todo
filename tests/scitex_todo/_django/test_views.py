@@ -178,4 +178,24 @@ def test_standalone_template_links_svg_favicon(store):
     assert b"scitex_todo/favicon.svg" in response.content
 
 
+def test_standalone_template_does_not_leak_django_comment(store):
+    """The favicon comment must NOT render as visible page text.
+
+    Django's ``{# … #}`` syntax is single-line only — a multi-line block
+    leaks into the rendered HTML. We use ``{% comment %} … {% endcomment %}``
+    instead. Guard against regressions: neither the single-hash delimiters
+    nor the leaked phrase should appear in the response body.
+    """
+    # Arrange
+    request = RequestFactory().get(f"/?store={store}")
+    # Act
+    response = views.board_page(request)
+    body = response.content
+    # Assert — none of the raw comment delimiters / body text leak.
+    assert b"{#" not in body
+    assert b"#}" not in body
+    assert b"snake favicon" not in body
+    assert b"scitex-dev brand" not in body
+
+
 # EOF
