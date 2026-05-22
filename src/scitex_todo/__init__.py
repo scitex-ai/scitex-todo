@@ -30,7 +30,7 @@ except ImportError:  # pragma: no cover — only on ancient Pythons
     __version__ = "0.0.0+local"
 
 from ._mermaid import STATUS_STYLE, build_mermaid
-from ._model import VALID_STATUSES, TaskValidationError, load_tasks
+from ._model import VALID_STATUSES, TaskValidationError, load_tasks, save_tasks
 from ._paths import bundled_example, resolve_tasks_path
 from ._render import (
     RenderError,
@@ -50,6 +50,7 @@ __all__ = [
     "bundled_example",
     "find_chromium",
     "load_tasks",
+    "save_tasks",
     "render",
     "render_with_kroki",
     "render_with_mmdc",

@@ -13,6 +13,7 @@
 #   depends_on  (optional)  ids this task depends on   (dep --> task)
 #   blocks      (optional)  ids this task inhibits      (blocker -- blocks --x target)
 #   note        (optional)  free-text annotation, shown under the title
+#   priority    (optional)  integer rank (lower = higher); document order if absent
 
 tasks:
   - id: ship-it

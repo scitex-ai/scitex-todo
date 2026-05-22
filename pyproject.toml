@@ -25,7 +25,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-dependencies = ["pyyaml", "click"]
+dependencies = ["pyyaml", "click", "ruamel.yaml"]
 
 [project.optional-dependencies]
 dev = [

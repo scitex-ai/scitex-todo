@@ -4,9 +4,11 @@
 
 from __future__ import annotations
 
+import contextlib
+
 import pytest
 
-from scitex_todo import TaskValidationError, load_tasks
+from scitex_todo import TaskValidationError, load_tasks, save_tasks
 
 
 def _write(tmp_path, text):
@@ -102,6 +104,134 @@ def test_load_tasks_raises_on_missing_file(tmp_path):
     # Assert
     with ctx:
         load_tasks(missing)
+
+
+def test_load_tasks_accepts_integer_priority(tmp_path):
+    # Arrange
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: a, title: First, status: done, priority: 3}\n",
+    )
+    # Act
+    tasks = load_tasks(store)
+    # Assert
+    assert tasks[0]["priority"] == 3
+
+
+def test_load_tasks_raises_on_non_integer_priority(tmp_path):
+    # Arrange
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: a, title: First, status: done, priority: high}\n",
+    )
+    # Act
+    ctx = pytest.raises(TaskValidationError)
+    # Assert
+    with ctx:
+        load_tasks(store)
+
+
+def test_load_tasks_rejects_boolean_priority(tmp_path):
+    # Arrange
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: a, title: First, status: done, priority: true}\n",
+    )
+    # Act
+    ctx = pytest.raises(TaskValidationError)
+    # Assert
+    with ctx:
+        load_tasks(store)
+
+
+def test_save_tasks_round_trip_preserves_priority(tmp_path):
+    # Arrange
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: a, title: First, status: done}\n",
+    )
+    tasks = load_tasks(store)
+    tasks[0]["priority"] = 7
+    # Act
+    save_tasks(tasks, store)
+    reloaded = load_tasks(store)
+    # Assert
+    assert reloaded[0]["priority"] == 7
+
+
+def test_save_tasks_round_trip_preserves_comments(tmp_path):
+    # Arrange
+    path = tmp_path / "tasks.yaml"
+    path.write_text(
+        "# top-of-file comment kept verbatim\n"
+        "tasks:\n"
+        "  - id: a  # inline task comment\n"
+        "    title: First\n"
+        "    status: done\n",
+        encoding="utf-8",
+    )
+    tasks = load_tasks(path)
+    tasks[0]["priority"] = 1
+    # Act
+    save_tasks(tasks, path)
+    rewritten = path.read_text(encoding="utf-8")
+    # Assert
+    assert "# top-of-file comment kept verbatim" in rewritten
+
+
+def test_save_tasks_preserves_inline_comment(tmp_path):
+    # Arrange
+    path = tmp_path / "tasks.yaml"
+    path.write_text(
+        "tasks:\n"
+        "  - id: a  # inline task comment\n"
+        "    title: First\n"
+        "    status: done\n",
+        encoding="utf-8",
+    )
+    tasks = load_tasks(path)
+    tasks[0]["priority"] = 2
+    # Act
+    save_tasks(tasks, path)
+    rewritten = path.read_text(encoding="utf-8")
+    # Assert
+    assert "# inline task comment" in rewritten
+
+
+def test_save_tasks_raises_on_bad_priority_type(tmp_path):
+    # Arrange
+    store = _write(tmp_path, "tasks:\n  - {id: a, title: First, status: done}\n")
+    tasks = load_tasks(store)
+    tasks[0]["priority"] = "high"
+    # Act
+    ctx = pytest.raises(TaskValidationError)
+    # Assert
+    with ctx:
+        save_tasks(tasks, store)
+
+
+def test_save_tasks_does_not_write_when_validation_fails(tmp_path):
+    # Arrange
+    store = _write(tmp_path, "tasks:\n  - {id: a, title: First, status: done}\n")
+    before = store.read_text(encoding="utf-8")
+    bad = [{"id": "a", "title": "First", "status": "bogus"}]
+    with contextlib.suppress(TaskValidationError):
+        save_tasks(bad, store)
+    # Act
+    after = store.read_text(encoding="utf-8")
+    # Assert
+    assert after == before
+
+
+def test_save_tasks_writes_fresh_store_when_absent(tmp_path):
+    # Arrange
+    target = tmp_path / "nested" / "new.yaml"
+    tasks = [{"id": "a", "title": "First", "status": "pending", "priority": 1}]
+    # Act
+    save_tasks(tasks, target)
+    reloaded = load_tasks(target)
+    # Assert
+    assert reloaded[0]["id"] == "a"
 
 
 # EOF
