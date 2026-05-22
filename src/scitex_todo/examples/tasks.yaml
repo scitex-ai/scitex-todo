@@ -6,7 +6,7 @@
 #   ~/.scitex/todo/tasks.yaml           (user scope)
 #
 # Per-task fields:
-#   id          (required)  unique id, referenced by depends_on / blocks
+#   id          (required)  unique id, referenced by depends_on / blocks / parent
 #   title       (required)  short English label
 #   status      (required)  goal | pending | in_progress | blocked | done | deferred | failed
 #   repo        (optional)  owning repo / area
@@ -14,6 +14,10 @@
 #   blocks      (optional)  ids this task inhibits      (blocker -- blocks --x target)
 #   note        (optional)  free-text annotation, shown under the title
 #   priority    (optional)  integer rank (lower = higher); document order if absent
+#   parent      (optional)  id of the node this task nests under — clicking a
+#                           node WITH children DRILLS IN to that subgraph; a
+#                           breadcrumb navigates back. Tasks without `parent`
+#                           are top-level (the default view).
 
 tasks:
   - id: ship-it
@@ -55,3 +59,34 @@ tasks:
     title: Optional polish
     status: deferred
     depends_on: [implement]
+
+  # --- nested-graph demo: a parent with a few children --------------------
+  # Click `scitex-quality` on the top-level board to DRILL IN to its child
+  # subgraph (`scitex-todo-quality`, `scitex-io-quality`, `scitex-ui-quality`);
+  # the breadcrumb (`Home / scitex-quality`) navigates back. Leaf children
+  # keep the click->detail-drawer behavior. Mirrors the operator's motivating
+  # example for the drill-down feature.
+  - id: scitex-quality
+    title: scitex package quality
+    status: goal
+    note: |
+      Top-level umbrella for per-package quality work. Click this node to
+      drill into the child subgraph (one quality item per package).
+
+  - id: scitex-todo-quality
+    title: scitex-todo — quality
+    status: in_progress
+    parent: scitex-quality
+    note: This package — board, schema, drill-down.
+
+  - id: scitex-io-quality
+    title: scitex-io — quality
+    status: pending
+    parent: scitex-quality
+    depends_on: [scitex-todo-quality]
+
+  - id: scitex-ui-quality
+    title: scitex-ui — quality
+    status: pending
+    parent: scitex-quality
+    depends_on: [scitex-todo-quality]

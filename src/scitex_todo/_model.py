@@ -4,15 +4,19 @@
 
 The task store is a YAML document with a top-level ``tasks:`` list. Each
 task is a mapping with ``id`` + ``title`` + ``status`` (required) and
-optional ``repo`` / ``depends_on`` / ``blocks`` / ``note`` / ``priority``
-fields. ``priority`` is an explicit integer rank (lower = higher priority);
-when absent, document order is the implicit ordering.
+optional ``repo`` / ``depends_on`` / ``blocks`` / ``note`` / ``priority`` /
+``parent`` fields. ``priority`` is an explicit integer rank (lower = higher
+priority); when absent, document order is the implicit ordering. ``parent``
+is an optional task-id string that nests this task under another node — a
+task's children are tasks whose ``parent`` equals this task's ``id`` (the
+board's drill-down view follows this relation).
 
 This module is the single validation gate: ``load_tasks`` raises
 ``TaskValidationError`` on a malformed store (missing id/title, duplicate
-id, invalid status, non-integer priority) so downstream adapters can assume
-well-formed input. ``save_tasks`` re-runs the same gate before writing back
-and preserves the hand-written YAML comments + structure via ruamel.yaml.
+id, invalid status, non-integer priority, non-string parent) so downstream
+adapters can assume well-formed input. ``save_tasks`` re-runs the same gate
+before writing back and preserves the hand-written YAML comments +
+structure via ruamel.yaml.
 """
 
 from __future__ import annotations
@@ -135,6 +139,20 @@ def _validate_tasks(tasks: object, source: str) -> None:
             raise TaskValidationError(
                 f"{source}: task {tid!r} has non-integer priority {priority!r}; "
                 f"priority must be an integer or absent"
+            )
+        # `parent` is the additive-optional nesting field — a task's children
+        # are tasks whose `parent` equals this id. Validate type only (must be
+        # a non-empty string id when present); we do NOT require the
+        # referenced parent to exist or to be acyclic here. Stale/cyclic
+        # references are gracefully degraded by the consumers (server-side
+        # graph builder and frontend drill-down) — same lenient stance as
+        # `depends_on` / `blocks` references to unknown ids, which are dropped
+        # rather than rejected.
+        parent = task.get("parent")
+        if parent is not None and not (isinstance(parent, str) and parent):
+            raise TaskValidationError(
+                f"{source}: task {tid!r} has non-string parent {parent!r}; "
+                f"parent must be a task id string or absent"
             )
 
 

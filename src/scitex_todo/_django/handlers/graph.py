@@ -39,6 +39,12 @@ def _build_graph(board) -> dict:
             "priority": t.get("priority"),
             "note": t.get("note"),
             "repo": t.get("repo"),
+            # `parent` is the nesting field that drives the frontend
+            # drill-down: children of a node N are tasks whose
+            # `parent == N.id`. Emit it verbatim; if it points to an unknown
+            # id the frontend treats this task as top-level (same lenient
+            # stance as edges to unknown ids).
+            "parent": t.get("parent"),
         }
         for t in board.tasks
     ]

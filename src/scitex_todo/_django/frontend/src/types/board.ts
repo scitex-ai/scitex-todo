@@ -7,6 +7,11 @@ export interface GraphNode {
   priority: number | null;
   note: string | null;
   repo: string | null;
+  /** Id of the node this task nests under. `null` (or absent) = top-level.
+   *  Drives the nested-graph drill-down: clicking a node WITH children (any
+   *  task whose `parent` equals this node's id) re-renders the canvas to that
+   *  child subgraph; a breadcrumb navigates back. */
+  parent: string | null;
 }
 
 export type EdgeKind = "depends_on" | "blocks";
