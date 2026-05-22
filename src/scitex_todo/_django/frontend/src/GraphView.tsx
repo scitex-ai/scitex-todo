@@ -1,18 +1,37 @@
-/** React Flow rendering of the task dependency graph (read-only, MVP). */
+/** React Flow rendering of the task dependency graph.
+ *
+ * Interaction model:
+ *   - Graph nodes are DRAGGABLE. On drag-end, all current node positions
+ *     are sorted top→bottom (then left→right within a y-band) to derive a
+ *     priority order, which is POSTed to `/priority` via the board store
+ *     (`reorderPriority`). The backend writes the YAML via `save_tasks`,
+ *     and the store reloads the graph from the canonical source of truth.
+ *   - Pool / uncategorized nodes are NOT yet draggable (kept as a static
+ *     bordered list); they retain their existing priorities on drag-reorder.
+ *   - Edges are not connectable; selection-only is fine.
+ *
+ * The local node state mirrors React Flow's drag mutations via
+ * `onNodesChange`; the buildFlow result re-seeds it whenever the store
+ * graph reloads (so a server reload after a successful reorder snaps the
+ * UI to the canonical layout).
+ */
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Background,
   Controls,
   MiniMap,
   ReactFlow,
+  applyNodeChanges,
   type Edge,
   type EdgeTypes,
   type Node,
+  type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { buildFlow, nodeStyle, partitionNodes } from "./layout";
 import { InhibitionEdge, INHIBITION_EDGE_TYPE } from "./InhibitionEdge";
+import { useBoardStore } from "./store/useBoardStore";
 import type { GraphPayload } from "./types/board";
 
 /** Dark-theme tokens for React Flow chrome (minimap / controls / background). */
@@ -35,6 +54,22 @@ const FLOW_DARK = {
 const EDGE_TYPES: EdgeTypes = {
   [INHIBITION_EDGE_TYPE]: InhibitionEdge,
 };
+
+/** Vertical band (px) within which two nodes are treated as the same "row"
+ * for the purposes of ordering, so a small drag wiggle on the y-axis doesn't
+ * shuffle priority. Picked to be smaller than the dagre `ranksep`. */
+const Y_BAND_PX = 24;
+
+/** Sort node ids by (y, x) screen position into a top-priority-first list. */
+export function nodesToPriorityOrder(nodes: Node[]): string[] {
+  return [...nodes]
+    .sort((a, b) => {
+      const dy = a.position.y - b.position.y;
+      if (Math.abs(dy) > Y_BAND_PX) return dy;
+      return a.position.x - b.position.x;
+    })
+    .map((n) => n.id);
+}
 
 /** Bordered staging pool for tasks not connected into the dependency graph.
  *
@@ -69,19 +104,51 @@ function UncategorizedPool({ graph }: { graph: GraphPayload }) {
 }
 
 export function GraphView({ graph }: { graph: GraphPayload }) {
-  const { nodes, edges } = useMemo<{ nodes: Node[]; edges: Edge[] }>(
+  const reorderPriority = useBoardStore((s) => s.reorderPriority);
+  const saving = useBoardStore((s) => s.saving);
+
+  // Seed from buildFlow each time the canonical graph payload changes — that
+  // covers both initial load and reload-after-save. Node positions are then
+  // mutated locally as the user drags (via `onNodesChange`).
+  const seeded = useMemo<{ nodes: Node[]; edges: Edge[] }>(
     () => buildFlow(graph),
     [graph],
   );
+  const [nodes, setNodes] = useState<Node[]>(seeded.nodes);
+  const [edges, setEdges] = useState<Edge[]>(seeded.edges);
+
+  useEffect(() => {
+    setNodes(seeded.nodes);
+    setEdges(seeded.edges);
+  }, [seeded]);
+
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    setNodes((current) => applyNodeChanges(changes, current));
+  }, []);
+
+  /** When the user finishes a drag, recompute the priority order from the
+   * resulting node positions and persist via the backend. The functional
+   * setNodes form reads the freshest positions without depending on `nodes`
+   * in the callback identity. */
+  const onNodeDragStop = useCallback(() => {
+    setNodes((current) => {
+      const order = nodesToPriorityOrder(current);
+      // Fire-and-forget: the store handles re-fetch + error rollback.
+      void reorderPriority(order);
+      return current;
+    });
+  }, [reorderPriority]);
 
   return (
-    <div className="stx-todo-flow">
+    <div className={`stx-todo-flow${saving ? " stx-todo-flow--saving" : ""}`}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         edgeTypes={EDGE_TYPES}
+        onNodesChange={onNodesChange}
+        onNodeDragStop={onNodeDragStop}
         fitView
-        nodesDraggable={false}
+        nodesDraggable={true}
         nodesConnectable={false}
         elementsSelectable={true}
         proOptions={{ hideAttribution: true }}
