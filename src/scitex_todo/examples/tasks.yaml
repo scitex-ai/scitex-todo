@@ -1,0 +1,56 @@
+# scitex-todo — generic example task store.
+#
+# This is a GENERIC demo, bundled in the wheel so a fresh install can render
+# end-to-end. Your real task store lives at:
+#   <project>/.scitex/todo/tasks.yaml   (project scope, wins)
+#   ~/.scitex/todo/tasks.yaml           (user scope)
+#
+# Per-task fields:
+#   id          (required)  unique id, referenced by depends_on / blocks
+#   title       (required)  short English label
+#   status      (required)  goal | pending | in_progress | blocked | done | deferred | failed
+#   repo        (optional)  owning repo / area
+#   depends_on  (optional)  ids this task depends on   (dep --> task)
+#   blocks      (optional)  ids this task inhibits      (blocker -- blocks --x target)
+#   note        (optional)  free-text annotation, shown under the title
+
+tasks:
+  - id: ship-it
+    title: Ship the thing
+    status: goal
+    depends_on: [release]
+
+  - id: design
+    title: Design the API
+    status: done
+
+  - id: implement
+    title: Implement the core
+    status: in_progress
+    depends_on: [design]
+
+  - id: tests
+    title: Write the tests
+    status: pending
+    depends_on: [implement]
+
+  - id: docs
+    title: Write the docs
+    status: pending
+    depends_on: [implement]
+
+  - id: release
+    title: Cut a release
+    status: blocked
+    note: waiting on tests + docs
+    depends_on: [tests, docs]
+
+  - id: flaky-ci
+    title: Flaky CI runner
+    status: failed
+    blocks: [tests]
+
+  - id: nice-to-have
+    title: Optional polish
+    status: deferred
+    depends_on: [implement]
