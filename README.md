@@ -46,6 +46,25 @@ scitex-todo render --print-mermaid
 scitex-todo list
 ```
 
+## Web board (read-only graph)
+
+A browser view of the dependency graph, rendered with React Flow. Install the
+web extra and launch the standalone server:
+
+```bash
+pip install scitex-todo[web]
+
+# launches a local server and opens the graph in your browser
+scitex-todo board
+
+# pick a port / store, or skip auto-opening the browser
+scitex-todo board --port 8051 --tasks ./.scitex/todo/tasks.yaml --no-browser
+```
+
+Then open <http://127.0.0.1:8051/>. Nodes are colored by status (goal = gold);
+edges show `depends_on` (arrows) and `blocks` (⊣ inhibition). The board is
+read-only in this release; drag-to-reprioritize is on the roadmap.
+
 ## Task store schema
 
 A YAML document with a top-level `tasks:` list. Each task:
@@ -59,6 +78,7 @@ A YAML document with a top-level `tasks:` list. Each task:
 | `depends_on` | no       | ids this task depends on -> arrow `dep --> task`                 |
 | `blocks`     | no       | ids this task inhibits -> `blocker -- blocks --x target`         |
 | `note`       | no       | free-text annotation, shown under the title                      |
+| `priority`   | no       | integer rank (lower = higher); document order if absent          |
 
 ### status -> color
 
@@ -90,10 +110,14 @@ This follows the [SciTeX local-state convention](https://github.com/ywatanabe198
 The YAML store is the canonical backend; adapters layer on top.
 
 - **mermaid adapter** — YAML -> dependency PNG. *(done)*
+- **Web UI (read-only board)** — a browser view of the dependency graph,
+  rendered with React Flow (nodes colored by status, `depends_on` arrows,
+  `blocks` inhibition edges). Launch with `scitex-todo board` (needs the
+  `[web]` extra). *(done)*
 - **org adapter** — read/write org-mode TODO trees (`:BLOCKER:` / `ORDERED` /
   org-edna) so deps are derivable from Emacs. *(future)*
-- **Web UI** — a browser view where dragging a task reprioritizes and writes
-  back to the YAML store. *(future)*
+- **Web UI (drag-to-reprioritize)** — drag a task to change its `priority`
+  and write back to the YAML store. *(future)*
 - **MCP / HTTP / RTD / full skills** — agentic + service surfaces, intended to
   make the store a shared task backend across SciTeX (e.g. orochi). *(future)*
 

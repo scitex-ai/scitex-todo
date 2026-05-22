@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Django AppConfig for the scitex-todo board.
+
+Inherits ``scitex_app._django.ScitexAppConfig`` when scitex-app is installed
+(so the board can register as a scitex-hub module), and falls back to Django's
+plain ``AppConfig`` otherwise — keeping ``pip install scitex-todo[web]``
+functional without a hard scitex-app dependency.
+"""
+
+try:
+    from scitex_app._django import ScitexAppConfig
+except ImportError:  # scitex-app not installed — standalone still works
+    from django.apps import AppConfig as ScitexAppConfig
+
+
+class ScitexTodoConfig(ScitexAppConfig):
+    name = "scitex_todo._django"
+    label = "scitex_todo_board"
+    verbose_name = "SciTeX Todo Board"
+
+
+# EOF
