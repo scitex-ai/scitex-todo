@@ -17,6 +17,17 @@ import type { GraphNode, GraphPayload, StatusColor } from "./types/board";
 const NODE_W = 200;
 const NODE_H = 60;
 
+/** Edge colors — kept in sync with the SVG marker defs in GraphView.tsx.
+ *
+ * `depends_on` (→) is the default neutral arrow; `blocks` (⊣) uses the
+ * inhibition T-bar end-cap defined as a custom SVG <marker> with id
+ * EDGE_MARKER_INHIBIT_ID. Both edges share the same body line style so they
+ * read as siblings — only the end-cap and color distinguish them.
+ */
+export const EDGE_COLOR_DEPENDS = "#607d8b";
+export const EDGE_COLOR_BLOCKS = "#c62828";
+export const EDGE_MARKER_INHIBIT_ID = "stx-todo-inhibit";
+
 export function nodeStyle(color: StatusColor | undefined): CSSProperties {
   const c = color ?? { fill: "#eceff1", stroke: "#90a4ae", dashed: false };
   return {
@@ -113,21 +124,32 @@ export function buildFlow(graph: GraphPayload): {
     .filter((e) => inGraph.has(e.source) && inGraph.has(e.target))
     .map((e, i) => {
       const isBlock = e.kind === "blocks";
+      // Body line is the SAME shape/weight for both edge kinds — only the
+      // end-cap and color carry the semantic. The "blocks" T-bar marker is a
+      // custom SVG <marker> emitted once from GraphView; we reference it by
+      // its id here so React Flow draws it at the edge's target endpoint.
       return {
         id: `e${i}-${e.source}-${e.target}`,
         source: e.source,
         target: e.target,
         type: "smoothstep",
         animated: false,
-        label: isBlock ? "⊣ blocks" : undefined,
+        label: isBlock ? "blocks" : undefined,
+        labelStyle: isBlock
+          ? { fill: EDGE_COLOR_BLOCKS, fontSize: 10, fontWeight: 600 }
+          : undefined,
+        labelBgStyle: isBlock
+          ? { fill: "#1b1b29", fillOpacity: 0.85 }
+          : undefined,
+        labelBgPadding: isBlock ? ([4, 2] as [number, number]) : undefined,
+        labelBgBorderRadius: isBlock ? 3 : undefined,
         style: {
-          stroke: isBlock ? "#c62828" : "#607d8b",
+          stroke: isBlock ? EDGE_COLOR_BLOCKS : EDGE_COLOR_DEPENDS,
           strokeWidth: 2,
-          strokeDasharray: isBlock ? "6 4" : undefined,
         },
         markerEnd: isBlock
-          ? undefined
-          : { type: MarkerType.ArrowClosed, color: "#607d8b" },
+          ? `url(#${EDGE_MARKER_INHIBIT_ID})`
+          : { type: MarkerType.ArrowClosed, color: EDGE_COLOR_DEPENDS },
       };
     });
 
