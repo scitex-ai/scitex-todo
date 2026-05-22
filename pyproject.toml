@@ -31,7 +31,7 @@ dependencies = ["pyyaml", "click", "ruamel.yaml"]
 dev = [
     "pytest",
     "pytest-cov",
-    "scitex-dev>=0.11.7",
+    "scitex-dev[cli-audit]>=0.11.7",
 ]
 docs = [
     "sphinx>=7.0",
