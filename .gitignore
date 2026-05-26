@@ -26,6 +26,10 @@ htmlcov/
 .idea/
 .vscode/
 
+# Agent scratch + local git worktrees — never committed.
+GITIGNORED/
+.worktrees/
+
 # Rendered task graphs — generated artifacts, never committed.
 tasks.png
 *.tasks.png

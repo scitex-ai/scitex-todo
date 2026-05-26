@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 """Tests for the POST /priority handler -- drag-reorder persistence.
 
-Drives ``views.api_dispatch`` with a real ``RequestFactory`` POST against a
-tmp ``tasks.yaml`` (no mocks, STX-NM / PA-306), and verifies both the JSON
+Mirrors ``src/scitex_todo/_django/handlers/priority.py``. Drives
+``views.api_dispatch`` with a real ``RequestFactory`` POST against a tmp
+``tasks.yaml`` (no mocks, STX-NM / PA-306), and verifies both the JSON
 response and the YAML written by ``save_tasks``.
 """
 
@@ -98,32 +99,77 @@ def test_priority_endpoint_response_includes_store_path(store):
     assert payload["store_path"] == store
 
 
-def test_priority_endpoint_leaves_unlisted_tasks_untouched(store):
-    # Arrange — only reorder `build` and `gate`; `north` is omitted.
-    body = {"order": ["gate", "build"]}
-    # Act
-    _post_priority(store, body)
-    # Assert — `north` keeps its original priority (5), the other two are
-    # updated to the new 1/2 ranks.
-    priorities = _load_priorities(store)
-    assert priorities["north"] == 5
-    assert priorities["gate"] == 1
-    assert priorities["build"] == 2
+@pytest.fixture
+def partial_reorder_priorities(store):
+    """Reorder only `build` and `gate` (omitting `north`), returning the
+    on-disk {id: priority} after the POST so each assertion stays single-Act."""
+    _post_priority(store, {"order": ["gate", "build"]})
+    return _load_priorities(store)
 
 
-def test_priority_endpoint_ignores_unknown_ids(store):
-    # Arrange — `ghost` is not in the store; should be silently skipped, but
-    # the real ids around it still get their sequential ranks.
-    body = {"order": ["ghost", "build", "gate"]}
+def test_priority_endpoint_leaves_unlisted_task_at_original_rank(
+    partial_reorder_priorities,
+):
+    # Arrange
+    priorities = partial_reorder_priorities
     # Act
-    response = _post_priority(store, body)
+    north_rank = priorities["north"]
+    # Assert — `north` was omitted from the order, so it keeps its original 5.
+    assert north_rank == 5
+
+
+def test_priority_endpoint_ranks_first_listed_task_one(partial_reorder_priorities):
+    # Arrange
+    priorities = partial_reorder_priorities
+    # Act
+    gate_rank = priorities["gate"]
+    # Assert — `gate` was listed first, so it ranks 1.
+    assert gate_rank == 1
+
+
+def test_priority_endpoint_ranks_second_listed_task_two(partial_reorder_priorities):
+    # Arrange
+    priorities = partial_reorder_priorities
+    # Act
+    build_rank = priorities["build"]
+    # Assert — `build` was listed second, so it ranks 2.
+    assert build_rank == 2
+
+
+@pytest.fixture
+def unknown_id_reorder(store):
+    """POST an order containing an unknown id (`ghost`), returning the
+    (response payload, on-disk priorities) tuple after the POST."""
+    response = _post_priority(store, {"order": ["ghost", "build", "gate"]})
     payload = json.loads(response.content)
-    # Assert — response only lists ids that actually existed, and ranks are
-    # assigned by their position in the full `order` list (so build=2, gate=3).
-    assert payload["updated"] == ["build", "gate"]
-    priorities = _load_priorities(store)
-    assert priorities["build"] == 2
-    assert priorities["gate"] == 3
+    return payload, _load_priorities(store)
+
+
+def test_priority_endpoint_response_omits_unknown_ids(unknown_id_reorder):
+    # Arrange
+    payload, _priorities = unknown_id_reorder
+    # Act
+    updated = payload["updated"]
+    # Assert — response only lists ids that actually existed in the store.
+    assert updated == ["build", "gate"]
+
+
+def test_priority_endpoint_ranks_by_full_order_position(unknown_id_reorder):
+    # Arrange
+    _payload, priorities = unknown_id_reorder
+    # Act
+    build_rank = priorities["build"]
+    # Assert — ranks follow position in the full `order` list, so build=2.
+    assert build_rank == 2
+
+
+def test_priority_endpoint_skips_unknown_without_shifting_ranks(unknown_id_reorder):
+    # Arrange
+    _payload, priorities = unknown_id_reorder
+    # Act
+    gate_rank = priorities["gate"]
+    # Assert — `gate` is third in `order`, so it ranks 3.
+    assert gate_rank == 3
 
 
 def test_priority_endpoint_rejects_get_with_405(store):
@@ -166,8 +212,10 @@ def test_priority_endpoint_rejects_non_string_ids_with_400(store):
     assert response.status_code == 400
 
 
-def test_priority_endpoint_preserves_yaml_comments(store, tmp_path):
-    # Arrange — write a store with a hand-written comment we want to keep.
+@pytest.fixture
+def commented_store_after_reorder(tmp_path):
+    """Write a store with a hand-written comment, reorder it, and return the
+    (raw text, {id: priority}) tuple so the ruamel round-trip can be inspected."""
     path = tmp_path / "commented.yaml"
     path.write_text(
         "# top-of-file comment about the task store\n"
@@ -181,29 +229,70 @@ def test_priority_endpoint_preserves_yaml_comments(store, tmp_path):
         encoding="utf-8",
     )
     _reset_cache()
-    # Act
     _post_priority(str(path), {"order": ["beta", "alpha"]})
-    # Assert — comment survives the ruamel round-trip, AND priorities applied.
     text = path.read_text(encoding="utf-8")
-    assert "top-of-file comment" in text
     priorities = _load_priorities(str(path))
-    assert priorities == {"beta": 1, "alpha": 2}
+    _reset_cache()
+    return text, priorities
 
 
-def test_priority_endpoint_invalidates_board_cache(store):
-    # Arrange — prime the cache by hitting /graph once, then mutate via POST.
+def test_priority_endpoint_preserves_yaml_comment(commented_store_after_reorder):
+    # Arrange
+    text, _priorities = commented_store_after_reorder
+    # Act
+    comment_survived = "top-of-file comment" in text
+    # Assert — the hand-written comment survives the ruamel round-trip.
+    assert comment_survived
+
+
+def test_priority_endpoint_applies_priorities_to_commented_store(
+    commented_store_after_reorder,
+):
+    # Arrange
+    _text, priorities = commented_store_after_reorder
+    # Act
+    result = priorities
+    # Assert — priorities are applied even for a comment-bearing store.
+    assert result == {"beta": 1, "alpha": 2}
+
+
+@pytest.fixture
+def graph_after_reorder(store):
+    """Prime the board cache via /graph, mutate via POST /priority, then
+    return the post-write {id: node} map from a follow-up /graph."""
     request = RequestFactory().get(f"/graph?store={store}")
     views.api_dispatch(request, "graph")
-    # Act
     _post_priority(store, {"order": ["gate", "build", "north"]})
-    # Assert — a follow-up /graph must observe the new priorities, not the
-    # cached pre-write snapshot.
     request = RequestFactory().get(f"/graph?store={store}")
     payload = json.loads(views.api_dispatch(request, "graph").content)
-    by_id = {n["id"]: n for n in payload["nodes"]}
-    assert by_id["gate"]["priority"] == 1
-    assert by_id["build"]["priority"] == 2
-    assert by_id["north"]["priority"] == 3
+    return {n["id"]: n for n in payload["nodes"]}
+
+
+def test_priority_endpoint_invalidates_cache_for_first_node(graph_after_reorder):
+    # Arrange
+    by_id = graph_after_reorder
+    # Act
+    gate_rank = by_id["gate"]["priority"]
+    # Assert — follow-up GET re-reads disk, so `gate` ranks 1, not the cached value.
+    assert gate_rank == 1
+
+
+def test_priority_endpoint_invalidates_cache_for_second_node(graph_after_reorder):
+    # Arrange
+    by_id = graph_after_reorder
+    # Act
+    build_rank = by_id["build"]["priority"]
+    # Assert
+    assert build_rank == 2
+
+
+def test_priority_endpoint_invalidates_cache_for_third_node(graph_after_reorder):
+    # Arrange
+    by_id = graph_after_reorder
+    # Act
+    north_rank = by_id["north"]["priority"]
+    # Assert
+    assert north_rank == 3
 
 
 # EOF

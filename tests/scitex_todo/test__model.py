@@ -234,20 +234,29 @@ def test_save_tasks_writes_fresh_store_when_absent(tmp_path):
     assert reloaded[0]["id"] == "a"
 
 
-def test_load_tasks_accepts_string_parent(tmp_path):
+_PARENT_STORE_TEXT = (
+    "tasks:\n"
+    "  - {id: hub, title: Hub, status: goal}\n"
+    "  - {id: child, title: Child, status: pending, parent: hub}\n"
+)
+
+
+def test_load_tasks_reads_parent_id_on_child(tmp_path):
     # Arrange — additive-optional `parent` is a task-id string identifying the
     # node this task nests under (drill-down view follows this relation).
-    store = _write(
-        tmp_path,
-        "tasks:\n"
-        "  - {id: hub, title: Hub, status: goal}\n"
-        "  - {id: child, title: Child, status: pending, parent: hub}\n",
-    )
+    store = _write(tmp_path, _PARENT_STORE_TEXT)
     # Act
-    tasks = load_tasks(store)
+    by_id = {t["id"]: t for t in load_tasks(store)}
     # Assert
-    by_id = {t["id"]: t for t in tasks}
     assert by_id["child"]["parent"] == "hub"
+
+
+def test_load_tasks_leaves_parentless_task_without_parent(tmp_path):
+    # Arrange
+    store = _write(tmp_path, _PARENT_STORE_TEXT)
+    # Act
+    by_id = {t["id"]: t for t in load_tasks(store)}
+    # Assert
     assert by_id["hub"].get("parent") is None
 
 

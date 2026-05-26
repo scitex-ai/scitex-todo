@@ -148,13 +148,21 @@ def test_tasks_endpoint_returns_raw_task_list(store):
     assert [t["id"] for t in payload["tasks"]] == ["north", "build", "gate"]
 
 
-def test_favicon_view_serves_svg_with_correct_content_type():
+def test_favicon_view_returns_ok_status():
     # Arrange
     request = RequestFactory().get("/favicon.ico")
     # Act
     response = views.favicon_view(request)
     # Assert
     assert response.status_code == 200
+
+
+def test_favicon_view_sets_svg_content_type():
+    # Arrange
+    request = RequestFactory().get("/favicon.ico")
+    # Act
+    response = views.favicon_view(request)
+    # Assert
     assert response["Content-Type"] == "image/svg+xml"
 
 
@@ -178,24 +186,23 @@ def test_standalone_template_links_svg_favicon(store):
     assert b"scitex_todo/favicon.svg" in response.content
 
 
-def test_standalone_template_does_not_leak_django_comment(store):
+@pytest.mark.parametrize(
+    "forbidden",
+    [b"{#", b"#}", b"snake favicon", b"scitex-dev brand"],
+)
+def test_standalone_template_does_not_leak_django_comment(store, forbidden):
     """The favicon comment must NOT render as visible page text.
 
     Django's ``{# … #}`` syntax is single-line only — a multi-line block
     leaks into the rendered HTML. We use ``{% comment %} … {% endcomment %}``
-    instead. Guard against regressions: neither the single-hash delimiters
-    nor the leaked phrase should appear in the response body.
+    instead. Each parametrized row guards one raw delimiter / leaked phrase.
     """
     # Arrange
     request = RequestFactory().get(f"/?store={store}")
     # Act
-    response = views.board_page(request)
-    body = response.content
-    # Assert — none of the raw comment delimiters / body text leak.
-    assert b"{#" not in body
-    assert b"#}" not in body
-    assert b"snake favicon" not in body
-    assert b"scitex-dev brand" not in body
+    body = views.board_page(request).content
+    # Assert — the raw comment delimiter / body text must not leak.
+    assert forbidden not in body
 
 
 # --- nested-graph drill-down: parent field on graph payload ---------------
@@ -220,25 +227,31 @@ def nested_store(tmp_path):
     _reset_cache()
 
 
-def test_graph_endpoint_exposes_parent_field_on_child_nodes(nested_store):
+@pytest.mark.parametrize(
+    "node_id, expected_parent",
+    [
+        ("child-a", "hub"),
+        ("child-b", "hub"),
+        ("hub", None),
+        ("solo", None),
+    ],
+)
+def test_graph_endpoint_exposes_parent_field_per_node(
+    nested_store, node_id, expected_parent
+):
     # Arrange
     request = RequestFactory().get(f"/graph?store={nested_store}")
     # Act
     response = views.api_dispatch(request, "graph")
     payload = json.loads(response.content)
     by_id = {n["id"]: n for n in payload["nodes"]}
-    # Assert — child carries parent, hub/solo do not.
-    assert by_id["child-a"]["parent"] == "hub"
-    assert by_id["child-b"]["parent"] == "hub"
-    assert by_id["hub"]["parent"] is None
-    assert by_id["solo"]["parent"] is None
+    # Assert — children carry their parent id; hub/solo carry null.
+    assert by_id[node_id]["parent"] == expected_parent
 
 
-def test_graph_endpoint_parent_field_present_when_absent_in_yaml(store):
-    """A store with NO `parent` field anywhere still emits `parent: null` per
-    node, so the frontend can treat the field as always-present and safely
-    fall back to the top-level view.
-    """
+def test_graph_endpoint_includes_parent_key_on_every_node(store):
+    """A store with NO `parent` field anywhere still emits the key per node,
+    so the frontend can treat it as always-present."""
     # Arrange
     request = RequestFactory().get(f"/graph?store={store}")
     # Act
@@ -247,6 +260,18 @@ def test_graph_endpoint_parent_field_present_when_absent_in_yaml(store):
     # Assert
     for node in payload["nodes"]:
         assert "parent" in node
+
+
+def test_graph_endpoint_defaults_parent_to_null_when_absent_in_yaml(store):
+    """With no `parent` in the YAML, every node's parent falls back to null,
+    so the frontend can safely default to the top-level view."""
+    # Arrange
+    request = RequestFactory().get(f"/graph?store={store}")
+    # Act
+    response = views.api_dispatch(request, "graph")
+    payload = json.loads(response.content)
+    # Assert
+    for node in payload["nodes"]:
         assert node["parent"] is None
 
 
