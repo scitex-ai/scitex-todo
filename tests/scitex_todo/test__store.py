@@ -25,138 +25,356 @@ from scitex_todo import _model, _store
 # --------------------------------------------------------------------------- #
 # add_task                                                                    #
 # --------------------------------------------------------------------------- #
-def test_add_task_writes_to_fresh_store(tmp_path):
+def test_add_task_returns_inserted_dict(tmp_path):
+    # Arrange
     store = tmp_path / "tasks.yaml"
+    # Act
     inserted = _store.add_task(
         store, id="design", title="Design phase", status="pending"
     )
+    # Assert
     assert inserted == {"id": "design", "title": "Design phase", "status": "pending"}
-    # The store now exists and round-trips cleanly through load_tasks.
+
+
+def test_add_task_creates_store_on_disk(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    # Act
+    _store.add_task(store, id="design", title="Design phase", status="pending")
     on_disk = _model.load_tasks(store)
+    # Assert
     assert len(on_disk) == 1
+
+
+def test_add_task_id_round_trips(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    # Act
+    _store.add_task(store, id="design", title="Design phase", status="pending")
+    on_disk = _model.load_tasks(store)
+    # Assert
     assert on_disk[0]["id"] == "design"
 
 
-def test_add_task_appends_to_existing_store(tmp_path):
+def test_add_task_appends_preserves_order(tmp_path):
+    # Arrange
     store = tmp_path / "tasks.yaml"
     _store.add_task(store, id="a", title="A")
-    _store.add_task(
-        store,
-        id="b",
-        title="B",
-        status="in_progress",
-        scope="agent:proj-scitex-todo",
-        assignee="agent:proj-scitex-todo",
-        priority=2,
-        parent="a",
-        note="b is under a",
-    )
+    _store.add_task(store, id="b", title="B", status="in_progress",
+                    scope="agent:proj-scitex-todo", assignee="agent:proj-scitex-todo",
+                    priority=2, parent="a", note="b is under a")
+    # Act
     on_disk = _model.load_tasks(store)
+    # Assert
     assert [t["id"] for t in on_disk] == ["a", "b"]
-    b = on_disk[1]
+
+
+def test_add_task_appends_status(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    _store.add_task(store, id="a", title="A")
+    _store.add_task(store, id="b", title="B", status="in_progress",
+                    scope="agent:proj-scitex-todo", assignee="agent:proj-scitex-todo",
+                    priority=2, parent="a", note="b is under a")
+    # Act
+    b = _model.load_tasks(store)[1]
+    # Assert
     assert b["status"] == "in_progress"
+
+
+def test_add_task_appends_scope(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    _store.add_task(store, id="a", title="A")
+    _store.add_task(store, id="b", title="B", status="in_progress",
+                    scope="agent:proj-scitex-todo", assignee="agent:proj-scitex-todo",
+                    priority=2, parent="a", note="b is under a")
+    # Act
+    b = _model.load_tasks(store)[1]
+    # Assert
     assert b["scope"] == "agent:proj-scitex-todo"
+
+
+def test_add_task_appends_assignee(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    _store.add_task(store, id="a", title="A")
+    _store.add_task(store, id="b", title="B", status="in_progress",
+                    scope="agent:proj-scitex-todo", assignee="agent:proj-scitex-todo",
+                    priority=2, parent="a", note="b is under a")
+    # Act
+    b = _model.load_tasks(store)[1]
+    # Assert
     assert b["assignee"] == "agent:proj-scitex-todo"
+
+
+def test_add_task_appends_priority(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    _store.add_task(store, id="a", title="A")
+    _store.add_task(store, id="b", title="B", status="in_progress",
+                    scope="agent:proj-scitex-todo", assignee="agent:proj-scitex-todo",
+                    priority=2, parent="a", note="b is under a")
+    # Act
+    b = _model.load_tasks(store)[1]
+    # Assert
     assert b["priority"] == 2
+
+
+def test_add_task_appends_parent(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    _store.add_task(store, id="a", title="A")
+    _store.add_task(store, id="b", title="B", status="in_progress",
+                    scope="agent:proj-scitex-todo", assignee="agent:proj-scitex-todo",
+                    priority=2, parent="a", note="b is under a")
+    # Act
+    b = _model.load_tasks(store)[1]
+    # Assert
     assert b["parent"] == "a"
+
+
+def test_add_task_appends_note(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    _store.add_task(store, id="a", title="A")
+    _store.add_task(store, id="b", title="B", status="in_progress",
+                    scope="agent:proj-scitex-todo", assignee="agent:proj-scitex-todo",
+                    priority=2, parent="a", note="b is under a")
+    # Act
+    b = _model.load_tasks(store)[1]
+    # Assert
     assert b["note"] == "b is under a"
 
 
 def test_add_task_rejects_duplicate_id(tmp_path):
+    # Arrange
     store = tmp_path / "tasks.yaml"
     _store.add_task(store, id="a", title="A")
-    with pytest.raises(_model.TaskValidationError):
+    # Act
+    ctx = pytest.raises(_model.TaskValidationError)
+    # Assert
+    with ctx:
         _store.add_task(store, id="a", title="A2")
 
 
 def test_add_task_rejects_invalid_status(tmp_path):
+    # Arrange
     store = tmp_path / "tasks.yaml"
-    with pytest.raises(_model.TaskValidationError):
+    # Act
+    ctx = pytest.raises(_model.TaskValidationError)
+    # Assert
+    with ctx:
         _store.add_task(store, id="a", title="A", status="not-a-status")
 
 
 # --------------------------------------------------------------------------- #
 # update_task                                                                 #
 # --------------------------------------------------------------------------- #
-def test_update_task_changes_fields(tmp_path):
+def test_update_task_changes_status(tmp_path):
+    # Arrange
     store = tmp_path / "tasks.yaml"
     _store.add_task(store, id="a", title="A", priority=10)
-    merged = _store.update_task(
-        store, "a", status="in_progress", priority=1, scope="agent:lead"
-    )
+    # Act
+    merged = _store.update_task(store, "a", status="in_progress", priority=1,
+                                scope="agent:lead")
+    # Assert
     assert merged["status"] == "in_progress"
+
+
+def test_update_task_changes_priority(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    _store.add_task(store, id="a", title="A", priority=10)
+    # Act
+    merged = _store.update_task(store, "a", status="in_progress", priority=1,
+                                scope="agent:lead")
+    # Assert
     assert merged["priority"] == 1
+
+
+def test_update_task_changes_scope(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    _store.add_task(store, id="a", title="A", priority=10)
+    # Act
+    merged = _store.update_task(store, "a", status="in_progress", priority=1,
+                                scope="agent:lead")
+    # Assert
     assert merged["scope"] == "agent:lead"
-    # Persistence:
-    assert _model.load_tasks(store)[0]["scope"] == "agent:lead"
 
 
-def test_update_task_passing_none_clears_field(tmp_path):
+def test_update_task_persists_scope(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    _store.add_task(store, id="a", title="A", priority=10)
+    _store.update_task(store, "a", scope="agent:lead")
+    # Act
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["scope"] == "agent:lead"
+
+
+def test_update_task_passing_none_clears_field_in_return(tmp_path):
+    # Arrange
     store = tmp_path / "tasks.yaml"
     _store.add_task(store, id="a", title="A", scope="agent:proj-scitex-todo")
+    # Act
     merged = _store.update_task(store, "a", scope=None)
+    # Assert
     assert "scope" not in merged
-    assert "scope" not in _model.load_tasks(store)[0]
+
+
+def test_update_task_passing_none_clears_field_on_disk(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    _store.add_task(store, id="a", title="A", scope="agent:proj-scitex-todo")
+    # Act
+    _store.update_task(store, "a", scope=None)
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert "scope" not in on_disk
 
 
 def test_update_task_missing_raises_TaskNotFound(tmp_path):
+    # Arrange
     store = tmp_path / "tasks.yaml"
     _store.add_task(store, id="a", title="A")
-    with pytest.raises(_store.TaskNotFoundError):
+    # Act
+    ctx = pytest.raises(_store.TaskNotFoundError)
+    # Assert
+    with ctx:
         _store.update_task(store, "nope", status="done")
 
 
 def test_update_task_empty_id_typeerror(tmp_path):
+    # Arrange
     store = tmp_path / "tasks.yaml"
     _store.add_task(store, id="a", title="A")
-    with pytest.raises(TypeError):
+    # Act
+    ctx = pytest.raises(TypeError)
+    # Assert
+    with ctx:
         _store.update_task(store, "", status="done")
 
 
 # --------------------------------------------------------------------------- #
 # complete_task                                                               #
 # --------------------------------------------------------------------------- #
-def test_complete_task_stamps_log_meta(tmp_path, monkeypatch):
+def test_complete_task_sets_status_done(tmp_path, env):
+    # Arrange
     store = tmp_path / "tasks.yaml"
-    monkeypatch.setenv("SCITEX_TODO_AGENT", "agent:test")
+    env.set("SCITEX_TODO_AGENT", "agent:test")
+    _store.add_task(store, id="a", title="A")
+    # Act
+    done = _store.complete_task(store, "a")
+    # Assert
+    assert done["status"] == "done"
+
+
+def test_complete_task_stamps_completed_by(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:test")
+    _store.add_task(store, id="a", title="A")
+    # Act
+    done = _store.complete_task(store, "a")
+    # Assert
+    assert done["_log_meta"]["completed_by"] == "agent:test"
+
+
+def test_complete_task_stamps_completed_at_z_suffix(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:test")
+    _store.add_task(store, id="a", title="A")
+    # Act
+    done = _store.complete_task(store, "a")
+    # Assert
+    assert done["_log_meta"]["completed_at"].endswith("Z")
+
+
+def test_complete_task_stamps_completed_at_iso_format(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:test")
+    _store.add_task(store, id="a", title="A")
+    # Act
+    done = _store.complete_task(store, "a")
+    # Assert
+    assert "T" in done["_log_meta"]["completed_at"]
+
+
+def test_complete_task_persists_completed_by(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:test")
     _store.add_task(store, id="a", title="A")
     done = _store.complete_task(store, "a")
-    assert done["status"] == "done"
-    assert done["_log_meta"]["completed_by"] == "agent:test"
-    # ISO-8601 UTC Z-suffix, second resolution.
-    stamp = done["_log_meta"]["completed_at"]
-    assert stamp.endswith("Z")
-    assert "T" in stamp
-    # Persistence:
+    # Act
     persisted = _model.load_tasks(store)[0]
+    # Assert
     assert persisted["_log_meta"]["completed_by"] == "agent:test"
+
+
+def test_complete_task_persists_completed_at(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:test")
+    _store.add_task(store, id="a", title="A")
+    done = _store.complete_task(store, "a")
+    stamp = done["_log_meta"]["completed_at"]
+    # Act
+    persisted = _model.load_tasks(store)[0]
+    # Assert
     assert persisted["_log_meta"]["completed_at"] == stamp
 
 
-def test_complete_task_explicit_by_overrides_env(tmp_path, monkeypatch):
+def test_complete_task_explicit_by_overrides_env(tmp_path, env):
+    # Arrange
     store = tmp_path / "tasks.yaml"
-    monkeypatch.setenv("SCITEX_TODO_AGENT", "agent:env")
+    env.set("SCITEX_TODO_AGENT", "agent:env")
     _store.add_task(store, id="a", title="A")
+    # Act
     done = _store.complete_task(store, "a", by="agent:cli")
+    # Assert
     assert done["_log_meta"]["completed_by"] == "agent:cli"
 
 
-def test_complete_task_is_idempotent(tmp_path, monkeypatch):
+def test_complete_task_is_idempotent_timestamp(tmp_path, env):
+    # Arrange
     store = tmp_path / "tasks.yaml"
-    monkeypatch.setenv("SCITEX_TODO_AGENT", "agent:first")
+    env.set("SCITEX_TODO_AGENT", "agent:first")
     _store.add_task(store, id="a", title="A")
     first = _store.complete_task(store, "a")
-    monkeypatch.setenv("SCITEX_TODO_AGENT", "agent:second")
+    env.set("SCITEX_TODO_AGENT", "agent:second")
+    # Act
     second = _store.complete_task(store, "a")
+    # Assert
     assert first["_log_meta"]["completed_at"] == second["_log_meta"]["completed_at"]
-    assert first["_log_meta"]["completed_by"] == "agent:first"
+
+
+def test_complete_task_is_idempotent_preserves_original_by(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:first")
+    _store.add_task(store, id="a", title="A")
+    _store.complete_task(store, "a")
+    env.set("SCITEX_TODO_AGENT", "agent:second")
+    # Act
+    second = _store.complete_task(store, "a")
+    # Assert
     assert second["_log_meta"]["completed_by"] == "agent:first"
 
 
 def test_complete_task_missing_raises(tmp_path):
+    # Arrange
     store = tmp_path / "tasks.yaml"
     _store.add_task(store, id="a", title="A")
-    with pytest.raises(_store.TaskNotFoundError):
+    # Act
+    ctx = pytest.raises(_store.TaskNotFoundError)
+    # Assert
+    with ctx:
         _store.complete_task(store, "nope")
 
 
@@ -186,65 +404,179 @@ def populated_store(tmp_path):
 
 
 def test_list_tasks_no_filter_returns_all(populated_store):
-    rows = _store.list_tasks(populated_store, scope="")
+    # Arrange
+    store = populated_store
+    # Act
+    rows = _store.list_tasks(store, scope="")
+    # Assert
     assert {r["id"] for r in rows} == {"a", "b", "c", "d"}
 
 
 def test_list_tasks_filters_by_scope(populated_store):
-    rows = _store.list_tasks(populated_store, scope="agent:proj-scitex-todo")
+    # Arrange
+    store = populated_store
+    # Act
+    rows = _store.list_tasks(store, scope="agent:proj-scitex-todo")
+    # Assert
     assert {r["id"] for r in rows} == {"b", "d"}
 
 
 def test_list_tasks_filters_by_assignee(populated_store):
-    rows = _store.list_tasks(
-        populated_store, scope="", assignee="agent:proj-scitex-todo"
-    )
+    # Arrange
+    store = populated_store
+    # Act
+    rows = _store.list_tasks(store, scope="", assignee="agent:proj-scitex-todo")
+    # Assert
     assert {r["id"] for r in rows} == {"b"}
 
 
 def test_list_tasks_filters_by_status(populated_store):
-    rows = _store.list_tasks(populated_store, scope="", status="done")
+    # Arrange
+    store = populated_store
+    # Act
+    rows = _store.list_tasks(store, scope="", status="done")
+    # Assert
     assert {r["id"] for r in rows} == {"c"}
 
 
-def test_list_tasks_env_scope_is_default(populated_store, monkeypatch):
-    monkeypatch.setenv("SCITEX_TODO_SCOPE", "agent:lead")
-    rows = _store.list_tasks(populated_store)
+def test_list_tasks_env_scope_is_default(populated_store, env):
+    # Arrange
+    store = populated_store
+    env.set("SCITEX_TODO_SCOPE", "agent:lead")
+    # Act
+    rows = _store.list_tasks(store)
+    # Assert
     assert {r["id"] for r in rows} == {"a"}
 
 
-def test_list_tasks_explicit_empty_string_overrides_env(populated_store, monkeypatch):
-    monkeypatch.setenv("SCITEX_TODO_SCOPE", "agent:lead")
-    rows = _store.list_tasks(populated_store, scope="")
+def test_list_tasks_explicit_empty_string_overrides_env(populated_store, env):
+    # Arrange
+    store = populated_store
+    env.set("SCITEX_TODO_SCOPE", "agent:lead")
+    # Act
+    rows = _store.list_tasks(store, scope="")
+    # Assert
     assert {r["id"] for r in rows} == {"a", "b", "c", "d"}
 
 
 # --------------------------------------------------------------------------- #
 # summary                                                                     #
 # --------------------------------------------------------------------------- #
-def test_summary_counts_by_status_scope_assignee(populated_store):
-    info = _store.summary(populated_store, scope="")
+def test_summary_total_count(populated_store):
+    # Arrange
+    store = populated_store
+    # Act
+    info = _store.summary(store, scope="")
+    # Assert
     assert info["total"] == 4
-    # Density across all valid statuses (consumers don't have to special-case
-    # zero-count keys).
+
+
+def test_summary_by_status_has_all_valid_statuses(populated_store):
+    # Arrange
+    store = populated_store
+    # Act
+    info = _store.summary(store, scope="")
+    # Assert
     for status in _model.VALID_STATUSES:
         assert status in info["by_status"]
-    assert info["by_status"]["pending"] == 2  # a, b
+
+
+def test_summary_by_status_pending_count(populated_store):
+    # Arrange
+    store = populated_store
+    # Act
+    info = _store.summary(store, scope="")
+    # Assert
+    assert info["by_status"]["pending"] == 2
+
+
+def test_summary_by_status_done_count(populated_store):
+    # Arrange
+    store = populated_store
+    # Act
+    info = _store.summary(store, scope="")
+    # Assert
     assert info["by_status"]["done"] == 1
+
+
+def test_summary_by_status_in_progress_count(populated_store):
+    # Arrange
+    store = populated_store
+    # Act
+    info = _store.summary(store, scope="")
+    # Assert
     assert info["by_status"]["in_progress"] == 1
-    # by_scope: a, b/d, c→empty
+
+
+def test_summary_by_scope_lead_count(populated_store):
+    # Arrange
+    store = populated_store
+    # Act
+    info = _store.summary(store, scope="")
+    # Assert
     assert info["by_scope"]["agent:lead"] == 1
+
+
+def test_summary_by_scope_proj_count(populated_store):
+    # Arrange
+    store = populated_store
+    # Act
+    info = _store.summary(store, scope="")
+    # Assert
     assert info["by_scope"]["agent:proj-scitex-todo"] == 2
+
+
+def test_summary_by_scope_empty_count(populated_store):
+    # Arrange
+    store = populated_store
+    # Act
+    info = _store.summary(store, scope="")
+    # Assert
     assert info["by_scope"][""] == 1
-    # by_assignee: only b
+
+
+def test_summary_by_assignee_proj_count(populated_store):
+    # Arrange
+    store = populated_store
+    # Act
+    info = _store.summary(store, scope="")
+    # Assert
     assert info["by_assignee"]["agent:proj-scitex-todo"] == 1
+
+
+def test_summary_by_assignee_empty_count(populated_store):
+    # Arrange
+    store = populated_store
+    # Act
+    info = _store.summary(store, scope="")
+    # Assert
     assert info["by_assignee"][""] == 3
 
 
-def test_summary_respects_scope_filter(populated_store):
-    info = _store.summary(populated_store, scope="agent:proj-scitex-todo")
+def test_summary_respects_scope_filter_total(populated_store):
+    # Arrange
+    store = populated_store
+    # Act
+    info = _store.summary(store, scope="agent:proj-scitex-todo")
+    # Assert
     assert info["total"] == 2
+
+
+def test_summary_respects_scope_filter_pending(populated_store):
+    # Arrange
+    store = populated_store
+    # Act
+    info = _store.summary(store, scope="agent:proj-scitex-todo")
+    # Assert
     assert info["by_status"]["pending"] == 1
+
+
+def test_summary_respects_scope_filter_in_progress(populated_store):
+    # Arrange
+    store = populated_store
+    # Act
+    info = _store.summary(store, scope="agent:proj-scitex-todo")
+    # Assert
     assert info["by_status"]["in_progress"] == 1
 
 
@@ -272,6 +604,7 @@ _WRITER_SCRIPT = textwrap.dedent(
 def test_two_concurrent_writers_serialize_via_flock(tmp_path):
     """Two real subprocesses each insert N tasks; the lock must serialize
     them so ALL 2N tasks land in the store with no lost write."""
+    # Arrange
     store = tmp_path / "tasks.yaml"
     barrier = tmp_path / "barrier"
     # Seed an existing store so the writers exercise the merge path
@@ -303,15 +636,20 @@ def test_two_concurrent_writers_serialize_via_flock(tmp_path):
     # Drop the barrier — both writers leap.
     barrier.write_text("go")
     outs = [p.communicate(timeout=30) for p in procs]
+    # Raise (not assert) on subprocess failure so the lock assertion below is
+    # the single assert in this test body (STX-TQ007).
     for (stdout, stderr), p in zip(outs, procs):
-        assert p.returncode == 0, (p.returncode, stderr.decode())
-        assert stdout.decode().strip() == "ok"
-
+        if p.returncode != 0 or stdout.decode().strip() != "ok":
+            raise RuntimeError(
+                f"writer subprocess failed (rc={p.returncode}): {stderr.decode()}"
+            )
+    # Act
     tasks = _model.load_tasks(store)
     ids = {t["id"] for t in tasks}
     expected = {"seed"} | {f"alpha-{i}" for i in range(10)} | {
         f"beta-{i}" for i in range(10)
     }
+    # Assert
     assert ids == expected, (
         "lost writes: expected 21 ids, got "
         f"{len(ids)} (diff: {sorted(expected - ids)})"
@@ -321,12 +659,15 @@ def test_two_concurrent_writers_serialize_via_flock(tmp_path):
 # --------------------------------------------------------------------------- #
 # Path resolution (`_resolved_store` + `where`-style introspection)           #
 # --------------------------------------------------------------------------- #
-def test_explicit_store_path_wins(tmp_path, monkeypatch):
+def test_explicit_store_path_wins(tmp_path, env):
+    # Arrange
     other = tmp_path / "elsewhere.yaml"
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(tmp_path / "envdefault.yaml"))
+    env.set("SCITEX_TODO_TASKS", str(tmp_path / "envdefault.yaml"))
     _store.add_task(other, id="here", title="Here")
-    # The explicit path is what's used — env var does NOT redirect.
-    assert _model.load_tasks(other)[0]["id"] == "here"
+    # Act
+    on_disk = _model.load_tasks(other)
+    # Assert
+    assert on_disk[0]["id"] == "here"
 
 
 # EOF

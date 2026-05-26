@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Tests for the §1a introspection commands (list-python-apis, mcp list-tools)."""
+"""Tests for the §1a introspection commands and the live `mcp` subgroup.
+
+After Phase 1, the `mcp` subgroup is owned by `_cli/_mcp.py` (real MCP
+server); the obsolete "no MCP yet" stub that used to live in
+`_introspect.py` is gone. This module covers both `list-python-apis`
+and a sanity check on the live `mcp` subgroup's required-verb shape.
+"""
 
 from __future__ import annotations
 
 import json
 
+import pytest
 from click.testing import CliRunner
 
 from scitex_todo._cli import main
@@ -42,14 +49,28 @@ def test_list_python_apis_verbose_ladder_is_monotonic():
     assert counts == sorted(counts)
 
 
-def test_mcp_subgroup_required_verbs_are_present():
-    """Phase 1 ships a real MCP server (`scitex_todo._mcp_server`). The
-    `mcp` subgroup is now owned by `_cli/_mcp.py` and must expose the §3
-    required four verbs (start / doctor / list-tools / install). The old
-    "no MCP yet → empty array" stub that used to live in `_introspect.py`
-    has been removed."""
-    runner = CliRunner()
-    result = runner.invoke(main, ["mcp", "--help"])
+def _invoke_mcp_help():
+    """Helper: run ``scitex-todo mcp --help`` and return the CliRunner result."""
+    return CliRunner().invoke(main, ["mcp", "--help"])
+
+
+def test_mcp_subgroup_help_exits_zero():
+    """The new `mcp` subgroup (`_cli/_mcp.py`, replacing the obsolete
+    "no MCP yet" stub from `_introspect.py`) must be importable + runnable."""
+    # Arrange
+    # (none — the helper is the whole arrange step)
+    # Act
+    result = _invoke_mcp_help()
+    # Assert
     assert result.exit_code == 0, result.output
-    for verb in ("start", "doctor", "list-tools", "install"):
-        assert verb in result.output, f"`mcp {verb}` missing from --help"
+
+
+@pytest.mark.parametrize("verb", ("start", "doctor", "list-tools", "install"))
+def test_mcp_subgroup_exposes_required_verb(verb):
+    """§3 mandates all four verbs on every package's MCP subgroup."""
+    # Arrange
+    result = _invoke_mcp_help()
+    # Act
+    has_verb = verb in result.output
+    # Assert
+    assert has_verb, f"`mcp {verb}` missing from --help: {result.output!r}"

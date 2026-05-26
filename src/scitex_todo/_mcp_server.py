@@ -199,6 +199,20 @@ async def scitex_todo_where(tasks_path: str | None = None) -> str:
     )
 
 
-__all__ = ["mcp"]
+#: Canonical list of registered tool names — kept here as a constant so the
+#: `mcp doctor` / `mcp list-tools` CLI verbs don't have to introspect
+#: FastMCP's internal registry (which drifts between 2.x and 3.x). Update
+#: this tuple whenever a `@mcp.tool()` is added or removed above.
+TOOL_NAMES: tuple[str, ...] = (
+    "scitex_todo_add_task",
+    "scitex_todo_update_task",
+    "scitex_todo_complete_task",
+    "scitex_todo_list_tasks",
+    "scitex_todo_summary",
+    "scitex_todo_where",
+)
+
+
+__all__ = ["TOOL_NAMES", "mcp"]
 
 # EOF
