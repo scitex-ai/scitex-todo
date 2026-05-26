@@ -34,6 +34,9 @@ GITIGNORED/
 tasks.png
 *.tasks.png
 
+# Sphinx build output (RTD builds from source; local HTML is throwaway).
+docs/sphinx/_build/
+
 # scitex-todo local state: ignore everything under .scitex/ except the
 # tracked dev/config.yaml (audit whitelist) and the runtime seed files.
 .scitex/*
