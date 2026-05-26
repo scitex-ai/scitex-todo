@@ -93,8 +93,41 @@ locations (project-local wins; both optional):
 
 | Path                              | Scope         | Purpose                        |
 |-----------------------------------|---------------|--------------------------------|
-| `~/.scitex/todo/tasks.yaml`       | user-global   | your personal task store       |
+| `~/.scitex/todo/tasks.yaml`       | user-global   | your personal task store (the shared-fleet default) |
 | `<proj-root>/.scitex/todo/tasks.yaml` | project-local | overrides for the current repo |
+
+</details>
+
+<details>
+<summary><strong>Shared-fleet TODO across agents</strong></summary>
+
+<br>
+
+The user-global store (`~/.scitex/todo/tasks.yaml`) is the **centralized**
+list shared between you and every agent that runs on this host. Each task
+carries an optional `scope:` label so an agent (or you, via the board) can
+filter to only the slice that's relevant.
+
+Convention (not enforced — `scope` is a free-form string):
+
+- `agent:<name>` — "for this agent's eyes" (e.g. `agent:proj-scitex-todo`).
+- `project:<name>` — "tied to this project" (e.g. `project:scitex-clew`).
+- `private` — operator-only.
+
+Each agent in the SciTeX agent container picks up its slice by setting:
+
+```bash
+export SCITEX_TODO_SCOPE='agent:<name>'   # default filter for `list`/`summary`
+export SCITEX_TODO_AGENT='agent:<name>'   # stamps `completed_by` on `done`
+```
+
+The list-side filter ALSO has a per-call `--scope LABEL` flag. Pass
+`--scope ''` (empty string) to opt out of the env default and see the
+full store.
+
+See `GITIGNORED/ARCHITECTURE.md` (in the repo working tree) for the
+9-requirement → mechanism map and the deferred-but-designed seams
+(cross-host sync, operator↔agent chat).
 
 </details>
 
