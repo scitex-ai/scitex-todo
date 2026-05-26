@@ -214,6 +214,51 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   filter: brightness(1.08);
 }
 
+/* ── Parent-node drill-down AFFORDANCE ───────────────────────────────────
+ * Goal: a single glance must tell the operator whether a click will
+ * DRILL DOWN into a child subgraph (parent node) or open the markdown
+ * detail drawer (leaf node). Three cues stack across CSS + JS:
+ *   1. The label glyph + child-count badge (see layout.ts buildFlow:
+ *      "▸ Title  ▸N" vs plain "Title").
+ *   2. The thicker border + purple halo (see layout.ts parentNodeStyle —
+ *      applied via inline style; THIS block adds the interaction layer).
+ *   3. THIS block: cursor + hover-brighten differ between parent and leaf.
+ *      A `zoom-in` cursor explicitly suggests "drill in"; the standard
+ *      `pointer` cursor on leaves keeps the existing detail-drawer cue.
+ *
+ * The `title` attribute set in the React tree (GraphView pool button)
+ * yields native browser tooltips — "Drill in" / "Details" — for users
+ * who hover before clicking. React Flow's default node doesn't surface a
+ * title attribute, so the graph-side tooltip is carried by the cursor +
+ * label-glyph cues alone (the count badge is the explicit "N children"
+ * affordance). */
+.stx-todo-flow .react-flow__node.stx-todo-node--parent {
+  cursor: zoom-in;
+}
+
+.stx-todo-flow .react-flow__node.stx-todo-node--parent:hover {
+  /* Slightly stronger lift than the generic node hover above — keeps the
+   * parent affordance dominant during hover. */
+  filter: brightness(1.14);
+}
+
+.stx-todo-flow .react-flow__node.stx-todo-node--leaf {
+  cursor: pointer;
+}
+
+/* Pool buttons mirror the same parent/leaf distinction. */
+.stx-todo-pool__item--parent {
+  cursor: zoom-in;
+}
+
+.stx-todo-pool__item--parent:hover,
+.stx-todo-pool__item--parent:focus-visible {
+  /* The .stx-todo-pool__item:hover rule above already lands a purple focus
+   * ring + 1.12 brightness; nudge a notch further for parents so the
+   * affordance feels heavier than a leaf detail-drawer click. */
+  filter: brightness(1.18);
+}
+
 .stx-todo-legend {
   display: flex;
   flex-wrap: wrap;

@@ -43,8 +43,10 @@ import {
 import "@xyflow/react/dist/style.css";
 import {
   buildFlow,
+  nodeChildCount,
   nodeHasChildren,
   nodeStyle,
+  parentNodeStyle,
   partitionNodes,
 } from "./layout";
 import { InhibitionEdge, INHIBITION_EDGE_TYPE } from "./InhibitionEdge";
@@ -189,25 +191,38 @@ function UncategorizedPool({
       <div className="stx-todo-pool__items">
         {poolNodes.map((n) => {
           const prio = n.priority != null ? ` · p${n.priority}` : "";
-          const hasChildren = nodeHasChildren(graph, n.id);
-          const drillHint = hasChildren ? " ▾" : "";
+          const kids = nodeChildCount(graph, n.id);
+          const hasChildren = kids > 0;
+          // Affordance parity with the graph nodes: a parent button shows
+          // a leading "▸" disclosure glyph + trailing "▸N" child-count
+          // badge, gets a thicker bordered/halo style via parentNodeStyle,
+          // and flips its className so board.css can switch the hover
+          // cursor (zoom-in vs. pointer) and tooltip wording.
+          const baseStyle = nodeStyle(graph.status_colors[n.status]);
+          const style = hasChildren ? parentNodeStyle(baseStyle) : baseStyle;
           const onClick = () =>
             hasChildren ? drillInto(n.id) : selectNode(n.id);
           return (
             <button
               type="button"
               key={n.id}
-              className="stx-todo-pool__item"
-              style={nodeStyle(graph.status_colors[n.status])}
+              className={
+                hasChildren
+                  ? "stx-todo-pool__item stx-todo-pool__item--parent"
+                  : "stx-todo-pool__item stx-todo-pool__item--leaf"
+              }
+              style={style}
               onClick={onClick}
+              title={hasChildren ? "Drill in" : "Details"}
               aria-label={
                 hasChildren
-                  ? `Drill into ${n.title}`
+                  ? `Drill into ${n.title} (${kids} ${
+                      kids === 1 ? "child" : "children"
+                    })`
                   : `Open details for ${n.title}`
               }
             >
-              {n.title}
-              {drillHint}
+              {hasChildren ? `▸ ${n.title}  ▸${kids}` : n.title}
               {prio}
             </button>
           );
