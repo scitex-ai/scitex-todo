@@ -41,7 +41,14 @@ import getpass
 import os
 from pathlib import Path
 
-from ._model import VALID_STATUSES, TaskValidationError, load_tasks, save_tasks
+from ._model import (
+    VALID_STATUSES,
+    TaskValidationError,
+    _save_tasks_unlocked,
+    _store_lock,
+    load_tasks,
+    save_tasks,
+)
 from ._paths import resolve_tasks_path
 
 #: Env var name an agent sets to scope its default `list_tasks` / `summary`
@@ -165,11 +172,7 @@ def add_task(
         re-runs the full validation gate before touching disk.
     """
     resolved = _resolved_store(store)
-    # An explicit path that doesn't exist yet is a fresh store — start
-    # from an empty list rather than raising; the lock-aware
-    # `save_tasks` will create the file.
-    tasks = load_tasks(resolved) if resolved.exists() else []
-
+    resolved.parent.mkdir(parents=True, exist_ok=True)
     new: dict = {"id": id, "title": title, "status": status}
     if scope is not None:
         new["scope"] = scope
@@ -188,8 +191,14 @@ def add_task(
     if repo is not None:
         new["repo"] = repo
 
-    tasks.append(new)
-    save_tasks(tasks, resolved)
+    # Lock for the FULL read-modify-write — without this, two concurrent
+    # writers each load a stale snapshot and the second `save_tasks` call
+    # silently clobbers the first writer's insert. See
+    # tests/scitex_todo/test__store.py::test_two_concurrent_writers...
+    with _store_lock(resolved):
+        tasks = load_tasks(resolved) if resolved.exists() else []
+        tasks.append(new)
+        _save_tasks_unlocked(tasks, resolved)
     return dict(new)
 
 
@@ -215,16 +224,17 @@ def update_task(
     if not task_id:
         raise TypeError("update_task() requires a non-empty task_id")
     resolved = _resolved_store(store)
-    tasks = load_tasks(resolved)
-    for task in tasks:
-        if task.get("id") == task_id:
-            for key, value in fields.items():
-                if value is None:
-                    task.pop(key, None)
-                else:
-                    task[key] = value
-            save_tasks(tasks, resolved)
-            return dict(task)
+    with _store_lock(resolved):
+        tasks = load_tasks(resolved)
+        for task in tasks:
+            if task.get("id") == task_id:
+                for key, value in fields.items():
+                    if value is None:
+                        task.pop(key, None)
+                    else:
+                        task[key] = value
+                _save_tasks_unlocked(tasks, resolved)
+                return dict(task)
     raise TaskNotFoundError(f"task id {task_id!r} not found in {resolved}")
 
 
@@ -251,21 +261,22 @@ def complete_task(
     if not task_id:
         raise TypeError("complete_task() requires a non-empty task_id")
     resolved = _resolved_store(store)
-    tasks = load_tasks(resolved)
-    for task in tasks:
-        if task.get("id") == task_id:
-            if task.get("status") == "done":
-                # Idempotent: don't refresh the stamp, just return.
+    with _store_lock(resolved):
+        tasks = load_tasks(resolved)
+        for task in tasks:
+            if task.get("id") == task_id:
+                if task.get("status") == "done":
+                    # Idempotent: don't refresh the stamp, just return.
+                    return dict(task)
+                task["status"] = "done"
+                log_meta = task.get("_log_meta")
+                if not isinstance(log_meta, dict):
+                    log_meta = {}
+                    task["_log_meta"] = log_meta
+                log_meta["completed_at"] = _utc_now_iso()
+                log_meta["completed_by"] = _default_agent(by)
+                _save_tasks_unlocked(tasks, resolved)
                 return dict(task)
-            task["status"] = "done"
-            log_meta = task.get("_log_meta")
-            if not isinstance(log_meta, dict):
-                log_meta = {}
-                task["_log_meta"] = log_meta
-            log_meta["completed_at"] = _utc_now_iso()
-            log_meta["completed_by"] = _default_agent(by)
-            save_tasks(tasks, resolved)
-            return dict(task)
     raise TaskNotFoundError(f"task id {task_id!r} not found in {resolved}")
 
 

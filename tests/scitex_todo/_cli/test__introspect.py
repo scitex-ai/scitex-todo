@@ -42,10 +42,14 @@ def test_list_python_apis_verbose_ladder_is_monotonic():
     assert counts == sorted(counts)
 
 
-def test_mcp_list_tools_json_emits_empty_array():
-    # Arrange
+def test_mcp_subgroup_required_verbs_are_present():
+    """Phase 1 ships a real MCP server (`scitex_todo._mcp_server`). The
+    `mcp` subgroup is now owned by `_cli/_mcp.py` and must expose the §3
+    required four verbs (start / doctor / list-tools / install). The old
+    "no MCP yet → empty array" stub that used to live in `_introspect.py`
+    has been removed."""
     runner = CliRunner()
-    # Act
-    result = runner.invoke(main, ["mcp", "list-tools", "--json"])
-    # Assert
-    assert json.loads(result.output) == []
+    result = runner.invoke(main, ["mcp", "--help"])
+    assert result.exit_code == 0, result.output
+    for verb in ("start", "doctor", "list-tools", "install"):
+        assert verb in result.output, f"`mcp {verb}` missing from --help"

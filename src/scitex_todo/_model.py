@@ -271,46 +271,62 @@ def save_tasks(tasks: list[dict], path: str | Path) -> None:
     >>> tasks[0]["priority"] = 1                    # doctest: +SKIP
     >>> save_tasks(tasks, "tasks.yaml")            # doctest: +SKIP
     """
-    from ruamel.yaml import YAML
-
     path = Path(path).expanduser()
-    _validate_tasks(tasks, source="<save_tasks>")
-
-    yaml_rt = YAML()
-    yaml_rt.preserve_quotes = True
-    # Match the bundled store's hand layout (two-space block indent, lists
-    # indented under their key) so a round-trip is a minimal diff.
-    yaml_rt.indent(mapping=2, sequence=4, offset=2)
-
     # Hold the cross-process advisory lock for the FULL read-modify-write
     # cycle, not just the write — otherwise two writers could each load
     # the file, mutate independently, and the second `dump` would silently
     # clobber the first's mutation. The lock IS the at-most-once gate.
     path.parent.mkdir(parents=True, exist_ok=True)
     with _store_lock(path):
-        existing_doc = None
-        if path.exists():
-            with path.open(encoding="utf-8") as handle:
-                loaded = yaml_rt.load(handle)
-            if isinstance(loaded, dict):
-                existing_doc = loaded
+        _save_tasks_unlocked(tasks, path)
 
-        if existing_doc is not None:
-            # Merge the caller's task data into the round-trip-loaded
-            # structure by id, so per-item and inline comments attached to
-            # the original nodes survive. New ids are appended; removed
-            # ids are dropped.
-            doc = existing_doc
-            old_seq = doc.get("tasks") if isinstance(doc.get("tasks"), list) else []
-            old_by_id = {t["id"]: t for t in old_seq if isinstance(t, dict) and t.get("id")}
-            merged = _merge_tasks_into_seq(tasks, old_by_id)
-            doc["tasks"] = merged
-        else:
-            # No existing store (or a non-mapping top level): write fresh.
-            doc = {"tasks": tasks}
 
-        with path.open("w", encoding="utf-8") as handle:
-            yaml_rt.dump(doc, handle)
+def _save_tasks_unlocked(tasks: list[dict], path: Path) -> None:
+    """Validate-and-write WITHOUT acquiring the store lock.
+
+    Used by callers (the `_store.add_task`/`update_task`/`complete_task`
+    Python API) that hold `_store_lock` for their whole read-modify-write
+    cycle. Calling `save_tasks` recursively would deadlock — `flock` on
+    a fresh fd to the same path blocks until the OUTER context releases.
+
+    Direct callers must already hold `_store_lock(path)`.
+    """
+    from ruamel.yaml import YAML
+
+    _validate_tasks(tasks, source="<save_tasks>")
+
+    yaml_rt = YAML()
+    yaml_rt.preserve_quotes = True
+    # Match the bundled store's hand layout (two-space block indent,
+    # lists indented under their key) so a round-trip is a minimal diff.
+    yaml_rt.indent(mapping=2, sequence=4, offset=2)
+
+    existing_doc = None
+    if path.exists():
+        with path.open(encoding="utf-8") as handle:
+            loaded = yaml_rt.load(handle)
+        if isinstance(loaded, dict):
+            existing_doc = loaded
+
+    if existing_doc is not None:
+        # Merge the caller's task data into the round-trip-loaded
+        # structure by id, so per-item and inline comments attached to
+        # the original nodes survive. New ids are appended; removed
+        # ids are dropped.
+        doc = existing_doc
+        old_seq = doc.get("tasks") if isinstance(doc.get("tasks"), list) else []
+        old_by_id = {
+            t["id"]: t for t in old_seq if isinstance(t, dict) and t.get("id")
+        }
+        merged = _merge_tasks_into_seq(tasks, old_by_id)
+        doc["tasks"] = merged
+    else:
+        # No existing store (or a non-mapping top level): write fresh.
+        doc = {"tasks": tasks}
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        yaml_rt.dump(doc, handle)
 
 
 def _merge_tasks_into_seq(tasks: list[dict], old_by_id: dict) -> list:

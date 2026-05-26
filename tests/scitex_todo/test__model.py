@@ -379,4 +379,86 @@ def test_load_tasks_raises_on_comment_missing_text(tmp_path):
         load_tasks(store)
 
 
+# --------------------------------------------------------------------------- #
+# Phase 1 additions — scope / assignee / _log_meta validation                 #
+# --------------------------------------------------------------------------- #
+def test_load_accepts_scope_and_assignee(tmp_path):
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - id: a\n"
+        "    title: A\n"
+        "    status: pending\n"
+        "    scope: agent:proj-scitex-todo\n"
+        "    assignee: agent:lead\n",
+    )
+    tasks = load_tasks(store)
+    assert tasks[0]["scope"] == "agent:proj-scitex-todo"
+    assert tasks[0]["assignee"] == "agent:lead"
+
+
+def test_load_rejects_non_string_scope(tmp_path):
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - {id: a, title: A, status: pending, scope: 42}\n",
+    )
+    with pytest.raises(TaskValidationError, match="non-string scope"):
+        load_tasks(store)
+
+
+def test_load_rejects_empty_string_assignee(tmp_path):
+    store = _write(
+        tmp_path,
+        'tasks:\n  - {id: a, title: A, status: pending, assignee: ""}\n',
+    )
+    with pytest.raises(TaskValidationError, match="assignee"):
+        load_tasks(store)
+
+
+def test_load_accepts_log_meta_mapping(tmp_path):
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - id: a\n"
+        "    title: A\n"
+        "    status: done\n"
+        "    _log_meta:\n"
+        "      completed_at: '2026-05-27T10:00:00Z'\n"
+        "      completed_by: agent:test\n",
+    )
+    tasks = load_tasks(store)
+    assert tasks[0]["_log_meta"]["completed_by"] == "agent:test"
+
+
+def test_load_rejects_non_mapping_log_meta(tmp_path):
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: a, title: A, status: done, _log_meta: 'oops'}\n",
+    )
+    with pytest.raises(TaskValidationError, match="_log_meta"):
+        load_tasks(store)
+
+
+def test_save_tasks_round_trip_preserves_log_meta(tmp_path):
+    """A done task's `_log_meta` survives a save_tasks rewrite (important for
+    the Phase-2 progress-history adapter — the stamp data is the substrate)."""
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - id: a\n"
+        "    title: A\n"
+        "    status: done\n"
+        "    _log_meta:\n"
+        "      completed_at: '2026-05-27T10:00:00Z'\n"
+        "      completed_by: agent:original\n",
+    )
+    tasks = load_tasks(store)
+    tasks[0]["priority"] = 1
+    save_tasks(tasks, store)
+    reloaded = load_tasks(store)[0]
+    assert reloaded["_log_meta"]["completed_by"] == "agent:original"
+    assert reloaded["_log_meta"]["completed_at"] == "2026-05-27T10:00:00Z"
+
+
 # EOF
