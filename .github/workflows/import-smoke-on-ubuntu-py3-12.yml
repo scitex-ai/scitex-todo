@@ -31,4 +31,3 @@ jobs:
         run: .venv/bin/python -c "import scitex_todo; print(scitex_todo.__version__)"
       - name: CLI smoke
         run: .venv/bin/scitex-todo --version
-</content>

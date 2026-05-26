@@ -172,4 +172,3 @@ jobs:
           fi
           gh pr merge "$EXISTING" --merge --admin \
             || echo "Admin merge unavailable; PR left open for manual merge."
-</content>

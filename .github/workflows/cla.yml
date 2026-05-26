@@ -31,4 +31,3 @@ jobs:
           custom-notsigned-prcomment: |
             Please sign the [SciTeX CLA](https://github.com/ywatanabe1989/scitex-todo/blob/main/CLA.md) before your contribution can be merged.
             Comment `I have read and agree to the SciTeX CLA.` to sign.
-</content>

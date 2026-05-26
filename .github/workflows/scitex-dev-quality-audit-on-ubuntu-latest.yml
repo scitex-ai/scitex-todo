@@ -29,4 +29,3 @@ jobs:
           pip install scitex-dev
       - name: Run scitex-dev audit-all
         run: scitex-dev ecosystem audit-all scitex-todo --no-version-check
-</content>
