@@ -39,5 +39,10 @@ The store is resolved in precedence order: explicit `--tasks` →
 - [03_python-api.md](03_python-api.md) — public callables and the schema
 - [04_cli-reference.md](04_cli-reference.md) — `scitex-todo` subcommands
 
+### Campaign helpers (10+)
+- [10_campaign-tracking.md](10_campaign-tracking.md) — companion tools
+  (`check_releases.py`, `campaign_report.py`) under `~/.scitex/todo/`
+  for multi-package release/audit campaigns
+
 ### Meta (20+)
 - [20_env-vars.md](20_env-vars.md) — environment variables and local state
