@@ -21,6 +21,8 @@ structure via ruamel.yaml.
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 from pathlib import Path
 
 import yaml
@@ -175,6 +177,70 @@ def _validate_tasks(tasks: object, source: str) -> None:
                         f"{entry!r}; each comment must be a mapping with a "
                         f"non-empty string 'text'"
                     )
+        # `scope` and `assignee` are additive-optional shared-fleet fields
+        # (PHASE 1, Req 1 in GITIGNORED/ARCHITECTURE.md). Both are free-form
+        # non-empty strings — no enum, no referential integrity. Convention is
+        # `agent:<name>` / `project:<name>` / `private` but that's a
+        # docs/skills convention, not enforced here (Req 8: be generic).
+        for label in ("scope", "assignee"):
+            value = task.get(label)
+            if value is not None and not (isinstance(value, str) and value):
+                raise TaskValidationError(
+                    f"{source}: task {tid!r} has non-string {label} {value!r}; "
+                    f"{label} must be a non-empty string or absent"
+                )
+        # `_log_meta` is an opaque event-stamp mapping written by
+        # `complete_task` etc. Keep it open-shaped — Phase 2 progress-history
+        # adapter shapes the keys. We only enforce "if present, it's a
+        # mapping" so a stray scalar can't corrupt downstream readers.
+        log_meta = task.get("_log_meta")
+        if log_meta is not None and not isinstance(log_meta, dict):
+            raise TaskValidationError(
+                f"{source}: task {tid!r} has non-mapping _log_meta "
+                f"{log_meta!r}; _log_meta must be a mapping or absent"
+            )
+
+
+@contextlib.contextmanager
+def _store_lock(path: Path):
+    """Hold an exclusive `fcntl.flock` on a sibling `.<name>.lock` file.
+
+    Phase 1 prerequisite for the cross-host sync substrate (Req 2): two
+    concurrent writers — say a CLI verb and the board's `/priority` POST
+    handler — must serialize so the YAML payload they write is atomic at
+    the task-list granularity. We hold the lock on a separate `.lock`
+    sentinel file rather than on the store itself so we don't fight the
+    ruamel YAML reader/writer that re-opens the path.
+
+    The lock file is created if missing, never removed (next caller reuses
+    it). Empty mode is fine — only the lockf state matters.
+
+    Parameters
+    ----------
+    path : Path
+        The store path (e.g. ``~/.scitex/todo/tasks.yaml``). The lock
+        sentinel sits next to it as ``.tasks.yaml.lock``.
+
+    Yields
+    ------
+    None
+        After the lock is held; released on context exit (even on errors).
+    """
+    path = Path(path)
+    lock_path = path.parent / f".{path.name}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    # `O_CREAT|O_RDWR` semantics via `open("a+")` — `a+` works even on
+    # FS that lack `O_EXLOCK` (e.g. WSL2 ext4) because we acquire the
+    # advisory lock via `fcntl.flock` after the open.
+    fd = lock_path.open("a+")
+    try:
+        fcntl.flock(fd.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
+        finally:
+            fd.close()
 
 
 def save_tasks(tasks: list[dict], path: str | Path) -> None:
@@ -216,29 +282,35 @@ def save_tasks(tasks: list[dict], path: str | Path) -> None:
     # indented under their key) so a round-trip is a minimal diff.
     yaml_rt.indent(mapping=2, sequence=4, offset=2)
 
-    existing_doc = None
-    if path.exists():
-        with path.open(encoding="utf-8") as handle:
-            loaded = yaml_rt.load(handle)
-        if isinstance(loaded, dict):
-            existing_doc = loaded
-
-    if existing_doc is not None:
-        # Merge the caller's task data into the round-trip-loaded structure by
-        # id, so per-item and inline comments attached to the original nodes
-        # survive. New ids are appended; removed ids are dropped.
-        doc = existing_doc
-        old_seq = doc.get("tasks") if isinstance(doc.get("tasks"), list) else []
-        old_by_id = {t["id"]: t for t in old_seq if isinstance(t, dict) and t.get("id")}
-        merged = _merge_tasks_into_seq(tasks, old_by_id)
-        doc["tasks"] = merged
-    else:
-        # No existing store (or a non-mapping top level): write a fresh doc.
-        doc = {"tasks": tasks}
-
+    # Hold the cross-process advisory lock for the FULL read-modify-write
+    # cycle, not just the write — otherwise two writers could each load
+    # the file, mutate independently, and the second `dump` would silently
+    # clobber the first's mutation. The lock IS the at-most-once gate.
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        yaml_rt.dump(doc, handle)
+    with _store_lock(path):
+        existing_doc = None
+        if path.exists():
+            with path.open(encoding="utf-8") as handle:
+                loaded = yaml_rt.load(handle)
+            if isinstance(loaded, dict):
+                existing_doc = loaded
+
+        if existing_doc is not None:
+            # Merge the caller's task data into the round-trip-loaded
+            # structure by id, so per-item and inline comments attached to
+            # the original nodes survive. New ids are appended; removed
+            # ids are dropped.
+            doc = existing_doc
+            old_seq = doc.get("tasks") if isinstance(doc.get("tasks"), list) else []
+            old_by_id = {t["id"]: t for t in old_seq if isinstance(t, dict) and t.get("id")}
+            merged = _merge_tasks_into_seq(tasks, old_by_id)
+            doc["tasks"] = merged
+        else:
+            # No existing store (or a non-mapping top level): write fresh.
+            doc = {"tasks": tasks}
+
+        with path.open("w", encoding="utf-8") as handle:
+            yaml_rt.dump(doc, handle)
 
 
 def _merge_tasks_into_seq(tasks: list[dict], old_by_id: dict) -> list:

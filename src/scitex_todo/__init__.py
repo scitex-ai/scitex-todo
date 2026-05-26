@@ -39,22 +39,40 @@ from ._render import (
     render_with_kroki,
     render_with_mmdc,
 )
+from ._store import (
+    ENV_AGENT,
+    ENV_SCOPE,
+    TaskNotFoundError,
+    add_task,
+    complete_task,
+    list_tasks,
+    summary,
+    update_task,
+)
 
 __all__ = [
     "__version__",
+    "ENV_AGENT",
+    "ENV_SCOPE",
     "STATUS_STYLE",
     "VALID_STATUSES",
-    "TaskValidationError",
     "RenderError",
+    "TaskNotFoundError",
+    "TaskValidationError",
+    "add_task",
     "build_mermaid",
     "bundled_example",
+    "complete_task",
     "find_chromium",
+    "list_tasks",
     "load_tasks",
-    "save_tasks",
     "render",
     "render_with_kroki",
     "render_with_mmdc",
     "resolve_tasks_path",
+    "save_tasks",
+    "summary",
+    "update_task",
 ]
 
 # EOF

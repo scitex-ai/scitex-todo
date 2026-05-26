@@ -235,11 +235,18 @@ def board_cmd(tasks_path: str | None, port: int, no_browser: bool) -> None:
 # --------------------------------------------------------------------------- #
 # Attach the §1a sub-groups (defined in sibling modules).                     #
 # --------------------------------------------------------------------------- #
-from . import _completion, _introspect, _skills  # noqa: E402
+from . import _completion, _introspect, _mcp, _skills, _write  # noqa: E402
 
 _introspect.register(main)
 _completion.register(main)
 _skills.register(main)
+# Phase 1 mutation/admin verbs: add / update / done / list / summary /
+# where / init / sync(stub). See GITIGNORED/ARCHITECTURE.md.
+_write.register(main)
+# Phase 1 MCP subgroup — §3 required four (start / doctor / list-tools /
+# install). The module itself loads cleanly without fastmcp installed;
+# individual verbs print a clear install hint when fastmcp is missing.
+_mcp.register(main)
 
 
 if __name__ == "__main__":

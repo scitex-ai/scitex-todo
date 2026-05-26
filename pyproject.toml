@@ -51,8 +51,15 @@ web = [
     "scitex-app",
     "scitex-ui",
 ]
+mcp = [
+    # FastMCP is the canonical SciTeX MCP SDK (general skill §1). The MCP
+    # tools live in `scitex_todo._mcp_server`; the CLI `mcp` subgroup
+    # guards the import so the rest of the package keeps working without
+    # this extra installed.
+    "fastmcp>=2.0",
+]
 all = [
-    "scitex-todo[dev,docs,web]",
+    "scitex-todo[dev,docs,mcp,web]",
 ]
 
 [project.scripts]
