@@ -77,13 +77,58 @@ export function scopeNodes(
   });
 }
 
+/** How many direct child tasks does `node` have (any `parent === node.id`)?
+ *
+ * Powers the parent-node drill-down affordance: BEFORE clicking, the user
+ * sees the count baked into the rendered label (a "▸N" badge) so they can
+ * predict the click will descend into a subgraph instead of opening the
+ * markdown drawer. A non-zero count also flips the click-routing branch.
+ */
+export function nodeChildCount(graph: GraphPayload, nodeId: string): number {
+  let count = 0;
+  for (const n of graph.nodes) {
+    if (n.parent === nodeId) count += 1;
+  }
+  return count;
+}
+
 /** Does `node` have at least one child task (any `parent === node.id`)?
  *
  * Used by the click handler to decide between drill-down (has children) and
  * the markdown detail drawer (leaf node — existing #9 behavior).
  */
 export function nodeHasChildren(graph: GraphPayload, nodeId: string): boolean {
-  return graph.nodes.some((n) => n.parent === nodeId);
+  return nodeChildCount(graph, nodeId) > 0;
+}
+
+/** Visual decoration applied ON TOP of `nodeStyle` for nodes that have
+ * children — they DRILL IN on click rather than open the detail drawer.
+ *
+ * Goal: one glance tells drill-vs-detail. The combination here is
+ * deliberately layered:
+ *   - 3px solid border (vs the standard 2px) THICKENS the outline.
+ *   - A 3px purple halo (boxShadow inset-equivalent ring) sits OUTSIDE the
+ *     border, giving the node an unmistakable "stacked-card" silhouette.
+ *   - Bold weight + a subtle gradient overlay on the existing fill nudge
+ *     parents away from looking like flat leaf cards.
+ *
+ * Status color (fill / stroke) is preserved from `nodeStyle()` so the
+ * lifecycle signal (pending / done / blocked / goal …) still reads.
+ */
+export function parentNodeStyle(base: CSSProperties): CSSProperties {
+  return {
+    ...base,
+    // Override border weight — keep the status stroke color via `borderColor`
+    // since `border` shorthand wipes anything not present here.
+    borderWidth: 3,
+    borderStyle: "solid",
+    // The halo ring is the strongest "I'm clickable AND I drill in" signal.
+    // Color matches the SciTeX accent purple used by the breadcrumb crumbs
+    // so the affordance feels like one design language across the board.
+    boxShadow:
+      "0 0 0 3px rgba(155, 127, 214, 0.45), 0 2px 8px rgba(0, 0, 0, 0.25)",
+    fontWeight: 600,
+  };
 }
 
 /** Split nodes into the connected dependency graph vs the uncategorized pool.
@@ -160,11 +205,20 @@ export function buildFlow(
   const nodes: Node[] = graphNodes.map((n) => {
     const pos = g.node(n.id);
     const prio = n.priority != null ? ` · p${n.priority}` : "";
-    // Affordance: a "▾" glyph after the title hints that clicking this node
-    // will drill in (vs. opening the markdown drawer for a leaf). Cheap +
-    // unambiguous; no extra DOM, survives React Flow's default label render.
-    const drillHint = nodeHasChildren(graph, n.id) ? " ▾" : "";
-    const label = `${n.title}${drillHint}${prio}`;
+    // Parent-node drill-down AFFORDANCE: combine THREE redundant signals so
+    // the user knows BEFORE clicking that a parent will drill in (not open
+    // the detail drawer):
+    //   (1) a leading "▸" glyph in the label   — expand/disclose icon
+    //   (2) a trailing "▸N" child-count badge  — concrete count, not "many"
+    //   (3) `parentNodeStyle()` override below — thicker border + purple halo
+    // Plus the className flips CSS hover/cursor (zoom-in vs. pointer) so the
+    // operator gets a fourth cue during hover (see board.css).
+    const kids = nodeChildCount(graph, n.id);
+    const isParent = kids > 0;
+    const label = isParent
+      ? `▸ ${n.title}  ▸${kids}${prio}`
+      : `${n.title}${prio}`;
+    const base = nodeStyle(graph.status_colors[n.status]);
     return {
       id: n.id,
       position: {
@@ -172,8 +226,16 @@ export function buildFlow(
         y: (pos?.y ?? 0) - NODE_H / 2,
       },
       data: { label },
-      style: nodeStyle(graph.status_colors[n.status]),
-      // READ-ONLY board (MVP): no drag handlers yet.
+      style: isParent ? parentNodeStyle(base) : base,
+      // Per-node className is forwarded by React Flow onto the wrapper DOM
+      // element — used by board.css to set the hover cursor and tooltip
+      // ("drill in" vs "details") and to scope a hover halo brighten.
+      className: isParent
+        ? "stx-todo-node stx-todo-node--parent"
+        : "stx-todo-node stx-todo-node--leaf",
+      // Drag/connect flags carried verbatim from the prior implementation —
+      // the global `nodesDraggable={true}` on the ReactFlow root governs
+      // drag-reorder (PR #7), and edges are never user-creatable.
       draggable: false,
       connectable: false,
     };
