@@ -20,8 +20,28 @@
  */
 
 import { create } from "zustand";
-import { api } from "../api/client";
+import { api, type TaskInput } from "../api/client";
 import type { GraphPayload } from "../types/board";
+
+/** Selectable task statuses, mirroring the backend VALID_STATUSES. Drives the
+ * status dropdown in the editor and the "Set status ▸" context submenu. */
+export const STATUSES = [
+  "goal",
+  "pending",
+  "in_progress",
+  "blocked",
+  "done",
+  "deferred",
+  "failed",
+] as const;
+
+/** Right-click context-menu anchor. `taskId === null` = the canvas/pane menu
+ * (offers "New task"); a non-null id = a card menu (edit / status / delete). */
+export interface MenuState {
+  x: number;
+  y: number;
+  taskId: string | null;
+}
 
 interface BoardStore {
   graph: GraphPayload | null;
@@ -55,6 +75,36 @@ interface BoardStore {
   toggleStatus: (status: string) => void;
   /** Clear both the text query and the status filter. */
   resetFilters: () => void;
+
+  // ── CRUD ───────────────────────────────────────────────────────────────
+  /** True while a create/update/delete POST is in flight (reuses `saving`'s
+   * dim cue is enough; this is just for disabling the editor's Save button). */
+  mutating: boolean;
+  /** When true the detail drawer renders its editable form rather than the
+   * read view. */
+  editMode: boolean;
+  /** When true the drawer is composing a brand-new task (no selected id). */
+  creating: boolean;
+  /** Open the drawer in edit mode for an existing task. */
+  beginEdit: (id: string) => void;
+  /** Open the drawer in create mode (blank draft). */
+  beginCreate: () => void;
+  /** Leave edit/create mode (back to read view, or close if was creating). */
+  endEdit: () => void;
+  /** Create a task, reload the graph, and open it in the drawer. */
+  createTask: (input: TaskInput) => Promise<void>;
+  /** Patch a task's fields and reload the graph. */
+  updateTask: (id: string, input: TaskInput) => Promise<void>;
+  /** Delete a task and reload the graph (closing the drawer if it was open). */
+  deleteTask: (id: string) => Promise<void>;
+
+  // ── Right-click context menu ─────────────────────────────────────────────
+  /** Active context menu, or null when closed. */
+  menu: MenuState | null;
+  /** Open the context menu at viewport (x, y) for a card (id) or canvas (null). */
+  openMenu: (x: number, y: number, taskId: string | null) => void;
+  /** Close the context menu. */
+  closeMenu: () => void;
 }
 
 export const useBoardStore = create<BoardStore>((set, get) => ({
@@ -66,6 +116,10 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   drillPath: [],
   query: "",
   activeStatuses: [],
+  mutating: false,
+  editMode: false,
+  creating: false,
+  menu: null,
   load: async () => {
     set({ loading: true, error: null });
     try {
@@ -121,6 +175,67 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         : [...s.activeStatuses, status],
     })),
   resetFilters: () => set({ query: "", activeStatuses: [] }),
+
+  // ── CRUD ───────────────────────────────────────────────────────────────
+  beginEdit: (id: string) =>
+    set({ selectedNodeId: id, editMode: true, creating: false, menu: null }),
+  beginCreate: () =>
+    set({ selectedNodeId: null, editMode: true, creating: true, menu: null }),
+  endEdit: () =>
+    set((s) =>
+      s.creating
+        ? { editMode: false, creating: false, selectedNodeId: null }
+        : { editMode: false },
+    ),
+  createTask: async (input: TaskInput) => {
+    set({ mutating: true, error: null });
+    try {
+      const { task } = await api.createTask(input);
+      const graph = await api.graph();
+      // Open the freshly-created task in the read drawer so the user sees it.
+      set({
+        graph,
+        mutating: false,
+        editMode: false,
+        creating: false,
+        selectedNodeId: task.id,
+      });
+    } catch (e) {
+      set({ error: (e as Error).message, mutating: false });
+    }
+  },
+  updateTask: async (id: string, input: TaskInput) => {
+    set({ mutating: true, error: null });
+    try {
+      await api.updateTask(id, input);
+      const graph = await api.graph();
+      set({ graph, mutating: false, editMode: false });
+    } catch (e) {
+      set({ error: (e as Error).message, mutating: false });
+    }
+  },
+  deleteTask: async (id: string) => {
+    set({ mutating: true, error: null });
+    try {
+      await api.deleteTask(id);
+      const graph = await api.graph();
+      set((s) => ({
+        graph,
+        mutating: false,
+        menu: null,
+        // Close the drawer if it was showing the now-deleted task.
+        selectedNodeId: s.selectedNodeId === id ? null : s.selectedNodeId,
+        editMode: s.selectedNodeId === id ? false : s.editMode,
+      }));
+    } catch (e) {
+      set({ error: (e as Error).message, mutating: false });
+    }
+  },
+
+  // ── Right-click context menu ─────────────────────────────────────────────
+  openMenu: (x: number, y: number, taskId: string | null) =>
+    set({ menu: { x, y, taskId } }),
+  closeMenu: () => set({ menu: null }),
 }));
 
 /** True iff a task matches the current text query + status filter.

@@ -1,29 +1,24 @@
 /** Right-side detail drawer for a single task.
  *
- * Opens when a graph or pool node is clicked. Renders the task's `note`
- * field as markdown via `react-markdown`, plus title / status / priority /
- * repo metadata.
+ * Three modes, driven by the board store:
+ *   - read   — renders the task's `note` as markdown + metadata (default).
+ *   - edit   — an editable form for an existing task (store.editMode).
+ *   - create — the same form with a blank draft (store.creating).
  *
- * Close behaviour:
- *   - Explicit close button (×).
- *   - Click on the dimmed backdrop (anywhere outside the panel).
- *   - `Escape` key.
+ * Opened when a graph or pool node is clicked (read), or via the right-click
+ * menu's "Edit…" / "New task" (edit / create). Close behaviour: × button,
+ * click on the dimmed backdrop, or Escape.
  *
- * The drawer is a sibling of the React Flow canvas (rendered by
- * `GraphView`) and is absolutely positioned so it overlays the board
- * without affecting layout. Pool clicks reuse the same drawer.
+ * The drawer is a sibling of the React Flow canvas (rendered by `GraphView`)
+ * and is absolutely positioned so it overlays the board without affecting
+ * layout. Pool clicks reuse the same drawer.
  */
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { useBoardStore } from "./store/useBoardStore";
-import type { GraphNode, StatusColor } from "./types/board";
-
-interface NodeDetailPanelProps {
-  node: GraphNode;
-  color: StatusColor | undefined;
-  onClose: () => void;
-}
+import type { TaskInput } from "./api/client";
+import { STATUSES, useBoardStore } from "./store/useBoardStore";
+import type { GraphNode, GraphPayload, StatusColor } from "./types/board";
 
 function StatusBadge({
   status,
@@ -47,99 +42,305 @@ function StatusBadge({
   );
 }
 
+/** Editable form shared by edit + create modes. */
+function DetailEditor({
+  node,
+  graph,
+  creating,
+  onCancel,
+}: {
+  node: GraphNode | null;
+  graph: GraphPayload;
+  creating: boolean;
+  onCancel: () => void;
+}) {
+  const createTask = useBoardStore((s) => s.createTask);
+  const updateTask = useBoardStore((s) => s.updateTask);
+  const mutating = useBoardStore((s) => s.mutating);
+
+  const [title, setTitle] = useState(node?.title ?? "");
+  const [status, setStatus] = useState(node?.status ?? "pending");
+  const [priority, setPriority] = useState(
+    node?.priority != null ? String(node.priority) : "",
+  );
+  const [repo, setRepo] = useState(node?.repo ?? "");
+  const [parent, setParent] = useState(node?.parent ?? "");
+  const [note, setNote] = useState(
+    node && node.note && node.note !== "uncategorized" ? node.note : "",
+  );
+
+  const parentOptions = graph.nodes.filter((n) => n.id !== node?.id);
+
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+    const prioNum = priority.trim() === "" ? null : Number(priority);
+    const input: TaskInput = {
+      title: title.trim(),
+      status,
+      priority: Number.isFinite(prioNum as number) ? prioNum : null,
+      repo: repo.trim(),
+      parent: parent || null,
+      note,
+    };
+    if (creating) void createTask(input);
+    else if (node) void updateTask(node.id, input);
+  };
+
+  return (
+    <form className="stx-todo-detail__form" onSubmit={onSubmit}>
+      <label className="stx-todo-field">
+        <span>Title</span>
+        <input
+          className="stx-todo-input"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          autoFocus
+          required
+        />
+      </label>
+
+      <div className="stx-todo-field-row">
+        <label className="stx-todo-field">
+          <span>Status</span>
+          <select
+            className="stx-todo-input"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+          >
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="stx-todo-field stx-todo-field--narrow">
+          <span>Priority</span>
+          <input
+            className="stx-todo-input"
+            type="number"
+            value={priority}
+            placeholder="—"
+            onChange={(e) => setPriority(e.target.value)}
+          />
+        </label>
+      </div>
+
+      <label className="stx-todo-field">
+        <span>Repo</span>
+        <input
+          className="stx-todo-input"
+          value={repo}
+          placeholder="optional"
+          onChange={(e) => setRepo(e.target.value)}
+        />
+      </label>
+
+      <label className="stx-todo-field">
+        <span>Parent</span>
+        <select
+          className="stx-todo-input"
+          value={parent}
+          onChange={(e) => setParent(e.target.value)}
+        >
+          <option value="">— none (top level) —</option>
+          {parentOptions.map((n) => (
+            <option key={n.id} value={n.id}>
+              {n.title}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="stx-todo-field stx-todo-field--grow">
+        <span>Note (markdown)</span>
+        <textarea
+          className="stx-todo-input stx-todo-textarea"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={8}
+        />
+      </label>
+
+      <div className="stx-todo-detail__actions">
+        <button
+          type="button"
+          className="stx-todo-btn"
+          onClick={onCancel}
+          disabled={mutating}
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          className="stx-todo-btn stx-todo-btn--primary"
+          disabled={mutating || !title.trim()}
+        >
+          {mutating ? "Saving…" : creating ? "Create" : "Save"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function DetailReader({ node }: { node: GraphNode }) {
+  const note = (node.note ?? "").trim();
+  const hasNote = note.length > 0 && note !== "uncategorized";
+  return (
+    <div className="stx-todo-detail__body">
+      {hasNote ? (
+        <div className="stx-todo-detail__markdown">
+          <ReactMarkdown>{note}</ReactMarkdown>
+        </div>
+      ) : (
+        <p className="stx-todo-detail__empty">
+          <em>No note yet for this task.</em>
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function NodeDetailPanel({
   node,
   color,
+  editMode,
+  creating,
   onClose,
-}: NodeDetailPanelProps) {
-  // Close on Escape — easy keyboard exit without reaching for the mouse.
+  onEdit,
+  graph,
+}: {
+  node: GraphNode | null;
+  color: StatusColor | undefined;
+  editMode: boolean;
+  creating: boolean;
+  onClose: () => void;
+  onEdit: () => void;
+  graph: GraphPayload;
+}) {
+  const endEdit = useBoardStore((s) => s.endEdit);
+
+  // Close on Escape — but only in read mode; in edit/create Escape should
+  // back out of the form (handled by the editor's own surface), not nuke
+  // unsaved input. Here we close the whole drawer only when reading.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !editMode) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, editMode]);
 
-  const note = (node.note ?? "").trim();
-  const hasNote = note.length > 0 && note !== "uncategorized";
+  const title = creating ? "New task" : (node?.title ?? "");
 
   return (
     <div
       className="stx-todo-detail__backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label={`Task detail: ${node.title}`}
+      aria-label={creating ? "Create task" : `Task detail: ${title}`}
       onClick={onClose}
     >
       <aside
         className="stx-todo-detail"
-        // Swallow clicks inside the panel so they don't bubble up to the
-        // backdrop's onClick (which would close the drawer mid-interaction).
         onClick={(e) => e.stopPropagation()}
       >
         <header className="stx-todo-detail__header">
           <div className="stx-todo-detail__title-row">
-            <h2 className="stx-todo-detail__title">{node.title}</h2>
-            <button
-              type="button"
-              className="stx-todo-detail__close"
-              onClick={onClose}
-              aria-label="Close task detail"
-            >
-              ×
-            </button>
-          </div>
-          <div className="stx-todo-detail__meta">
-            <StatusBadge status={node.status} color={color} />
-            {node.priority != null && (
-              <span className="stx-todo-detail__prio">
-                priority {node.priority}
-              </span>
-            )}
-            {node.repo && (
-              <span className="stx-todo-detail__repo">
-                <code>{node.repo}</code>
-              </span>
-            )}
-            <span className="stx-todo-detail__id">
-              id: <code>{node.id}</code>
-            </span>
-          </div>
-        </header>
-        <div className="stx-todo-detail__body">
-          {hasNote ? (
-            <div className="stx-todo-detail__markdown">
-              <ReactMarkdown>{note}</ReactMarkdown>
+            <h2 className="stx-todo-detail__title">{title || "Untitled"}</h2>
+            <div className="stx-todo-detail__title-actions">
+              {!editMode && node && (
+                <button
+                  type="button"
+                  className="stx-todo-detail__edit"
+                  onClick={onEdit}
+                  aria-label="Edit task"
+                  title="Edit"
+                >
+                  ✎
+                </button>
+              )}
+              <button
+                type="button"
+                className="stx-todo-detail__close"
+                onClick={onClose}
+                aria-label="Close"
+              >
+                ×
+              </button>
             </div>
-          ) : (
-            <p className="stx-todo-detail__empty">
-              <em>No note yet for this task.</em>
-            </p>
+          </div>
+          {!editMode && node && (
+            <div className="stx-todo-detail__meta">
+              <StatusBadge status={node.status} color={color} />
+              {node.priority != null && (
+                <span className="stx-todo-detail__prio">
+                  priority {node.priority}
+                </span>
+              )}
+              {node.repo && (
+                <span className="stx-todo-detail__repo">
+                  <code>{node.repo}</code>
+                </span>
+              )}
+              <span className="stx-todo-detail__id">
+                id: <code>{node.id}</code>
+              </span>
+            </div>
           )}
-        </div>
+        </header>
+        {editMode ? (
+          <DetailEditor
+            node={node}
+            graph={graph}
+            creating={creating}
+            onCancel={endEdit}
+          />
+        ) : node ? (
+          <DetailReader node={node} />
+        ) : null}
       </aside>
     </div>
   );
 }
 
-/** Hook wrapper: pull `selectedNodeId` + setter from the board store and
- * resolve it against the current graph payload. Returns `null` when no node
- * is selected (so the caller can render nothing). */
+/** Hook wrapper: resolve drawer state from the board store. Renders nothing
+ * unless a node is selected (read/edit) or we're composing a new task. */
 export function NodeDetailPanelContainer() {
   const graph = useBoardStore((s) => s.graph);
   const selectedNodeId = useBoardStore((s) => s.selectedNodeId);
+  const editMode = useBoardStore((s) => s.editMode);
+  const creating = useBoardStore((s) => s.creating);
   const clearSelection = useBoardStore((s) => s.clearSelection);
+  const endEdit = useBoardStore((s) => s.endEdit);
+  const beginEdit = useBoardStore((s) => s.beginEdit);
 
-  if (!graph || !selectedNodeId) return null;
-  const node = graph.nodes.find((n) => n.id === selectedNodeId);
-  if (!node) return null;
+  if (!graph) return null;
+  const open = creating || selectedNodeId != null;
+  if (!open) return null;
+
+  const node = selectedNodeId
+    ? (graph.nodes.find((n) => n.id === selectedNodeId) ?? null)
+    : null;
+  // A selected id that no longer resolves (deleted out from under us) and not
+  // creating -> nothing to show.
+  if (!creating && !node) return null;
+
+  const onClose = () => {
+    if (editMode) endEdit();
+    clearSelection();
+  };
 
   return (
     <NodeDetailPanel
       node={node}
-      color={graph.status_colors[node.status]}
-      onClose={clearSelection}
+      color={node ? graph.status_colors[node.status] : undefined}
+      editMode={editMode}
+      creating={creating}
+      graph={graph}
+      onClose={onClose}
+      onEdit={() => node && beginEdit(node.id)}
     />
   );
 }

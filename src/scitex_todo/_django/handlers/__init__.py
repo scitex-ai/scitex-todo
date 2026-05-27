@@ -7,6 +7,7 @@ Exports the ``HANDLERS`` dict consumed by the catch-all dispatcher in
 ``JsonResponse``.
 """
 
+from .crud import handle_create, handle_delete, handle_update
 from .graph import handle_graph, handle_ping, handle_tasks
 from .priority import handle_priority
 
@@ -16,6 +17,9 @@ HANDLERS = {
     "tasks": handle_tasks,
     "ping": handle_ping,
     "priority": handle_priority,
+    "create": handle_create,
+    "update": handle_update,
+    "delete": handle_delete,
 }
 
 # Endpoints that work without a loaded board (health checks).
