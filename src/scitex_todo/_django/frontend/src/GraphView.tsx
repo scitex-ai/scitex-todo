@@ -134,17 +134,28 @@ function Breadcrumb({
     return drillPath.map((id) => byId.get(id) ?? id);
   }, [graph.nodes, drillPath]);
 
-  if (drillPath.length === 0) return null;
+  // Always rendered (even at the top level, where it shows just "Home") so it
+  // occupies a fixed strip and the layout never jumps as you drill in/out.
+  const atTop = drillPath.length === 0;
 
   return (
     <nav className="stx-todo-breadcrumb" aria-label="Drill-down breadcrumb">
-      <button
-        type="button"
-        className="stx-todo-breadcrumb__crumb"
-        onClick={() => drillTo(0)}
-      >
-        Home
-      </button>
+      {atTop ? (
+        <span
+          className="stx-todo-breadcrumb__crumb stx-todo-breadcrumb__crumb--current"
+          aria-current="page"
+        >
+          Home
+        </span>
+      ) : (
+        <button
+          type="button"
+          className="stx-todo-breadcrumb__crumb"
+          onClick={() => drillTo(0)}
+        >
+          Home
+        </button>
+      )}
       {titles.map((title, idx) => {
         const isCurrent = idx === titles.length - 1;
         const separator = (
