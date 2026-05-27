@@ -69,6 +69,9 @@ export interface TaskMutateResponse {
 export const api = {
   graph: () => request<GraphPayload>("graph"),
   ping: () => request<{ status: string }>("ping"),
+  /** Cheap revision fingerprint (store mtime + task count) for change polling. */
+  rev: () =>
+    request<{ mtime: number; count: number; store_path: string }>("rev"),
   /** Persist a new priority order. ids are ranked 1..N in array order. */
   setPriorityOrder: (order: string[]) =>
     request<PriorityResponse>("priority", {

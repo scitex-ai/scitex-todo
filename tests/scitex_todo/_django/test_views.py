@@ -275,4 +275,34 @@ def test_graph_endpoint_defaults_parent_to_null_when_absent_in_yaml(store):
         assert node["parent"] is None
 
 
+# --- rev: cheap change-poll fingerprint -----------------------------------
+
+
+def test_rev_endpoint_returns_ok(store):
+    # Arrange
+    request = RequestFactory().get(f"/rev?store={store}")
+    # Act
+    response = views.api_dispatch(request, "rev")
+    # Assert
+    assert response.status_code == 200
+
+
+def test_rev_endpoint_reports_task_count(store):
+    # Arrange
+    request = RequestFactory().get(f"/rev?store={store}")
+    # Act
+    payload = json.loads(views.api_dispatch(request, "rev").content)
+    # Assert — the seeded store has three tasks.
+    assert payload["count"] == 3
+
+
+def test_rev_endpoint_includes_positive_mtime(store):
+    # Arrange
+    request = RequestFactory().get(f"/rev?store={store}")
+    # Act
+    payload = json.loads(views.api_dispatch(request, "rev").content)
+    # Assert — mtime is a positive number the frontend can fingerprint on.
+    assert isinstance(payload["mtime"], (int, float)) and payload["mtime"] > 0
+
+
 # EOF

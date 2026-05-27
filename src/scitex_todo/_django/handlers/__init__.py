@@ -13,7 +13,7 @@ from .crud import (
     handle_delete,
     handle_update,
 )
-from .graph import handle_graph, handle_ping, handle_tasks
+from .graph import handle_graph, handle_ping, handle_rev, handle_tasks
 from .priority import handle_priority
 
 # endpoint string -> handler function
@@ -21,6 +21,7 @@ HANDLERS = {
     "graph": handle_graph,
     "tasks": handle_tasks,
     "ping": handle_ping,
+    "rev": handle_rev,
     "priority": handle_priority,
     "create": handle_create,
     "update": handle_update,

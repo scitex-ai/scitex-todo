@@ -47,6 +47,7 @@ import {
 import { InhibitionEdge, INHIBITION_EDGE_TYPE } from "./InhibitionEdge";
 import { NodeDetailPanelContainer } from "./NodeDetailPanel";
 import { ContextMenu } from "./ContextMenu";
+import { AutoRefresh } from "./AutoRefresh";
 import {
   STATUSES,
   taskMatchesFilter,
@@ -490,6 +491,7 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
       </div>
       <NodeDetailPanelContainer />
       <ContextMenu />
+      <AutoRefresh />
     </div>
   );
 }
