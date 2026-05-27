@@ -338,12 +338,20 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
  * affordance). */
 .stx-todo-flow .react-flow__node.stx-todo-node--parent {
   cursor: zoom-in;
+  /* `rotate` is an INDIVIDUAL transform property, so it composes with React
+   * Flow's inline `transform: translate(...)` instead of overriding it —
+   * letting us tilt the stack on hover without breaking node positioning. */
+  transition:
+    rotate 0.12s ease,
+    filter 0.12s ease;
 }
 
 .stx-todo-flow .react-flow__node.stx-todo-node--parent:hover {
-  /* Slightly stronger lift than the generic node hover above — keeps the
-   * parent affordance dominant during hover. */
+  /* On-cursor rotation: the group "stack" tilts slightly when hovered, plus a
+   * stronger lift than the generic node hover so the parent affordance stays
+   * dominant. */
   filter: brightness(1.14);
+  rotate: -3deg;
 }
 
 .stx-todo-flow .react-flow__node.stx-todo-node--leaf {

@@ -115,18 +115,29 @@ export function nodeHasChildren(graph: GraphPayload, nodeId: string): boolean {
  * Status color (fill / stroke) is preserved from `nodeStyle()` so the
  * lifecycle signal (pending / done / blocked / goal …) still reads.
  */
-export function parentNodeStyle(base: CSSProperties): CSSProperties {
+export function parentNodeStyle(
+  base: CSSProperties,
+  kids = 1,
+  color?: StatusColor,
+): CSSProperties {
+  const c = color ?? { fill: "#eceff1", stroke: "#90a4ae", dashed: false };
+  // Render a GROUP as a stacked pile: one offset card silhouette per child,
+  // capped at 5, each a fill rect + a thin stroke edge (paired box-shadows).
+  // A 4px diagonal shift per layer reads unmistakably as "a stack of cards".
+  const layers = Math.min(Math.max(kids, 1), 5);
+  const stack: string[] = [];
+  for (let i = 1; i <= layers; i++) {
+    const o = i * 4;
+    stack.push(`${o}px ${o}px 0 0 ${c.stroke}`);
+    stack.push(`${o}px ${o}px 0 -2px ${c.fill}`);
+  }
+  // Purple drill-in halo hugs the front card (offset 0, listed first = on top).
+  stack.unshift("0 0 0 2px rgba(155, 127, 214, 0.45)");
   return {
     ...base,
-    // Override border weight — keep the status stroke color via `borderColor`
-    // since `border` shorthand wipes anything not present here.
     borderWidth: 3,
     borderStyle: "solid",
-    // The halo ring is the strongest "I'm clickable AND I drill in" signal.
-    // Color matches the SciTeX accent purple used by the breadcrumb crumbs
-    // so the affordance feels like one design language across the board.
-    boxShadow:
-      "0 0 0 3px rgba(155, 127, 214, 0.45), 0 2px 8px rgba(0, 0, 0, 0.25)",
+    boxShadow: stack.join(", "),
     fontWeight: 600,
   };
 }
@@ -230,7 +241,9 @@ export function buildFlow(
         y: (pos?.y ?? 0) - NODE_H / 2,
       },
       data: { label },
-      style: isParent ? parentNodeStyle(base) : base,
+      style: isParent
+        ? parentNodeStyle(base, kids, graph.status_colors[n.status])
+        : base,
       // Per-node className is forwarded by React Flow onto the wrapper DOM
       // element — used by board.css to set the hover cursor and tooltip
       // ("drill in" vs "details") and to scope a hover halo brighten.
