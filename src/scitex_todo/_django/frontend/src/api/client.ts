@@ -48,6 +48,24 @@ export interface PriorityResponse {
   store_path: string;
 }
 
+/** Editable fields for create / update. `id` is server-owned (generated on
+ * create from the title, immutable on update) so it is not part of the input. */
+export interface TaskInput {
+  title?: string;
+  status?: string;
+  priority?: number | null;
+  note?: string;
+  repo?: string;
+  parent?: string | null;
+  depends_on?: string[];
+  blocks?: string[];
+}
+
+export interface TaskMutateResponse {
+  task: Record<string, unknown> & { id: string };
+  store_path: string;
+}
+
 export const api = {
   graph: () => request<GraphPayload>("graph"),
   ping: () => request<{ status: string }>("ping"),
@@ -56,5 +74,23 @@ export const api = {
     request<PriorityResponse>("priority", {
       method: "POST",
       body: JSON.stringify({ order }),
+    }),
+  /** Create a task. `title` is required; the backend generates the id. */
+  createTask: (input: TaskInput) =>
+    request<TaskMutateResponse>("create", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  /** Patch an existing task's editable fields (only provided keys change). */
+  updateTask: (id: string, input: TaskInput) =>
+    request<TaskMutateResponse>("update", {
+      method: "POST",
+      body: JSON.stringify({ id, ...input }),
+    }),
+  /** Delete a task; the backend also scrubs edges/parent refs to it. */
+  deleteTask: (id: string) =>
+    request<{ deleted: string; store_path: string }>("delete", {
+      method: "POST",
+      body: JSON.stringify({ id }),
     }),
 };

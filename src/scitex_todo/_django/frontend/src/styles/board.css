@@ -505,3 +505,338 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
 .stx-todo-detail::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* ── Pool: header row + status groups ────────────────────────────────────
+ * The flat inbox is now split into collapsible <details> sections by status
+ * (GraphView UncategorizedPool), and the header carries a "new task" button
+ * beside the collapse toggle. */
+.stx-todo-pool__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.stx-todo-pool__new {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--stx-border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--stx-accent);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stx-todo-pool__new:hover,
+.stx-todo-pool__new:focus-visible {
+  background: var(--stx-hover-bg);
+  outline: none;
+}
+
+.stx-todo-pool__groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stx-todo-pool__group {
+  border: 1px solid var(--stx-border);
+  border-radius: 6px;
+  background: var(--stx-input-bg);
+  padding: 4px 6px;
+}
+
+.stx-todo-pool__group-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--stx-text-muted);
+  padding: 2px 0;
+  user-select: none;
+}
+
+.stx-todo-pool__group-summary::-webkit-details-marker {
+  display: none;
+}
+
+.stx-todo-pool__group-summary::before {
+  content: "▸";
+  font-size: 0.7rem;
+  color: var(--stx-text-faint);
+}
+
+.stx-todo-pool__group[open] > .stx-todo-pool__group-summary::before {
+  content: "▾";
+}
+
+.stx-todo-pool__group-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid;
+}
+
+.stx-todo-pool__group .stx-todo-pool__items {
+  margin-top: 6px;
+}
+
+/* ── Right-click context menu ────────────────────────────────────────────
+ * One menu instance (ContextMenu.tsx) rendered from the store's `menu`
+ * state. The backdrop is a full-screen click-catcher; the menu is fixed at
+ * the cursor (clamped to the viewport in JS). */
+.stx-todo-menu__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+
+.stx-todo-menu {
+  position: fixed;
+  min-width: 180px;
+  max-width: 220px;
+  padding: 4px;
+  border: 1px solid var(--stx-border);
+  border-radius: 8px;
+  background: var(--stx-panel-bg);
+  color: var(--stx-text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  font-size: 0.82rem;
+}
+
+.stx-todo-menu__label {
+  padding: 4px 8px 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--stx-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stx-todo-menu__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--stx-text);
+  font: inherit;
+  padding: 6px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.stx-todo-menu__item:hover,
+.stx-todo-menu__item:focus-visible {
+  background: var(--stx-hover-bg);
+  outline: none;
+}
+
+.stx-todo-menu__item--danger {
+  color: var(--stx-danger);
+}
+
+.stx-todo-menu__sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--stx-border);
+}
+
+.stx-todo-menu__group-label {
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--stx-text-faint);
+}
+
+.stx-todo-menu__statuses {
+  display: flex;
+  flex-direction: column;
+}
+
+.stx-todo-menu__status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--stx-text);
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.stx-todo-menu__status:hover,
+.stx-todo-menu__status:focus-visible {
+  background: var(--stx-hover-bg);
+  outline: none;
+}
+
+.stx-todo-menu__status--current {
+  font-weight: 600;
+}
+
+.stx-todo-menu__status--current::after {
+  content: "✓";
+  margin-left: auto;
+  color: var(--stx-accent);
+}
+
+.stx-todo-menu__swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  border: 1px solid;
+  flex: 0 0 auto;
+}
+
+/* ── Detail drawer: editable form ────────────────────────────────────────── */
+.stx-todo-detail__title-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.stx-todo-detail__edit {
+  appearance: none;
+  background: transparent;
+  color: var(--stx-text-muted);
+  border: 1px solid var(--stx-border);
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stx-todo-detail__edit:hover,
+.stx-todo-detail__edit:focus-visible {
+  background: var(--stx-hover-bg);
+  color: var(--stx-text);
+  outline: none;
+}
+
+.stx-todo-detail__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.stx-todo-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--stx-text-muted);
+}
+
+.stx-todo-field > span {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.stx-todo-field-row {
+  display: flex;
+  gap: 12px;
+}
+
+.stx-todo-field-row .stx-todo-field {
+  flex: 1;
+}
+
+.stx-todo-field--narrow {
+  flex: 0 0 90px !important;
+}
+
+.stx-todo-field--grow {
+  flex: 1;
+  min-height: 0;
+}
+
+.stx-todo-input {
+  appearance: none;
+  padding: 7px 9px;
+  border: 1px solid var(--stx-border);
+  border-radius: 6px;
+  background: var(--stx-input-bg);
+  color: var(--stx-text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.stx-todo-input:focus-visible {
+  outline: none;
+  border-color: var(--stx-accent);
+}
+
+.stx-todo-textarea {
+  resize: vertical;
+  min-height: 120px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.stx-todo-detail__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 6px;
+}
+
+.stx-todo-btn {
+  appearance: none;
+  padding: 7px 14px;
+  border: 1px solid var(--stx-border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--stx-text);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.stx-todo-btn:hover:not(:disabled) {
+  background: var(--stx-hover-bg);
+}
+
+.stx-todo-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.stx-todo-btn--primary {
+  border-color: var(--stx-accent);
+  background: var(--stx-accent);
+  color: var(--stx-accent-on);
+  font-weight: 600;
+}
+
+.stx-todo-btn--primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+  background: var(--stx-accent);
+}

@@ -46,7 +46,12 @@ import {
 } from "./layout";
 import { InhibitionEdge, INHIBITION_EDGE_TYPE } from "./InhibitionEdge";
 import { NodeDetailPanelContainer } from "./NodeDetailPanel";
-import { taskMatchesFilter, useBoardStore } from "./store/useBoardStore";
+import { ContextMenu } from "./ContextMenu";
+import {
+  STATUSES,
+  taskMatchesFilter,
+  useBoardStore,
+} from "./store/useBoardStore";
 import { useTheme } from "./useTheme";
 import type { GraphNode, GraphPayload } from "./types/board";
 
@@ -189,60 +194,119 @@ function UncategorizedPool({
   );
   const selectNode = useBoardStore((s) => s.selectNode);
   const drillInto = useBoardStore((s) => s.drillInto);
+  const openMenu = useBoardStore((s) => s.openMenu);
+  const beginCreate = useBoardStore((s) => s.beginCreate);
   const [open, setOpen] = useState(true);
 
+  // Group the visible pool items by status, in canonical STATUSES order, so
+  // the flat inbox reads as collapsible structural sections instead of one
+  // long undifferentiated list.
+  const groups = useMemo(() => {
+    const byStatus = new Map<string, GraphNode[]>();
+    for (const n of visible) {
+      const arr = byStatus.get(n.status) ?? [];
+      arr.push(n);
+      byStatus.set(n.status, arr);
+    }
+    const ordered: { status: string; items: GraphNode[] }[] = [];
+    for (const s of STATUSES) {
+      const items = byStatus.get(s);
+      if (items && items.length) ordered.push({ status: s, items });
+    }
+    // Any status not in the canonical list (defensive) trails alphabetically.
+    for (const [s, items] of [...byStatus.entries()].sort()) {
+      if (!STATUSES.includes(s as (typeof STATUSES)[number])) {
+        ordered.push({ status: s, items });
+      }
+    }
+    return ordered;
+  }, [visible]);
+
   if (poolNodes.length === 0) return null;
+
+  const renderItem = (n: GraphNode) => {
+    const prio = n.priority != null ? ` · p${n.priority}` : "";
+    const kids = nodeChildCount(graph, n.id);
+    const hasChildren = kids > 0;
+    const baseStyle = nodeStyle(graph.status_colors[n.status]);
+    const style = hasChildren ? parentNodeStyle(baseStyle) : baseStyle;
+    const onClick = () => (hasChildren ? drillInto(n.id) : selectNode(n.id));
+    return (
+      <button
+        type="button"
+        key={n.id}
+        className={
+          hasChildren
+            ? "stx-todo-pool__item stx-todo-pool__item--parent"
+            : "stx-todo-pool__item stx-todo-pool__item--leaf"
+        }
+        style={style}
+        onClick={onClick}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          openMenu(e.clientX, e.clientY, n.id);
+        }}
+        title={hasChildren ? "Drill in (right-click to edit)" : "Details (right-click to edit)"}
+        aria-label={
+          hasChildren
+            ? `Drill into ${n.title} (${kids} ${
+                kids === 1 ? "child" : "children"
+              })`
+            : `Open details for ${n.title}`
+        }
+      >
+        {hasChildren ? `▸ ${n.title}  ▸${kids}` : n.title}
+        {n.repo ? ` · ${n.repo}` : ""}
+        {prio}
+      </button>
+    );
+  };
 
   return (
     <aside
       className={`stx-todo-pool${open ? "" : " stx-todo-pool--collapsed"}`}
       aria-label="Uncategorized tasks"
     >
-      <button
-        type="button"
-        className="stx-todo-pool__title"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        title={open ? "Collapse" : "Expand"}
-      >
-        {open ? "▾" : "▸"} Uncategorized ({visible.length})
-      </button>
+      <div className="stx-todo-pool__head">
+        <button
+          type="button"
+          className="stx-todo-pool__title"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          title={open ? "Collapse" : "Expand"}
+        >
+          {open ? "▾" : "▸"} Uncategorized ({visible.length})
+        </button>
+        <button
+          type="button"
+          className="stx-todo-pool__new"
+          onClick={beginCreate}
+          title="New task"
+          aria-label="New task"
+        >
+          ✚
+        </button>
+      </div>
       {open && (
-        <div className="stx-todo-pool__items">
-          {visible.map((n) => {
-            const prio = n.priority != null ? ` · p${n.priority}` : "";
-            const kids = nodeChildCount(graph, n.id);
-            const hasChildren = kids > 0;
-            const baseStyle = nodeStyle(graph.status_colors[n.status]);
-            const style = hasChildren ? parentNodeStyle(baseStyle) : baseStyle;
-            const onClick = () =>
-              hasChildren ? drillInto(n.id) : selectNode(n.id);
-            return (
-              <button
-                type="button"
-                key={n.id}
-                className={
-                  hasChildren
-                    ? "stx-todo-pool__item stx-todo-pool__item--parent"
-                    : "stx-todo-pool__item stx-todo-pool__item--leaf"
-                }
-                style={style}
-                onClick={onClick}
-                title={hasChildren ? "Drill in" : "Details"}
-                aria-label={
-                  hasChildren
-                    ? `Drill into ${n.title} (${kids} ${
-                        kids === 1 ? "child" : "children"
-                      })`
-                    : `Open details for ${n.title}`
-                }
-              >
-                {hasChildren ? `▸ ${n.title}  ▸${kids}` : n.title}
-                {n.repo ? ` · ${n.repo}` : ""}
-                {prio}
-              </button>
-            );
-          })}
+        <div className="stx-todo-pool__groups">
+          {groups.map(({ status, items }) => (
+            <details className="stx-todo-pool__group" key={status} open>
+              <summary className="stx-todo-pool__group-summary">
+                <span
+                  className="stx-todo-pool__group-swatch"
+                  style={{
+                    background: graph.status_colors[status]?.fill ?? "#888",
+                    borderColor: graph.status_colors[status]?.stroke ?? "#888",
+                  }}
+                  aria-hidden="true"
+                />
+                {status} ({items.length})
+              </summary>
+              <div className="stx-todo-pool__items">
+                {items.map(renderItem)}
+              </div>
+            </details>
+          ))}
           {visible.length === 0 && (
             <span className="stx-todo-pool__empty">no matches</span>
           )}
@@ -261,6 +325,7 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
   const drillTo = useBoardStore((s) => s.drillTo);
   const query = useBoardStore((s) => s.query);
   const activeStatuses = useBoardStore((s) => s.activeStatuses);
+  const openMenu = useBoardStore((s) => s.openMenu);
 
   const theme = useTheme();
   const chrome = FLOW_CHROME[theme];
@@ -326,6 +391,28 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
     [graph, drillInto, selectNode],
   );
 
+  // Right-click a node -> card context menu (edit / status / delete).
+  const onNodeContextMenu = useCallback(
+    (event: ReactMouseEvent, node: Node) => {
+      event.preventDefault();
+      openMenu(event.clientX, event.clientY, node.id);
+    },
+    [openMenu],
+  );
+
+  // Right-click empty canvas -> pane context menu (new task).
+  const onPaneContextMenu = useCallback(
+    (event: MouseEvent | ReactMouseEvent) => {
+      event.preventDefault();
+      openMenu(
+        (event as ReactMouseEvent).clientX,
+        (event as ReactMouseEvent).clientY,
+        null,
+      );
+    },
+    [openMenu],
+  );
+
   // Re-fit key: scope + filter + node count drive a viewport re-fit.
   const fitKey = `${scope ?? "_top"}|${query}|${activeStatuses
     .slice()
@@ -350,6 +437,8 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
             onNodesChange={onNodesChange}
             onNodeDragStop={onNodeDragStop}
             onNodeClick={onNodeClick}
+            onNodeContextMenu={onNodeContextMenu}
+            onPaneContextMenu={onPaneContextMenu}
             fitView
             fitViewOptions={{ padding: 0.2 }}
             colorMode={theme}
@@ -373,6 +462,7 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
         </div>
       </div>
       <NodeDetailPanelContainer />
+      <ContextMenu />
     </div>
   );
 }
