@@ -47,15 +47,28 @@ import {
 import { InhibitionEdge, INHIBITION_EDGE_TYPE } from "./InhibitionEdge";
 import { NodeDetailPanelContainer } from "./NodeDetailPanel";
 import { taskMatchesFilter, useBoardStore } from "./store/useBoardStore";
+import { useTheme } from "./useTheme";
 import type { GraphNode, GraphPayload } from "./types/board";
 
-const FLOW_DARK = {
-  miniMapBg: "#1b1b29",
-  miniMapMask: "rgba(20, 20, 32, 0.78)",
-  miniMapNode: "#3a3a52",
-  miniMapNodeStroke: "#9b7fd6",
-  bgDots: "#33334a",
-};
+/* Canvas chrome (Background dots + MiniMap) per theme. React Flow's own
+ * `colorMode` handles node/edge/control base theming; these are the bits it
+ * doesn't infer, so we flip them alongside the shell's data-theme. */
+const FLOW_CHROME = {
+  dark: {
+    miniMapBg: "#1b1b29",
+    miniMapMask: "rgba(20, 20, 32, 0.78)",
+    miniMapNode: "#3a3a52",
+    miniMapNodeStroke: "#9b7fd6",
+    bgDots: "#33334a",
+  },
+  light: {
+    miniMapBg: "#f3f2f0",
+    miniMapMask: "rgba(225, 223, 219, 0.78)",
+    miniMapNode: "#c9c4d8",
+    miniMapNodeStroke: "#6a4fb0",
+    bgDots: "#c8c6c2",
+  },
+} as const;
 
 const EDGE_TYPES: EdgeTypes = {
   [INHIBITION_EDGE_TYPE]: InhibitionEdge,
@@ -249,6 +262,9 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
   const query = useBoardStore((s) => s.query);
   const activeStatuses = useBoardStore((s) => s.activeStatuses);
 
+  const theme = useTheme();
+  const chrome = FLOW_CHROME[theme];
+
   const scope = drillPath.length > 0 ? drillPath[drillPath.length - 1] : null;
 
   const seeded = useMemo<{ nodes: Node[]; edges: Edge[] }>(
@@ -336,21 +352,22 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
             onNodeClick={onNodeClick}
             fitView
             fitViewOptions={{ padding: 0.2 }}
+            colorMode={theme}
             nodesDraggable={true}
             nodesConnectable={false}
             elementsSelectable={true}
             proOptions={{ hideAttribution: true }}
           >
             <FitOnChange dep={fitKey} />
-            <Background color={FLOW_DARK.bgDots} />
+            <Background color={chrome.bgDots} />
             <Controls showInteractive={false} />
             <MiniMap
               pannable
               zoomable
-              maskColor={FLOW_DARK.miniMapMask}
-              nodeColor={FLOW_DARK.miniMapNode}
-              nodeStrokeColor={FLOW_DARK.miniMapNodeStroke}
-              style={{ background: FLOW_DARK.miniMapBg }}
+              maskColor={chrome.miniMapMask}
+              nodeColor={chrome.miniMapNode}
+              nodeStrokeColor={chrome.miniMapNodeStroke}
+              style={{ background: chrome.miniMapBg }}
             />
           </ReactFlow>
         </div>
