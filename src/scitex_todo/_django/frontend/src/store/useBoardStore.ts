@@ -73,6 +73,8 @@ interface BoardStore {
   drillInto: (parentId: string) => void;
   /** Pop back to the breadcrumb crumb at `depth` (0 = Home / top-level). */
   drillTo: (depth: number) => void;
+  /** Replace the whole drill path (used by browser/mouse back-forward nav). */
+  setDrillPath: (path: string[]) => void;
   /** Set the free-text filter. */
   setQuery: (q: string) => void;
   /** Toggle a status in/out of the keep-visible set. */
@@ -193,6 +195,14 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         selectedNodeId: null,
       };
     }),
+  setDrillPath: (path: string[]) =>
+    set((s) =>
+      // No-op if identical, so a popstate echo doesn't thrash the canvas.
+      s.drillPath.length === path.length &&
+      s.drillPath.every((v, i) => v === path[i])
+        ? s
+        : { drillPath: path, selectedNodeId: null },
+    ),
   setQuery: (q: string) => set({ query: q }),
   toggleStatus: (status: string) =>
     set((s) => ({
