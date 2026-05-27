@@ -265,20 +265,44 @@ function UncategorizedPool({
     );
   };
 
+  // Collapsed: a thin rail with just an expand affordance, so the canvas
+  // reclaims the full width instead of reserving an empty sidebar column.
+  if (!open) {
+    return (
+      <aside
+        className="stx-todo-pool stx-todo-pool--collapsed"
+        aria-label="Uncategorized tasks (collapsed)"
+      >
+        <button
+          type="button"
+          className="stx-todo-pool__expand"
+          onClick={() => setOpen(true)}
+          aria-expanded={false}
+          title={`Show uncategorized (${visible.length})`}
+          aria-label={`Show uncategorized (${visible.length} tasks)`}
+        >
+          <span className="stx-todo-pool__expand-glyph" aria-hidden="true">
+            ▸
+          </span>
+          <span className="stx-todo-pool__expand-label">
+            Uncategorized ({visible.length})
+          </span>
+        </button>
+      </aside>
+    );
+  }
+
   return (
-    <aside
-      className={`stx-todo-pool${open ? "" : " stx-todo-pool--collapsed"}`}
-      aria-label="Uncategorized tasks"
-    >
+    <aside className="stx-todo-pool" aria-label="Uncategorized tasks">
       <div className="stx-todo-pool__head">
         <button
           type="button"
           className="stx-todo-pool__title"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          title={open ? "Collapse" : "Expand"}
+          title="Collapse"
         >
-          {open ? "▾" : "▸"} Uncategorized ({visible.length})
+          ▾ Uncategorized ({visible.length})
         </button>
         <button
           type="button"
