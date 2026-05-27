@@ -21,7 +21,11 @@
 
 import { create } from "zustand";
 import { api, type TaskInput } from "../api/client";
+import { loadPersistedView, savePersistedView } from "../persist";
 import type { GraphPayload } from "../types/board";
+
+// View state restored from localStorage / URL, used to seed the store below.
+const _persisted = loadPersistedView();
 
 /** Selectable task statuses, mirroring the backend VALID_STATUSES. Drives the
  * status dropdown in the editor and the "Set status ▸" context submenu. */
@@ -135,9 +139,9 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   saving: false,
   error: null,
   selectedNodeId: null,
-  drillPath: [],
-  query: "",
-  activeStatuses: [],
+  drillPath: _persisted.drillPath,
+  query: _persisted.query,
+  activeStatuses: _persisted.activeStatuses,
   mutating: false,
   editMode: false,
   creating: false,
@@ -290,9 +294,20 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   },
 
   // ── View mode ────────────────────────────────────────────────────────────
-  view: "graph",
+  view: _persisted.view,
   setView: (v: "graph" | "table") => set({ view: v }),
 }));
+
+// Persist the view slice (filter / scope / mode) whenever it changes, so a
+// reload — or a copied ?q=/?scope= link — reopens where the user left off.
+useBoardStore.subscribe((s) =>
+  savePersistedView({
+    query: s.query,
+    activeStatuses: s.activeStatuses,
+    view: s.view,
+    drillPath: s.drillPath,
+  }),
+);
 
 /** True iff a task matches the current text query + status filter.
  *

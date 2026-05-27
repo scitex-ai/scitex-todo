@@ -93,15 +93,28 @@ export function nodesToPriorityOrder(nodes: Node[]): string[] {
 
 /** Re-fit the viewport whenever `dep` changes (drill scope / filter / reload),
  * so the currently-visible nodes are always centered with no dead band.
+ * When `focusIds` is non-empty (an active search/filter), zoom to JUST those
+ * matching nodes — a "search-jump" — instead of fitting the whole scope.
  * Lives inside <ReactFlow> so `useReactFlow()` has a provider. */
-function FitOnChange({ dep }: { dep: string }) {
+function FitOnChange({ dep, focusIds }: { dep: string; focusIds: string[] }) {
   const { fitView } = useReactFlow();
   useEffect(() => {
     // rAF: let React Flow apply the new nodes before measuring.
-    const id = requestAnimationFrame(() =>
-      fitView({ padding: 0.2, duration: 200 }),
-    );
+    const id = requestAnimationFrame(() => {
+      if (focusIds.length > 0) {
+        fitView({
+          padding: 0.3,
+          duration: 300,
+          maxZoom: 1.5,
+          nodes: focusIds.map((nid) => ({ id: nid })),
+        });
+      } else {
+        fitView({ padding: 0.2, duration: 200 });
+      }
+    });
     return () => cancelAnimationFrame(id);
+    // focusIds is folded into `dep` by the caller, so depend on dep only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dep, fitView]);
   return null;
 }
@@ -395,6 +408,18 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
     });
   }, [nodes, byId, filtering, query, activeStatuses]);
 
+  // Ids of the in-scope nodes that match the active filter — the search-jump
+  // target so the viewport zooms to the matches instead of the whole scope.
+  const focusIds = useMemo<string[]>(() => {
+    if (!filtering) return [];
+    return nodes
+      .filter((n) => {
+        const task = byId.get(n.id);
+        return task ? taskMatchesFilter(task, query, activeStatuses) : false;
+      })
+      .map((n) => n.id);
+  }, [nodes, byId, filtering, query, activeStatuses]);
+
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setNodes((current) => applyNodeChanges(changes, current));
   }, []);
@@ -502,7 +527,7 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
             elementsSelectable={true}
             proOptions={{ hideAttribution: true }}
           >
-            <FitOnChange dep={fitKey} />
+            <FitOnChange dep={fitKey} focusIds={focusIds} />
             <Background color={chrome.bgDots} />
             <Controls showInteractive={false} />
             <MiniMap
