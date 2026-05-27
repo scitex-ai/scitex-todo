@@ -57,6 +57,14 @@ TEMPLATES = [
     },
 ]
 
+# Enable the scitex-ui Alt+I element inspector (DEBUG/staff-gated) on the
+# board when scitex-ui is installed. The shell template already includes
+# the partial; this context processor sets the gating flag it checks.
+if "scitex_ui" in INSTALLED_APPS:
+    TEMPLATES[0]["OPTIONS"]["context_processors"].append(
+        "scitex_ui.context_processors.element_inspector"
+    )
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 STATIC_URL = "/static/"
