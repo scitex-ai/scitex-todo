@@ -315,13 +315,34 @@ def test_where_returns_exists_false_when_absent(tmp_path):
 # Helpers — handle FastMCP 2.x and 3.x APIs                                   #
 # --------------------------------------------------------------------------- #
 def _tool_names(mcp) -> list[str]:
+    """Return registered tool names, version-agnostic.
+
+    FastMCP 2.x exposes the registry synchronously via
+    ``_tool_manager._tools`` (or the legacy ``_tools``/``tools`` on the
+    server object). FastMCP 3.x removed those and only ships an async
+    ``list_tools()``. Mirror the strategy used in ``_cli/_mcp.py``: try
+    the cheap sync paths first, fall back to driving the async API.
+    """
+    tm = getattr(mcp, "_tool_manager", None)
+    if tm is not None and isinstance(getattr(tm, "_tools", None), dict):
+        return list(tm._tools.keys())
     for attr in ("tools", "_tools"):
         reg = getattr(mcp, attr, None)
         if isinstance(reg, dict):
             return list(reg.keys())
         if isinstance(reg, (list, tuple)):
             return [getattr(t, "name", str(t)) for t in reg]
-    return []
+
+    async def _gather():
+        if tm is not None and hasattr(tm, "get_tools"):
+            tools = await tm.get_tools()
+        else:
+            tools = await mcp.list_tools()
+        if isinstance(tools, dict):
+            return list(tools.keys())
+        return [getattr(t, "name", str(t)) for t in tools]
+
+    return asyncio.run(_gather())
 
 
 async def _call_tool(tool_callable, **kwargs):
