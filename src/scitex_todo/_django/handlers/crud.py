@@ -277,4 +277,88 @@ def handle_comment(request, board):
     )
 
 
+def handle_edge(request, board):
+    """POST edge -> add or remove a dependency edge between two tasks.
+
+    Body: ``{action: "add"|"remove", kind: "depends_on"|"blocks", source, target}``
+    where ``source``/``target`` use the graph-payload orientation:
+      - ``depends_on``: edge points dependency(source) -> dependent(target), so
+        the field lives on ``target`` as ``target.depends_on += [source]``.
+      - ``blocks``: edge points blocker(source) -> blocked(target), so the
+        field lives on ``source`` as ``source.blocks += [target]``.
+
+    Add is idempotent; remove drops the reference. Both endpoints validate that
+    the two ids exist (404 otherwise). Mirrors the lenient list-field handling
+    used elsewhere (empty list -> key removed).
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "edge endpoint requires POST"}, status=405)
+    payload, err = _parse_body(request)
+    if err:
+        return err
+
+    action = payload.get("action")
+    if action not in ("add", "remove"):
+        return JsonResponse(
+            {"error": "edge 'action' must be 'add' or 'remove'"}, status=400
+        )
+    kind = payload.get("kind")
+    if kind not in ("depends_on", "blocks"):
+        return JsonResponse(
+            {"error": "edge 'kind' must be 'depends_on' or 'blocks'"},
+            status=400,
+        )
+    source = payload.get("source")
+    target = payload.get("target")
+    if not (isinstance(source, str) and source and isinstance(target, str) and target):
+        return JsonResponse(
+            {"error": "edge requires string 'source' and 'target'"}, status=400
+        )
+    if source == target:
+        return JsonResponse({"error": "edge source and target must differ"}, status=400)
+
+    tasks = list(board.tasks)
+    by_id = {t["id"]: t for t in tasks}
+    # The field-owning task depends on the edge orientation (see docstring).
+    owner_id, other = (target, source) if kind == "depends_on" else (source, target)
+    owner = by_id.get(owner_id)
+    if owner is None:
+        return JsonResponse({"error": f"no task with id {owner_id!r}"}, status=404)
+    if other not in by_id:
+        return JsonResponse({"error": f"no task with id {other!r}"}, status=404)
+
+    refs = owner.get(kind)
+    refs = list(refs) if isinstance(refs, list) else []
+    if action == "add":
+        if other not in refs:
+            refs.append(other)
+    else:
+        refs = [r for r in refs if r != other]
+    if refs:
+        owner[kind] = refs
+    else:
+        owner.pop(kind, None)
+
+    err = _save(tasks, board)
+    if err:
+        return err
+    logger.info(
+        "[scitex-todo] edge %s %s %s->%s in %s",
+        action,
+        kind,
+        source,
+        target,
+        board.store_path,
+    )
+    return JsonResponse(
+        {
+            "action": action,
+            "kind": kind,
+            "source": source,
+            "target": target,
+            "store_path": str(board.store_path),
+        }
+    )
+
+
 # EOF

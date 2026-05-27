@@ -99,6 +99,13 @@ interface BoardStore {
   deleteTask: (id: string) => Promise<void>;
   /** Append a comment to a task's thread and reload the graph. */
   addComment: (id: string, text: string, author?: string) => Promise<void>;
+  /** Add/remove a dependency edge (source/target in graph orientation). */
+  setEdge: (
+    action: "add" | "remove",
+    kind: "depends_on" | "blocks",
+    source: string,
+    target: string,
+  ) => Promise<void>;
 
   // ── Right-click context menu ─────────────────────────────────────────────
   /** Active context menu, or null when closed. */
@@ -251,6 +258,17 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     set({ mutating: true, error: null });
     try {
       await api.addComment(id, text, author);
+      const graph = await api.graph();
+      set({ graph, mutating: false });
+    } catch (e) {
+      set({ error: (e as Error).message, mutating: false });
+    }
+  },
+
+  setEdge: async (action, kind, source, target) => {
+    set({ mutating: true, error: null });
+    try {
+      await api.edge(action, kind, source, target);
       const graph = await api.graph();
       set({ graph, mutating: false });
     } catch (e) {

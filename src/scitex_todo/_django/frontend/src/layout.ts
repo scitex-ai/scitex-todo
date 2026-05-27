@@ -237,11 +237,11 @@ export function buildFlow(
       className: isParent
         ? "stx-todo-node stx-todo-node--parent"
         : "stx-todo-node stx-todo-node--leaf",
-      // Drag/connect flags carried verbatim from the prior implementation —
-      // the global `nodesDraggable={true}` on the ReactFlow root governs
-      // drag-reorder (PR #7), and edges are never user-creatable.
+      // `nodesDraggable={true}` on the ReactFlow root governs drag-reorder
+      // (PR #7); `connectable: true` lets the user draw a dependency edge by
+      // dragging from a node handle to another node (GUI edge editing).
       draggable: false,
-      connectable: false,
+      connectable: true,
     };
   });
 
@@ -258,6 +258,9 @@ export function buildFlow(
         source: e.source,
         target: e.target,
         type: isBlock ? INHIBITION_EDGE_TYPE : "smoothstep",
+        // Carry the edge kind so the right-click "delete edge" handler knows
+        // which task field (depends_on vs blocks) to scrub.
+        data: { kind: e.kind },
         animated: false,
         style: {
           stroke: isBlock ? EDGE_COLOR_BLOCKS : EDGE_COLOR_DEPENDS,

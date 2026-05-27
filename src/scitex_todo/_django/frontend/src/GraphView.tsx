@@ -30,6 +30,7 @@ import {
   ReactFlow,
   applyNodeChanges,
   useReactFlow,
+  type Connection,
   type Edge,
   type EdgeTypes,
   type Node,
@@ -351,6 +352,7 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
   const query = useBoardStore((s) => s.query);
   const activeStatuses = useBoardStore((s) => s.activeStatuses);
   const openMenu = useBoardStore((s) => s.openMenu);
+  const setEdge = useBoardStore((s) => s.setEdge);
 
   const theme = useTheme();
   const chrome = FLOW_CHROME[theme];
@@ -438,6 +440,32 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
     [openMenu],
   );
 
+  // Drag from one node's handle to another -> create a `depends_on` edge
+  // (source is the prerequisite, target depends on it). Persisted + reloaded.
+  const onConnect = useCallback(
+    (c: Connection) => {
+      if (c.source && c.target && c.source !== c.target) {
+        void setEdge("add", "depends_on", c.source, c.target);
+      }
+    },
+    [setEdge],
+  );
+
+  // Right-click an edge -> confirm + delete it (kind carried in edge.data).
+  const onEdgeContextMenu = useCallback(
+    (event: ReactMouseEvent, edge: Edge) => {
+      event.preventDefault();
+      const kind =
+        (edge.data?.kind as "depends_on" | "blocks" | undefined) ??
+        "depends_on";
+      const label = kind === "blocks" ? "blocks" : "depends-on";
+      if (window.confirm(`Delete this ${label} edge?`)) {
+        void setEdge("remove", kind, edge.source, edge.target);
+      }
+    },
+    [setEdge],
+  );
+
   // Re-fit key: scope + filter + node count drive a viewport re-fit.
   const fitKey = `${scope ?? "_top"}|${query}|${activeStatuses
     .slice()
@@ -464,11 +492,13 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
             onNodeClick={onNodeClick}
             onNodeContextMenu={onNodeContextMenu}
             onPaneContextMenu={onPaneContextMenu}
+            onConnect={onConnect}
+            onEdgeContextMenu={onEdgeContextMenu}
             fitView
             fitViewOptions={{ padding: 0.2 }}
             colorMode={theme}
             nodesDraggable={true}
-            nodesConnectable={false}
+            nodesConnectable={true}
             elementsSelectable={true}
             proOptions={{ hideAttribution: true }}
           >
