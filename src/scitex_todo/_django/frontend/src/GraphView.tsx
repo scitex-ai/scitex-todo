@@ -196,7 +196,9 @@ function UncategorizedPool({
   const drillInto = useBoardStore((s) => s.drillInto);
   const openMenu = useBoardStore((s) => s.openMenu);
   const beginCreate = useBoardStore((s) => s.beginCreate);
-  const [open, setOpen] = useState(true);
+  // Collapsed by default so the canvas owns the full width on load; the
+  // operator expands the pool via its title toggle when they want it.
+  const [open, setOpen] = useState(false);
 
   // Group the visible pool items by status, in canonical STATUSES order, so
   // the flat inbox reads as collapsible structural sections instead of one
@@ -291,7 +293,7 @@ function UncategorizedPool({
       {open && (
         <div className="stx-todo-pool__groups">
           {groups.map(({ status, items }) => (
-            <details className="stx-todo-pool__group" key={status} open>
+            <details className="stx-todo-pool__group" key={status}>
               <summary className="stx-todo-pool__group-summary">
                 <span
                   className="stx-todo-pool__group-swatch"
