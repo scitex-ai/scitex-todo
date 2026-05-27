@@ -1,0 +1,339 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>scitex_todo._render &mdash; scitex-todo v0.1.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            scitex-todo
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../installation.html#extras">Extras</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../installation.html#rendering-backends">Rendering backends</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../installation.html#verify">Verify</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../quickstart.html">Quick Start</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../quickstart.html#task-schema">Task schema</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../quickstart.html#where-your-task-data-lives">Where your task data lives</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../cli_reference.html">CLI Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../cli_reference.html#universal-flags">Universal flags</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../api/scitex_todo.html">scitex_todo — Python API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.TaskValidationError"><code class="docutils literal notranslate"><span class="pre">TaskValidationError</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.RenderError"><code class="docutils literal notranslate"><span class="pre">RenderError</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.build_mermaid"><code class="docutils literal notranslate"><span class="pre">build_mermaid()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.bundled_example"><code class="docutils literal notranslate"><span class="pre">bundled_example()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.find_chromium"><code class="docutils literal notranslate"><span class="pre">find_chromium()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.load_tasks"><code class="docutils literal notranslate"><span class="pre">load_tasks()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.save_tasks"><code class="docutils literal notranslate"><span class="pre">save_tasks()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.render"><code class="docutils literal notranslate"><span class="pre">render()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.render_with_kroki"><code class="docutils literal notranslate"><span class="pre">render_with_kroki()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.render_with_mmdc"><code class="docutils literal notranslate"><span class="pre">render_with_mmdc()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.resolve_tasks_path"><code class="docutils literal notranslate"><span class="pre">resolve_tasks_path()</span></code></a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">scitex-todo</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">scitex_todo._render</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for scitex_todo._render</h1><div class="highlight"><pre>
+<span></span><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;Mermaid -&gt; PNG renderer.</span>
+
+<span class="sd">Primary path: ``mmdc`` (mermaid-cli) with a puppeteer- or playwright-cached</span>
+<span class="sd">chromium (auto-discovered; launched with ``--no-sandbox``). Snap chromium is</span>
+<span class="sd">intentionally excluded — snap confinement breaks puppeteer&#39;s launch protocol.</span>
+
+<span class="sd">Fallback path: ``kroki.io`` POST when ``mmdc`` is unavailable or fails.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+
+<div class="viewcode-block" id="RenderError">
+<a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.RenderError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">RenderError</span><span class="p">(</span><span class="ne">RuntimeError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when every render path (mmdc, kroki) fails.&quot;&quot;&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="find_chromium">
+<a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.find_chromium">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">find_chromium</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Locate a puppeteer- or playwright-cached chromium for headless render.</span>
+
+<span class="sd">    Resolution order: ``$PUPPETEER_EXECUTABLE_PATH``, then the puppeteer</span>
+<span class="sd">    cache, then the playwright cache. Snap chromium is excluded.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    str or None</span>
+<span class="sd">        Path to a chromium executable, or ``None`` if none is found.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">env_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;PUPPETEER_EXECUTABLE_PATH&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">env_path</span> <span class="ow">and</span> <span class="n">Path</span><span class="p">(</span><span class="n">env_path</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">env_path</span>
+
+    <span class="c1"># puppeteer cache: ~/.cache/puppeteer/chrome/&lt;ver&gt;/chrome-linux64/chrome</span>
+    <span class="n">pup_root</span> <span class="o">=</span> <span class="n">Path</span><span class="o">.</span><span class="n">home</span><span class="p">()</span> <span class="o">/</span> <span class="s2">&quot;.cache&quot;</span> <span class="o">/</span> <span class="s2">&quot;puppeteer&quot;</span> <span class="o">/</span> <span class="s2">&quot;chrome&quot;</span>
+    <span class="k">if</span> <span class="n">pup_root</span><span class="o">.</span><span class="n">is_dir</span><span class="p">():</span>
+        <span class="k">for</span> <span class="n">cand</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">pup_root</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;*/chrome-linux64/chrome&quot;</span><span class="p">),</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">cand</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+                <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">cand</span><span class="p">)</span>
+
+    <span class="c1"># playwright cache: ~/.cache/ms-playwright/chromium-*/chrome-linux/chrome</span>
+    <span class="n">pw_root</span> <span class="o">=</span> <span class="n">Path</span><span class="o">.</span><span class="n">home</span><span class="p">()</span> <span class="o">/</span> <span class="s2">&quot;.cache&quot;</span> <span class="o">/</span> <span class="s2">&quot;ms-playwright&quot;</span>
+    <span class="k">if</span> <span class="n">pw_root</span><span class="o">.</span><span class="n">is_dir</span><span class="p">():</span>
+        <span class="k">for</span> <span class="n">cand</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span>
+            <span class="n">pw_root</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;chromium-*/chrome-linux/chrome&quot;</span><span class="p">),</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span>
+        <span class="p">):</span>
+            <span class="k">if</span> <span class="n">cand</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+                <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">cand</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="render_with_mmdc">
+<a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.render_with_mmdc">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">render_with_mmdc</span><span class="p">(</span><span class="n">mermaid_src</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">out_png</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Render via mermaid-cli.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    bool</span>
+<span class="sd">        ``True`` on success, ``False`` to allow the caller to fall back.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">out_png</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">out_png</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">shutil</span><span class="o">.</span><span class="n">which</span><span class="p">(</span><span class="s2">&quot;mmdc&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;mmdc not found on PATH; skipping mmdc render</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="n">chromium</span> <span class="o">=</span> <span class="n">find_chromium</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">chromium</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+            <span class="s2">&quot;No puppeteer/playwright chromium found; skipping mmdc render</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">TemporaryDirectory</span><span class="p">()</span> <span class="k">as</span> <span class="n">tmp</span><span class="p">:</span>
+        <span class="n">tmp_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">tmp</span><span class="p">)</span>
+        <span class="n">mmd_path</span> <span class="o">=</span> <span class="n">tmp_dir</span> <span class="o">/</span> <span class="s2">&quot;graph.mmd&quot;</span>
+        <span class="n">mmd_path</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">mermaid_src</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+        <span class="n">pptr_path</span> <span class="o">=</span> <span class="n">tmp_dir</span> <span class="o">/</span> <span class="s2">&quot;pptr.json&quot;</span>
+        <span class="n">pptr_path</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;--no-sandbox&quot;</span><span class="p">,</span> <span class="s2">&quot;--disable-setuid-sandbox&quot;</span><span class="p">]}),</span>
+            <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">env</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">)</span>
+        <span class="n">env</span><span class="p">[</span><span class="s2">&quot;PUPPETEER_EXECUTABLE_PATH&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">chromium</span>
+
+        <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="s2">&quot;mmdc&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;-i&quot;</span><span class="p">,</span>
+            <span class="nb">str</span><span class="p">(</span><span class="n">mmd_path</span><span class="p">),</span>
+            <span class="s2">&quot;-o&quot;</span><span class="p">,</span>
+            <span class="nb">str</span><span class="p">(</span><span class="n">out_png</span><span class="p">),</span>
+            <span class="s2">&quot;-b&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;white&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;-p&quot;</span><span class="p">,</span>
+            <span class="nb">str</span><span class="p">(</span><span class="n">pptr_path</span><span class="p">),</span>
+            <span class="s2">&quot;-s&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;2&quot;</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+                <span class="n">cmd</span><span class="p">,</span> <span class="n">env</span><span class="o">=</span><span class="n">env</span><span class="p">,</span> <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">120</span>
+            <span class="p">)</span>
+        <span class="k">except</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">TimeoutExpired</span><span class="p">:</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;mmdc render timed out</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">returncode</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;mmdc render failed (rc=</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">returncode</span><span class="si">}</span><span class="s2">):</span><span class="se">\n</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">stderr</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">return</span> <span class="n">out_png</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="ow">and</span> <span class="n">out_png</span><span class="o">.</span><span class="n">stat</span><span class="p">()</span><span class="o">.</span><span class="n">st_size</span> <span class="o">&gt;</span> <span class="mi">0</span></div>
+
+
+
+<div class="viewcode-block" id="render_with_kroki">
+<a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.render_with_kroki">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">render_with_kroki</span><span class="p">(</span><span class="n">mermaid_src</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">out_png</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Fallback: render via kroki.io.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    bool</span>
+<span class="sd">        ``True`` on success, ``False`` on any network/HTTP failure.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">out_png</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">out_png</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">urllib.request</span>
+
+        <span class="n">req</span> <span class="o">=</span> <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">Request</span><span class="p">(</span>
+            <span class="s2">&quot;https://kroki.io/mermaid/png&quot;</span><span class="p">,</span>
+            <span class="n">data</span><span class="o">=</span><span class="n">mermaid_src</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">),</span>
+            <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;Content-Type&quot;</span><span class="p">:</span> <span class="s2">&quot;text/plain&quot;</span><span class="p">},</span>
+            <span class="n">method</span><span class="o">=</span><span class="s2">&quot;POST&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">with</span> <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">urlopen</span><span class="p">(</span><span class="n">req</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span> <span class="k">as</span> <span class="n">resp</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">resp</span><span class="o">.</span><span class="n">status</span> <span class="o">!=</span> <span class="mi">200</span><span class="p">:</span>
+                <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;kroki.io returned status </span><span class="si">{</span><span class="n">resp</span><span class="o">.</span><span class="n">status</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">return</span> <span class="kc">False</span>
+            <span class="n">payload</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>  <span class="c1"># noqa: BLE001 — fallback must report and bail</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;kroki.io render failed: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="n">out_png</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out_png</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="ow">and</span> <span class="n">out_png</span><span class="o">.</span><span class="n">stat</span><span class="p">()</span><span class="o">.</span><span class="n">st_size</span> <span class="o">&gt;</span> <span class="mi">0</span></div>
+
+
+
+<div class="viewcode-block" id="render">
+<a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.render">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">render</span><span class="p">(</span><span class="n">mermaid_src</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">out_png</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Render mermaid source to PNG, mmdc-first with kroki fallback.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mermaid_src : str</span>
+<span class="sd">        Mermaid source, typically from :func:`scitex_todo.build_mermaid`.</span>
+<span class="sd">    out_png : str or pathlib.Path</span>
+<span class="sd">        Destination PNG path. Parent directories are created if missing.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    str</span>
+<span class="sd">        The engine that produced the output: ``&quot;mmdc&quot;`` or ``&quot;kroki&quot;``.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    RenderError</span>
+<span class="sd">        If both the mmdc and kroki render paths fail.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">out_png</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">out_png</span><span class="p">)</span>
+    <span class="n">out_png</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">render_with_mmdc</span><span class="p">(</span><span class="n">mermaid_src</span><span class="p">,</span> <span class="n">out_png</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;mmdc&quot;</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;Falling back to kroki.io</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">render_with_kroki</span><span class="p">(</span><span class="n">mermaid_src</span><span class="p">,</span> <span class="n">out_png</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;kroki&quot;</span>
+    <span class="k">raise</span> <span class="n">RenderError</span><span class="p">(</span><span class="s2">&quot;Both mmdc and kroki.io render paths failed&quot;</span><span class="p">)</span></div>
+
+
+
+<span class="c1"># EOF</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Yusuke Watanabe.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
