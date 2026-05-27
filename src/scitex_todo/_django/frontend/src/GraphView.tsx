@@ -20,6 +20,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
@@ -377,6 +378,18 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
   const activeStatuses = useBoardStore((s) => s.activeStatuses);
   const openMenu = useBoardStore((s) => s.openMenu);
   const setEdge = useBoardStore((s) => s.setEdge);
+  const openEdgePicker = useBoardStore((s) => s.openEdgePicker);
+
+  // Last pointer position, so onConnect (which has no mouse coords) can place
+  // the edge-kind picker where the connection was dropped.
+  const pointer = useRef({ x: 0, y: 0 });
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      pointer.current = { x: e.clientX, y: e.clientY };
+    };
+    window.addEventListener("pointermove", onMove);
+    return () => window.removeEventListener("pointermove", onMove);
+  }, []);
 
   const theme = useTheme();
   const chrome = FLOW_CHROME[theme];
@@ -476,15 +489,16 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
     [openMenu],
   );
 
-  // Drag from one node's handle to another -> create a `depends_on` edge
-  // (source is the prerequisite, target depends on it). Persisted + reloaded.
+  // Drag from one node's handle to another -> offer a kind choice (arrow =
+  // depends_on, blocker = blocks) at the drop point, rather than assuming one.
   const onConnect = useCallback(
     (c: Connection) => {
       if (c.source && c.target && c.source !== c.target) {
-        void setEdge("add", "depends_on", c.source, c.target);
+        const p = pointer.current;
+        openEdgePicker(c.source, c.target, p.x, p.y);
       }
     },
-    [setEdge],
+    [openEdgePicker],
   );
 
   // Right-click an edge -> confirm + delete it (kind carried in edge.data).

@@ -6,6 +6,7 @@ import { GraphView } from "./GraphView";
 import { TableView } from "./TableView";
 import { NodeDetailPanelContainer } from "./NodeDetailPanel";
 import { ContextMenu } from "./ContextMenu";
+import { EdgeKindMenu } from "./EdgeKindMenu";
 import { AutoRefresh } from "./AutoRefresh";
 import { DrillHistory } from "./DrillHistory";
 import { EDGE_COLOR_BLOCKS, EDGE_COLOR_DEPENDS } from "./layout";
@@ -212,6 +213,7 @@ export function TodoBoard() {
             views, so they live here rather than inside GraphView. */}
         <NodeDetailPanelContainer />
         <ContextMenu />
+        <EdgeKindMenu />
         <AutoRefresh />
         <DrillHistory />
       </div>

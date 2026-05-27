@@ -113,6 +113,18 @@ interface BoardStore {
     target: string,
   ) => Promise<void>;
 
+  // ── Edge-kind picker (after a node→node drag) ────────────────────────────
+  /** A just-dragged connection awaiting a kind choice (arrow vs blocker), with
+   * the drop-point viewport coords for positioning the picker. */
+  pendingEdge: { source: string; target: string; x: number; y: number } | null;
+  openEdgePicker: (
+    source: string,
+    target: string,
+    x: number,
+    y: number,
+  ) => void;
+  closeEdgePicker: () => void;
+
   // ── Right-click context menu ─────────────────────────────────────────────
   /** Active context menu, or null when closed. */
   menu: MenuState | null;
@@ -148,6 +160,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   editMode: false,
   creating: false,
   menu: null,
+  pendingEdge: null,
   load: async () => {
     set({ loading: true, error: null });
     try {
@@ -289,6 +302,11 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
       set({ error: (e as Error).message, mutating: false });
     }
   },
+
+  // ── Edge-kind picker ─────────────────────────────────────────────────────
+  openEdgePicker: (source, target, x, y) =>
+    set({ pendingEdge: { source, target, x, y } }),
+  closeEdgePicker: () => set({ pendingEdge: null }),
 
   // ── Right-click context menu ─────────────────────────────────────────────
   openMenu: (x: number, y: number, taskId: string | null) =>
