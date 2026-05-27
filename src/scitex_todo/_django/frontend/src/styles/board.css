@@ -213,10 +213,49 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   overflow: auto;
 }
 
+/* Collapsed: a thin full-height rail (just an expand button) so the canvas
+ * reclaims the width the open sidebar would take. */
 .stx-todo-pool--collapsed {
-  flex-basis: auto;
-  width: auto;
+  flex: 0 0 28px;
+  width: 28px;
+  padding: 0;
+  gap: 0;
   overflow: visible;
+}
+
+.stx-todo-pool__expand {
+  appearance: none;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border: none;
+  background: transparent;
+  color: var(--stx-text-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.stx-todo-pool__expand:hover,
+.stx-todo-pool__expand:focus-visible {
+  color: var(--stx-text);
+  background: var(--stx-hover-bg);
+  outline: none;
+}
+
+.stx-todo-pool__expand-glyph {
+  font-size: 0.8rem;
+}
+
+.stx-todo-pool__expand-label {
+  writing-mode: vertical-rl;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 /* Title doubles as the collapse toggle (button reset to match the panel). */
