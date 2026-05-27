@@ -237,10 +237,11 @@ export function buildFlow(
       className: isParent
         ? "stx-todo-node stx-todo-node--parent"
         : "stx-todo-node stx-todo-node--leaf",
-      // `nodesDraggable={true}` on the ReactFlow root governs drag-reorder
-      // (PR #7); `connectable: true` lets the user draw a dependency edge by
-      // dragging from a node handle to another node (GUI edge editing).
-      draggable: false,
+      // `draggable: true` so dragging a node BODY moves it (drag-reorder →
+      // onNodeDragStop persists priority); a per-node `false` would override
+      // the root `nodesDraggable` and make a node-drag pan the canvas instead.
+      // `connectable: true` routes drags from a node HANDLE to edge creation.
+      draggable: true,
       connectable: true,
     };
   });
