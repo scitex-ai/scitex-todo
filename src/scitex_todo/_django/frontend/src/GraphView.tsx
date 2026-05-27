@@ -33,7 +33,6 @@ import {
   useReactFlow,
   type Connection,
   type Edge,
-  type ReactFlowInstance,
   type EdgeTypes,
   type Node,
   type NodeChange,
@@ -256,7 +255,9 @@ function UncategorizedPool({
     const kids = nodeChildCount(graph, n.id);
     const hasChildren = kids > 0;
     const baseStyle = nodeStyle(graph.status_colors[n.status]);
-    const style = hasChildren ? parentNodeStyle(baseStyle) : baseStyle;
+    const style = hasChildren
+      ? parentNodeStyle(baseStyle, kids, graph.status_colors[n.status])
+      : baseStyle;
     const onClick = () => (hasChildren ? drillInto(n.id) : selectNode(n.id));
     return (
       <button
@@ -382,10 +383,6 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
   const openEdgePicker = useBoardStore((s) => s.openEdgePicker);
   const updateTask = useBoardStore((s) => s.updateTask);
 
-  // React Flow instance (captured via onInit) — needed for getIntersectingNodes
-  // in the drag-to-connect / drag-to-group gesture.
-  const rfRef = useRef<ReactFlowInstance | null>(null);
-
   // Last pointer position, so onConnect (which has no mouse coords) can place
   // the edge-kind picker where the connection was dropped.
   const pointer = useRef({ x: 0, y: 0 });
@@ -454,61 +451,63 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
     setNodes((current) => applyNodeChanges(changes, current));
   }, []);
 
-  // Drag-to-connect / drag-to-group: on drop, classify by how much the dragged
-  // card overlaps another. No overlap → just a reposition (persist priority
-  // order). Partial overlap ("close") → offer an edge (arrow/blocker picker).
-  // Heavy overlap (dropped ON another) → group: the dragged card nests under
-  // the target (parent = target).
+  // Drag-to-connect / drag-to-group, by PROXIMITY to the nearest other card:
+  //   heavy overlap (≥50%)         → group: dragged card nests under target
+  //   close (gap within threshold) → offer an edge (arrow/blocker picker),
+  //                                   dragged = source, nearby card = target
+  //   neither                      → reposition (persist the priority order)
+  // Proximity (not just overlap) is the point — you don't have to land on the
+  // circle handle, just drag a card near another.
   const GROUP_OVERLAP = 0.5;
+  const PROXIMITY_PX = 60;
   const onNodeDragStop = useCallback(
     (event: ReactMouseEvent, node: Node) => {
-      const rf = rfRef.current;
-      const hits = rf ? rf.getIntersectingNodes(node) : [];
-      if (hits.length === 0) {
-        // Dropped in open space — treat as a reorder (persist priority).
-        setNodes((current) => {
-          void reorderPriority(nodesToPriorityOrder(current));
-          return current;
-        });
-        return;
-      }
-      const rect = (n: Node) => {
-        const m = (n as { measured?: { width?: number; height?: number } })
-          .measured;
-        return {
-          x: n.position.x,
-          y: n.position.y,
-          w: m?.width ?? 200,
-          h: m?.height ?? 60,
+      setNodes((current) => {
+        const rect = (n: Node) => {
+          const m = (n as { measured?: { width?: number; height?: number } })
+            .measured;
+          return {
+            x: n.position.x,
+            y: n.position.y,
+            w: m?.width ?? 200,
+            h: m?.height ?? 60,
+          };
         };
-      };
-      const dr = rect(node);
-      const dArea = Math.max(1, dr.w * dr.h);
-      let best: Node = hits[0];
-      let bestRatio = 0;
-      for (const h of hits) {
-        const r = rect(h);
-        const ox = Math.max(
-          0,
-          Math.min(dr.x + dr.w, r.x + r.w) - Math.max(dr.x, r.x),
-        );
-        const oy = Math.max(
-          0,
-          Math.min(dr.y + dr.h, r.y + r.h) - Math.max(dr.y, r.y),
-        );
-        const ratio = (ox * oy) / dArea;
-        if (ratio > bestRatio) {
-          bestRatio = ratio;
-          best = h;
+        const dr = rect(node);
+        const dArea = Math.max(1, dr.w * dr.h);
+        let near: Node | null = null;
+        let nearGap = Infinity;
+        let nearRatio = 0;
+        for (const o of current) {
+          if (o.id === node.id) continue;
+          const r = rect(o);
+          const ox = Math.max(
+            0,
+            Math.min(dr.x + dr.w, r.x + r.w) - Math.max(dr.x, r.x),
+          );
+          const oy = Math.max(
+            0,
+            Math.min(dr.y + dr.h, r.y + r.h) - Math.max(dr.y, r.y),
+          );
+          // Edge-to-edge gap (0 when the boxes overlap on that axis).
+          const gx = Math.max(0, r.x - (dr.x + dr.w), dr.x - (r.x + r.w));
+          const gy = Math.max(0, r.y - (dr.y + dr.h), dr.y - (r.y + r.h));
+          const gap = Math.hypot(gx, gy);
+          if (gap < nearGap) {
+            nearGap = gap;
+            nearRatio = (ox * oy) / dArea;
+            near = o;
+          }
         }
-      }
-      if (bestRatio >= GROUP_OVERLAP) {
-        // Group: dragged card becomes a child of the card it landed on.
-        void updateTask(node.id, { parent: best.id });
-      } else {
-        // Close: offer an edge (dragged = source, target = the card near it).
-        openEdgePicker(node.id, best.id, event.clientX, event.clientY);
-      }
+        if (near && nearRatio >= GROUP_OVERLAP) {
+          void updateTask(node.id, { parent: near.id });
+        } else if (near && nearGap <= PROXIMITY_PX) {
+          openEdgePicker(node.id, near.id, event.clientX, event.clientY);
+        } else {
+          void reorderPriority(nodesToPriorityOrder(current));
+        }
+        return current;
+      });
     },
     [reorderPriority, updateTask, openEdgePicker],
   );
@@ -594,9 +593,6 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
             nodes={viewNodes}
             edges={edges}
             edgeTypes={EDGE_TYPES}
-            onInit={(inst) => {
-              rfRef.current = inst;
-            }}
             onNodesChange={onNodesChange}
             onNodeDragStop={onNodeDragStop}
             onNodeClick={onNodeClick}
