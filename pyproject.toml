@@ -82,6 +82,9 @@ artifacts = [
     # `scitex-todo skills get/install` and `bundled_example()`.
     "src/scitex_todo/_skills/**/*",
     "src/scitex_todo/examples/*.yaml",
+    # Pre-built Sphinx HTML served in-wheel by scitex-cloud (PS-121);
+    # refreshed by the docs workflow on main/develop pushes.
+    "src/scitex_todo/_sphinx_html/**/*",
 ]
 
 [tool.pytest.ini_options]
