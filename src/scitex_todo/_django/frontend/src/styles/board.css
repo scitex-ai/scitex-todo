@@ -2,6 +2,39 @@
 
 /* scitex-todo board layout */
 
+/* ── Theme palette ───────────────────────────────────────────────────────
+ * The board lives inside the scitex-ui shell, which sets <html
+ * data-theme="dark|light"> and exposes flipping CSS variables (theme.css).
+ * We derive a board-local --stx-* palette from those shell variables so the
+ * whole board follows the active theme. The literal after each var() is the
+ * dark fallback used when the shell stylesheet is absent (bare SPA mount).
+ *
+ * --stx-accent is the brand purple; it needs a different shade per theme to
+ * stay legible (lavender on dark panels, deeper violet on light), so it is
+ * overridden in the [data-theme="light"] block below rather than sourced
+ * from a shell variable. */
+.stx-todo-board {
+  --stx-text: var(--text-primary, #e0e0e0);
+  --stx-text-muted: var(--text-muted, #a0a0b0);
+  --stx-text-faint: var(--text-muted, #8a8a9c);
+  --stx-panel-bg: var(--bg-surface, #232334);
+  --stx-canvas-bg: var(--bg-page, #1b1b29);
+  --stx-input-bg: var(--workspace-bg-monaco, #16161f);
+  --stx-code-bg: var(--bg-muted, #2d2d42);
+  --stx-border: var(--border-muted, #3a3a4a);
+  --stx-border-strong: var(--border-default, #4a4a5a);
+  --stx-hover-bg: var(--workspace-bg-hover, rgba(155, 127, 214, 0.16));
+  --stx-accent: #a78bfa;
+  --stx-accent-on: var(--bg-page, #1b1b29);
+  --stx-danger: var(--status-error, #ff6b6b);
+  --stx-scrollbar-thumb: var(--border-default, #4a4a5a);
+  --stx-scrollbar-thumb-hover: var(--text-muted, #6a6a82);
+}
+
+[data-theme="light"] .stx-todo-board {
+  --stx-accent: #6a4fb0;
+}
+
 #app-mount {
   width: 100%;
   height: 100%;
@@ -35,6 +68,7 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   height: 100%;
   min-height: 70vh;
   font-family: -apple-system, system-ui, sans-serif;
+  color: var(--stx-text);
 }
 
 .stx-todo-board__header {
@@ -43,23 +77,23 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--stx-border, #3a3a4a);
-  background: var(--stx-panel-bg, #232334);
-  color: var(--stx-text, #e0e0e0);
+  border-bottom: 1px solid var(--stx-border);
+  background: var(--stx-panel-bg);
+  color: var(--stx-text);
 }
 
 .stx-todo-board__title {
   font-weight: 600;
-  color: #9b7fd6;
+  color: var(--stx-accent);
 }
 
 .stx-todo-board__meta {
   font-size: 0.8rem;
-  color: #a0a0b0;
+  color: var(--stx-text-muted);
 }
 
 .stx-todo-board__meta code {
-  background: #313145;
+  background: var(--stx-code-bg);
   padding: 1px 6px;
   border-radius: 4px;
 }
@@ -119,12 +153,12 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   flex-wrap: wrap;
   gap: 2px;
   padding: 6px 12px;
-  border: 1px solid var(--stx-border, #3a3a4a);
+  border: 1px solid var(--stx-border);
   border-radius: 999px;
-  background: rgba(27, 27, 41, 0.92);
+  background: var(--stx-panel-bg);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
   font-size: 0.78rem;
-  color: #d0d0e0;
+  color: var(--stx-text);
   font-family: -apple-system, system-ui, sans-serif;
 }
 
@@ -132,7 +166,7 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   appearance: none;
   background: transparent;
   border: none;
-  color: #a78bfa;
+  color: var(--stx-accent);
   font: inherit;
   cursor: pointer;
   padding: 2px 6px;
@@ -141,13 +175,12 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
 
 .stx-todo-breadcrumb__crumb:hover,
 .stx-todo-breadcrumb__crumb:focus-visible {
-  background: #2d2d42;
-  color: #fff;
+  background: var(--stx-hover-bg);
   outline: none;
 }
 
 .stx-todo-breadcrumb__crumb--current {
-  color: #f0e7ff;
+  color: var(--stx-text);
   cursor: default;
   font-weight: 600;
 }
@@ -157,7 +190,7 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
 }
 
 .stx-todo-breadcrumb__sep {
-  color: #6a6a82;
+  color: var(--stx-text-faint);
   padding: 0 2px;
 }
 
@@ -175,8 +208,8 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   flex-direction: column;
   gap: 8px;
   padding: 10px 12px;
-  border-right: 1px solid var(--stx-border, #3a3a4a);
-  background: var(--stx-panel-bg, #1d1d2b);
+  border-right: 1px solid var(--stx-border);
+  background: var(--stx-panel-bg);
   overflow: auto;
 }
 
@@ -197,19 +230,19 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #a0a0b0;
+  color: var(--stx-text-muted);
   padding: 2px 0;
 }
 
 .stx-todo-pool__title:hover,
 .stx-todo-pool__title:focus-visible {
-  color: #d0d0e0;
+  color: var(--stx-text);
   outline: none;
 }
 
 .stx-todo-pool__empty {
   font-size: 0.75rem;
-  color: #8a8a9c;
+  color: var(--stx-text-faint);
 }
 
 .stx-todo-pool__items {
@@ -234,7 +267,7 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
 .stx-todo-pool__item:hover,
 .stx-todo-pool__item:focus-visible {
   filter: brightness(1.12);
-  box-shadow: 0 0 0 2px #9b7fd6;
+  box-shadow: 0 0 0 2px var(--stx-accent);
 }
 
 /* React Flow graph nodes (.react-flow__node) are also clickable — the click
@@ -300,7 +333,7 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   flex-wrap: wrap;
   gap: 10px;
   font-size: 0.75rem;
-  color: #c0c0d0;
+  color: var(--stx-text-muted);
   margin-left: auto;
 }
 
@@ -332,19 +365,19 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   align-items: center;
   gap: 6px;
   font-size: 0.75rem;
-  color: #c0c0d0;
+  color: var(--stx-text-muted);
 }
 
 .stx-todo-progress strong {
-  color: #f0e7ff;
+  color: var(--stx-text);
 }
 
 .stx-todo-progress__chip {
   padding: 1px 7px;
-  border: 1px solid #3a3a4a;
+  border: 1px solid var(--stx-border);
   border-radius: 999px;
-  background: #2a2a3c;
-  color: #c0c0d0;
+  background: var(--stx-code-bg);
+  color: var(--stx-text-muted);
 }
 
 /* ── Filter toolbar (search + status chips) ────────────────────────────── */
@@ -354,23 +387,23 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  border-bottom: 1px solid var(--stx-border, #3a3a4a);
-  background: var(--stx-panel-bg, #1f1f30);
+  border-bottom: 1px solid var(--stx-border);
+  background: var(--stx-panel-bg);
 }
 
 .stx-todo-toolbar__search {
   flex: 0 1 320px;
   padding: 6px 10px;
-  border: 1px solid #3a3a4a;
+  border: 1px solid var(--stx-border);
   border-radius: 6px;
-  background: #16161f;
-  color: #e0e0e0;
+  background: var(--stx-input-bg);
+  color: var(--stx-text);
   font: inherit;
   font-size: 0.82rem;
 }
 
 .stx-todo-toolbar__search::placeholder {
-  color: #6a6a82;
+  color: var(--stx-text-faint);
 }
 
 .stx-todo-toolbar__chips {
@@ -382,10 +415,10 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
 .stx-todo-chip {
   appearance: none;
   padding: 2px 10px;
-  border: 1px solid #4a4a5a;
+  border: 1px solid var(--stx-border-strong);
   border-radius: 999px;
   background: transparent;
-  color: #c0c0d0;
+  color: var(--stx-text-muted);
   font: inherit;
   font-size: 0.75rem;
   cursor: pointer;
@@ -401,10 +434,10 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
 
 .stx-todo-toolbar__reset {
   appearance: none;
-  border: 1px solid #4a4a5a;
+  border: 1px solid var(--stx-border-strong);
   border-radius: 6px;
   background: transparent;
-  color: #a78bfa;
+  color: var(--stx-accent);
   font: inherit;
   font-size: 0.75rem;
   padding: 3px 10px;
@@ -412,16 +445,63 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
 }
 
 .stx-todo-toolbar__reset:hover {
-  background: #2d2d42;
-  color: #fff;
+  background: var(--stx-hover-bg);
 }
 
 .stx-todo-status {
   padding: 24px;
-  color: #c0c0d0;
+  color: var(--stx-text-muted);
   font-family: -apple-system, system-ui, sans-serif;
 }
 
 .stx-todo-status--err {
-  color: #ff6b6b;
+  color: var(--stx-danger);
+}
+
+/* ── Themed scrollbars ───────────────────────────────────────────────────
+ * The board's scroll containers (docked pool, detail drawer, code blocks)
+ * defaulted to the OS scrollbar, which clashes with the panel — a chunky
+ * light bar over a dark pool. Render a thin, theme-following scrollbar so
+ * it recedes into the panel in either theme. Firefox uses the standard
+ * `scrollbar-*` properties; Chromium/WebKit use the pseudo-elements. */
+.stx-todo-pool,
+.stx-todo-detail,
+.stx-todo-detail__markdown pre {
+  scrollbar-width: thin;
+  scrollbar-color: var(--stx-scrollbar-thumb) transparent;
+}
+
+.stx-todo-pool::-webkit-scrollbar,
+.stx-todo-detail::-webkit-scrollbar,
+.stx-todo-detail__markdown pre::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.stx-todo-pool::-webkit-scrollbar-track,
+.stx-todo-detail::-webkit-scrollbar-track,
+.stx-todo-detail__markdown pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.stx-todo-pool::-webkit-scrollbar-thumb,
+.stx-todo-detail::-webkit-scrollbar-thumb,
+.stx-todo-detail__markdown pre::-webkit-scrollbar-thumb {
+  background: var(--stx-scrollbar-thumb);
+  border-radius: 6px;
+  /* Inset the thumb so it reads as a thin pill rather than a full-width bar. */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.stx-todo-pool::-webkit-scrollbar-thumb:hover,
+.stx-todo-detail::-webkit-scrollbar-thumb:hover,
+.stx-todo-detail__markdown pre::-webkit-scrollbar-thumb:hover {
+  background: var(--stx-scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+.stx-todo-pool::-webkit-scrollbar-corner,
+.stx-todo-detail::-webkit-scrollbar-corner {
+  background: transparent;
 }
