@@ -107,6 +107,14 @@ interface BoardStore {
   openMenu: (x: number, y: number, taskId: string | null) => void;
   /** Close the context menu. */
   closeMenu: () => void;
+
+  // ── Live auto-refresh ────────────────────────────────────────────────────
+  /** True when a newer revision of the shared store was detected while the
+   * user was mid-interaction — a refresh is offered (pill) rather than forced. */
+  stale: boolean;
+  setStale: (v: boolean) => void;
+  /** Reload the graph now and clear the stale flag. */
+  refreshNow: () => Promise<void>;
 }
 
 export const useBoardStore = create<BoardStore>((set, get) => ({
@@ -249,6 +257,14 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   openMenu: (x: number, y: number, taskId: string | null) =>
     set({ menu: { x, y, taskId } }),
   closeMenu: () => set({ menu: null }),
+
+  // ── Live auto-refresh ────────────────────────────────────────────────────
+  stale: false,
+  setStale: (v: boolean) => set({ stale: v }),
+  refreshNow: async () => {
+    set({ stale: false });
+    await get().load();
+  },
 }));
 
 /** True iff a task matches the current text query + status filter.

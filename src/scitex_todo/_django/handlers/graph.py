@@ -89,4 +89,21 @@ def handle_ping(request, board):
     return JsonResponse({"status": "ok"})
 
 
+def handle_rev(request, board):
+    """GET rev -> a cheap revision fingerprint of the store.
+
+    Returns the store's ``mtime`` (float) and task ``count`` without building
+    the full graph payload, so the frontend can poll this to detect when
+    another agent has changed the shared YAML and trigger a refresh. The board
+    is loaded mtime-cached, so unchanged stores hit the cache.
+    """
+    return JsonResponse(
+        {
+            "mtime": board.mtime,
+            "count": len(board.tasks),
+            "store_path": str(board.store_path),
+        }
+    )
+
+
 # EOF

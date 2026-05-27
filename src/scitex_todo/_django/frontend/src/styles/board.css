@@ -971,3 +971,55 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   display: flex;
   justify-content: flex-end;
 }
+
+/* ── Live auto-refresh indicator ─────────────────────────────────────────
+ * Transient cue at top-center of the canvas: a brief "✓ synced" toast after
+ * an automatic reload, or a clickable "● Updated — refresh" pill when the
+ * store changed while the user was mid-edit. */
+.stx-todo-sync {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  border: 1px solid var(--stx-border);
+  background: var(--stx-panel-bg);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.stx-todo-sync--ok {
+  color: var(--status-success, #5a9a7e);
+  pointer-events: none;
+  animation: stx-todo-sync-fade 1.8s ease forwards;
+}
+
+.stx-todo-sync--stale {
+  appearance: none;
+  cursor: pointer;
+  color: var(--stx-accent);
+}
+
+.stx-todo-sync--stale:hover,
+.stx-todo-sync--stale:focus-visible {
+  background: var(--stx-hover-bg);
+  outline: none;
+}
+
+@keyframes stx-todo-sync-fade {
+  0% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
