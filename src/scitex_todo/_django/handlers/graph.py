@@ -45,6 +45,9 @@ def _build_graph(board) -> dict:
             # id the frontend treats this task as top-level (same lenient
             # stance as edges to unknown ids).
             "parent": t.get("parent"),
+            # Append-only comment thread (list of {ts, author, text}); always
+            # a list so the frontend can render / count without null-checks.
+            "comments": t.get("comments") or [],
         }
         for t in board.tasks
     ]

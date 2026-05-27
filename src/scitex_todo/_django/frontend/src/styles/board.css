@@ -840,3 +840,95 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   filter: brightness(1.08);
   background: var(--stx-accent);
 }
+
+/* ── Detail drawer: comment thread ───────────────────────────────────────
+ * Append-only thread shown in the read view below the note: each entry is
+ * author · time · text, with an add box (author + textarea) at the bottom.
+ * A "💬N" badge on the cards (graph label + pool item) cues which tasks
+ * carry discussion. */
+.stx-todo-comments {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--stx-border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stx-todo-comments__title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--stx-text-muted);
+}
+
+.stx-todo-comments__empty {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--stx-text-faint);
+}
+
+.stx-todo-comments__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stx-todo-comment {
+  border: 1px solid var(--stx-border);
+  border-radius: 6px;
+  background: var(--stx-input-bg);
+  padding: 7px 10px;
+}
+
+.stx-todo-comment__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.stx-todo-comment__author {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--stx-accent);
+}
+
+.stx-todo-comment__ts {
+  font-size: 0.7rem;
+  color: var(--stx-text-faint);
+}
+
+.stx-todo-comment__text {
+  font-size: 0.84rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.stx-todo-comments__form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stx-todo-comments__author {
+  font-size: 0.8rem;
+}
+
+.stx-todo-comments__text {
+  resize: vertical;
+  min-height: 44px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.stx-todo-comments__actions {
+  display: flex;
+  justify-content: flex-end;
+}

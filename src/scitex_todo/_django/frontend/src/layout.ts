@@ -215,9 +215,13 @@ export function buildFlow(
     // operator gets a fourth cue during hover (see board.css).
     const kids = nodeChildCount(graph, n.id);
     const isParent = kids > 0;
+    // Comment-count badge: a "💬N" suffix when the task has any comments, so
+    // discussion is visible at a glance without opening the drawer.
+    const ncomments = n.comments?.length ?? 0;
+    const chat = ncomments > 0 ? `  💬${ncomments}` : "";
     const label = isParent
-      ? `▸ ${n.title}  ▸${kids}${prio}`
-      : `${n.title}${prio}`;
+      ? `▸ ${n.title}  ▸${kids}${prio}${chat}`
+      : `${n.title}${prio}${chat}`;
     const base = nodeStyle(graph.status_colors[n.status]);
     return {
       id: n.id,

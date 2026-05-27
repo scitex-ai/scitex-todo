@@ -258,6 +258,7 @@ function UncategorizedPool({
         {hasChildren ? `▸ ${n.title}  ▸${kids}` : n.title}
         {n.repo ? ` · ${n.repo}` : ""}
         {prio}
+        {n.comments?.length ? `  💬${n.comments.length}` : ""}
       </button>
     );
   };

@@ -1,5 +1,13 @@
 /** Shared types for the scitex-todo board. Mirror the backend graph payload. */
 
+/** One entry in a task's append-only comment thread. `ts` is an ISO-8601 UTC
+ * timestamp and `author` the commenter, both stamped server-side. */
+export interface TaskComment {
+  ts: string;
+  author: string;
+  text: string;
+}
+
 export interface GraphNode {
   id: string;
   title: string;
@@ -12,6 +20,8 @@ export interface GraphNode {
    *  task whose `parent` equals this node's id) re-renders the canvas to that
    *  child subgraph; a breadcrumb navigates back. */
   parent: string | null;
+  /** Append-only comment thread (oldest first). Always present (may be []). */
+  comments: TaskComment[];
 }
 
 export type EdgeKind = "depends_on" | "blocks";

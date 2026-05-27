@@ -154,6 +154,27 @@ def _validate_tasks(tasks: object, source: str) -> None:
                 f"{source}: task {tid!r} has non-string parent {parent!r}; "
                 f"parent must be a task id string or absent"
             )
+        # `comments` is an append-only thread of user/agent remarks, distinct
+        # from the descriptive `note`. Each entry must be a mapping with a
+        # non-empty string `text`; `ts` / `author` are optional strings the
+        # server fills in (ISO timestamp + commenter). Validate the shape only
+        # so a malformed comment can't round-trip, staying lenient otherwise.
+        comments = task.get("comments")
+        if comments is not None:
+            if not isinstance(comments, list):
+                raise TaskValidationError(
+                    f"{source}: task {tid!r} has non-list comments "
+                    f"{comments!r}; comments must be a list or absent"
+                )
+            for entry in comments:
+                if not isinstance(entry, dict) or not (
+                    isinstance(entry.get("text"), str) and entry.get("text")
+                ):
+                    raise TaskValidationError(
+                        f"{source}: task {tid!r} has an invalid comment "
+                        f"{entry!r}; each comment must be a mapping with a "
+                        f"non-empty string 'text'"
+                    )
 
 
 def save_tasks(tasks: list[dict], path: str | Path) -> None:

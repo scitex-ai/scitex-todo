@@ -6,7 +6,7 @@
  * YAML store via `save_tasks` (see `handlers/priority.py`).
  */
 
-import type { GraphPayload } from "../types/board";
+import type { GraphPayload, TaskComment } from "../types/board";
 
 let _base = "";
 
@@ -93,4 +93,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ id }),
     }),
+  /** Append a comment to a task's thread. The backend stamps ts + author
+   * (author defaults to $USER when omitted). */
+  addComment: (id: string, text: string, author?: string) =>
+    request<{ comment: TaskComment; count: number; store_path: string }>(
+      "comment",
+      {
+        method: "POST",
+        body: JSON.stringify({ id, text, author }),
+      },
+    ),
 };

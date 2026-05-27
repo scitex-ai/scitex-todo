@@ -184,6 +184,94 @@ function DetailEditor({
   );
 }
 
+/** localStorage key remembering the last author typed, so a commenter
+ * doesn't re-enter their name each time. */
+const AUTHOR_KEY = "stx-todo-comment-author";
+
+function fmtTs(ts: string): string {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts;
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** Append-only comment thread for a task: existing comments (oldest first)
+ * plus an add box. The author defaults to the remembered value; leaving it
+ * blank lets the backend stamp $USER. */
+function CommentsSection({ node }: { node: GraphNode }) {
+  const addComment = useBoardStore((s) => s.addComment);
+  const mutating = useBoardStore((s) => s.mutating);
+  const [text, setText] = useState("");
+  const [author, setAuthor] = useState(
+    () => localStorage.getItem(AUTHOR_KEY) ?? "",
+  );
+  const comments = node.comments ?? [];
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const body = text.trim();
+    if (!body) return;
+    if (author.trim()) localStorage.setItem(AUTHOR_KEY, author.trim());
+    void addComment(node.id, body, author.trim() || undefined);
+    setText("");
+  };
+
+  return (
+    <section className="stx-todo-comments">
+      <h3 className="stx-todo-comments__title">
+        Comments {comments.length > 0 && `(${comments.length})`}
+      </h3>
+      {comments.length === 0 ? (
+        <p className="stx-todo-comments__empty">
+          <em>No comments yet.</em>
+        </p>
+      ) : (
+        <ul className="stx-todo-comments__list">
+          {comments.map((c, i) => (
+            <li className="stx-todo-comment" key={`${c.ts}-${i}`}>
+              <div className="stx-todo-comment__meta">
+                <span className="stx-todo-comment__author">{c.author}</span>
+                <span className="stx-todo-comment__ts">{fmtTs(c.ts)}</span>
+              </div>
+              <div className="stx-todo-comment__text">{c.text}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form className="stx-todo-comments__form" onSubmit={submit}>
+        <input
+          className="stx-todo-input stx-todo-comments__author"
+          value={author}
+          placeholder="your name (optional)"
+          onChange={(e) => setAuthor(e.target.value)}
+          aria-label="Comment author"
+        />
+        <textarea
+          className="stx-todo-input stx-todo-comments__text"
+          value={text}
+          placeholder="Add a comment…"
+          rows={2}
+          onChange={(e) => setText(e.target.value)}
+          aria-label="Comment text"
+        />
+        <div className="stx-todo-comments__actions">
+          <button
+            type="submit"
+            className="stx-todo-btn stx-todo-btn--primary"
+            disabled={mutating || !text.trim()}
+          >
+            {mutating ? "…" : "Comment"}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
 function DetailReader({ node }: { node: GraphNode }) {
   const note = (node.note ?? "").trim();
   const hasNote = note.length > 0 && note !== "uncategorized";
@@ -198,6 +286,7 @@ function DetailReader({ node }: { node: GraphNode }) {
           <em>No note yet for this task.</em>
         </p>
       )}
+      <CommentsSection node={node} />
     </div>
   );
 }

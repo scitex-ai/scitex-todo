@@ -22,8 +22,10 @@ surfaces as a 400 rather than corrupting the store.
 
 from __future__ import annotations
 
+import datetime
 import json
 import logging
+import os
 import re
 
 from django.http import JsonResponse
@@ -210,6 +212,69 @@ def handle_delete(request, board):
         return err
     logger.info("[scitex-todo] deleted task %s from %s", task_id, board.store_path)
     return JsonResponse({"deleted": task_id, "store_path": str(board.store_path)})
+
+
+def handle_comment(request, board):
+    """POST comment -> append a comment to a task's thread.
+
+    Body: ``{id, text, author?}``. The server stamps ``ts`` (ISO-8601 UTC)
+    and defaults ``author`` to the supplied value, else ``$USER``, else
+    ``"user"``. Append-only: it reads the task's current ``comments`` list and
+    adds one entry, so concurrent comments from other agents are not clobbered
+    the way a wholesale rewrite would. Unknown id -> 404. Returns the appended
+    comment plus the task's new comment count.
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "comment endpoint requires POST"}, status=405)
+    payload, err = _parse_body(request)
+    if err:
+        return err
+
+    task_id = payload.get("id")
+    if not isinstance(task_id, str) or not task_id:
+        return JsonResponse({"error": "comment requires 'id'"}, status=400)
+
+    text = payload.get("text")
+    if not isinstance(text, str) or not text.strip():
+        return JsonResponse(
+            {"error": "comment requires a non-empty 'text'"}, status=400
+        )
+
+    author = payload.get("author")
+    if not isinstance(author, str) or not author.strip():
+        author = os.environ.get("USER") or "user"
+
+    tasks = list(board.tasks)
+    task = next((t for t in tasks if t["id"] == task_id), None)
+    if task is None:
+        return JsonResponse({"error": f"no task with id {task_id!r}"}, status=404)
+
+    comment = {
+        "ts": datetime.datetime.now(datetime.timezone.utc)
+        .replace(microsecond=0)
+        .isoformat(),
+        "author": author.strip(),
+        "text": text.strip(),
+    }
+    existing = task.get("comments")
+    task["comments"] = ([*existing] if isinstance(existing, list) else []) + [comment]
+
+    err = _save(tasks, board)
+    if err:
+        return err
+    logger.info(
+        "[scitex-todo] comment on %s by %s in %s",
+        task_id,
+        author,
+        board.store_path,
+    )
+    return JsonResponse(
+        {
+            "comment": comment,
+            "count": len(task["comments"]),
+            "store_path": str(board.store_path),
+        }
+    )
 
 
 # EOF

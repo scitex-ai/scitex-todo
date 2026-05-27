@@ -319,4 +319,64 @@ def test_save_tasks_round_trip_preserves_parent(tmp_path):
     assert child["parent"] == "hub"
 
 
+def test_load_tasks_treats_missing_comments_as_optional(tmp_path):
+    # Arrange — pre-`comments` YAML must keep loading unchanged.
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: a, title: First, status: done}\n",
+    )
+    # Act
+    tasks = load_tasks(store)
+    # Assert
+    assert "comments" not in tasks[0]
+
+
+def test_load_tasks_accepts_valid_comments(tmp_path):
+    # Arrange — a comment with a non-empty text is valid.
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - id: a\n"
+        "    title: First\n"
+        "    status: done\n"
+        "    comments:\n"
+        "      - {ts: '2026-01-01T00:00:00+00:00', author: alice, text: hi}\n",
+    )
+    # Act
+    tasks = load_tasks(store)
+    # Assert
+    assert tasks[0]["comments"][0]["text"] == "hi"
+
+
+def test_load_tasks_raises_on_non_list_comments(tmp_path):
+    # Arrange — comments must be a list, not a scalar.
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: a, title: First, status: done, comments: nope}\n",
+    )
+    # Act
+    ctx = pytest.raises(TaskValidationError)
+    # Assert
+    with ctx:
+        load_tasks(store)
+
+
+def test_load_tasks_raises_on_comment_missing_text(tmp_path):
+    # Arrange — each comment needs a non-empty string `text`.
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - id: a\n"
+        "    title: First\n"
+        "    status: done\n"
+        "    comments:\n"
+        "      - {author: alice}\n",
+    )
+    # Act
+    ctx = pytest.raises(TaskValidationError)
+    # Assert
+    with ctx:
+        load_tasks(store)
+
+
 # EOF
