@@ -33,6 +33,7 @@ import {
   useReactFlow,
   type Connection,
   type Edge,
+  type ReactFlowInstance,
   type EdgeTypes,
   type Node,
   type NodeChange,
@@ -379,6 +380,11 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
   const openMenu = useBoardStore((s) => s.openMenu);
   const setEdge = useBoardStore((s) => s.setEdge);
   const openEdgePicker = useBoardStore((s) => s.openEdgePicker);
+  const updateTask = useBoardStore((s) => s.updateTask);
+
+  // React Flow instance (captured via onInit) — needed for getIntersectingNodes
+  // in the drag-to-connect / drag-to-group gesture.
+  const rfRef = useRef<ReactFlowInstance | null>(null);
 
   // Last pointer position, so onConnect (which has no mouse coords) can place
   // the edge-kind picker where the connection was dropped.
@@ -448,13 +454,64 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
     setNodes((current) => applyNodeChanges(changes, current));
   }, []);
 
-  const onNodeDragStop = useCallback(() => {
-    setNodes((current) => {
-      const order = nodesToPriorityOrder(current);
-      void reorderPriority(order);
-      return current;
-    });
-  }, [reorderPriority]);
+  // Drag-to-connect / drag-to-group: on drop, classify by how much the dragged
+  // card overlaps another. No overlap → just a reposition (persist priority
+  // order). Partial overlap ("close") → offer an edge (arrow/blocker picker).
+  // Heavy overlap (dropped ON another) → group: the dragged card nests under
+  // the target (parent = target).
+  const GROUP_OVERLAP = 0.5;
+  const onNodeDragStop = useCallback(
+    (event: ReactMouseEvent, node: Node) => {
+      const rf = rfRef.current;
+      const hits = rf ? rf.getIntersectingNodes(node) : [];
+      if (hits.length === 0) {
+        // Dropped in open space — treat as a reorder (persist priority).
+        setNodes((current) => {
+          void reorderPriority(nodesToPriorityOrder(current));
+          return current;
+        });
+        return;
+      }
+      const rect = (n: Node) => {
+        const m = (n as { measured?: { width?: number; height?: number } })
+          .measured;
+        return {
+          x: n.position.x,
+          y: n.position.y,
+          w: m?.width ?? 200,
+          h: m?.height ?? 60,
+        };
+      };
+      const dr = rect(node);
+      const dArea = Math.max(1, dr.w * dr.h);
+      let best: Node = hits[0];
+      let bestRatio = 0;
+      for (const h of hits) {
+        const r = rect(h);
+        const ox = Math.max(
+          0,
+          Math.min(dr.x + dr.w, r.x + r.w) - Math.max(dr.x, r.x),
+        );
+        const oy = Math.max(
+          0,
+          Math.min(dr.y + dr.h, r.y + r.h) - Math.max(dr.y, r.y),
+        );
+        const ratio = (ox * oy) / dArea;
+        if (ratio > bestRatio) {
+          bestRatio = ratio;
+          best = h;
+        }
+      }
+      if (bestRatio >= GROUP_OVERLAP) {
+        // Group: dragged card becomes a child of the card it landed on.
+        void updateTask(node.id, { parent: best.id });
+      } else {
+        // Close: offer an edge (dragged = source, target = the card near it).
+        openEdgePicker(node.id, best.id, event.clientX, event.clientY);
+      }
+    },
+    [reorderPriority, updateTask, openEdgePicker],
+  );
 
   const onNodeClick = useCallback(
     (_event: ReactMouseEvent, node: Node) => {
@@ -537,6 +594,9 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
             nodes={viewNodes}
             edges={edges}
             edgeTypes={EDGE_TYPES}
+            onInit={(inst) => {
+              rfRef.current = inst;
+            }}
             onNodesChange={onNodesChange}
             onNodeDragStop={onNodeDragStop}
             onNodeClick={onNodeClick}
