@@ -36,6 +36,11 @@ interface BoardStore {
    * Empty = top-level scope. The currently-visible scope is the last entry
    * (`null` when empty). */
   drillPath: string[];
+  /** Free-text filter (matches task title / id / repo, case-insensitive).
+   * Empty string = no text filter. */
+  query: string;
+  /** Statuses to KEEP visible. Empty set = show all statuses. */
+  activeStatuses: string[];
   load: () => Promise<void>;
   reorderPriority: (order: string[]) => Promise<void>;
   selectNode: (id: string) => void;
@@ -44,6 +49,12 @@ interface BoardStore {
   drillInto: (parentId: string) => void;
   /** Pop back to the breadcrumb crumb at `depth` (0 = Home / top-level). */
   drillTo: (depth: number) => void;
+  /** Set the free-text filter. */
+  setQuery: (q: string) => void;
+  /** Toggle a status in/out of the keep-visible set. */
+  toggleStatus: (status: string) => void;
+  /** Clear both the text query and the status filter. */
+  resetFilters: () => void;
 }
 
 export const useBoardStore = create<BoardStore>((set, get) => ({
@@ -53,6 +64,8 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   error: null,
   selectedNodeId: null,
   drillPath: [],
+  query: "",
+  activeStatuses: [],
   load: async () => {
     set({ loading: true, error: null });
     try {
@@ -100,4 +113,33 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         selectedNodeId: null,
       };
     }),
+  setQuery: (q: string) => set({ query: q }),
+  toggleStatus: (status: string) =>
+    set((s) => ({
+      activeStatuses: s.activeStatuses.includes(status)
+        ? s.activeStatuses.filter((x) => x !== status)
+        : [...s.activeStatuses, status],
+    })),
+  resetFilters: () => set({ query: "", activeStatuses: [] }),
 }));
+
+/** True iff a task matches the current text query + status filter.
+ *
+ * Empty query matches everything; empty status set matches every status.
+ * Text match is case-insensitive across title / id / repo. Shared by the
+ * graph (dim non-matches) and the pool (hide non-matches) so the toolbar
+ * filters both views consistently.
+ */
+export function taskMatchesFilter(
+  task: { id: string; title: string; status: string; repo?: string | null },
+  query: string,
+  activeStatuses: string[],
+): boolean {
+  if (activeStatuses.length > 0 && !activeStatuses.includes(task.status)) {
+    return false;
+  }
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const hay = `${task.title} ${task.id} ${task.repo ?? ""}`.toLowerCase();
+  return hay.includes(q);
+}

@@ -1,3 +1,5 @@
+@import "./detail.css";
+
 /* scitex-todo board layout */
 
 #app-mount {
@@ -68,10 +70,24 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   position: relative;
 }
 
-/* React Flow fills the canvas; the pool overlays it. */
+/* Flow container: a flex row [docked pool | canvas]; breadcrumb overlays. */
 .stx-todo-flow {
   position: relative;
   width: 100%;
+  height: 100%;
+}
+
+.stx-todo-flow__body {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.stx-todo-flow__canvas {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
   height: 100%;
 }
 
@@ -150,30 +166,50 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
  * dependency graph (note == "uncategorized" or no edges). SPACE ONLY —
  * drag-out / drop-in is a later interactivity phase. Bottom-left so it
  * doesn't collide with the bottom-right MiniMap. */
+/* Docked left sidebar (no longer a floating overlay over the canvas). */
 .stx-todo-pool {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  z-index: 5;
-  max-width: 280px;
-  max-height: 45%;
+  flex: 0 0 248px;
+  width: 248px;
+  height: 100%;
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding: 10px 12px;
-  border: 2px dashed var(--stx-border, #6a6a82);
-  border-radius: 10px;
-  background: rgba(27, 27, 41, 0.92);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  border-right: 1px solid var(--stx-border, #3a3a4a);
+  background: var(--stx-panel-bg, #1d1d2b);
   overflow: auto;
 }
 
+.stx-todo-pool--collapsed {
+  flex-basis: auto;
+  width: auto;
+  overflow: visible;
+}
+
+/* Title doubles as the collapse toggle (button reset to match the panel). */
 .stx-todo-pool__title {
+  appearance: none;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #a0a0b0;
+  padding: 2px 0;
+}
+
+.stx-todo-pool__title:hover,
+.stx-todo-pool__title:focus-visible {
+  color: #d0d0e0;
+  outline: none;
+}
+
+.stx-todo-pool__empty {
+  font-size: 0.75rem;
+  color: #8a8a9c;
 }
 
 .stx-todo-pool__items {
@@ -281,6 +317,105 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   border-radius: 3px;
 }
 
+/* Edge legend: a short bar in the edge color (depends_on vs blocks). */
+.stx-todo-legend__edge {
+  display: inline-block;
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+/* ── Progress summary (header) ─────────────────────────────────────────── */
+.stx-todo-progress {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: #c0c0d0;
+}
+
+.stx-todo-progress strong {
+  color: #f0e7ff;
+}
+
+.stx-todo-progress__chip {
+  padding: 1px 7px;
+  border: 1px solid #3a3a4a;
+  border-radius: 999px;
+  background: #2a2a3c;
+  color: #c0c0d0;
+}
+
+/* ── Filter toolbar (search + status chips) ────────────────────────────── */
+.stx-todo-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--stx-border, #3a3a4a);
+  background: var(--stx-panel-bg, #1f1f30);
+}
+
+.stx-todo-toolbar__search {
+  flex: 0 1 320px;
+  padding: 6px 10px;
+  border: 1px solid #3a3a4a;
+  border-radius: 6px;
+  background: #16161f;
+  color: #e0e0e0;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.stx-todo-toolbar__search::placeholder {
+  color: #6a6a82;
+}
+
+.stx-todo-toolbar__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.stx-todo-chip {
+  appearance: none;
+  padding: 2px 10px;
+  border: 1px solid #4a4a5a;
+  border-radius: 999px;
+  background: transparent;
+  color: #c0c0d0;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.stx-todo-chip:hover {
+  filter: brightness(1.15);
+}
+
+.stx-todo-chip--on {
+  font-weight: 600;
+}
+
+.stx-todo-toolbar__reset {
+  appearance: none;
+  border: 1px solid #4a4a5a;
+  border-radius: 6px;
+  background: transparent;
+  color: #a78bfa;
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.stx-todo-toolbar__reset:hover {
+  background: #2d2d42;
+  color: #fff;
+}
+
 .stx-todo-status {
   padding: 24px;
   color: #c0c0d0;
@@ -289,214 +424,4 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
 
 .stx-todo-status--err {
   color: #ff6b6b;
-}
-
-/* ── Node detail drawer ──────────────────────────────────────────────────
- * Right-side panel that opens when a graph or pool card is clicked. The
- * backdrop is a transparent click-catcher that dims the canvas slightly
- * and closes the drawer on click-away. */
-.stx-todo-detail__backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  background: rgba(10, 10, 18, 0.32);
-  display: flex;
-  justify-content: flex-end;
-  cursor: pointer; /* click-away is the primary close action */
-}
-
-.stx-todo-detail {
-  width: min(480px, 90%);
-  height: 100%;
-  padding: 18px 22px 22px 22px;
-  background: #1f1f2e;
-  color: #e0e0e0;
-  border-left: 1px solid #3a3a4a;
-  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.45);
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  overflow: auto;
-  cursor: default;
-  font-family: -apple-system, system-ui, sans-serif;
-}
-
-.stx-todo-detail__header {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  border-bottom: 1px solid #3a3a4a;
-  padding-bottom: 12px;
-}
-
-.stx-todo-detail__title-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.stx-todo-detail__title {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: #f0e7ff;
-  line-height: 1.3;
-}
-
-.stx-todo-detail__close {
-  appearance: none;
-  background: transparent;
-  color: #c0c0d0;
-  border: 1px solid #3a3a4a;
-  border-radius: 6px;
-  width: 28px;
-  height: 28px;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  flex: 0 0 auto;
-}
-
-.stx-todo-detail__close:hover,
-.stx-todo-detail__close:focus-visible {
-  background: #2d2d42;
-  color: #fff;
-  outline: none;
-}
-
-.stx-todo-detail__meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  font-size: 0.78rem;
-  color: #a0a0b0;
-}
-
-.stx-todo-detail__badge {
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.stx-todo-detail__prio,
-.stx-todo-detail__repo,
-.stx-todo-detail__id {
-  font-size: 0.75rem;
-}
-
-.stx-todo-detail__id code,
-.stx-todo-detail__repo code {
-  background: #2d2d42;
-  padding: 1px 6px;
-  border-radius: 4px;
-  color: #d0d0e0;
-}
-
-.stx-todo-detail__body {
-  flex: 1;
-  min-height: 0;
-}
-
-.stx-todo-detail__empty {
-  color: #8a8a9c;
-}
-
-/* Markdown rendering — scoped to the drawer so we don't disturb other
- * markdown rendering anywhere else on the page. */
-.stx-todo-detail__markdown {
-  font-size: 0.9rem;
-  line-height: 1.55;
-  color: #e0e0e0;
-}
-
-.stx-todo-detail__markdown h1,
-.stx-todo-detail__markdown h2,
-.stx-todo-detail__markdown h3,
-.stx-todo-detail__markdown h4 {
-  color: #f0e7ff;
-  margin: 1em 0 0.4em;
-  line-height: 1.25;
-}
-
-.stx-todo-detail__markdown h1 {
-  font-size: 1.15rem;
-}
-
-.stx-todo-detail__markdown h2 {
-  font-size: 1.05rem;
-}
-
-.stx-todo-detail__markdown h3,
-.stx-todo-detail__markdown h4 {
-  font-size: 0.95rem;
-}
-
-.stx-todo-detail__markdown p {
-  margin: 0.5em 0;
-}
-
-.stx-todo-detail__markdown ul,
-.stx-todo-detail__markdown ol {
-  padding-left: 1.4em;
-  margin: 0.5em 0;
-}
-
-.stx-todo-detail__markdown li {
-  margin: 0.2em 0;
-}
-
-.stx-todo-detail__markdown code {
-  background: #2d2d42;
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 0.85em;
-  color: #c4b5fd;
-}
-
-.stx-todo-detail__markdown pre {
-  background: #16161f;
-  border: 1px solid #2d2d42;
-  border-radius: 6px;
-  padding: 10px 12px;
-  overflow: auto;
-  margin: 0.6em 0;
-}
-
-.stx-todo-detail__markdown pre code {
-  background: transparent;
-  padding: 0;
-  color: #e0e0e0;
-}
-
-.stx-todo-detail__markdown a {
-  color: #a78bfa;
-  text-decoration: underline;
-}
-
-.stx-todo-detail__markdown blockquote {
-  margin: 0.6em 0;
-  padding: 0.1em 0 0.1em 12px;
-  border-left: 3px solid #4a4a5a;
-  color: #c0c0d0;
-}
-
-.stx-todo-detail__markdown hr {
-  border: none;
-  border-top: 1px solid #3a3a4a;
-  margin: 1em 0;
-}
-
-.stx-todo-detail__markdown table {
-  border-collapse: collapse;
-  margin: 0.6em 0;
-}
-
-.stx-todo-detail__markdown th,
-.stx-todo-detail__markdown td {
-  border: 1px solid #3a3a4a;
-  padding: 4px 8px;
 }

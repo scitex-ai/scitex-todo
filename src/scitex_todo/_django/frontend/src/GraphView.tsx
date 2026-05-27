@@ -6,20 +6,14 @@
  *     priority order, which is POSTed to `/priority` via the board store
  *     (`reorderPriority`). The backend writes the YAML via `save_tasks`,
  *     and the store reloads the graph from the canonical source of truth.
- *   - Pool / uncategorized nodes are NOT yet draggable (kept as a static
- *     bordered list); they retain their existing priorities on drag-reorder.
- *   - Edges are not connectable; selection-only is fine.
- *   - Click routing depends on whether the clicked node HAS CHILDREN
- *     (any other task with `parent === node.id`):
- *       * has-children   → DRILL IN (`drillInto(id)`): canvas re-renders to
- *                          that node's child subgraph; the breadcrumb tracks
- *                          the descent so the user can navigate back.
- *       * leaf (default) → open the markdown detail drawer (PR #9 behavior).
- *
- * The local node state mirrors React Flow's drag mutations via
- * `onNodesChange`; the buildFlow result re-seeds it whenever the store
- * graph reloads (so a server reload after a successful reorder snaps the
- * UI to the canonical layout), or whenever the drill-down scope changes.
+ *   - The Uncategorized pool is a DOCKED, collapsible left sidebar (not a
+ *     floating overlay) so it never covers the canvas.
+ *   - The toolbar filter (search + status chips) DIMS non-matching graph
+ *     nodes and HIDES non-matching pool items.
+ *   - Click routing depends on whether the clicked node HAS CHILDREN:
+ *       * has-children → DRILL IN; leaf → open the markdown detail drawer.
+ *   - `fitView` re-runs whenever the drill scope or filter changes, so the
+ *     visible nodes are always centered (no dead band).
  */
 
 import {
@@ -35,6 +29,7 @@ import {
   MiniMap,
   ReactFlow,
   applyNodeChanges,
+  useReactFlow,
   type Edge,
   type EdgeTypes,
   type Node,
@@ -51,33 +46,21 @@ import {
 } from "./layout";
 import { InhibitionEdge, INHIBITION_EDGE_TYPE } from "./InhibitionEdge";
 import { NodeDetailPanelContainer } from "./NodeDetailPanel";
-import { useBoardStore } from "./store/useBoardStore";
-import type { GraphPayload } from "./types/board";
+import { taskMatchesFilter, useBoardStore } from "./store/useBoardStore";
+import type { GraphNode, GraphPayload } from "./types/board";
 
-/** Dark-theme tokens for React Flow chrome (minimap / controls / background). */
 const FLOW_DARK = {
-  // MiniMap: dark surface so it doesn't flash white against the board.
   miniMapBg: "#1b1b29",
   miniMapMask: "rgba(20, 20, 32, 0.78)",
   miniMapNode: "#3a3a52",
   miniMapNodeStroke: "#9b7fd6",
-  // Background dots.
   bgDots: "#33334a",
 };
 
-/** Custom edge-type registry — `blocks` edges render via InhibitionEdge.
- *
- * Defined at module scope (not inline in the JSX) so the object identity is
- * stable across renders. React Flow warns when `edgeTypes` is a fresh object
- * each render — it forces a full edge-component re-mount.
- */
 const EDGE_TYPES: EdgeTypes = {
   [INHIBITION_EDGE_TYPE]: InhibitionEdge,
 };
 
-/** Vertical band (px) within which two nodes are treated as the same "row"
- * for the purposes of ordering, so a small drag wiggle on the y-axis doesn't
- * shuffle priority. Picked to be smaller than the dagre `ranksep`. */
 const Y_BAND_PX = 24;
 
 /** Sort node ids by (y, x) screen position into a top-priority-first list. */
@@ -91,10 +74,22 @@ export function nodesToPriorityOrder(nodes: Node[]): string[] {
     .map((n) => n.id);
 }
 
-/** Breadcrumb bar above the canvas. Each crumb sets the drill path to a
- * prefix of the current path: `Home` jumps to top-level (depth 0); a parent
- * crumb pops to that level. The current scope's crumb is rendered as
- * non-interactive text so the user can't navigate "to themselves". */
+/** Re-fit the viewport whenever `dep` changes (drill scope / filter / reload),
+ * so the currently-visible nodes are always centered with no dead band.
+ * Lives inside <ReactFlow> so `useReactFlow()` has a provider. */
+function FitOnChange({ dep }: { dep: string }) {
+  const { fitView } = useReactFlow();
+  useEffect(() => {
+    // rAF: let React Flow apply the new nodes before measuring.
+    const id = requestAnimationFrame(() =>
+      fitView({ padding: 0.2, duration: 200 }),
+    );
+    return () => cancelAnimationFrame(id);
+  }, [dep, fitView]);
+  return null;
+}
+
+/** Breadcrumb bar above the canvas. */
 function Breadcrumb({
   graph,
   drillPath,
@@ -104,15 +99,11 @@ function Breadcrumb({
   drillPath: string[];
   drillTo: (depth: number) => void;
 }) {
-  // Resolve each crumb id to its task title; fall back to the id if the task
-  // was deleted underneath us (operator removed the parent mid-edit).
   const titles = useMemo(() => {
     const byId = new Map(graph.nodes.map((n) => [n.id, n.title]));
     return drillPath.map((id) => byId.get(id) ?? id);
   }, [graph.nodes, drillPath]);
 
-  // Hide the bar entirely at the top-level — there's nowhere to navigate.
-  // Operator gets a clean canvas when not drilled in.
   if (drillPath.length === 0) return null;
 
   return (
@@ -144,7 +135,6 @@ function Breadcrumb({
             </span>
           );
         }
-        // depth = idx + 1 keeps the first idx+1 crumbs.
         return (
           <span key={`${drillPath[idx]}-${idx}`}>
             {separator}
@@ -162,72 +152,89 @@ function Breadcrumb({
   );
 }
 
-/** Bordered staging pool for tasks not connected into the dependency graph.
- *
- * SPACE ONLY for now — listing the uncategorized tasks inside one clearly
- * bordered box. Drag-out / drop-in interactivity is a later phase; nothing
- * here is draggable. Each item IS clickable: a parent (any task whose
- * `parent` references it) DRILLS IN; a leaf opens the same NodeDetailPanel
- * as the graph nodes (markdown note + metadata).
- */
+/** Docked, collapsible sidebar of tasks not connected into the dependency
+ * graph (note == "uncategorized" or no sibling edges at this scope). Honors
+ * the toolbar filter: non-matching items are hidden. */
 function UncategorizedPool({
   graph,
   scope,
+  query,
+  activeStatuses,
 }: {
   graph: GraphPayload;
   scope: string | null;
+  query: string;
+  activeStatuses: string[];
 }) {
   const poolNodes = useMemo(
     () => partitionNodes(graph, scope).poolNodes,
     [graph, scope],
   );
+  const visible = useMemo(
+    () => poolNodes.filter((n) => taskMatchesFilter(n, query, activeStatuses)),
+    [poolNodes, query, activeStatuses],
+  );
   const selectNode = useBoardStore((s) => s.selectNode);
   const drillInto = useBoardStore((s) => s.drillInto);
+  const [open, setOpen] = useState(true);
+
   if (poolNodes.length === 0) return null;
 
   return (
-    <aside className="stx-todo-pool" aria-label="Uncategorized tasks">
-      <div className="stx-todo-pool__title">Uncategorized</div>
-      <div className="stx-todo-pool__items">
-        {poolNodes.map((n) => {
-          const prio = n.priority != null ? ` · p${n.priority}` : "";
-          const kids = nodeChildCount(graph, n.id);
-          const hasChildren = kids > 0;
-          // Affordance parity with the graph nodes: a parent button shows
-          // a leading "▸" disclosure glyph + trailing "▸N" child-count
-          // badge, gets a thicker bordered/halo style via parentNodeStyle,
-          // and flips its className so board.css can switch the hover
-          // cursor (zoom-in vs. pointer) and tooltip wording.
-          const baseStyle = nodeStyle(graph.status_colors[n.status]);
-          const style = hasChildren ? parentNodeStyle(baseStyle) : baseStyle;
-          const onClick = () =>
-            hasChildren ? drillInto(n.id) : selectNode(n.id);
-          return (
-            <button
-              type="button"
-              key={n.id}
-              className={
-                hasChildren
-                  ? "stx-todo-pool__item stx-todo-pool__item--parent"
-                  : "stx-todo-pool__item stx-todo-pool__item--leaf"
-              }
-              style={style}
-              onClick={onClick}
-              title={hasChildren ? "Drill in" : "Details"}
-              aria-label={
-                hasChildren
-                  ? `Drill into ${n.title} (${kids} ${
-                      kids === 1 ? "child" : "children"
-                    })`
-                  : `Open details for ${n.title}`
-              }
-            >
-              {hasChildren ? `▸ ${n.title}  ▸${kids}` : n.title}
-              {prio}
-            </button>
-          );
-        })}
-      </div>
+    <aside
+      className={`stx-todo-pool${open ? "" : " stx-todo-pool--collapsed"}`}
+      aria-label="Uncategorized tasks"
+    >
+      <button
+        type="button"
+        className="stx-todo-pool__title"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        title={open ? "Collapse" : "Expand"}
+      >
+        {open ? "▾" : "▸"} Uncategorized ({visible.length})
+      </button>
+      {open && (
+        <div className="stx-todo-pool__items">
+          {visible.map((n) => {
+            const prio = n.priority != null ? ` · p${n.priority}` : "";
+            const kids = nodeChildCount(graph, n.id);
+            const hasChildren = kids > 0;
+            const baseStyle = nodeStyle(graph.status_colors[n.status]);
+            const style = hasChildren ? parentNodeStyle(baseStyle) : baseStyle;
+            const onClick = () =>
+              hasChildren ? drillInto(n.id) : selectNode(n.id);
+            return (
+              <button
+                type="button"
+                key={n.id}
+                className={
+                  hasChildren
+                    ? "stx-todo-pool__item stx-todo-pool__item--parent"
+                    : "stx-todo-pool__item stx-todo-pool__item--leaf"
+                }
+                style={style}
+                onClick={onClick}
+                title={hasChildren ? "Drill in" : "Details"}
+                aria-label={
+                  hasChildren
+                    ? `Drill into ${n.title} (${kids} ${
+                        kids === 1 ? "child" : "children"
+                      })`
+                    : `Open details for ${n.title}`
+                }
+              >
+                {hasChildren ? `▸ ${n.title}  ▸${kids}` : n.title}
+                {n.repo ? ` · ${n.repo}` : ""}
+                {prio}
+              </button>
+            );
+          })}
+          {visible.length === 0 && (
+            <span className="stx-todo-pool__empty">no matches</span>
+          )}
+        </div>
+      )}
     </aside>
   );
 }
@@ -239,14 +246,11 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
   const drillPath = useBoardStore((s) => s.drillPath);
   const drillInto = useBoardStore((s) => s.drillInto);
   const drillTo = useBoardStore((s) => s.drillTo);
+  const query = useBoardStore((s) => s.query);
+  const activeStatuses = useBoardStore((s) => s.activeStatuses);
 
-  // Current drill-down scope = deepest crumb (null at top-level).
   const scope = drillPath.length > 0 ? drillPath[drillPath.length - 1] : null;
 
-  // Seed from buildFlow each time the canonical graph payload OR scope
-  // changes — that covers initial load, reload-after-save, AND drill
-  // in/out. Node positions are then mutated locally as the user drags
-  // (via `onNodesChange`).
   const seeded = useMemo<{ nodes: Node[]; edges: Edge[] }>(
     () => buildFlow(graph, scope),
     [graph, scope],
@@ -259,33 +263,42 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
     setEdges(seeded.edges);
   }, [seeded]);
 
+  // Lookup task metadata by id so we can test the filter against the
+  // draggable node state (whose `data` only carries the rendered label).
+  const byId = useMemo(() => {
+    const m = new Map<string, GraphNode>();
+    for (const n of graph.nodes) m.set(n.id, n);
+    return m;
+  }, [graph.nodes]);
+
+  const filtering = query.trim().length > 0 || activeStatuses.length > 0;
+
+  // Dim non-matching graph nodes (keep them in place so the structure reads).
+  const viewNodes = useMemo<Node[]>(() => {
+    if (!filtering) return nodes;
+    return nodes.map((n) => {
+      const task = byId.get(n.id);
+      const match = task
+        ? taskMatchesFilter(task, query, activeStatuses)
+        : true;
+      return match
+        ? { ...n, style: { ...n.style, opacity: 1 } }
+        : { ...n, style: { ...n.style, opacity: 0.16 } };
+    });
+  }, [nodes, byId, filtering, query, activeStatuses]);
+
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setNodes((current) => applyNodeChanges(changes, current));
   }, []);
 
-  /** When the user finishes a drag, recompute the priority order from the
-   * resulting node positions and persist via the backend. The functional
-   * setNodes form reads the freshest positions without depending on `nodes`
-   * in the callback identity. */
   const onNodeDragStop = useCallback(() => {
     setNodes((current) => {
       const order = nodesToPriorityOrder(current);
-      // Fire-and-forget: the store handles re-fetch + error rollback.
       void reorderPriority(order);
       return current;
     });
   }, [reorderPriority]);
 
-  /** Click on a graph node:
-   *   - has-children → DRILL IN (re-render the canvas to the child subgraph).
-   *   - leaf         → open the markdown detail drawer (PR #9 behavior).
-   *
-   * React Flow fires this on mouseup AFTER the (possibly zero-distance)
-   * drag, so single clicks reliably reach here. The drag-end handler does
-   * its own persistence work and they don't conflict — a true click that
-   * doesn't move past the dnd threshold results in a no-op
-   * `onNodeDragStop` (the order is unchanged, so the POSTed array equals
-   * the current state). */
   const onNodeClick = useCallback(
     (_event: ReactMouseEvent, node: Node) => {
       if (nodeHasChildren(graph, node.id)) {
@@ -297,34 +310,51 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
     [graph, drillInto, selectNode],
   );
 
+  // Re-fit key: scope + filter + node count drive a viewport re-fit.
+  const fitKey = `${scope ?? "_top"}|${query}|${activeStatuses
+    .slice()
+    .sort()
+    .join(",")}|${seeded.nodes.length}`;
+
   return (
     <div className={`stx-todo-flow${saving ? " stx-todo-flow--saving" : ""}`}>
       <Breadcrumb graph={graph} drillPath={drillPath} drillTo={drillTo} />
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        edgeTypes={EDGE_TYPES}
-        onNodesChange={onNodesChange}
-        onNodeDragStop={onNodeDragStop}
-        onNodeClick={onNodeClick}
-        fitView
-        nodesDraggable={true}
-        nodesConnectable={false}
-        elementsSelectable={true}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background color={FLOW_DARK.bgDots} />
-        <Controls showInteractive={false} />
-        <MiniMap
-          pannable
-          zoomable
-          maskColor={FLOW_DARK.miniMapMask}
-          nodeColor={FLOW_DARK.miniMapNode}
-          nodeStrokeColor={FLOW_DARK.miniMapNodeStroke}
-          style={{ background: FLOW_DARK.miniMapBg }}
+      <div className="stx-todo-flow__body">
+        <UncategorizedPool
+          graph={graph}
+          scope={scope}
+          query={query}
+          activeStatuses={activeStatuses}
         />
-      </ReactFlow>
-      <UncategorizedPool graph={graph} scope={scope} />
+        <div className="stx-todo-flow__canvas">
+          <ReactFlow
+            nodes={viewNodes}
+            edges={edges}
+            edgeTypes={EDGE_TYPES}
+            onNodesChange={onNodesChange}
+            onNodeDragStop={onNodeDragStop}
+            onNodeClick={onNodeClick}
+            fitView
+            fitViewOptions={{ padding: 0.2 }}
+            nodesDraggable={true}
+            nodesConnectable={false}
+            elementsSelectable={true}
+            proOptions={{ hideAttribution: true }}
+          >
+            <FitOnChange dep={fitKey} />
+            <Background color={FLOW_DARK.bgDots} />
+            <Controls showInteractive={false} />
+            <MiniMap
+              pannable
+              zoomable
+              maskColor={FLOW_DARK.miniMapMask}
+              nodeColor={FLOW_DARK.miniMapNode}
+              nodeStrokeColor={FLOW_DARK.miniMapNodeStroke}
+              style={{ background: FLOW_DARK.miniMapBg }}
+            />
+          </ReactFlow>
+        </div>
+      </div>
       <NodeDetailPanelContainer />
     </div>
   );
