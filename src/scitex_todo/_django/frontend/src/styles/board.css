@@ -1023,3 +1023,131 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
     opacity: 0;
   }
 }
+
+/* ── View toggle (graph | table) ─────────────────────────────────────────── */
+.stx-todo-viewtoggle {
+  display: inline-flex;
+  border: 1px solid var(--stx-border-strong);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.stx-todo-viewtoggle__btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--stx-text-muted);
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+
+.stx-todo-viewtoggle__btn:hover {
+  background: var(--stx-hover-bg);
+}
+
+.stx-todo-viewtoggle__btn--on {
+  background: var(--stx-accent);
+  color: var(--stx-accent-on);
+  font-weight: 600;
+}
+
+/* ── Table view ──────────────────────────────────────────────────────────── */
+.stx-todo-table-wrap {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 8px 12px 12px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--stx-scrollbar-thumb) transparent;
+}
+
+.stx-todo-table-wrap::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.stx-todo-table-wrap::-webkit-scrollbar-thumb {
+  background: var(--stx-scrollbar-thumb);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.stx-todo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  color: var(--stx-text);
+}
+
+.stx-todo-table__th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  padding: 7px 10px;
+  background: var(--stx-panel-bg);
+  border-bottom: 1px solid var(--stx-border);
+  color: var(--stx-text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.stx-todo-table__th--sorted {
+  color: var(--stx-accent);
+}
+
+.stx-todo-table__caret {
+  font-size: 0.6rem;
+}
+
+.stx-todo-table__row {
+  cursor: pointer;
+  border-bottom: 1px solid var(--stx-border);
+}
+
+.stx-todo-table__row:hover {
+  background: var(--stx-hover-bg);
+}
+
+.stx-todo-table td {
+  padding: 6px 10px;
+  vertical-align: middle;
+}
+
+.stx-todo-table__title {
+  font-weight: 500;
+  max-width: 520px;
+}
+
+.stx-todo-table__status {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-size: 0.72rem;
+  color: #222;
+}
+
+.stx-todo-table__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--stx-text-muted);
+}
+
+.stx-todo-table__repo {
+  color: var(--stx-text-muted);
+  font-size: 0.78rem;
+}
+
+.stx-todo-table__empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--stx-text-faint);
+}

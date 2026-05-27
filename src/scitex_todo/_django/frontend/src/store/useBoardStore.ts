@@ -115,6 +115,11 @@ interface BoardStore {
   setStale: (v: boolean) => void;
   /** Reload the graph now and clear the stale flag. */
   refreshNow: () => Promise<void>;
+
+  // ── View mode ────────────────────────────────────────────────────────────
+  /** Which board view is active: the dependency graph, or a flat table. */
+  view: "graph" | "table";
+  setView: (v: "graph" | "table") => void;
 }
 
 export const useBoardStore = create<BoardStore>((set, get) => ({
@@ -265,6 +270,10 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     set({ stale: false });
     await get().load();
   },
+
+  // ── View mode ────────────────────────────────────────────────────────────
+  view: "graph",
+  setView: (v: "graph" | "table") => set({ view: v }),
 }));
 
 /** True iff a task matches the current text query + status filter.

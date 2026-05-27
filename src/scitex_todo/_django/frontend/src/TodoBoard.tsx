@@ -3,9 +3,43 @@
 
 import { useEffect, useMemo } from "react";
 import { GraphView } from "./GraphView";
+import { TableView } from "./TableView";
+import { NodeDetailPanelContainer } from "./NodeDetailPanel";
+import { ContextMenu } from "./ContextMenu";
+import { AutoRefresh } from "./AutoRefresh";
 import { EDGE_COLOR_BLOCKS, EDGE_COLOR_DEPENDS } from "./layout";
 import { useBoardStore } from "./store/useBoardStore";
 import type { GraphPayload, StatusColor } from "./types/board";
+
+/** Segmented toggle between the graph and the flat table view. */
+function ViewToggle() {
+  const view = useBoardStore((s) => s.view);
+  const setView = useBoardStore((s) => s.setView);
+  return (
+    <div className="stx-todo-viewtoggle" role="group" aria-label="View mode">
+      <button
+        type="button"
+        className={`stx-todo-viewtoggle__btn${
+          view === "graph" ? " stx-todo-viewtoggle__btn--on" : ""
+        }`}
+        onClick={() => setView("graph")}
+        aria-pressed={view === "graph"}
+      >
+        Graph
+      </button>
+      <button
+        type="button"
+        className={`stx-todo-viewtoggle__btn${
+          view === "table" ? " stx-todo-viewtoggle__btn--on" : ""
+        }`}
+        onClick={() => setView("table")}
+        aria-pressed={view === "table"}
+      >
+        Table
+      </button>
+    </div>
+  );
+}
 
 function Legend({ colors }: { colors: Record<string, StatusColor> }) {
   return (
@@ -135,6 +169,7 @@ function Toolbar({ graph }: { graph: GraphPayload }) {
 
 export function TodoBoard() {
   const { graph, loading, error, load } = useBoardStore();
+  const view = useBoardStore((s) => s.view);
 
   useEffect(() => {
     void load();
@@ -162,11 +197,21 @@ export function TodoBoard() {
           <code>{graph.store_path}</code>
         </span>
         <Progress graph={graph} />
+        <ViewToggle />
         <Legend colors={graph.status_colors} />
       </header>
       <Toolbar graph={graph} />
       <div className="stx-todo-board__canvas">
-        <GraphView graph={graph} />
+        {view === "graph" ? (
+          <GraphView graph={graph} />
+        ) : (
+          <TableView graph={graph} />
+        )}
+        {/* Drawer, context menu, and live-refresh poller are shared by both
+            views, so they live here rather than inside GraphView. */}
+        <NodeDetailPanelContainer />
+        <ContextMenu />
+        <AutoRefresh />
       </div>
     </div>
   );
