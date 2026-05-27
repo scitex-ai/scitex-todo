@@ -73,7 +73,10 @@ export function savePersistedView(v: PersistedView): void {
     const url = qs
       ? `${window.location.pathname}?${qs}`
       : window.location.pathname;
-    window.history.replaceState(null, "", url);
+    // Preserve the current history state object — the drill-history nav
+    // (DrillHistory) keeps its scope stack there; passing null would wipe it
+    // and break mouse/browser back-forward.
+    window.history.replaceState(window.history.state, "", url);
   } catch {
     /* ignore */
   }

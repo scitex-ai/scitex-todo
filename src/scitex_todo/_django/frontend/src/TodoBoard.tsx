@@ -7,6 +7,7 @@ import { TableView } from "./TableView";
 import { NodeDetailPanelContainer } from "./NodeDetailPanel";
 import { ContextMenu } from "./ContextMenu";
 import { AutoRefresh } from "./AutoRefresh";
+import { DrillHistory } from "./DrillHistory";
 import { EDGE_COLOR_BLOCKS, EDGE_COLOR_DEPENDS } from "./layout";
 import { useBoardStore } from "./store/useBoardStore";
 import type { GraphPayload, StatusColor } from "./types/board";
@@ -212,6 +213,7 @@ export function TodoBoard() {
         <NodeDetailPanelContainer />
         <ContextMenu />
         <AutoRefresh />
+        <DrillHistory />
       </div>
     </div>
   );
