@@ -212,4 +212,51 @@ def test_delete_unknown_id_returns_404(store):
     assert response.status_code == 404
 
 
+# ── comment ──────────────────────────────────────────────────────────────
+def test_comment_returns_ok(store):
+    # Arrange
+    body = {"id": "build", "text": "looks good", "author": "alice"}
+    # Act
+    response = _post("comment", store, body)
+    # Assert
+    assert response.status_code == 200
+
+
+def test_comment_appends_to_thread(store):
+    # Arrange
+    _post("comment", store, {"id": "build", "text": "one", "author": "a"})
+    # Act
+    _post("comment", store, {"id": "build", "text": "two", "author": "b"})
+    # Assert — both comments survive (append-only, no clobber).
+    texts = [c["text"] for c in _load(store)["build"]["comments"]]
+    assert texts == ["one", "two"]
+
+
+def test_comment_stamps_author_and_ts(store):
+    # Arrange
+    _post("comment", store, {"id": "build", "text": "hi", "author": "alice"})
+    # Act
+    entry = _load(store)["build"]["comments"][0]
+    # Assert
+    assert entry["author"] == "alice" and entry["ts"]
+
+
+def test_comment_rejects_missing_text_with_400(store):
+    # Arrange
+    body = {"id": "build"}
+    # Act
+    response = _post("comment", store, body)
+    # Assert
+    assert response.status_code == 400
+
+
+def test_comment_unknown_id_returns_404(store):
+    # Arrange
+    body = {"id": "ghost", "text": "x"}
+    # Act
+    response = _post("comment", store, body)
+    # Assert
+    assert response.status_code == 404
+
+
 # EOF

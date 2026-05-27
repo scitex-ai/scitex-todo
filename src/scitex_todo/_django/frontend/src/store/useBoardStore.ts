@@ -97,6 +97,8 @@ interface BoardStore {
   updateTask: (id: string, input: TaskInput) => Promise<void>;
   /** Delete a task and reload the graph (closing the drawer if it was open). */
   deleteTask: (id: string) => Promise<void>;
+  /** Append a comment to a task's thread and reload the graph. */
+  addComment: (id: string, text: string, author?: string) => Promise<void>;
 
   // ── Right-click context menu ─────────────────────────────────────────────
   /** Active context menu, or null when closed. */
@@ -227,6 +229,17 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         selectedNodeId: s.selectedNodeId === id ? null : s.selectedNodeId,
         editMode: s.selectedNodeId === id ? false : s.editMode,
       }));
+    } catch (e) {
+      set({ error: (e as Error).message, mutating: false });
+    }
+  },
+
+  addComment: async (id: string, text: string, author?: string) => {
+    set({ mutating: true, error: null });
+    try {
+      await api.addComment(id, text, author);
+      const graph = await api.graph();
+      set({ graph, mutating: false });
     } catch (e) {
       set({ error: (e as Error).message, mutating: false });
     }
