@@ -1147,3 +1147,13 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   text-align: center;
   color: var(--stx-text-faint);
 }
+
+/* Edge-kind picker swatch (EdgeKindMenu): a short bar in the edge color. */
+.stx-todo-menu__edge-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  margin-right: 7px;
+  vertical-align: middle;
+}
