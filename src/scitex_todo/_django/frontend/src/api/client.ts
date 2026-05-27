@@ -96,6 +96,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ id }),
     }),
+  /** Add or remove a dependency edge between two tasks. `source`/`target`
+   * follow the graph-payload orientation (dep→dependent for depends_on,
+   * blocker→blocked for blocks). */
+  edge: (
+    action: "add" | "remove",
+    kind: "depends_on" | "blocks",
+    source: string,
+    target: string,
+  ) =>
+    request<{ action: string; kind: string; store_path: string }>("edge", {
+      method: "POST",
+      body: JSON.stringify({ action, kind, source, target }),
+    }),
   /** Append a comment to a task's thread. The backend stamps ts + author
    * (author defaults to $USER when omitted). */
   addComment: (id: string, text: string, author?: string) =>

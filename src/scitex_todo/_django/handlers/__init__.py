@@ -11,6 +11,7 @@ from .crud import (
     handle_comment,
     handle_create,
     handle_delete,
+    handle_edge,
     handle_update,
 )
 from .graph import handle_graph, handle_ping, handle_rev, handle_tasks
@@ -27,6 +28,7 @@ HANDLERS = {
     "update": handle_update,
     "delete": handle_delete,
     "comment": handle_comment,
+    "edge": handle_edge,
 }
 
 # Endpoints that work without a loaded board (health checks).
