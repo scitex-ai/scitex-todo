@@ -65,6 +65,8 @@ interface BoardStore {
   query: string;
   /** Statuses to KEEP visible. Empty set = show all statuses. */
   activeStatuses: string[];
+  /** Repos to KEEP visible. Empty set = show all repos. */
+  activeRepos: string[];
   load: () => Promise<void>;
   reorderPriority: (order: string[]) => Promise<void>;
   selectNode: (id: string) => void;
@@ -79,7 +81,11 @@ interface BoardStore {
   setQuery: (q: string) => void;
   /** Toggle a status in/out of the keep-visible set. */
   toggleStatus: (status: string) => void;
-  /** Clear both the text query and the status filter. */
+  /** Toggle a repo in/out of the keep-visible set. */
+  toggleRepo: (repo: string) => void;
+  /** Replace the repo filter wholesale (used by the repo dropdown). */
+  setRepos: (repos: string[]) => void;
+  /** Clear the text query and the status + repo filters. */
   resetFilters: () => void;
 
   // ── CRUD ───────────────────────────────────────────────────────────────
@@ -176,6 +182,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   drillPath: _persisted.drillPath,
   query: _persisted.query,
   activeStatuses: _persisted.activeStatuses,
+  activeRepos: _persisted.activeRepos,
   mutating: false,
   editMode: false,
   creating: false,
@@ -243,7 +250,14 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         ? s.activeStatuses.filter((x) => x !== status)
         : [...s.activeStatuses, status],
     })),
-  resetFilters: () => set({ query: "", activeStatuses: [] }),
+  toggleRepo: (repo: string) =>
+    set((s) => ({
+      activeRepos: s.activeRepos.includes(repo)
+        ? s.activeRepos.filter((x) => x !== repo)
+        : [...s.activeRepos, repo],
+    })),
+  setRepos: (repos: string[]) => set({ activeRepos: repos }),
+  resetFilters: () => set({ query: "", activeStatuses: [], activeRepos: [] }),
 
   // ── CRUD ───────────────────────────────────────────────────────────────
   beginEdit: (id: string) =>
@@ -440,6 +454,7 @@ useBoardStore.subscribe((s) =>
   savePersistedView({
     query: s.query,
     activeStatuses: s.activeStatuses,
+    activeRepos: s.activeRepos,
     view: s.view,
     drillPath: s.drillPath,
   }),
@@ -453,15 +468,29 @@ useBoardStore.subscribe((s) =>
  * filters both views consistently.
  */
 export function taskMatchesFilter(
-  task: { id: string; title: string; status: string; repo?: string | null },
+  task: {
+    id: string;
+    title: string;
+    status: string;
+    repo?: string | null;
+    note?: string | null;
+    comments?: { text: string }[];
+  },
   query: string,
   activeStatuses: string[],
+  activeRepos: string[] = [],
 ): boolean {
   if (activeStatuses.length > 0 && !activeStatuses.includes(task.status)) {
     return false;
   }
+  if (activeRepos.length > 0 && !activeRepos.includes(task.repo ?? "")) {
+    return false;
+  }
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  const hay = `${task.title} ${task.id} ${task.repo ?? ""}`.toLowerCase();
+  // Deep search: title / id / repo + note body + comment text.
+  const comments = (task.comments ?? []).map((c) => c.text).join(" ");
+  const hay =
+    `${task.title} ${task.id} ${task.repo ?? ""} ${task.note ?? ""} ${comments}`.toLowerCase();
   return hay.includes(q);
 }

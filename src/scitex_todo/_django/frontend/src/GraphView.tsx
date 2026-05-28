@@ -202,19 +202,24 @@ function UncategorizedPool({
   scope,
   query,
   activeStatuses,
+  activeRepos,
 }: {
   graph: GraphPayload;
   scope: string | null;
   query: string;
   activeStatuses: string[];
+  activeRepos: string[];
 }) {
   const poolNodes = useMemo(
     () => partitionNodes(graph, scope).poolNodes,
     [graph, scope],
   );
   const visible = useMemo(
-    () => poolNodes.filter((n) => taskMatchesFilter(n, query, activeStatuses)),
-    [poolNodes, query, activeStatuses],
+    () =>
+      poolNodes.filter((n) =>
+        taskMatchesFilter(n, query, activeStatuses, activeRepos),
+      ),
+    [poolNodes, query, activeStatuses, activeRepos],
   );
   const selectNode = useBoardStore((s) => s.selectNode);
   const drillInto = useBoardStore((s) => s.drillInto);
@@ -389,6 +394,7 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
   const drillTo = useBoardStore((s) => s.drillTo);
   const query = useBoardStore((s) => s.query);
   const activeStatuses = useBoardStore((s) => s.activeStatuses);
+  const activeRepos = useBoardStore((s) => s.activeRepos);
   const openMenu = useBoardStore((s) => s.openMenu);
   const setEdge = useBoardStore((s) => s.setEdge);
   const openEdgePicker = useBoardStore((s) => s.openEdgePicker);
@@ -434,7 +440,10 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
     return m;
   }, [graph.nodes]);
 
-  const filtering = query.trim().length > 0 || activeStatuses.length > 0;
+  const filtering =
+    query.trim().length > 0 ||
+    activeStatuses.length > 0 ||
+    activeRepos.length > 0;
 
   // Dim non-matching graph nodes (keep them in place so the structure reads),
   // and ring any Ctrl+click multi-selected card.
@@ -444,7 +453,8 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
     return nodes.map((n) => {
       const task = byId.get(n.id);
       const match =
-        !filtering || (task ? taskMatchesFilter(task, query, activeStatuses) : true);
+        !filtering ||
+        (task ? taskMatchesFilter(task, query, activeStatuses, activeRepos) : true);
       const selected = sel.has(n.id);
       return {
         ...n,
@@ -456,7 +466,7 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
         },
       };
     });
-  }, [nodes, byId, filtering, query, activeStatuses, selectedIds]);
+  }, [nodes, byId, filtering, query, activeStatuses, activeRepos, selectedIds]);
 
   // Ids of the in-scope nodes that match the active filter — the search-jump
   // target so the viewport zooms to the matches instead of the whole scope.
@@ -465,10 +475,12 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
     return nodes
       .filter((n) => {
         const task = byId.get(n.id);
-        return task ? taskMatchesFilter(task, query, activeStatuses) : false;
+        return task
+          ? taskMatchesFilter(task, query, activeStatuses, activeRepos)
+          : false;
       })
       .map((n) => n.id);
-  }, [nodes, byId, filtering, query, activeStatuses]);
+  }, [nodes, byId, filtering, query, activeStatuses, activeRepos]);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setNodes((current) => applyNodeChanges(changes, current));
@@ -622,6 +634,7 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
           scope={scope}
           query={query}
           activeStatuses={activeStatuses}
+          activeRepos={activeRepos}
         />
         <div className="stx-todo-flow__canvas">
           <ReactFlow

@@ -12,6 +12,7 @@ const KEY = "stx-todo-view";
 export interface PersistedView {
   query: string;
   activeStatuses: string[];
+  activeRepos: string[];
   view: "graph" | "table";
   drillPath: string[];
 }
@@ -19,6 +20,7 @@ export interface PersistedView {
 const DEFAULTS: PersistedView = {
   query: "",
   activeStatuses: [],
+  activeRepos: [],
   view: "graph",
   drillPath: [],
 };
@@ -36,6 +38,7 @@ export function loadPersistedView(): PersistedView {
       const p = JSON.parse(raw) as Partial<PersistedView>;
       out.query = typeof p.query === "string" ? p.query : "";
       out.activeStatuses = strings(p.activeStatuses);
+      out.activeRepos = strings(p.activeRepos);
       out.view = p.view === "table" ? "table" : "graph";
       out.drillPath = strings(p.drillPath);
     }
