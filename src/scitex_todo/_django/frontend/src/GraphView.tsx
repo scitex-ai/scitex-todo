@@ -220,9 +220,8 @@ function UncategorizedPool({
   const drillInto = useBoardStore((s) => s.drillInto);
   const openMenu = useBoardStore((s) => s.openMenu);
   const beginCreate = useBoardStore((s) => s.beginCreate);
-  // Collapsed by default so the canvas owns the full width on load; the
-  // operator expands the pool via its title toggle when they want it.
-  const [open, setOpen] = useState(false);
+  // Expanded by default; collapse to the thin rail via the title toggle.
+  const [open, setOpen] = useState(true);
 
   // Group the visible pool items by status, in canonical STATUSES order, so
   // the flat inbox reads as collapsible structural sections instead of one
