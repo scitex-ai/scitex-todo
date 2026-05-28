@@ -35,6 +35,7 @@ const COLUMNS: { key: SortKey; label: string; className?: string }[] = [
 export function TableView({ graph }: { graph: GraphPayload }) {
   const query = useBoardStore((s) => s.query);
   const activeStatuses = useBoardStore((s) => s.activeStatuses);
+  const activeRepos = useBoardStore((s) => s.activeRepos);
   const selectNode = useBoardStore((s) => s.selectNode);
   const drillInto = useBoardStore((s) => s.drillInto);
   const openMenu = useBoardStore((s) => s.openMenu);
@@ -56,7 +57,7 @@ export function TableView({ graph }: { graph: GraphPayload }) {
 
   const rows = useMemo<Row[]>(() => {
     const filtered = graph.nodes.filter((n) =>
-      taskMatchesFilter(n, query, activeStatuses),
+      taskMatchesFilter(n, query, activeStatuses, activeRepos),
     );
     const mapped: Row[] = filtered.map((n) => ({
       node: n,
@@ -89,7 +90,7 @@ export function TableView({ graph }: { graph: GraphPayload }) {
       if (va > vb) return 1 * dir;
       return a.node.title.localeCompare(b.node.title);
     });
-  }, [graph, degree, query, activeStatuses, sortKey, sortDir]);
+  }, [graph, degree, query, activeStatuses, activeRepos, sortKey, sortDir]);
 
   const onSort = (key: SortKey) => {
     if (key === sortKey) {

@@ -119,18 +119,29 @@ function Progress({ graph }: { graph: GraphPayload }) {
 function Toolbar({ graph }: { graph: GraphPayload }) {
   const query = useBoardStore((s) => s.query);
   const activeStatuses = useBoardStore((s) => s.activeStatuses);
+  const activeRepos = useBoardStore((s) => s.activeRepos);
   const setQuery = useBoardStore((s) => s.setQuery);
   const toggleStatus = useBoardStore((s) => s.toggleStatus);
+  const setRepos = useBoardStore((s) => s.setRepos);
   const resetFilters = useBoardStore((s) => s.resetFilters);
   const statuses = Object.keys(graph.status_colors);
-  const filtering = query.trim().length > 0 || activeStatuses.length > 0;
+  // Distinct, sorted repos present on the board (for the facet chips).
+  const repos = useMemo(() => {
+    const set = new Set<string>();
+    for (const n of graph.nodes) if (n.repo) set.add(n.repo);
+    return [...set].sort();
+  }, [graph.nodes]);
+  const filtering =
+    query.trim().length > 0 ||
+    activeStatuses.length > 0 ||
+    activeRepos.length > 0;
 
   return (
     <div className="stx-todo-toolbar">
       <input
         className="stx-todo-toolbar__search"
         type="search"
-        placeholder="Search tasks (title / id / repo)…"
+        placeholder="Search (title / id / repo / note / comments)…"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         aria-label="Search tasks"
@@ -157,6 +168,24 @@ function Toolbar({ graph }: { graph: GraphPayload }) {
           );
         })}
       </div>
+      {repos.length > 0 && (
+        <select
+          className={`stx-todo-toolbar__repo${
+            activeRepos.length ? " stx-todo-toolbar__repo--on" : ""
+          }`}
+          value={activeRepos[0] ?? ""}
+          onChange={(e) => setRepos(e.target.value ? [e.target.value] : [])}
+          aria-label="Filter by repo"
+          title="Filter by repo"
+        >
+          <option value="">All repos ({repos.length})</option>
+          {repos.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
+      )}
       {filtering && (
         <button
           type="button"

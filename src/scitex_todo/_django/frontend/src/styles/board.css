@@ -1229,3 +1229,22 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   line-height: 1;
   cursor: pointer;
 }
+
+/* Repo facet dropdown (TodoBoard Toolbar) — accent border when a repo is set. */
+.stx-todo-toolbar__repo {
+  appearance: auto;
+  padding: 4px 8px;
+  border: 1px solid var(--stx-border-strong);
+  border-radius: 6px;
+  background: var(--stx-input-bg);
+  color: var(--stx-text);
+  font: inherit;
+  font-size: 0.75rem;
+  max-width: 180px;
+  cursor: pointer;
+}
+.stx-todo-toolbar__repo--on {
+  border-color: var(--stx-accent);
+  color: var(--stx-accent);
+  font-weight: 600;
+}
