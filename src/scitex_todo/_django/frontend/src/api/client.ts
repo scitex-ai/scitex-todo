@@ -90,11 +90,26 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ id, ...input }),
     }),
-  /** Delete a task; the backend also scrubs edges/parent refs to it. */
+  /** Delete a task; the backend also scrubs edges/parent refs to it, and
+   * returns the removed task + scrubbed refs so the delete can be undone. */
   deleteTask: (id: string) =>
-    request<{ deleted: string; store_path: string }>("delete", {
+    request<{
+      deleted: string;
+      removed: Record<string, unknown> & { id: string };
+      refs: { id: string; field: string }[];
+      store_path: string;
+    }>("delete", {
       method: "POST",
       body: JSON.stringify({ id }),
+    }),
+  /** Undo a delete: re-insert the removed task + re-add its scrubbed refs. */
+  restoreTask: (
+    task: Record<string, unknown>,
+    refs: { id: string; field: string }[],
+  ) =>
+    request<{ restored: string; store_path: string }>("restore", {
+      method: "POST",
+      body: JSON.stringify({ task, refs }),
     }),
   /** Add or remove a dependency edge between two tasks. `source`/`target`
    * follow the graph-payload orientation (dep→dependent for depends_on,

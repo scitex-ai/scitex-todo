@@ -396,6 +396,7 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
   const selectedIds = useBoardStore((s) => s.selectedIds);
   const toggleSelected = useBoardStore((s) => s.toggleSelected);
   const clearSelected = useBoardStore((s) => s.clearSelected);
+  const showToast = useBoardStore((s) => s.showToast);
 
   // Last pointer position, so onConnect (which has no mouse coords) can place
   // the edge-kind picker where the connection was dropped.
@@ -522,7 +523,12 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
           }
         }
         if (near && nearRatio >= GROUP_OVERLAP) {
-          void updateTask(node.id, { parent: near.id });
+          const prevParent = byId.get(node.id)?.parent ?? null;
+          const childId = node.id;
+          void updateTask(childId, { parent: near.id });
+          showToast("Grouped card", () => {
+            void updateTask(childId, { parent: prevParent });
+          });
         } else if (near && nearGap <= PROXIMITY_PX) {
           openEdgePicker(node.id, near.id, event.clientX, event.clientY);
         } else {
@@ -531,7 +537,7 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
         return current;
       });
     },
-    [reorderPriority, updateTask, openEdgePicker],
+    [reorderPriority, updateTask, openEdgePicker, byId, showToast],
   );
 
   const onNodeClick = useCallback(

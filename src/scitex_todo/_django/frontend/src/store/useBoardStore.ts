@@ -159,6 +159,12 @@ interface BoardStore {
   bulkDelete: (ids: string[]) => Promise<void>;
   /** Nest the given children under `parentId`, then reload + clear selection. */
   bulkGroupUnder: (parentId: string, ids: string[]) => Promise<void>;
+
+  // ── Undo toast ────────────────────────────────────────────────────────────
+  /** Transient toast with an optional Undo action (delete / group / edge). */
+  toast: { message: string; undo: (() => void) | null } | null;
+  showToast: (message: string, undo?: (() => void) | null) => void;
+  dismissToast: () => void;
 }
 
 export const useBoardStore = create<BoardStore>((set, get) => ({
@@ -279,8 +285,9 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   },
   deleteTask: async (id: string) => {
     set({ mutating: true, error: null });
+    const title = get().graph?.nodes.find((n) => n.id === id)?.title ?? id;
     try {
-      await api.deleteTask(id);
+      const res = await api.deleteTask(id);
       const graph = await api.graph();
       set((s) => ({
         graph,
@@ -290,6 +297,10 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         selectedNodeId: s.selectedNodeId === id ? null : s.selectedNodeId,
         editMode: s.selectedNodeId === id ? false : s.editMode,
       }));
+      get().showToast(`Deleted “${title}”`, async () => {
+        await api.restoreTask(res.removed, res.refs);
+        set({ graph: await api.graph() });
+      });
     } catch (e) {
       set({ error: (e as Error).message, mutating: false });
     }
@@ -312,6 +323,13 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
       await api.edge(action, kind, source, target);
       const graph = await api.graph();
       set({ graph, mutating: false });
+      if (action === "add") {
+        const label = kind === "blocks" ? "blocks" : "depends-on";
+        get().showToast(`Added ${label} edge`, async () => {
+          await api.edge("remove", kind, source, target);
+          set({ graph: await api.graph() });
+        });
+      }
     } catch (e) {
       set({ error: (e as Error).message, mutating: false });
     }
@@ -361,7 +379,14 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   bulkDelete: async (ids: string[]) => {
     set({ mutating: true, error: null });
     try {
-      for (const id of ids) await api.deleteTask(id);
+      const removed: {
+        task: Record<string, unknown>;
+        refs: { id: string; field: string }[];
+      }[] = [];
+      for (const id of ids) {
+        const res = await api.deleteTask(id);
+        removed.push({ task: res.removed, refs: res.refs });
+      }
       const graph = await api.graph();
       set((s) => ({
         graph,
@@ -372,6 +397,10 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
           ? null
           : s.selectedNodeId,
       }));
+      get().showToast(`Deleted ${ids.length} tasks`, async () => {
+        for (const r of removed) await api.restoreTask(r.task, r.refs);
+        set({ graph: await api.graph() });
+      });
     } catch (e) {
       set({ error: (e as Error).message, mutating: false });
     }
@@ -379,15 +408,30 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   bulkGroupUnder: async (parentId: string, ids: string[]) => {
     set({ mutating: true, error: null });
     try {
+      const byId = new Map((get().graph?.nodes ?? []).map((n) => [n.id, n]));
+      const prev: { id: string; parent: string | null }[] = [];
       for (const id of ids) {
-        if (id !== parentId) await api.updateTask(id, { parent: parentId });
+        if (id !== parentId) {
+          prev.push({ id, parent: byId.get(id)?.parent ?? null });
+          await api.updateTask(id, { parent: parentId });
+        }
       }
       const graph = await api.graph();
       set({ graph, mutating: false, selectedIds: [], menu: null });
+      get().showToast(`Grouped ${prev.length} under task`, async () => {
+        for (const p of prev) await api.updateTask(p.id, { parent: p.parent });
+        set({ graph: await api.graph() });
+      });
     } catch (e) {
       set({ error: (e as Error).message, mutating: false });
     }
   },
+
+  // ── Undo toast ────────────────────────────────────────────────────────────
+  toast: null,
+  showToast: (message: string, undo: (() => void) | null = null) =>
+    set({ toast: { message, undo } }),
+  dismissToast: () => set({ toast: null }),
 }));
 
 // Persist the view slice (filter / scope / mode) whenever it changes, so a
