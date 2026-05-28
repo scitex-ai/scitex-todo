@@ -23,6 +23,9 @@ export function ContextMenu() {
   const graph = useBoardStore((s) => s.graph);
   const selectedIds = useBoardStore((s) => s.selectedIds);
   const clearSelected = useBoardStore((s) => s.clearSelected);
+  const bulkSetStatus = useBoardStore((s) => s.bulkSetStatus);
+  const bulkDelete = useBoardStore((s) => s.bulkDelete);
+  const bulkGroupUnder = useBoardStore((s) => s.bulkGroupUnder);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,6 +42,13 @@ export function ContextMenu() {
   const task = menu.taskId
     ? graph?.nodes.find((n) => n.id === menu.taskId)
     : null;
+
+  // Bulk mode: the right-clicked card is part of a 2+ multi-selection, so
+  // Set status / Delete / Group act on the whole selection.
+  const bulk =
+    !!menu.taskId &&
+    selectedIds.length > 1 &&
+    selectedIds.includes(menu.taskId);
 
   // Clamp so the menu never overflows the right/bottom edge.
   const MENU_W = 200;
@@ -106,12 +116,26 @@ export function ContextMenu() {
             >
               ✎ Edit…
             </button>
+            {bulk && (
+              <button
+                type="button"
+                className="stx-todo-menu__item"
+                role="menuitem"
+                onClick={() =>
+                  void bulkGroupUnder(menu.taskId as string, selectedIds)
+                }
+              >
+                ▤ Group {selectedIds.length - 1} under this
+              </button>
+            )}
             <div className="stx-todo-menu__sep" />
-            <div className="stx-todo-menu__group-label">Set status</div>
+            <div className="stx-todo-menu__group-label">
+              {bulk ? `Set status (${selectedIds.length})` : "Set status"}
+            </div>
             <div className="stx-todo-menu__statuses">
               {STATUSES.map((s) => {
                 const c = graph?.status_colors[s];
-                const current = task?.status === s;
+                const current = !bulk && task?.status === s;
                 return (
                   <button
                     type="button"
@@ -121,7 +145,9 @@ export function ContextMenu() {
                     }`}
                     role="menuitem"
                     onClick={() =>
-                      void updateTask(menu.taskId as string, { status: s })
+                      bulk
+                        ? void bulkSetStatus(selectedIds, s)
+                        : void updateTask(menu.taskId as string, { status: s })
                     }
                   >
                     <span
@@ -143,6 +169,18 @@ export function ContextMenu() {
               className="stx-todo-menu__item stx-todo-menu__item--danger"
               role="menuitem"
               onClick={() => {
+                if (bulk) {
+                  if (
+                    window.confirm(
+                      `Delete ${selectedIds.length} tasks? This cannot be undone.`,
+                    )
+                  ) {
+                    void bulkDelete(selectedIds);
+                  } else {
+                    closeMenu();
+                  }
+                  return;
+                }
                 const label = task ? task.title : (menu.taskId as string);
                 if (window.confirm(`Delete "${label}"? This cannot be undone.`)) {
                   void deleteTask(menu.taskId as string);
@@ -151,7 +189,7 @@ export function ContextMenu() {
                 }
               }}
             >
-              🗑 Delete
+              🗑 Delete{bulk ? ` ${selectedIds.length}` : ""}
             </button>
           </>
         )}
