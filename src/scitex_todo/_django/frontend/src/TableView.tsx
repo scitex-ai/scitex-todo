@@ -38,6 +38,9 @@ export function TableView({ graph }: { graph: GraphPayload }) {
   const selectNode = useBoardStore((s) => s.selectNode);
   const drillInto = useBoardStore((s) => s.drillInto);
   const openMenu = useBoardStore((s) => s.openMenu);
+  const selectedIds = useBoardStore((s) => s.selectedIds);
+  const toggleSelected = useBoardStore((s) => s.toggleSelected);
+  const clearSelected = useBoardStore((s) => s.clearSelected);
   const [sortKey, setSortKey] = useState<SortKey>("priority");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -124,13 +127,22 @@ export function TableView({ graph }: { graph: GraphPayload }) {
         <tbody>
           {rows.map(({ node, deps, comments, hasChildren }) => {
             const c = graph.status_colors[node.status];
+            const selected = selectedIds.includes(node.id);
             return (
               <tr
                 key={node.id}
-                className="stx-todo-table__row"
-                onClick={() =>
-                  hasChildren ? drillInto(node.id) : selectNode(node.id)
-                }
+                className={`stx-todo-table__row${
+                  selected ? " stx-todo-table__row--selected" : ""
+                }`}
+                onClick={(e) => {
+                  if (e.ctrlKey || e.metaKey) {
+                    toggleSelected(node.id);
+                    return;
+                  }
+                  clearSelected();
+                  if (hasChildren) drillInto(node.id);
+                  else selectNode(node.id);
+                }}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   openMenu(e.clientX, e.clientY, node.id);

@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import { copyTasks } from "./clipboard";
 import { STATUSES, useBoardStore } from "./store/useBoardStore";
 
 export function ContextMenu() {
@@ -20,6 +21,8 @@ export function ContextMenu() {
   const updateTask = useBoardStore((s) => s.updateTask);
   const deleteTask = useBoardStore((s) => s.deleteTask);
   const graph = useBoardStore((s) => s.graph);
+  const selectedIds = useBoardStore((s) => s.selectedIds);
+  const clearSelected = useBoardStore((s) => s.clearSelected);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -73,6 +76,28 @@ export function ContextMenu() {
             <div className="stx-todo-menu__label" title={menu.taskId}>
               {task ? task.title : menu.taskId}
             </div>
+            <button
+              type="button"
+              className="stx-todo-menu__item"
+              role="menuitem"
+              onClick={() => {
+                // Copy the multi-selection if the clicked card is part of it
+                // (and there's more than one); otherwise just this card.
+                const id = menu.taskId as string;
+                const ids =
+                  selectedIds.length > 1 && selectedIds.includes(id)
+                    ? selectedIds
+                    : [id];
+                if (graph) void copyTasks(graph, ids);
+                clearSelected();
+                closeMenu();
+              }}
+            >
+              📋 Copy
+              {selectedIds.length > 1 && selectedIds.includes(menu.taskId)
+                ? ` ${selectedIds.length} selected`
+                : ""}
+            </button>
             <button
               type="button"
               className="stx-todo-menu__item"

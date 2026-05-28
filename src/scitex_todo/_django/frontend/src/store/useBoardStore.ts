@@ -145,6 +145,14 @@ interface BoardStore {
   /** Which board view is active: the dependency graph, or a flat table. */
   view: "graph" | "table";
   setView: (v: "graph" | "table") => void;
+
+  // ── Multi-select (Ctrl+click) for bulk copy ──────────────────────────────
+  /** Ids of cards marked via Ctrl/⌘+click; right-click → Copy acts on these. */
+  selectedIds: string[];
+  /** Toggle a card's membership in the multi-selection. */
+  toggleSelected: (id: string) => void;
+  /** Clear the multi-selection. */
+  clearSelected: () => void;
 }
 
 export const useBoardStore = create<BoardStore>((set, get) => ({
@@ -324,6 +332,16 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   // ── View mode ────────────────────────────────────────────────────────────
   view: _persisted.view,
   setView: (v: "graph" | "table") => set({ view: v }),
+
+  // ── Multi-select ─────────────────────────────────────────────────────────
+  selectedIds: [],
+  toggleSelected: (id: string) =>
+    set((s) => ({
+      selectedIds: s.selectedIds.includes(id)
+        ? s.selectedIds.filter((x) => x !== id)
+        : [...s.selectedIds, id],
+    })),
+  clearSelected: () => set({ selectedIds: [] }),
 }));
 
 // Persist the view slice (filter / scope / mode) whenever it changes, so a

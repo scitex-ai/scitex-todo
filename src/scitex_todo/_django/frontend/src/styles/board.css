@@ -1165,3 +1165,14 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   margin-right: 7px;
   vertical-align: middle;
 }
+
+/* Multi-select (Ctrl+click) highlight for pool items + table rows. */
+.stx-todo-pool__item--selected {
+  outline: 2px solid var(--stx-accent);
+  outline-offset: 1px;
+}
+
+.stx-todo-table__row--selected {
+  background: var(--stx-hover-bg);
+  box-shadow: inset 3px 0 0 0 var(--stx-accent);
+}
