@@ -212,6 +212,49 @@ def test_delete_unknown_id_returns_404(store):
     assert response.status_code == 404
 
 
+def test_delete_returns_removed_task_and_refs(store):
+    # Arrange — `gate` depends_on `build`; deleting `build` scrubs that ref.
+    # Act
+    payload = json.loads(_post("delete", store, {"id": "build"}).content)
+    # Assert
+    assert (
+        payload["removed"]["id"] == "build"
+        and {
+            "id": "gate",
+            "field": "depends_on",
+        }
+        in payload["refs"]
+    )
+
+
+# ── restore (undo delete) ──────────────────────────────────────────────────
+def test_restore_reinserts_task(store):
+    # Arrange — delete then restore `build` from the response.
+    deleted = json.loads(_post("delete", store, {"id": "build"}).content)
+    # Act
+    _post("restore", store, {"task": deleted["removed"], "refs": deleted["refs"]})
+    # Assert
+    assert "build" in _load(store)
+
+
+def test_restore_reapplies_scrubbed_refs(store):
+    # Arrange
+    deleted = json.loads(_post("delete", store, {"id": "build"}).content)
+    # Act
+    _post("restore", store, {"task": deleted["removed"], "refs": deleted["refs"]})
+    # Assert — `gate.depends_on` regained `build`.
+    assert "build" in _load(store)["gate"]["depends_on"]
+
+
+def test_restore_requires_task_with_id(store):
+    # Arrange
+    body = {"task": {"title": "x"}, "refs": []}
+    # Act
+    response = _post("restore", store, body)
+    # Assert
+    assert response.status_code == 400
+
+
 # ── comment ──────────────────────────────────────────────────────────────
 def test_comment_returns_ok(store):
     # Arrange

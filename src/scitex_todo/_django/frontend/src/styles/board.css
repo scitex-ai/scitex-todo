@@ -1176,3 +1176,56 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   background: var(--stx-hover-bg);
   box-shadow: inset 3px 0 0 0 var(--stx-accent);
 }
+
+/* ── Undo toast (Toast.tsx) ──────────────────────────────────────────────── */
+.stx-todo-toast {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px 8px 14px;
+  border: 1px solid var(--stx-border);
+  border-radius: 8px;
+  background: var(--stx-panel-bg);
+  color: var(--stx-text);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  font-size: 0.82rem;
+  max-width: 80%;
+}
+
+.stx-todo-toast__msg {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stx-todo-toast__undo {
+  appearance: none;
+  border: 1px solid var(--stx-accent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--stx-accent);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.78rem;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+
+.stx-todo-toast__undo:hover {
+  background: var(--stx-hover-bg);
+}
+
+.stx-todo-toast__close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--stx-text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}

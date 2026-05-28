@@ -9,6 +9,7 @@ import { ContextMenu } from "./ContextMenu";
 import { EdgeKindMenu } from "./EdgeKindMenu";
 import { AutoRefresh } from "./AutoRefresh";
 import { DrillHistory } from "./DrillHistory";
+import { Toast } from "./Toast";
 import { EDGE_COLOR_BLOCKS, EDGE_COLOR_DEPENDS } from "./layout";
 import { useBoardStore } from "./store/useBoardStore";
 import type { GraphPayload, StatusColor } from "./types/board";
@@ -216,6 +217,7 @@ export function TodoBoard() {
         <EdgeKindMenu />
         <AutoRefresh />
         <DrillHistory />
+        <Toast />
       </div>
     </div>
   );
