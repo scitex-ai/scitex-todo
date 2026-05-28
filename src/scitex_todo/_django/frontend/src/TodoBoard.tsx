@@ -12,7 +12,16 @@ import { DrillHistory } from "./DrillHistory";
 import { Toast } from "./Toast";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
 import { EDGE_COLOR_BLOCKS, EDGE_COLOR_DEPENDS } from "./layout";
-import { useBoardStore } from "./store/useBoardStore";
+import {
+  taskMatchesFilter,
+  useBoardStore,
+} from "./store/useBoardStore";
+import {
+  downloadText,
+  toCsv,
+  toJson,
+  toMarkdown,
+} from "./exportBoard";
 import type { GraphPayload, StatusColor } from "./types/board";
 
 /** Segmented toggle between the graph and the flat table view. */
@@ -79,14 +88,24 @@ function Legend({ colors }: { colors: Record<string, StatusColor> }) {
   );
 }
 
-/** Per-status progress summary computed from the full task set. */
+/** Per-status progress summary. Narrows to the current drill scope when one
+ * is active (direct children of the scope), else counts the whole store. */
 function Progress({ graph }: { graph: GraphPayload }) {
+  const drillPath = useBoardStore((s) => s.drillPath);
+  const scope = drillPath.length ? drillPath[drillPath.length - 1] : null;
+  const scoped = useMemo(
+    () =>
+      scope === null
+        ? graph.nodes
+        : graph.nodes.filter((n) => n.parent === scope),
+    [graph.nodes, scope],
+  );
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
-    for (const n of graph.nodes) c[n.status] = (c[n.status] ?? 0) + 1;
+    for (const n of scoped) c[n.status] = (c[n.status] ?? 0) + 1;
     return c;
-  }, [graph.nodes]);
-  const total = graph.nodes.length;
+  }, [scoped]);
+  const total = scoped.length;
   const done = counts["done"] ?? 0;
   const pct = total ? Math.round((done / total) * 100) : 0;
   // Order the chips so the "alive" states read left→right.
@@ -102,6 +121,7 @@ function Progress({ graph }: { graph: GraphPayload }) {
   return (
     <span className="stx-todo-progress" aria-label="Progress summary">
       <strong>
+        {scope ? "scope " : ""}
         {done}/{total} done ({pct}%)
       </strong>
       {order
@@ -196,7 +216,59 @@ function Toolbar({ graph }: { graph: GraphPayload }) {
           clear
         </button>
       )}
+      <ExportGroup graph={graph} />
     </div>
+  );
+}
+
+/** Export the currently-visible (filtered) tasks to a downloaded file. */
+function ExportGroup({ graph }: { graph: GraphPayload }) {
+  const query = useBoardStore((s) => s.query);
+  const activeStatuses = useBoardStore((s) => s.activeStatuses);
+  const activeRepos = useBoardStore((s) => s.activeRepos);
+  const visible = useMemo(
+    () =>
+      graph.nodes.filter((n) =>
+        taskMatchesFilter(n, query, activeStatuses, activeRepos),
+      ),
+    [graph.nodes, query, activeStatuses, activeRepos],
+  );
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  const base = `scitex-todo-${stamp}-${visible.length}`;
+  return (
+    <span
+      className="stx-todo-toolbar__export"
+      role="group"
+      aria-label={`Export ${visible.length} visible tasks`}
+      title={`Export ${visible.length} visible tasks`}
+    >
+      <span className="stx-todo-toolbar__export-label">Export</span>
+      <button
+        type="button"
+        className="stx-todo-chip stx-todo-chip--export"
+        onClick={() =>
+          downloadText(toMarkdown(graph, visible), `${base}.md`, "text/markdown")
+        }
+      >
+        MD
+      </button>
+      <button
+        type="button"
+        className="stx-todo-chip stx-todo-chip--export"
+        onClick={() => downloadText(toCsv(graph, visible), `${base}.csv`, "text/csv")}
+      >
+        CSV
+      </button>
+      <button
+        type="button"
+        className="stx-todo-chip stx-todo-chip--export"
+        onClick={() =>
+          downloadText(toJson(graph, visible), `${base}.json`, "application/json")
+        }
+      >
+        JSON
+      </button>
+    </span>
   );
 }
 

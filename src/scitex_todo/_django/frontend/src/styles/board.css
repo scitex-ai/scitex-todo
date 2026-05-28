@@ -1248,3 +1248,26 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   color: var(--stx-accent);
   font-weight: 600;
 }
+
+/* Export group (TodoBoard Toolbar) — Markdown / CSV / JSON buttons. */
+.stx-todo-toolbar__export {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.stx-todo-toolbar__export-label {
+  font-size: 0.7rem;
+  color: var(--stx-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.stx-todo-chip--export {
+  border-color: var(--stx-border-strong);
+  color: var(--stx-text-muted);
+  padding: 2px 8px;
+}
+.stx-todo-chip--export:hover {
+  background: var(--stx-hover-bg);
+  color: var(--stx-accent);
+}
