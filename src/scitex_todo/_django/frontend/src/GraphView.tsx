@@ -220,6 +220,9 @@ function UncategorizedPool({
   const drillInto = useBoardStore((s) => s.drillInto);
   const openMenu = useBoardStore((s) => s.openMenu);
   const beginCreate = useBoardStore((s) => s.beginCreate);
+  const selectedIds = useBoardStore((s) => s.selectedIds);
+  const toggleSelected = useBoardStore((s) => s.toggleSelected);
+  const clearSelected = useBoardStore((s) => s.clearSelected);
   // Expanded by default; collapse to the thin rail via the title toggle.
   const [open, setOpen] = useState(true);
 
@@ -257,16 +260,25 @@ function UncategorizedPool({
     const style = hasChildren
       ? parentNodeStyle(baseStyle, kids, graph.status_colors[n.status])
       : baseStyle;
-    const onClick = () => (hasChildren ? drillInto(n.id) : selectNode(n.id));
+    const selected = selectedIds.includes(n.id);
+    const onClick = (e: ReactMouseEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        toggleSelected(n.id);
+        return;
+      }
+      clearSelected();
+      if (hasChildren) drillInto(n.id);
+      else selectNode(n.id);
+    };
     return (
       <button
         type="button"
         key={n.id}
-        className={
+        className={`${
           hasChildren
             ? "stx-todo-pool__item stx-todo-pool__item--parent"
             : "stx-todo-pool__item stx-todo-pool__item--leaf"
-        }
+        }${selected ? " stx-todo-pool__item--selected" : ""}`}
         style={style}
         onClick={onClick}
         onContextMenu={(e) => {
@@ -381,6 +393,9 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
   const setEdge = useBoardStore((s) => s.setEdge);
   const openEdgePicker = useBoardStore((s) => s.openEdgePicker);
   const updateTask = useBoardStore((s) => s.updateTask);
+  const selectedIds = useBoardStore((s) => s.selectedIds);
+  const toggleSelected = useBoardStore((s) => s.toggleSelected);
+  const clearSelected = useBoardStore((s) => s.clearSelected);
 
   // Last pointer position, so onConnect (which has no mouse coords) can place
   // the edge-kind picker where the connection was dropped.
@@ -420,19 +435,27 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
 
   const filtering = query.trim().length > 0 || activeStatuses.length > 0;
 
-  // Dim non-matching graph nodes (keep them in place so the structure reads).
+  // Dim non-matching graph nodes (keep them in place so the structure reads),
+  // and ring any Ctrl+click multi-selected card.
   const viewNodes = useMemo<Node[]>(() => {
-    if (!filtering) return nodes;
+    if (!filtering && selectedIds.length === 0) return nodes;
+    const sel = new Set(selectedIds);
     return nodes.map((n) => {
       const task = byId.get(n.id);
-      const match = task
-        ? taskMatchesFilter(task, query, activeStatuses)
-        : true;
-      return match
-        ? { ...n, style: { ...n.style, opacity: 1 } }
-        : { ...n, style: { ...n.style, opacity: 0.16 } };
+      const match =
+        !filtering || (task ? taskMatchesFilter(task, query, activeStatuses) : true);
+      const selected = sel.has(n.id);
+      return {
+        ...n,
+        style: {
+          ...n.style,
+          opacity: match ? 1 : 0.16,
+          outline: selected ? "3px solid var(--stx-accent)" : undefined,
+          outlineOffset: selected ? "2px" : undefined,
+        },
+      };
     });
-  }, [nodes, byId, filtering, query, activeStatuses]);
+  }, [nodes, byId, filtering, query, activeStatuses, selectedIds]);
 
   // Ids of the in-scope nodes that match the active filter — the search-jump
   // target so the viewport zooms to the matches instead of the whole scope.
@@ -512,14 +535,21 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
   );
 
   const onNodeClick = useCallback(
-    (_event: ReactMouseEvent, node: Node) => {
+    (event: ReactMouseEvent, node: Node) => {
+      // Ctrl/⌘+click toggles multi-selection (for bulk copy) instead of
+      // opening the drawer / drilling in.
+      if (event.ctrlKey || event.metaKey) {
+        toggleSelected(node.id);
+        return;
+      }
+      clearSelected();
       if (nodeHasChildren(graph, node.id)) {
         drillInto(node.id);
       } else {
         selectNode(node.id);
       }
     },
-    [graph, drillInto, selectNode],
+    [graph, drillInto, selectNode, toggleSelected, clearSelected],
   );
 
   // Right-click a node -> card context menu (edit / status / delete).
