@@ -1,0 +1,217 @@
+/* scitex-todo board — node detail drawer + markdown rendering.
+ * Imported by board.css (kept as one import site).
+ *
+ * Colors come from the --stx-* palette defined on .stx-todo-board (board.css),
+ * which is derived from the scitex-ui shell theme vars and flips with
+ * <html data-theme>. The drawer is rendered inside .stx-todo-board, so those
+ * variables cascade here. */
+
+/* ── Node detail drawer ──────────────────────────────────────────────────
+ * Right-side panel that opens when a graph or pool card is clicked. The
+ * backdrop is a transparent click-catcher that dims the canvas slightly
+ * and closes the drawer on click-away. */
+.stx-todo-detail__backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: rgba(10, 10, 18, 0.32);
+  display: flex;
+  justify-content: flex-end;
+  cursor: pointer; /* click-away is the primary close action */
+}
+
+.stx-todo-detail {
+  width: min(480px, 90%);
+  height: 100%;
+  padding: 18px 22px 22px 22px;
+  background: var(--stx-panel-bg);
+  color: var(--stx-text);
+  border-left: 1px solid var(--stx-border);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+  cursor: default;
+  font-family: -apple-system, system-ui, sans-serif;
+}
+
+.stx-todo-detail__header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-bottom: 1px solid var(--stx-border);
+  padding-bottom: 12px;
+}
+
+.stx-todo-detail__title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.stx-todo-detail__title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--stx-text);
+  line-height: 1.3;
+}
+
+.stx-todo-detail__close {
+  appearance: none;
+  background: transparent;
+  color: var(--stx-text-muted);
+  border: 1px solid var(--stx-border);
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.stx-todo-detail__close:hover,
+.stx-todo-detail__close:focus-visible {
+  background: var(--stx-hover-bg);
+  color: var(--stx-text);
+  outline: none;
+}
+
+.stx-todo-detail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  font-size: 0.78rem;
+  color: var(--stx-text-muted);
+}
+
+.stx-todo-detail__badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.stx-todo-detail__prio,
+.stx-todo-detail__repo,
+.stx-todo-detail__id {
+  font-size: 0.75rem;
+}
+
+.stx-todo-detail__id code,
+.stx-todo-detail__repo code {
+  background: var(--stx-code-bg);
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--stx-text-muted);
+}
+
+.stx-todo-detail__body {
+  flex: 1;
+  min-height: 0;
+}
+
+.stx-todo-detail__empty {
+  color: var(--stx-text-faint);
+}
+
+/* Markdown rendering — scoped to the drawer so we don't disturb other
+ * markdown rendering anywhere else on the page. */
+.stx-todo-detail__markdown {
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--stx-text);
+}
+
+.stx-todo-detail__markdown h1,
+.stx-todo-detail__markdown h2,
+.stx-todo-detail__markdown h3,
+.stx-todo-detail__markdown h4 {
+  color: var(--stx-text);
+  margin: 1em 0 0.4em;
+  line-height: 1.25;
+}
+
+.stx-todo-detail__markdown h1 {
+  font-size: 1.15rem;
+}
+
+.stx-todo-detail__markdown h2 {
+  font-size: 1.05rem;
+}
+
+.stx-todo-detail__markdown h3,
+.stx-todo-detail__markdown h4 {
+  font-size: 0.95rem;
+}
+
+.stx-todo-detail__markdown p {
+  margin: 0.5em 0;
+}
+
+.stx-todo-detail__markdown ul,
+.stx-todo-detail__markdown ol {
+  padding-left: 1.4em;
+  margin: 0.5em 0;
+}
+
+.stx-todo-detail__markdown li {
+  margin: 0.2em 0;
+}
+
+.stx-todo-detail__markdown code {
+  background: var(--stx-code-bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.85em;
+  color: var(--stx-accent);
+}
+
+.stx-todo-detail__markdown pre {
+  background: var(--stx-input-bg);
+  border: 1px solid var(--stx-border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow: auto;
+  margin: 0.6em 0;
+}
+
+.stx-todo-detail__markdown pre code {
+  background: transparent;
+  padding: 0;
+  color: var(--stx-text);
+}
+
+.stx-todo-detail__markdown a {
+  color: var(--stx-accent);
+  text-decoration: underline;
+}
+
+.stx-todo-detail__markdown blockquote {
+  margin: 0.6em 0;
+  padding: 0.1em 0 0.1em 12px;
+  border-left: 3px solid var(--stx-border-strong);
+  color: var(--stx-text-muted);
+}
+
+.stx-todo-detail__markdown hr {
+  border: none;
+  border-top: 1px solid var(--stx-border);
+  margin: 1em 0;
+}
+
+.stx-todo-detail__markdown table {
+  border-collapse: collapse;
+  margin: 0.6em 0;
+}
+
+.stx-todo-detail__markdown th,
+.stx-todo-detail__markdown td {
+  border: 1px solid var(--stx-border);
+  padding: 4px 8px;
+}

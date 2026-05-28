@@ -1,0 +1,1250 @@
+@import "./detail.css";
+
+/* scitex-todo board layout */
+
+/* ── Theme palette ───────────────────────────────────────────────────────
+ * The board lives inside the scitex-ui shell, which sets <html
+ * data-theme="dark|light"> and exposes flipping CSS variables (theme.css).
+ * We derive a board-local --stx-* palette from those shell variables so the
+ * whole board follows the active theme. The literal after each var() is the
+ * dark fallback used when the shell stylesheet is absent (bare SPA mount).
+ *
+ * --stx-accent is the brand purple; it needs a different shade per theme to
+ * stay legible (lavender on dark panels, deeper violet on light), so it is
+ * overridden in the [data-theme="light"] block below rather than sourced
+ * from a shell variable. */
+.stx-todo-board {
+  --stx-text: var(--text-primary, #e0e0e0);
+  --stx-text-muted: var(--text-muted, #a0a0b0);
+  --stx-text-faint: var(--text-muted, #8a8a9c);
+  --stx-panel-bg: var(--bg-surface, #232334);
+  --stx-canvas-bg: var(--bg-page, #1b1b29);
+  --stx-input-bg: var(--workspace-bg-monaco, #16161f);
+  --stx-code-bg: var(--bg-muted, #2d2d42);
+  --stx-border: var(--border-muted, #3a3a4a);
+  --stx-border-strong: var(--border-default, #4a4a5a);
+  --stx-hover-bg: var(--workspace-bg-hover, rgba(155, 127, 214, 0.16));
+  --stx-accent: #a78bfa;
+  --stx-accent-on: var(--bg-page, #1b1b29);
+  --stx-danger: var(--status-error, #ff6b6b);
+  --stx-scrollbar-thumb: var(--border-default, #4a4a5a);
+  --stx-scrollbar-thumb-hover: var(--text-muted, #6a6a82);
+}
+
+[data-theme="light"] .stx-todo-board {
+  --stx-accent: #6a4fb0;
+}
+
+#app-mount {
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Full-screen standalone (Fix #2) ─────────────────────────────────────
+ * The scitex-ui standalone shell wraps the board in a three-column layout
+ * (Console/Chat | Files | Viewer | App Content). For the standalone todo
+ * board those three sidebars are dead weight — hide them so the board's
+ * #main-content (flex: 1) fills the full viewport width.
+ *
+ * Scoped via :has(#app-mount[data-app-name="scitex-todo"]) so it ONLY
+ * applies to the standalone todo board, NEVER to the embedded scitex-hub
+ * multi-app workspace (where the sidebars are wanted). */
+body:has(#app-mount[data-app-name="scitex-todo"]) .ws-ai-pane,
+body:has(#app-mount[data-app-name="scitex-todo"]) .ws-worktree-pane,
+body:has(#app-mount[data-app-name="scitex-todo"]) .ws-viewer-pane {
+  display: none !important;
+}
+
+body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
+  flex: 1 1 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.stx-todo-board {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 70vh;
+  font-family: -apple-system, system-ui, sans-serif;
+  color: var(--stx-text);
+}
+
+.stx-todo-board__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--stx-border);
+  background: var(--stx-panel-bg);
+  color: var(--stx-text);
+}
+
+.stx-todo-board__title {
+  font-weight: 600;
+  color: var(--stx-accent);
+}
+
+.stx-todo-board__meta {
+  font-size: 0.8rem;
+  color: var(--stx-text-muted);
+}
+
+.stx-todo-board__meta code {
+  background: var(--stx-code-bg);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.stx-todo-board__canvas {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+/* Flow container: a flex row [docked pool | canvas]; breadcrumb overlays. */
+.stx-todo-flow {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.stx-todo-flow__body {
+  display: flex;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.stx-todo-flow__canvas {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+}
+
+/* While a drag-reorder is being persisted (POST /priority -> save_tasks ->
+ * reload graph), dim the canvas slightly so the operator sees the save in
+ * progress. Pointer-events stay enabled — the saving window is short and
+ * blocking input would feel laggy. */
+.stx-todo-flow--saving {
+  opacity: 0.85;
+  transition: opacity 0.12s linear;
+}
+
+/* ── Drill-down breadcrumb ───────────────────────────────────────────────
+ * A FIXED strip docked at the top of the flow (NOT a floating overlay), so it
+ * always sits in the same place and never overlaps the canvas or the pool.
+ * Shows the descent path `Home / <parent> / <…> / <current>`; always present
+ * (just "Home" at the top level) so the layout doesn't jump as you drill.
+ * Click any past crumb to pop back; the current crumb is non-interactive.
+ */
+.stx-todo-breadcrumb {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--stx-border);
+  background: var(--stx-panel-bg);
+  font-size: 0.78rem;
+  color: var(--stx-text);
+  font-family: -apple-system, system-ui, sans-serif;
+}
+
+.stx-todo-breadcrumb__crumb {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--stx-accent);
+  font: inherit;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.stx-todo-breadcrumb__crumb:hover,
+.stx-todo-breadcrumb__crumb:focus-visible {
+  background: var(--stx-hover-bg);
+  outline: none;
+}
+
+.stx-todo-breadcrumb__crumb--current {
+  color: var(--stx-text);
+  cursor: default;
+  font-weight: 600;
+}
+
+.stx-todo-breadcrumb__crumb--current:hover {
+  background: transparent;
+}
+
+.stx-todo-breadcrumb__sep {
+  color: var(--stx-text-faint);
+  padding: 0 2px;
+}
+
+/* ── Uncategorized staging pool (Fix #1) ─────────────────────────────────
+ * A single bordered box listing tasks that are not connected into the
+ * dependency graph (note == "uncategorized" or no edges). SPACE ONLY —
+ * drag-out / drop-in is a later interactivity phase. Bottom-left so it
+ * doesn't collide with the bottom-right MiniMap. */
+/* Docked left sidebar (no longer a floating overlay over the canvas). */
+.stx-todo-pool {
+  flex: 0 0 248px;
+  width: 248px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-right: 1px solid var(--stx-border);
+  background: var(--stx-panel-bg);
+  overflow: auto;
+}
+
+/* Collapsed: a thin full-height rail (just an expand button) so the canvas
+ * reclaims the width the open sidebar would take. */
+.stx-todo-pool--collapsed {
+  flex: 0 0 28px;
+  width: 28px;
+  padding: 0;
+  gap: 0;
+  overflow: visible;
+}
+
+.stx-todo-pool__expand {
+  appearance: none;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border: none;
+  background: transparent;
+  color: var(--stx-text-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.stx-todo-pool__expand:hover,
+.stx-todo-pool__expand:focus-visible {
+  color: var(--stx-text);
+  background: var(--stx-hover-bg);
+  outline: none;
+}
+
+.stx-todo-pool__expand-glyph {
+  font-size: 0.8rem;
+}
+
+.stx-todo-pool__expand-label {
+  writing-mode: vertical-rl;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Title doubles as the collapse toggle (button reset to match the panel). */
+.stx-todo-pool__title {
+  appearance: none;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--stx-text-muted);
+  padding: 2px 0;
+}
+
+.stx-todo-pool__title:hover,
+.stx-todo-pool__title:focus-visible {
+  color: var(--stx-text);
+  outline: none;
+}
+
+.stx-todo-pool__empty {
+  font-size: 0.75rem;
+  color: var(--stx-text-faint);
+}
+
+.stx-todo-pool__items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stx-todo-pool__item {
+  /* nodeStyle() provides background/border/color; size to the pool here.
+   * Rendered as a <button> so the click target is announced to assistive
+   * tech — reset the browser button chrome so it visually matches the
+   * graph nodes (no native border / focus ring overrides nodeStyle). */
+  width: auto !important;
+  box-sizing: border-box;
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+  outline: none;
+}
+
+.stx-todo-pool__item:hover,
+.stx-todo-pool__item:focus-visible {
+  filter: brightness(1.12);
+  box-shadow: 0 0 0 2px var(--stx-accent);
+}
+
+/* React Flow graph nodes (.react-flow__node) are also clickable — the click
+ * handler in GraphView opens the same detail drawer. Cue affordance via a
+ * pointer cursor + a hover/focus ring. Scope to the todo flow container so
+ * we don't restyle other React Flow boards mounted on the page. */
+.stx-todo-flow .react-flow__node {
+  cursor: pointer;
+}
+
+.stx-todo-flow .react-flow__node:hover,
+.stx-todo-flow .react-flow__node.selected {
+  filter: brightness(1.08);
+}
+
+/* ── Parent-node drill-down AFFORDANCE ───────────────────────────────────
+ * Goal: a single glance must tell the operator whether a click will
+ * DRILL DOWN into a child subgraph (parent node) or open the markdown
+ * detail drawer (leaf node). Three cues stack across CSS + JS:
+ *   1. The label glyph + child-count badge (see layout.ts buildFlow:
+ *      "▸ Title  ▸N" vs plain "Title").
+ *   2. The thicker border + purple halo (see layout.ts parentNodeStyle —
+ *      applied via inline style; THIS block adds the interaction layer).
+ *   3. THIS block: cursor + hover-brighten differ between parent and leaf.
+ *      A `zoom-in` cursor explicitly suggests "drill in"; the standard
+ *      `pointer` cursor on leaves keeps the existing detail-drawer cue.
+ *
+ * The `title` attribute set in the React tree (GraphView pool button)
+ * yields native browser tooltips — "Drill in" / "Details" — for users
+ * who hover before clicking. React Flow's default node doesn't surface a
+ * title attribute, so the graph-side tooltip is carried by the cursor +
+ * label-glyph cues alone (the count badge is the explicit "N children"
+ * affordance). */
+.stx-todo-flow .react-flow__node.stx-todo-node--parent {
+  cursor: zoom-in;
+  /* `rotate` is an INDIVIDUAL transform property, so it composes with React
+   * Flow's inline `transform: translate(...)` instead of overriding it —
+   * letting us tilt the stack on hover without breaking node positioning. */
+  transition:
+    rotate 0.12s ease,
+    filter 0.12s ease;
+}
+
+.stx-todo-flow .react-flow__node.stx-todo-node--parent:hover {
+  /* On-cursor rotation: the group "stack" tilts slightly when hovered, plus a
+   * stronger lift than the generic node hover so the parent affordance stays
+   * dominant. */
+  filter: brightness(1.14);
+  rotate: -3deg;
+}
+
+.stx-todo-flow .react-flow__node.stx-todo-node--leaf {
+  cursor: pointer;
+}
+
+/* Pool buttons mirror the same parent/leaf distinction. */
+.stx-todo-pool__item--parent {
+  cursor: zoom-in;
+}
+
+.stx-todo-pool__item--parent:hover,
+.stx-todo-pool__item--parent:focus-visible {
+  /* The .stx-todo-pool__item:hover rule above already lands a purple focus
+   * ring + 1.12 brightness; nudge a notch further for parents so the
+   * affordance feels heavier than a leaf detail-drawer click. */
+  filter: brightness(1.18);
+}
+
+.stx-todo-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.75rem;
+  color: var(--stx-text-muted);
+  margin-left: auto;
+}
+
+.stx-todo-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stx-todo-legend__swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+
+/* Edge legend: a short bar in the edge color (depends_on vs blocks). */
+.stx-todo-legend__edge {
+  display: inline-block;
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+/* ── Progress summary (header) ─────────────────────────────────────────── */
+.stx-todo-progress {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--stx-text-muted);
+}
+
+.stx-todo-progress strong {
+  color: var(--stx-text);
+}
+
+.stx-todo-progress__chip {
+  padding: 1px 7px;
+  border: 1px solid var(--stx-border);
+  border-radius: 999px;
+  background: var(--stx-code-bg);
+  color: var(--stx-text-muted);
+}
+
+/* ── Filter toolbar (search + status chips) ────────────────────────────── */
+.stx-todo-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--stx-border);
+  background: var(--stx-panel-bg);
+}
+
+.stx-todo-toolbar__search {
+  flex: 0 1 320px;
+  padding: 6px 10px;
+  border: 1px solid var(--stx-border);
+  border-radius: 6px;
+  background: var(--stx-input-bg);
+  color: var(--stx-text);
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.stx-todo-toolbar__search::placeholder {
+  color: var(--stx-text-faint);
+}
+
+.stx-todo-toolbar__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.stx-todo-chip {
+  appearance: none;
+  padding: 2px 10px;
+  border: 1px solid var(--stx-border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--stx-text-muted);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.stx-todo-chip:hover {
+  filter: brightness(1.15);
+}
+
+.stx-todo-chip--on {
+  font-weight: 600;
+}
+
+.stx-todo-toolbar__reset {
+  appearance: none;
+  border: 1px solid var(--stx-border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--stx-accent);
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.stx-todo-toolbar__reset:hover {
+  background: var(--stx-hover-bg);
+}
+
+.stx-todo-status {
+  padding: 24px;
+  color: var(--stx-text-muted);
+  font-family: -apple-system, system-ui, sans-serif;
+}
+
+.stx-todo-status--err {
+  color: var(--stx-danger);
+}
+
+/* ── Themed scrollbars ───────────────────────────────────────────────────
+ * The board's scroll containers (docked pool, detail drawer, code blocks)
+ * defaulted to the OS scrollbar, which clashes with the panel — a chunky
+ * light bar over a dark pool. Render a thin, theme-following scrollbar so
+ * it recedes into the panel in either theme. Firefox uses the standard
+ * `scrollbar-*` properties; Chromium/WebKit use the pseudo-elements. */
+.stx-todo-pool,
+.stx-todo-detail,
+.stx-todo-detail__markdown pre {
+  scrollbar-width: thin;
+  scrollbar-color: var(--stx-scrollbar-thumb) transparent;
+}
+
+.stx-todo-pool::-webkit-scrollbar,
+.stx-todo-detail::-webkit-scrollbar,
+.stx-todo-detail__markdown pre::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.stx-todo-pool::-webkit-scrollbar-track,
+.stx-todo-detail::-webkit-scrollbar-track,
+.stx-todo-detail__markdown pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.stx-todo-pool::-webkit-scrollbar-thumb,
+.stx-todo-detail::-webkit-scrollbar-thumb,
+.stx-todo-detail__markdown pre::-webkit-scrollbar-thumb {
+  background: var(--stx-scrollbar-thumb);
+  border-radius: 6px;
+  /* Inset the thumb so it reads as a thin pill rather than a full-width bar. */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.stx-todo-pool::-webkit-scrollbar-thumb:hover,
+.stx-todo-detail::-webkit-scrollbar-thumb:hover,
+.stx-todo-detail__markdown pre::-webkit-scrollbar-thumb:hover {
+  background: var(--stx-scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+.stx-todo-pool::-webkit-scrollbar-corner,
+.stx-todo-detail::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── Pool: header row + status groups ────────────────────────────────────
+ * The flat inbox is now split into collapsible <details> sections by status
+ * (GraphView UncategorizedPool), and the header carries a "new task" button
+ * beside the collapse toggle. */
+.stx-todo-pool__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.stx-todo-pool__new {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--stx-border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--stx-accent);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stx-todo-pool__new:hover,
+.stx-todo-pool__new:focus-visible {
+  background: var(--stx-hover-bg);
+  outline: none;
+}
+
+.stx-todo-pool__groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stx-todo-pool__group {
+  border: 1px solid var(--stx-border);
+  border-radius: 6px;
+  background: var(--stx-input-bg);
+  padding: 4px 6px;
+}
+
+.stx-todo-pool__group-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--stx-text-muted);
+  padding: 2px 0;
+  user-select: none;
+}
+
+.stx-todo-pool__group-summary::-webkit-details-marker {
+  display: none;
+}
+
+.stx-todo-pool__group-summary::before {
+  content: "▸";
+  font-size: 0.7rem;
+  color: var(--stx-text-faint);
+}
+
+.stx-todo-pool__group[open] > .stx-todo-pool__group-summary::before {
+  content: "▾";
+}
+
+.stx-todo-pool__group-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid;
+}
+
+.stx-todo-pool__group .stx-todo-pool__items {
+  margin-top: 6px;
+}
+
+/* ── Right-click context menu ────────────────────────────────────────────
+ * One menu instance (ContextMenu.tsx) rendered from the store's `menu`
+ * state. The backdrop is a full-screen click-catcher; the menu is fixed at
+ * the cursor (clamped to the viewport in JS). */
+.stx-todo-menu__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+
+.stx-todo-menu {
+  position: fixed;
+  min-width: 180px;
+  max-width: 220px;
+  padding: 4px;
+  border: 1px solid var(--stx-border);
+  border-radius: 8px;
+  background: var(--stx-panel-bg);
+  color: var(--stx-text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  font-size: 0.82rem;
+}
+
+.stx-todo-menu__label {
+  padding: 4px 8px 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--stx-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stx-todo-menu__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--stx-text);
+  font: inherit;
+  padding: 6px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.stx-todo-menu__item:hover,
+.stx-todo-menu__item:focus-visible {
+  background: var(--stx-hover-bg);
+  outline: none;
+}
+
+.stx-todo-menu__item--danger {
+  color: var(--stx-danger);
+}
+
+.stx-todo-menu__sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--stx-border);
+}
+
+.stx-todo-menu__group-label {
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--stx-text-faint);
+}
+
+.stx-todo-menu__statuses {
+  display: flex;
+  flex-direction: column;
+}
+
+.stx-todo-menu__status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--stx-text);
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.stx-todo-menu__status:hover,
+.stx-todo-menu__status:focus-visible {
+  background: var(--stx-hover-bg);
+  outline: none;
+}
+
+.stx-todo-menu__status--current {
+  font-weight: 600;
+}
+
+.stx-todo-menu__status--current::after {
+  content: "✓";
+  margin-left: auto;
+  color: var(--stx-accent);
+}
+
+.stx-todo-menu__swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  border: 1px solid;
+  flex: 0 0 auto;
+}
+
+/* ── Detail drawer: editable form ────────────────────────────────────────── */
+.stx-todo-detail__title-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.stx-todo-detail__edit {
+  appearance: none;
+  background: transparent;
+  color: var(--stx-text-muted);
+  border: 1px solid var(--stx-border);
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stx-todo-detail__edit:hover,
+.stx-todo-detail__edit:focus-visible {
+  background: var(--stx-hover-bg);
+  color: var(--stx-text);
+  outline: none;
+}
+
+.stx-todo-detail__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.stx-todo-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--stx-text-muted);
+}
+
+.stx-todo-field > span {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.stx-todo-field-row {
+  display: flex;
+  gap: 12px;
+}
+
+.stx-todo-field-row .stx-todo-field {
+  flex: 1;
+}
+
+.stx-todo-field--narrow {
+  flex: 0 0 90px !important;
+}
+
+.stx-todo-field--grow {
+  flex: 1;
+  min-height: 0;
+}
+
+.stx-todo-input {
+  appearance: none;
+  padding: 7px 9px;
+  border: 1px solid var(--stx-border);
+  border-radius: 6px;
+  background: var(--stx-input-bg);
+  color: var(--stx-text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.stx-todo-input:focus-visible {
+  outline: none;
+  border-color: var(--stx-accent);
+}
+
+.stx-todo-textarea {
+  resize: vertical;
+  min-height: 120px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.stx-todo-detail__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 6px;
+}
+
+.stx-todo-btn {
+  appearance: none;
+  padding: 7px 14px;
+  border: 1px solid var(--stx-border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--stx-text);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.stx-todo-btn:hover:not(:disabled) {
+  background: var(--stx-hover-bg);
+}
+
+.stx-todo-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.stx-todo-btn--primary {
+  border-color: var(--stx-accent);
+  background: var(--stx-accent);
+  color: var(--stx-accent-on);
+  font-weight: 600;
+}
+
+.stx-todo-btn--primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+  background: var(--stx-accent);
+}
+
+/* ── Detail drawer: comment thread ───────────────────────────────────────
+ * Append-only thread shown in the read view below the note: each entry is
+ * author · time · text, with an add box (author + textarea) at the bottom.
+ * A "💬N" badge on the cards (graph label + pool item) cues which tasks
+ * carry discussion. */
+.stx-todo-comments {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--stx-border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stx-todo-comments__title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--stx-text-muted);
+}
+
+.stx-todo-comments__empty {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--stx-text-faint);
+}
+
+.stx-todo-comments__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stx-todo-comment {
+  border: 1px solid var(--stx-border);
+  border-radius: 6px;
+  background: var(--stx-input-bg);
+  padding: 7px 10px;
+}
+
+.stx-todo-comment__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.stx-todo-comment__author {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--stx-accent);
+}
+
+.stx-todo-comment__ts {
+  font-size: 0.7rem;
+  color: var(--stx-text-faint);
+}
+
+.stx-todo-comment__text {
+  font-size: 0.84rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.stx-todo-comments__form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stx-todo-comments__author {
+  font-size: 0.8rem;
+}
+
+.stx-todo-comments__text {
+  resize: vertical;
+  min-height: 44px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.stx-todo-comments__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ── Live auto-refresh indicator ─────────────────────────────────────────
+ * Transient cue at top-center of the canvas: a brief "✓ synced" toast after
+ * an automatic reload, or a clickable "● Updated — refresh" pill when the
+ * store changed while the user was mid-edit. */
+.stx-todo-sync {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  border: 1px solid var(--stx-border);
+  background: var(--stx-panel-bg);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.stx-todo-sync--ok {
+  color: var(--status-success, #5a9a7e);
+  pointer-events: none;
+  animation: stx-todo-sync-fade 1.8s ease forwards;
+}
+
+.stx-todo-sync--stale {
+  appearance: none;
+  cursor: pointer;
+  color: var(--stx-accent);
+}
+
+.stx-todo-sync--stale:hover,
+.stx-todo-sync--stale:focus-visible {
+  background: var(--stx-hover-bg);
+  outline: none;
+}
+
+@keyframes stx-todo-sync-fade {
+  0% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ── View toggle (graph | table) ─────────────────────────────────────────── */
+.stx-todo-viewtoggle {
+  display: inline-flex;
+  border: 1px solid var(--stx-border-strong);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.stx-todo-viewtoggle__btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--stx-text-muted);
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+
+.stx-todo-viewtoggle__btn:hover {
+  background: var(--stx-hover-bg);
+}
+
+.stx-todo-viewtoggle__btn--on {
+  background: var(--stx-accent);
+  color: var(--stx-accent-on);
+  font-weight: 600;
+}
+
+/* ── Table view ──────────────────────────────────────────────────────────── */
+.stx-todo-table-wrap {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 8px 12px 12px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--stx-scrollbar-thumb) transparent;
+}
+
+.stx-todo-table-wrap::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.stx-todo-table-wrap::-webkit-scrollbar-thumb {
+  background: var(--stx-scrollbar-thumb);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.stx-todo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  color: var(--stx-text);
+}
+
+.stx-todo-table__th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  padding: 7px 10px;
+  background: var(--stx-panel-bg);
+  border-bottom: 1px solid var(--stx-border);
+  color: var(--stx-text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.stx-todo-table__th--sorted {
+  color: var(--stx-accent);
+}
+
+.stx-todo-table__caret {
+  font-size: 0.6rem;
+}
+
+.stx-todo-table__row {
+  cursor: pointer;
+  border-bottom: 1px solid var(--stx-border);
+}
+
+.stx-todo-table__row:hover {
+  background: var(--stx-hover-bg);
+}
+
+.stx-todo-table td {
+  padding: 6px 10px;
+  vertical-align: middle;
+}
+
+.stx-todo-table__title {
+  font-weight: 500;
+  max-width: 520px;
+}
+
+.stx-todo-table__status {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-size: 0.72rem;
+  color: #222;
+}
+
+.stx-todo-table__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--stx-text-muted);
+}
+
+.stx-todo-table__repo {
+  color: var(--stx-text-muted);
+  font-size: 0.78rem;
+}
+
+.stx-todo-table__empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--stx-text-faint);
+}
+
+/* Edge-kind picker swatch (EdgeKindMenu): a short bar in the edge color. */
+.stx-todo-menu__edge-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  margin-right: 7px;
+  vertical-align: middle;
+}
+
+/* Multi-select (Ctrl+click) highlight for pool items + table rows. */
+.stx-todo-pool__item--selected {
+  outline: 2px solid var(--stx-accent);
+  outline-offset: 1px;
+}
+
+.stx-todo-table__row--selected {
+  background: var(--stx-hover-bg);
+  box-shadow: inset 3px 0 0 0 var(--stx-accent);
+}
+
+/* ── Undo toast (Toast.tsx) ──────────────────────────────────────────────── */
+.stx-todo-toast {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px 8px 14px;
+  border: 1px solid var(--stx-border);
+  border-radius: 8px;
+  background: var(--stx-panel-bg);
+  color: var(--stx-text);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  font-size: 0.82rem;
+  max-width: 80%;
+}
+
+.stx-todo-toast__msg {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stx-todo-toast__undo {
+  appearance: none;
+  border: 1px solid var(--stx-accent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--stx-accent);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.78rem;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+
+.stx-todo-toast__undo:hover {
+  background: var(--stx-hover-bg);
+}
+
+.stx-todo-toast__close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--stx-text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* Repo facet dropdown (TodoBoard Toolbar) — accent border when a repo is set. */
+.stx-todo-toolbar__repo {
+  appearance: auto;
+  padding: 4px 8px;
+  border: 1px solid var(--stx-border-strong);
+  border-radius: 6px;
+  background: var(--stx-input-bg);
+  color: var(--stx-text);
+  font: inherit;
+  font-size: 0.75rem;
+  max-width: 180px;
+  cursor: pointer;
+}
+.stx-todo-toolbar__repo--on {
+  border-color: var(--stx-accent);
+  color: var(--stx-accent);
+  font-weight: 600;
+}

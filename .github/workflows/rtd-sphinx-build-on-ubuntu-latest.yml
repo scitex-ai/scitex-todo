@@ -1,0 +1,50 @@
+name: docs
+
+# Builds the Sphinx docs with warnings-as-errors so a broken docstring,
+# cross-reference, or toctree entry fails the PR before it can reach Read
+# the Docs. Mirrors the RTD build (docs/sphinx/conf.py).
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rtd-sphinx-build-on-ubuntu-latest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package + docs deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install -r docs/sphinx/requirements.txt
+      - name: Build HTML (warnings as errors)
+        run: |
+          python -m sphinx -b html -W --keep-going \
+            docs/sphinx docs/sphinx/_build/html
+      - name: Refresh in-wheel _sphinx_html (main/develop only)
+        if: github.event_name == 'push'
+        run: |
+          rm -rf src/scitex_todo/_sphinx_html
+          cp -rf docs/sphinx/_build/html src/scitex_todo/_sphinx_html
+          # scitex-cloud serves docs from this in-wheel dir (PS-121).
+          if [ -n "$(git status --porcelain src/scitex_todo/_sphinx_html)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add src/scitex_todo/_sphinx_html
+            # The commit-message marker keeps this from triggering itself.
+            git commit -m "docs(build): refresh _sphinx_html [skip-docs-rebuild]"
+            git push || echo "push rejected (branch moved); skipping refresh commit"
+          else
+            echo "_sphinx_html already current."
+          fi
+        continue-on-error: true

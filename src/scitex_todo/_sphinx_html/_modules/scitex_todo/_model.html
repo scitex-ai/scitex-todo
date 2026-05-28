@@ -1,0 +1,414 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>scitex_todo._model &mdash; scitex-todo v0.2.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            scitex-todo
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../installation.html#extras">Extras</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../installation.html#rendering-backends">Rendering backends</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../installation.html#verify">Verify</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../quickstart.html">Quick Start</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../quickstart.html#task-schema">Task schema</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../quickstart.html#where-your-task-data-lives">Where your task data lives</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../cli_reference.html">CLI Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../cli_reference.html#universal-flags">Universal flags</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../api/scitex_todo.html">scitex_todo — Python API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.TaskValidationError"><code class="docutils literal notranslate"><span class="pre">TaskValidationError</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.RenderError"><code class="docutils literal notranslate"><span class="pre">RenderError</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.build_mermaid"><code class="docutils literal notranslate"><span class="pre">build_mermaid()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.bundled_example"><code class="docutils literal notranslate"><span class="pre">bundled_example()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.find_chromium"><code class="docutils literal notranslate"><span class="pre">find_chromium()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.load_tasks"><code class="docutils literal notranslate"><span class="pre">load_tasks()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.save_tasks"><code class="docutils literal notranslate"><span class="pre">save_tasks()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.render"><code class="docutils literal notranslate"><span class="pre">render()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.render_with_kroki"><code class="docutils literal notranslate"><span class="pre">render_with_kroki()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.render_with_mmdc"><code class="docutils literal notranslate"><span class="pre">render_with_mmdc()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.resolve_tasks_path"><code class="docutils literal notranslate"><span class="pre">resolve_tasks_path()</span></code></a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">scitex-todo</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">scitex_todo._model</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for scitex_todo._model</h1><div class="highlight"><pre>
+<span></span><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;Canonical task model + YAML loader/validator/writer for scitex-todo.</span>
+
+<span class="sd">The task store is a YAML document with a top-level ``tasks:`` list. Each</span>
+<span class="sd">task is a mapping with ``id`` + ``title`` + ``status`` (required) and</span>
+<span class="sd">optional ``repo`` / ``depends_on`` / ``blocks`` / ``note`` / ``priority`` /</span>
+<span class="sd">``parent`` fields. ``priority`` is an explicit integer rank (lower = higher</span>
+<span class="sd">priority); when absent, document order is the implicit ordering. ``parent``</span>
+<span class="sd">is an optional task-id string that nests this task under another node — a</span>
+<span class="sd">task&#39;s children are tasks whose ``parent`` equals this task&#39;s ``id`` (the</span>
+<span class="sd">board&#39;s drill-down view follows this relation).</span>
+
+<span class="sd">This module is the single validation gate: ``load_tasks`` raises</span>
+<span class="sd">``TaskValidationError`` on a malformed store (missing id/title, duplicate</span>
+<span class="sd">id, invalid status, non-integer priority, non-string parent) so downstream</span>
+<span class="sd">adapters can assume well-formed input. ``save_tasks`` re-runs the same gate</span>
+<span class="sd">before writing back and preserves the hand-written YAML comments +</span>
+<span class="sd">structure via ruamel.yaml.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">yaml</span>
+
+<span class="c1"># Valid task statuses. ``goal`` marks a north-star objective (rendered gold);</span>
+<span class="c1"># the rest are ordinary execution states.</span>
+<span class="n">VALID_STATUSES</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="s2">&quot;goal&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;pending&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;in_progress&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;blocked&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;done&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;deferred&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;failed&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="TaskValidationError">
+<a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.TaskValidationError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">TaskValidationError</span><span class="p">(</span><span class="ne">ValueError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when a task store fails structural validation.&quot;&quot;&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="load_tasks">
+<a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.load_tasks">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_tasks</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load and validate the task list from a YAML store.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    path : str or pathlib.Path</span>
+<span class="sd">        Path to the YAML task store. The document must have a top-level</span>
+<span class="sd">        ``tasks:`` list.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    list of dict</span>
+<span class="sd">        The validated task mappings, in document order.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    FileNotFoundError</span>
+<span class="sd">        If ``path`` does not exist.</span>
+<span class="sd">    TaskValidationError</span>
+<span class="sd">        If the store is structurally invalid: ``tasks`` is not a list, a</span>
+<span class="sd">        task is missing ``id`` or ``title``, an ``id`` is duplicated, a</span>
+<span class="sd">        ``status`` is not in :data:`VALID_STATUSES`, or a ``priority`` is</span>
+<span class="sd">        present but not an integer.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; tasks = load_tasks(&quot;tasks.yaml&quot;)  # doctest: +SKIP</span>
+<span class="sd">    &gt;&gt;&gt; tasks[0][&quot;id&quot;]                     # doctest: +SKIP</span>
+<span class="sd">    &#39;design&#39;</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;task store not found: </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">with</span> <span class="n">path</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">handle</span><span class="p">:</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">handle</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+
+    <span class="n">tasks</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;tasks&quot;</span><span class="p">)</span>
+    <span class="n">_validate_tasks</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">tasks</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_tasks</span><span class="p">(</span><span class="n">tasks</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span> <span class="n">source</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate a task list in place, raising on the first structural fault.</span>
+
+<span class="sd">    The single gate shared by :func:`load_tasks` (read side) and</span>
+<span class="sd">    :func:`save_tasks` (write side) so a bad mutation can never round-trip</span>
+<span class="sd">    through the writer.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    tasks : object</span>
+<span class="sd">        The candidate ``tasks`` value (must be a list of mappings).</span>
+<span class="sd">    source : str</span>
+<span class="sd">        A label for error messages (the store path or ``&quot;&lt;save_tasks&gt;&quot;``).</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    TaskValidationError</span>
+<span class="sd">        On any structural fault — see :func:`load_tasks`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: top-level &#39;tasks&#39; must be a list&quot;</span><span class="p">)</span>
+
+    <span class="n">seen</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">task</span> <span class="ow">in</span> <span class="n">tasks</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: each task must be a mapping: </span><span class="si">{</span><span class="n">task</span><span class="si">!r}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="n">tid</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">tid</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: a task is missing required &#39;id&#39;: </span><span class="si">{</span><span class="n">task</span><span class="si">!r}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">tid</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: duplicate task id </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">tid</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;title&quot;</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> is missing required &#39;title&#39;&quot;</span>
+            <span class="p">)</span>
+        <span class="n">status</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">status</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">VALID_STATUSES</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has invalid status </span><span class="si">{</span><span class="n">status</span><span class="si">!r}</span><span class="s2">; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;must be one of </span><span class="si">{</span><span class="n">VALID_STATUSES</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="n">priority</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;priority&quot;</span><span class="p">)</span>
+        <span class="c1"># bool is an int subclass — reject it explicitly so `priority: true`</span>
+        <span class="c1"># is a clear error rather than a silent 1.</span>
+        <span class="k">if</span> <span class="n">priority</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="p">(</span>
+            <span class="nb">isinstance</span><span class="p">(</span><span class="n">priority</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">priority</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has non-integer priority </span><span class="si">{</span><span class="n">priority</span><span class="si">!r}</span><span class="s2">; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;priority must be an integer or absent&quot;</span>
+            <span class="p">)</span>
+        <span class="c1"># `parent` is the additive-optional nesting field — a task&#39;s children</span>
+        <span class="c1"># are tasks whose `parent` equals this id. Validate type only (must be</span>
+        <span class="c1"># a non-empty string id when present); we do NOT require the</span>
+        <span class="c1"># referenced parent to exist or to be acyclic here. Stale/cyclic</span>
+        <span class="c1"># references are gracefully degraded by the consumers (server-side</span>
+        <span class="c1"># graph builder and frontend drill-down) — same lenient stance as</span>
+        <span class="c1"># `depends_on` / `blocks` references to unknown ids, which are dropped</span>
+        <span class="c1"># rather than rejected.</span>
+        <span class="n">parent</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;parent&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">parent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">parent</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">parent</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has non-string parent </span><span class="si">{</span><span class="n">parent</span><span class="si">!r}</span><span class="s2">; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;parent must be a task id string or absent&quot;</span>
+            <span class="p">)</span>
+        <span class="c1"># `comments` is an append-only thread of user/agent remarks, distinct</span>
+        <span class="c1"># from the descriptive `note`. Each entry must be a mapping with a</span>
+        <span class="c1"># non-empty string `text`; `ts` / `author` are optional strings the</span>
+        <span class="c1"># server fills in (ISO timestamp + commenter). Validate the shape only</span>
+        <span class="c1"># so a malformed comment can&#39;t round-trip, staying lenient otherwise.</span>
+        <span class="n">comments</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;comments&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">comments</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">comments</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has non-list comments &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">comments</span><span class="si">!r}</span><span class="s2">; comments must be a list or absent&quot;</span>
+                <span class="p">)</span>
+            <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">comments</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="p">(</span>
+                    <span class="nb">isinstance</span><span class="p">(</span><span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;text&quot;</span><span class="p">),</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;text&quot;</span><span class="p">)</span>
+                <span class="p">):</span>
+                    <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has an invalid comment &quot;</span>
+                        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">entry</span><span class="si">!r}</span><span class="s2">; each comment must be a mapping with a &quot;</span>
+                        <span class="sa">f</span><span class="s2">&quot;non-empty string &#39;text&#39;&quot;</span>
+                    <span class="p">)</span>
+
+
+<div class="viewcode-block" id="save_tasks">
+<a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.save_tasks">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_tasks</span><span class="p">(</span><span class="n">tasks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate then write a task list back to a YAML store, preserving comments.</span>
+
+<span class="sd">    Re-runs the same validation gate as :func:`load_tasks` *before* touching</span>
+<span class="sd">    disk, so a malformed mutation can never corrupt the store. Uses</span>
+<span class="sd">    ``ruamel.yaml`` round-trip mode so hand-written comments and key layout in</span>
+<span class="sd">    the existing store survive the rewrite.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    tasks : list of dict</span>
+<span class="sd">        The (already-mutated) task mappings to persist. Validated first.</span>
+<span class="sd">    path : str or pathlib.Path</span>
+<span class="sd">        Destination store. If it already exists, its comments + structure are</span>
+<span class="sd">        preserved and only the ``tasks:`` payload is updated; otherwise a</span>
+<span class="sd">        fresh document is written.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    TaskValidationError</span>
+<span class="sd">        If ``tasks`` fails structural validation (nothing is written).</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; tasks = load_tasks(&quot;tasks.yaml&quot;)          # doctest: +SKIP</span>
+<span class="sd">    &gt;&gt;&gt; tasks[0][&quot;priority&quot;] = 1                    # doctest: +SKIP</span>
+<span class="sd">    &gt;&gt;&gt; save_tasks(tasks, &quot;tasks.yaml&quot;)            # doctest: +SKIP</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ruamel.yaml</span><span class="w"> </span><span class="kn">import</span> <span class="n">YAML</span>
+
+    <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
+    <span class="n">_validate_tasks</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s2">&quot;&lt;save_tasks&gt;&quot;</span><span class="p">)</span>
+
+    <span class="n">yaml_rt</span> <span class="o">=</span> <span class="n">YAML</span><span class="p">()</span>
+    <span class="n">yaml_rt</span><span class="o">.</span><span class="n">preserve_quotes</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="c1"># Match the bundled store&#39;s hand layout (two-space block indent, lists</span>
+    <span class="c1"># indented under their key) so a round-trip is a minimal diff.</span>
+    <span class="n">yaml_rt</span><span class="o">.</span><span class="n">indent</span><span class="p">(</span><span class="n">mapping</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">sequence</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+    <span class="n">existing_doc</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">with</span> <span class="n">path</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">handle</span><span class="p">:</span>
+            <span class="n">loaded</span> <span class="o">=</span> <span class="n">yaml_rt</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">handle</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">loaded</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="n">existing_doc</span> <span class="o">=</span> <span class="n">loaded</span>
+
+    <span class="k">if</span> <span class="n">existing_doc</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Merge the caller&#39;s task data into the round-trip-loaded structure by</span>
+        <span class="c1"># id, so per-item and inline comments attached to the original nodes</span>
+        <span class="c1"># survive. New ids are appended; removed ids are dropped.</span>
+        <span class="n">doc</span> <span class="o">=</span> <span class="n">existing_doc</span>
+        <span class="n">old_seq</span> <span class="o">=</span> <span class="n">doc</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;tasks&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">doc</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;tasks&quot;</span><span class="p">),</span> <span class="nb">list</span><span class="p">)</span> <span class="k">else</span> <span class="p">[]</span>
+        <span class="n">old_by_id</span> <span class="o">=</span> <span class="p">{</span><span class="n">t</span><span class="p">[</span><span class="s2">&quot;id&quot;</span><span class="p">]:</span> <span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">old_seq</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="n">t</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">)}</span>
+        <span class="n">merged</span> <span class="o">=</span> <span class="n">_merge_tasks_into_seq</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">old_by_id</span><span class="p">)</span>
+        <span class="n">doc</span><span class="p">[</span><span class="s2">&quot;tasks&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># No existing store (or a non-mapping top level): write a fresh doc.</span>
+        <span class="n">doc</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;tasks&quot;</span><span class="p">:</span> <span class="n">tasks</span><span class="p">}</span>
+
+    <span class="n">path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">path</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;w&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">handle</span><span class="p">:</span>
+        <span class="n">yaml_rt</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">doc</span><span class="p">,</span> <span class="n">handle</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_merge_tasks_into_seq</span><span class="p">(</span><span class="n">tasks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span> <span class="n">old_by_id</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build the new task sequence, reusing comment-bearing old nodes by id.</span>
+
+<span class="sd">    For each task in ``tasks``: if an old node with the same id exists, mutate</span>
+<span class="sd">    that node (so its attached comments survive) by syncing keys to the new</span>
+<span class="sd">    data; otherwise use the new mapping as-is. Order follows ``tasks``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">merged</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">task</span> <span class="ow">in</span> <span class="n">tasks</span><span class="p">:</span>
+        <span class="n">old</span> <span class="o">=</span> <span class="n">old_by_id</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">old</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">merged</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
+            <span class="k">continue</span>
+        <span class="c1"># Sync the old comment-bearing node&#39;s keys to the new values.</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">task</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">old</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="k">for</span> <span class="n">stale_key</span> <span class="ow">in</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">old</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">task</span><span class="p">]:</span>
+            <span class="k">del</span> <span class="n">old</span><span class="p">[</span><span class="n">stale_key</span><span class="p">]</span>
+        <span class="n">merged</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">old</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">merged</span>
+
+
+<span class="c1"># EOF</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Yusuke Watanabe.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

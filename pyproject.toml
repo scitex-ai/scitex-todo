@@ -1,0 +1,107 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "scitex-todo"
+version = "0.2.0"
+description = "Canonical YAML task store with pluggable adapters (mermaid dependency graphs)"
+readme = "README.md"
+license = "AGPL-3.0-only"
+requires-python = ">=3.10"
+authors = [
+    { name = "Yusuke Watanabe" },
+]
+keywords = ["todo", "tasks", "dependency-graph", "mermaid", "science"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = ["pyyaml", "click", "ruamel.yaml"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "scitex-dev>=0.11.7",
+    # Web-extra deps are imported (guarded) by the Django board source and its
+    # tests; include them so a fresh `pip install -e .[dev]` runs the full
+    # suite rather than silently skipping the board tests (PS-210).
+    "django>=4.2",
+    "scitex_app",
+    "scitex_ui",
+]
+docs = [
+    "sphinx>=7.0",
+    "sphinx-rtd-theme>=2.0",
+    "myst-parser>=2.0",
+    "sphinx-copybutton>=0.5",
+    "sphinx-autodoc-typehints>=1.25",
+]
+web = [
+    "django>=4.2",
+    "scitex-app",
+    "scitex-ui",
+]
+all = [
+    "scitex-todo[dev,docs,web]",
+]
+
+[project.scripts]
+scitex-todo = "scitex_todo._cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ywatanabe1989/scitex-todo"
+Repository = "https://github.com/ywatanabe1989/scitex-todo"
+Issues = "https://github.com/ywatanabe1989/scitex-todo/issues"
+Documentation = "https://scitex-todo.readthedocs.io"
+
+[project.entry-points."scitex_dev.docs"]
+scitex-todo = "scitex_todo"
+
+[project.entry-points."scitex_dev.skills"]
+scitex-todo = "scitex_todo"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/scitex_todo"]
+# Bundle the Django app's non-Python assets (manifest, templates, built
+# frontend) into the wheel so `scitex-todo board` works from a pip install.
+artifacts = [
+    "src/scitex_todo/_django/manifest.json",
+    "src/scitex_todo/_django/templates/**/*",
+    "src/scitex_todo/_django/static/**/*",
+    # Agent-facing skills + bundled example store — read at runtime by
+    # `scitex-todo skills get/install` and `bundled_example()`.
+    "src/scitex_todo/_skills/**/*",
+    "src/scitex_todo/examples/*.yaml",
+    # Pre-built Sphinx HTML served in-wheel by scitex-cloud (PS-121);
+    # refreshed by the docs workflow on main/develop pushes.
+    "src/scitex_todo/_sphinx_html/**/*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-x -q"
+
+[tool.coverage.run]
+parallel = true
+source = ["scitex_todo"]
+concurrency = ["multiprocessing", "thread"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.scitex-linter]
+library_dirs = ["src", "tests", "examples"]

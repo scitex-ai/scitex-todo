@@ -1,0 +1,52 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.whl
+.venv/
+venv/
+env/
+.env
+.tox/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.swp
+*.swo
+*~
+.DS_Store
+.idea/
+.vscode/
+
+# Agent scratch + local git worktrees — never committed.
+GITIGNORED/
+.worktrees/
+
+# Rendered task graphs — generated artifacts, never committed.
+tasks.png
+*.tasks.png
+
+# Sphinx build output (RTD builds from source; local HTML is throwaway).
+docs/sphinx/_build/
+
+# scitex-todo local state: ignore everything under .scitex/ except the
+# tracked dev/config.yaml (audit whitelist) and the runtime seed files.
+.scitex/*
+!.scitex/dev/
+.scitex/dev/*
+!.scitex/dev/config.yaml
+# Track the todo runtime dir's seed files; ignore its actual contents.
+!.scitex/todo/
+.scitex/todo/*
+!.scitex/todo/runtime/
+.scitex/todo/runtime/*
+!.scitex/todo/runtime/.gitkeep
+!.scitex/todo/runtime/README.md
