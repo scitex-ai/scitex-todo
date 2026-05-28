@@ -153,6 +153,12 @@ interface BoardStore {
   toggleSelected: (id: string) => void;
   /** Clear the multi-selection. */
   clearSelected: () => void;
+  /** Set status on many tasks, then reload once + clear the selection. */
+  bulkSetStatus: (ids: string[], status: string) => Promise<void>;
+  /** Delete many tasks, then reload once + clear the selection. */
+  bulkDelete: (ids: string[]) => Promise<void>;
+  /** Nest the given children under `parentId`, then reload + clear selection. */
+  bulkGroupUnder: (parentId: string, ids: string[]) => Promise<void>;
 }
 
 export const useBoardStore = create<BoardStore>((set, get) => ({
@@ -342,6 +348,46 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         : [...s.selectedIds, id],
     })),
   clearSelected: () => set({ selectedIds: [] }),
+  bulkSetStatus: async (ids: string[], status: string) => {
+    set({ mutating: true, error: null });
+    try {
+      for (const id of ids) await api.updateTask(id, { status });
+      const graph = await api.graph();
+      set({ graph, mutating: false, selectedIds: [], menu: null });
+    } catch (e) {
+      set({ error: (e as Error).message, mutating: false });
+    }
+  },
+  bulkDelete: async (ids: string[]) => {
+    set({ mutating: true, error: null });
+    try {
+      for (const id of ids) await api.deleteTask(id);
+      const graph = await api.graph();
+      set((s) => ({
+        graph,
+        mutating: false,
+        selectedIds: [],
+        menu: null,
+        selectedNodeId: ids.includes(s.selectedNodeId ?? "")
+          ? null
+          : s.selectedNodeId,
+      }));
+    } catch (e) {
+      set({ error: (e as Error).message, mutating: false });
+    }
+  },
+  bulkGroupUnder: async (parentId: string, ids: string[]) => {
+    set({ mutating: true, error: null });
+    try {
+      for (const id of ids) {
+        if (id !== parentId) await api.updateTask(id, { parent: parentId });
+      }
+      const graph = await api.graph();
+      set({ graph, mutating: false, selectedIds: [], menu: null });
+    } catch (e) {
+      set({ error: (e as Error).message, mutating: false });
+    }
+  },
 }));
 
 // Persist the view slice (filter / scope / mode) whenever it changes, so a
