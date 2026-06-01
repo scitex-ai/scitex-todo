@@ -17,7 +17,7 @@
  * dropped (siblings only). See `scopeNodes` and `nodeHasChildren`.
  */
 
-import type { CSSProperties } from "react";
+import { createElement, type CSSProperties, type ReactNode } from "react";
 import dagre from "dagre";
 import { MarkerType, type Edge, type Node } from "@xyflow/react";
 import type { GraphNode, GraphPayload, StatusColor } from "./types/board";
@@ -105,12 +105,17 @@ export function nodeHasChildren(graph: GraphPayload, nodeId: string): boolean {
  * children — they DRILL IN on click rather than open the detail drawer.
  *
  * Goal: one glance tells drill-vs-detail. The combination here is
- * deliberately layered:
- *   - 3px solid border (vs the standard 2px) THICKENS the outline.
- *   - A 3px purple halo (boxShadow inset-equivalent ring) sits OUTSIDE the
- *     border, giving the node an unmistakable "stacked-card" silhouette.
- *   - Bold weight + a subtle gradient overlay on the existing fill nudge
- *     parents away from looking like flat leaf cards.
+ * deliberately layered (operator UX feedback: prior 3px solid border + halo
+ * was too subtle — a parent looked just like a slightly-thicker leaf):
+ *   - A 5px DOUBLE border (vs the leaf's 2px solid) gives parents a visibly
+ *     different SHAPE — the doubled rim reads as "container / boundary"
+ *     without you having to read the title or the badge.
+ *   - A stacked-card shadow pile (offset box-shadows, one per child up to 5)
+ *     plants the silhouette of a stack of cards BEHIND the front face.
+ *   - A purple drill-in halo hugs the front card.
+ *   - Bold label weight nudges parents away from looking like flat leaves.
+ *   - A subtle vertical gradient overlays the status fill so the card reads
+ *     as "layered" rather than flat — depth cue at the surface level.
  *
  * Status color (fill / stroke) is preserved from `nodeStyle()` so the
  * lifecycle signal (pending / done / blocked / goal …) still reads.
@@ -132,14 +137,75 @@ export function parentNodeStyle(
     stack.push(`${o}px ${o}px 0 -2px ${c.fill}`);
   }
   // Purple drill-in halo hugs the front card (offset 0, listed first = on top).
-  stack.unshift("0 0 0 2px rgba(155, 127, 214, 0.45)");
+  stack.unshift("0 0 0 3px rgba(155, 127, 214, 0.55)");
   return {
     ...base,
-    borderWidth: 3,
-    borderStyle: "solid",
+    // 5px DOUBLE border — `double` requires ≥3px to render the two parallel
+    // strokes; 5px gives a clean, visibly-different rim from the leaf's 2px
+    // solid line. This is the cheapest, most-distinctive shape signal.
+    borderWidth: 5,
+    borderStyle: "double",
     boxShadow: stack.join(", "),
     fontWeight: 600,
+    // Subtle vertical gradient over the existing fill — top edge a touch
+    // lighter, bottom a touch darker — so the card reads as a 3-D surface
+    // rather than a flat tile, reinforcing the "container with depth" cue.
+    backgroundImage:
+      "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(0,0,0,0.06) 100%)",
+    // Make room ABOVE the title for the absolute-positioned pill badge that
+    // sits at the top-right corner (see parentLabel in buildFlow).
+    paddingTop: 14,
+    position: "relative",
   };
+}
+
+/** Build the rich label element rendered inside a parent (drill-down) node.
+ *
+ * Why a React element instead of a plain string? The default React Flow
+ * label is plain text, so a status pill can't ride along with the title.
+ * Returning a JSX subtree lets us:
+ *   - place a colored "N ↓" PILL BADGE in the top-right corner, absolute-
+ *     positioned via CSS (`.stx-todo-node__badge`)
+ *   - prefix the title with a "⊞" expand glyph (universal "container /
+ *     drill in" icon — not theme- or font-dependent like a folder emoji)
+ *   - set a NATIVE `title` attribute on the inner span so the browser
+ *     tooltip says "Drill into <title> (N children)" on hover, matching
+ *     the pool-side affordance.
+ */
+function parentLabel(title: string, kids: number, suffix: string): ReactNode {
+  const tip = `Drill into ${title} (${kids} ${
+    kids === 1 ? "child" : "children"
+  })`;
+  return createElement(
+    "span",
+    { className: "stx-todo-node__label", title: tip },
+    createElement(
+      "span",
+      { className: "stx-todo-node__badge", "aria-label": tip },
+      `${kids} ↓`,
+    ),
+    createElement(
+      "span",
+      { className: "stx-todo-node__glyph", "aria-hidden": "true" },
+      "⊞ ",
+    ),
+    `${title}${suffix}`,
+  );
+}
+
+/** Label for a leaf node — plain text content but wrapped in a span with a
+ * `title` attr so the browser tooltip explicitly says "Open details for
+ * <title>", giving the operator a hover-time confirmation that this click
+ * opens the markdown drawer (not drill-down). */
+function leafLabel(title: string, suffix: string): ReactNode {
+  return createElement(
+    "span",
+    {
+      className: "stx-todo-node__label",
+      title: `Open details for ${title}`,
+    },
+    `${title}${suffix}`,
+  );
 }
 
 /** Split nodes into the connected dependency graph vs the uncategorized pool.
@@ -216,23 +282,28 @@ export function buildFlow(
   const nodes: Node[] = graphNodes.map((n) => {
     const pos = g.node(n.id);
     const prio = n.priority != null ? ` · p${n.priority}` : "";
-    // Parent-node drill-down AFFORDANCE: combine THREE redundant signals so
+    // Parent-node drill-down AFFORDANCE: combine FIVE redundant signals so
     // the user knows BEFORE clicking that a parent will drill in (not open
-    // the detail drawer):
-    //   (1) a leading "▸" glyph in the label   — expand/disclose icon
-    //   (2) a trailing "▸N" child-count badge  — concrete count, not "many"
-    //   (3) `parentNodeStyle()` override below — thicker border + purple halo
-    // Plus the className flips CSS hover/cursor (zoom-in vs. pointer) so the
-    // operator gets a fourth cue during hover (see board.css).
+    // the detail drawer). Operator UX feedback said the previous label-only
+    // cues were too easy to miss; we now lean on a colored pill badge and a
+    // distinct border SHAPE so the affordance reads at a glance:
+    //   (1) a leading "⊞" expand glyph                  — universal "drill in"
+    //   (2) a corner PILL BADGE "N ↓" via parentLabel  — concrete count, pop
+    //   (3) a 5px DOUBLE border via parentNodeStyle    — different SHAPE
+    //   (4) a stacked-card box-shadow pile             — depth = container
+    //   (5) `zoom-in` hover cursor + tilt via CSS      — interaction cue
+    // The label is now a ReactNode (was a string) so the badge can sit at
+    // the corner via CSS — see board.css `.stx-todo-node__badge`.
     const kids = nodeChildCount(graph, n.id);
     const isParent = kids > 0;
     // Comment-count badge: a "💬N" suffix when the task has any comments, so
     // discussion is visible at a glance without opening the drawer.
     const ncomments = n.comments?.length ?? 0;
     const chat = ncomments > 0 ? `  💬${ncomments}` : "";
+    const suffix = `${prio}${chat}`;
     const label = isParent
-      ? `▸ ${n.title}  ▸${kids}${prio}${chat}`
-      : `${n.title}${prio}${chat}`;
+      ? parentLabel(n.title, kids, suffix)
+      : leafLabel(n.title, suffix);
     const base = nodeStyle(graph.status_colors[n.status]);
     return {
       id: n.id,

@@ -371,6 +371,57 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   filter: brightness(1.18);
 }
 
+/* The label tree built by layout.ts `parentLabel()`: a wrapper span, an
+ * absolute-positioned PILL BADGE in the top-right corner ("N ↓"), a
+ * leading expand glyph ("⊞"), then the title text. The wrapper is given
+ * `position: relative` so the badge corner-anchors on the actual title
+ * line rather than the whole React Flow node wrapper (the latter would
+ * drift if React Flow added internal padding). */
+.stx-todo-node__label {
+  display: block;
+  position: relative;
+}
+
+/* PILL BADGE — the dominant at-a-glance "this drills in" cue. Purple
+ * background, white text, rounded; sits in the top-right corner of the
+ * node, slightly OUTSIDE the border so it reads as a tag attached to the
+ * card rather than a label inside it. `pointer-events: none` so it never
+ * intercepts the click that should hit the node body itself.
+ *
+ * Pool-side gets the same look via the shared `.stx-todo-pool__badge`
+ * selector — parent-pool buttons get `position: relative` (below) so the
+ * absolute badge corner-anchors there too. */
+.stx-todo-node__badge,
+.stx-todo-pool__badge {
+  position: absolute;
+  top: -10px;
+  right: -8px;
+  background: var(--stx-accent, #6a4fb0);
+  color: #fff;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  z-index: 2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.stx-todo-pool__item--parent {
+  position: relative;
+}
+
+/* Inline expand glyph ("⊞") that prefixes the parent title — bumped color
+ * so it reads as a deliberate "drill in" mark rather than a stray bullet. */
+.stx-todo-node__glyph {
+  color: var(--stx-accent, #6a4fb0);
+  font-weight: 700;
+  margin-right: 1px;
+}
+
 .stx-todo-legend {
   display: flex;
   flex-wrap: wrap;

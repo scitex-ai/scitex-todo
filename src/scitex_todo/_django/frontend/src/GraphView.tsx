@@ -290,7 +290,11 @@ function UncategorizedPool({
           e.preventDefault();
           openMenu(e.clientX, e.clientY, n.id);
         }}
-        title={hasChildren ? "Drill in (right-click to edit)" : "Details (right-click to edit)"}
+        title={
+          hasChildren
+            ? "Drill in (right-click to edit)"
+            : "Details (right-click to edit)"
+        }
         aria-label={
           hasChildren
             ? `Drill into ${n.title} (${kids} ${
@@ -299,7 +303,21 @@ function UncategorizedPool({
             : `Open details for ${n.title}`
         }
       >
-        {hasChildren ? `▸ ${n.title}  ▸${kids}` : n.title}
+        {hasChildren && (
+          <span className="stx-todo-pool__badge" aria-hidden="true">
+            {kids} ↓
+          </span>
+        )}
+        {hasChildren ? (
+          <>
+            <span className="stx-todo-node__glyph" aria-hidden="true">
+              ⊞{" "}
+            </span>
+            {n.title}
+          </>
+        ) : (
+          n.title
+        )}
         {n.repo ? ` · ${n.repo}` : ""}
         {prio}
         {n.comments?.length ? `  💬${n.comments.length}` : ""}
@@ -454,7 +472,9 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
       const task = byId.get(n.id);
       const match =
         !filtering ||
-        (task ? taskMatchesFilter(task, query, activeStatuses, activeRepos) : true);
+        (task
+          ? taskMatchesFilter(task, query, activeStatuses, activeRepos)
+          : true);
       const selected = sel.has(n.id);
       return {
         ...n,
