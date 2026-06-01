@@ -40,6 +40,21 @@ scitex-todo init --shared        # 🟡 PHASE-1
 `agent:proj-scitex-todo`, `agent:lead`, `agent:hub-ops`). Humans use
 `user:operator`, `user:ywatanabe`, etc.
 
+**Scope label conventions** (free-form strings — not enums):
+
+| Prefix          | Use for                                          | Example                          |
+| --------------- | ------------------------------------------------ | -------------------------------- |
+| `agent:<name>`  | The sac peer or single-agent identity            | `agent:proj-scitex-todo`         |
+| `project:<name>`| A project / repo team                            | `project:scitex-clew`            |
+| `host:<name>`   | **A specific host (cross-host axis — §6)**       | `host:wsl2-dev`, `host:mba-arm64`|
+| `user:<name>`   | A human                                          | `user:operator`                  |
+| `private`       | Operator-only memos                              | `private`                        |
+
+`host:<hostname>` is **first-class** for the cross-host 串刺し view —
+see §6 (storage axes) and §7.6 (cross-host workflow). Tag a task with
+`scope: host:$(hostname)` when it's locally rooted (e.g. local env
+setup, host-specific config) so cross-host filters keep it in its lane.
+
 ---
 
 ## 2 — The CLI (start here)
@@ -177,26 +192,65 @@ and the MCP tools — every adapter is the same writer.
 
 ---
 
-## 6 — The store: where the data lives
+## 6 — The store: where the data lives (two axes of cross-cutting)
+
+The operator's mental model — **串刺し** (*kushizashi*, "skewered"
+through projects AND hosts) — has two independent axes. Both are
+first-class; the precedence chain handles axis 1, the git-backed sync
+substrate handles axis 2.
+
+### Axis 1 — across projects (precedence chain on one host)
 
 ```
-Precedence chain (highest → lowest, first match wins):
+Resolution chain (highest → lowest, first match wins):
   1. $SCITEX_TODO_TASKS (env-var override)
-  2. <git-root>/.scitex/todo/tasks.yaml      (project-scope; gitignored)
-  3. $SCITEX_DIR/todo/tasks.yaml             (user-scope; default ~/.scitex/todo)
+  2. <git-root>/.scitex/todo/tasks.yaml      (project-scope; gitignored — project OVERRIDES user)
+  3. $SCITEX_DIR/todo/tasks.yaml             (user-scope; default ~/.scitex/todo — CROSS-PROJECT default)
   4. <package>/examples/tasks.yaml           (bundled demo; fresh-install fallback)
 ```
 
-To see what your process is actually pointing at:
+The **user-scope path** (`~/.scitex/todo/tasks.yaml`) is the operator's
+**cross-PROJECT** store — one place where tasks from every project on
+this host live together. Per the SciTeX local-state-directories
+convention, a per-project store at `<project>/.scitex/todo/tasks.yaml`
+overrides the user-level one when you're inside that project tree. Use
+the project-scope for project-internal task lists you don't want in the
+cross-cut view; add the dir to the project's `.gitignore`.
 
-```bash
-scitex-todo where --json         # 🟡 PHASE-1
+### Axis 2 — across hosts (git-backed sync substrate)
+
+`~/.scitex/todo/` is per-host (it lives on each machine's local
+filesystem). To make the user-scope store fleet-shared, it is itself a
+**git checkout of a private state repo** (default name
+`ywatanabe1989-private/scitex-todo-state`); cross-host sync is
+`scitex-todo sync --apply` ≈ `git pull --rebase --autostash && git push`
+(🟠 PHASE-2 body; the Phase-1 stub already exists).
+
+```
+host: wsl2-dev                                 host: mba-arm64
+~/.scitex/todo/                                ~/.scitex/todo/
+  ├─ .git/  ─────── push/pull ──────────────────► .git/
+  └─ tasks.yaml                                   └─ tasks.yaml
+                       │
+                       ▼  (the private state repo)
+              github.com/ywatanabe1989-private/scitex-todo-state
 ```
 
-The user-scope path (`~/.scitex/todo/tasks.yaml`) is **the fleet-shared
-canonical store**. Project-scope (`<git-root>/.scitex/todo/`) is for
-project-internal task lists you don't want in the global view; the
-project-scope dir should be added to `.gitignore`.
+After a `sync --apply` on each host, both hosts see one canonical view.
+That view is the 串刺し view: read-only-equivalent across the fleet.
+
+### To see what your process is actually pointing at
+
+```bash
+scitex-todo where --json         # 🟡 PHASE-1 — prints resolved path + chain
+```
+
+### Conflict resolution (Phase 2, designed)
+
+Per-task LWW on `_log_meta.completed_at` (or commit author-date for
+non-completion edits). New ids on either side: keep both. The substrate
+guarantees forward-progress; the operator can always hand-edit on the
+board if a merge picked badly.
 
 ---
 
@@ -239,6 +293,56 @@ scitex-todo add e1-acl "sac ACL fleet-group + grant CLI" \
 scitex-todo summary --scope project:sac
 # → totals + by_status + by_scope + by_assignee, JSON-able with --json
 ```
+
+### 7.6 "Show me the 串刺し view — every project, every host" (cross-host workflow)
+
+The user-scope store is the cross-PROJECT axis; the git-backed sync is
+the cross-HOST axis. With both, "every task on every host" is just
+`list` with no filter:
+
+```bash
+# On any host, after a sync:
+scitex-todo sync --apply             # 🟠 PHASE-2 — pull/push the state repo
+scitex-todo list --scope ''          # the full 串刺し view (no scope filter)
+scitex-todo summary --scope ''       # numeric digest of the same
+```
+
+Slice the 串刺し view by host with the `host:<hostname>` scope label
+(first-class convention — see §1.3 setup):
+
+```bash
+# Tag a task as host-local when I create it
+scitex-todo add wsl-ssh-key "regenerate ssh key" --scope "host:$(hostname)"
+
+# What's on this host?
+scitex-todo list --scope "host:$(hostname)"
+
+# What's on the MBA?
+scitex-todo list --scope "host:mba-arm64"
+
+# Everything everywhere (the operator's cross-cut dashboard)
+scitex-todo list --scope ''
+```
+
+The web board (`scitex-todo board`) renders the same 串刺し view —
+it reads whatever `where` resolves to, so on a host with the
+fleet-shared user-scope store, the board IS the fleet board.
+
+### 7.7 "Override the fleet store with a project-local task list"
+
+When you want a project to keep its own task list that doesn't pollute
+the cross-project 串刺し view:
+
+```bash
+cd ~/proj/scitex-foo
+scitex-todo init --project           # 🟡 PHASE-1 — creates ./.scitex/todo/tasks.yaml
+echo ".scitex/" >> .gitignore        # don't commit the local task list
+scitex-todo list                     # now reads the PROJECT store (overrides user)
+scitex-todo where                    # confirms which store the verbs hit
+```
+
+Removing the project-scope file (or `cd`-ing outside the project tree)
+reverts to the user-scope cross-project view automatically.
 
 ---
 

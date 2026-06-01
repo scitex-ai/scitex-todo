@@ -157,6 +157,93 @@ store, and the adapters.
 
 ---
 
+## 3.5 — Cross-cutting (串刺し / *kushizashi*) is first-class
+
+The operator's framing — a 串刺し ("skewered") view that pierces ALL
+projects and ALL hosts at once — is the LOAD-BEARING use case for the
+universal task layer. Both axes are first-class:
+
+### Two independent axes
+
+| Axis              | Cross-cutting mechanism                                  |
+| ----------------- | -------------------------------------------------------- |
+| **Across projects** | One user-level store at `~/.scitex/todo/tasks.yaml` holds tasks from EVERY project. A per-project store at `<project>/.scitex/todo/tasks.yaml` is an **override** for project-internal lists the operator doesn't want in the cross-cut view. Precedence: project store > user store, when both exist (per the SciTeX local-state-directories convention). |
+| **Across hosts**    | The user-level store is per-host by physical location (`~/.scitex` lives on each host's local filesystem). A **git-backed sync substrate** linearizes the per-host writes into one canonical history, so reading the store on host B sees host A's edits after a `git pull`. |
+
+The 串刺し view is what falls out when both axes are unfiltered:
+`list --scope ''` (no scope filter) on a fresh-pulled store shows every
+task on every project on every host — one skewer, all targets.
+
+### Why this re-justifies the GitHub backend (over sac listen DB)
+
+The cross-host axis is the one that forced the storage decision. Section 3
+listed six general reasons; the 串刺し requirement specifically demands
+two more guarantees that the sac listen DB cannot give:
+
+7. **The canonical view must be readable when offline.** An operator on
+   a flight, an agent container that lost network, a freshly-rebooted
+   laptop — they must still be able to read the cross-cut view of
+   "what was the world like the last time I synced". With Git, the
+   answer is "every clone is a complete read-only replica."  With sac
+   listen, "offline" means "blank."
+
+8. **The aggregation operator is `git merge`, not a query.** Adding a
+   new host doesn't require schema changes, doesn't require teaching a
+   new endpoint, doesn't require an "all hosts" virtual table. It
+   requires `git clone` + `git push`. The aggregation is the substrate.
+
+The sac listen DB **would** be a fine push-notification channel for
+"host A just pushed a new commit, pull if you want it now", but it is
+not the canonical store. Phase-4 fan-out (Section 6) makes that explicit.
+
+### `host:<hostname>` is a first-class scope label
+
+To make the cross-host axis legible in the data, the scope-convention
+table (Section 4) elevates `host:<hostname>` to a first-class label
+alongside `agent:<name>` and `project:<name>`. Typical uses:
+
+```bash
+# A task that only matters on this host (env setup, local config, etc.)
+scitex-todo add wsl-ssh-key "regenerate ssh key" --scope host:wsl2-dev
+
+# A cross-project, cross-host operator memo
+scitex-todo add memo-call-sarah "Call Sarah re: grant" --scope user:operator
+
+# All my tasks on this host
+scitex-todo list --scope "host:$(hostname)"
+
+# All my tasks across every host — the 串刺し view
+scitex-todo list --scope ""
+```
+
+`host:` is a convention not an enum (Req 8 stance), so a task that
+crosses hosts simply doesn't carry the `host:` label.
+
+### Failure modes the design accepts
+
+- **Two hosts edit the same task in the same pull-window.** Phase-2
+  resolves via per-task LWW on `_log_meta.completed_at` (or commit
+  author-date for non-completion edits). Documented in
+  `GITIGNORED/DESIGN/sync-substrate.md`.
+- **One host falls behind for days.** It still shows a coherent
+  read-only snapshot of its last pull. When it catches up, the LWW
+  merge is the same as the same-window case.
+- **The state-repo remote is unreachable.** Local writes still succeed
+  (writing to disk doesn't depend on the remote). The next `sync`
+  pushes the backlog.
+
+What the design does NOT accept:
+
+- **A sub-second consistency guarantee across hosts.** That's the
+  Phase-4 notification adapter's job, and it's eventual-consistency
+  on top of git, not synchronous.
+- **A hard ACL across hosts.** Scope is a display filter; if you give
+  every host a copy of the state repo, you give them the full data.
+  Hardening this would mean per-row encryption (open question #4 in
+  Section 8).
+
+---
+
 ## 4 — Schema (Phase-1 floor)
 
 Every field is **additive-optional** so existing YAML keeps loading. This
