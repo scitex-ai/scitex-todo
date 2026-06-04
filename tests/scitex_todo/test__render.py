@@ -8,7 +8,8 @@ import shutil
 
 import pytest
 
-from scitex_todo import build_mermaid, find_chromium, render
+from scitex_todo._mermaid import build_mermaid
+from scitex_todo._render import find_chromium, render
 
 
 def test_find_chromium_returns_path_or_none():

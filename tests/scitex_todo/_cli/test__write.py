@@ -386,7 +386,7 @@ def test_list_filters_by_scope_exits_zero(tmp_path):
     # Act
     result = runner.invoke(
         main,
-        ["list", "--tasks", store, "--scope", "agent:proj-scitex-todo", "--json"],
+        ["list-tasks", "--tasks", store, "--scope", "agent:proj-scitex-todo", "--json"],
     )
     # Assert
     assert result.exit_code == 0, result.output
@@ -402,7 +402,7 @@ def test_list_filters_by_scope_returns_matching(tmp_path):
     )
     result = runner.invoke(
         main,
-        ["list", "--tasks", store, "--scope", "agent:proj-scitex-todo", "--json"],
+        ["list-tasks", "--tasks", store, "--scope", "agent:proj-scitex-todo", "--json"],
     )
     # Act
     rows = json.loads(result.output.strip())
@@ -417,8 +417,8 @@ def test_list_env_scope_default(tmp_path, env):
     runner.invoke(main, ["add", "a", "A", "--tasks", store, "--scope", "agent:lead"])
     runner.invoke(main, ["add", "b", "B", "--tasks", store, "--scope", "agent:other"])
     env.set("SCITEX_TODO_SCOPE", "agent:lead")
-    # Act
-    result = runner.invoke(main, ["list", "--tasks", store, "--json"])
+    # Act — no --scope here so $SCITEX_TODO_SCOPE='agent:lead' applies via the filter path.
+    result = runner.invoke(main, ["list-tasks", "--tasks", store, "--json", "--status", "pending"])
     rows = json.loads(result.output.strip())
     # Assert
     assert {r["id"] for r in rows} == {"a"}
@@ -488,7 +488,7 @@ def test_where_exits_zero(tmp_path, env):
     Path(store).write_text("tasks: []\n", encoding="utf-8")
     env.delete("SCITEX_TODO_TASKS")
     # Act
-    result = runner.invoke(main, ["where", "--tasks", store, "--json"])
+    result = runner.invoke(main, ["resolve-store", "--tasks", store, "--json"])
     # Assert
     assert result.exit_code == 0, result.output
 
@@ -499,7 +499,7 @@ def test_where_resolved_path(tmp_path, env):
     store = _store_path(tmp_path)
     Path(store).write_text("tasks: []\n", encoding="utf-8")
     env.delete("SCITEX_TODO_TASKS")
-    result = runner.invoke(main, ["where", "--tasks", store, "--json"])
+    result = runner.invoke(main, ["resolve-store", "--tasks", store, "--json"])
     # Act
     info = json.loads(result.output.strip())
     # Assert
@@ -512,7 +512,7 @@ def test_where_exists_true(tmp_path, env):
     store = _store_path(tmp_path)
     Path(store).write_text("tasks: []\n", encoding="utf-8")
     env.delete("SCITEX_TODO_TASKS")
-    result = runner.invoke(main, ["where", "--tasks", store, "--json"])
+    result = runner.invoke(main, ["resolve-store", "--tasks", store, "--json"])
     # Act
     info = json.loads(result.output.strip())
     # Assert
@@ -527,7 +527,7 @@ def test_init_shared_exits_zero(tmp_path, env):
     runner = CliRunner()
     env.set("SCITEX_DIR", str(tmp_path / "fake-home"))
     # Act
-    result = runner.invoke(main, ["init", "--shared"])
+    result = runner.invoke(main, ["init-store", "--shared"])
     # Assert
     assert result.exit_code == 0, result.output
 
@@ -537,7 +537,7 @@ def test_init_shared_output_mentions_created(tmp_path, env):
     runner = CliRunner()
     env.set("SCITEX_DIR", str(tmp_path / "fake-home"))
     # Act
-    result = runner.invoke(main, ["init", "--shared"])
+    result = runner.invoke(main, ["init-store", "--shared"])
     # Assert
     assert "created" in result.output
 
@@ -546,7 +546,7 @@ def test_init_shared_creates_file(tmp_path, env):
     # Arrange
     runner = CliRunner()
     env.set("SCITEX_DIR", str(tmp_path / "fake-home"))
-    runner.invoke(main, ["init", "--shared"])
+    runner.invoke(main, ["init-store", "--shared"])
     # Act
     expected = tmp_path / "fake-home" / "todo" / "tasks.yaml"
     # Assert
@@ -557,9 +557,9 @@ def test_init_shared_is_idempotent(tmp_path, env):
     # Arrange
     runner = CliRunner()
     env.set("SCITEX_DIR", str(tmp_path / "fake-home"))
-    runner.invoke(main, ["init", "--shared"])
+    runner.invoke(main, ["init-store", "--shared"])
     # Act
-    again = runner.invoke(main, ["init", "--shared"])
+    again = runner.invoke(main, ["init-store", "--shared"])
     # Assert
     assert "no-op" in again.output
 
@@ -571,7 +571,7 @@ def test_init_project_outside_git_errors(tmp_path, env):
     runner = CliRunner()
     env.chdir(tmp_path)
     # Act
-    result = runner.invoke(main, ["init", "--project"])
+    result = runner.invoke(main, ["init-store", "--project"])
     # Assert
     assert result.exit_code != 0
 
@@ -583,7 +583,7 @@ def test_init_project_outside_git_mentions_git_repo(tmp_path, env):
     runner = CliRunner()
     env.chdir(tmp_path)
     # Act
-    result = runner.invoke(main, ["init", "--project"])
+    result = runner.invoke(main, ["init-store", "--project"])
     # Assert
     assert "git repo" in result.output.lower()
 
@@ -595,7 +595,7 @@ def test_sync_dry_run_exits_zero(tmp_path):
     # Arrange
     runner = CliRunner()
     # Act
-    result = runner.invoke(main, ["sync", "--dry-run"])
+    result = runner.invoke(main, ["sync-store", "--dry-run"])
     # Assert
     assert result.exit_code == 0, result.output
 
@@ -604,7 +604,7 @@ def test_sync_dry_run_mentions_stub(tmp_path):
     # Arrange
     runner = CliRunner()
     # Act
-    result = runner.invoke(main, ["sync", "--dry-run"])
+    result = runner.invoke(main, ["sync-store", "--dry-run"])
     # Assert
     assert "PHASE-1 STUB" in result.output
 
@@ -613,7 +613,7 @@ def test_sync_dry_run_mentions_git(tmp_path):
     # Arrange
     runner = CliRunner()
     # Act
-    result = runner.invoke(main, ["sync", "--dry-run"])
+    result = runner.invoke(main, ["sync-store", "--dry-run"])
     # Assert
     assert "git" in result.output
 
@@ -622,7 +622,7 @@ def test_sync_apply_exits_nonzero(tmp_path):
     # Arrange
     runner = CliRunner()
     # Act
-    result = runner.invoke(main, ["sync", "--apply"])
+    result = runner.invoke(main, ["sync-store", "--apply"])
     # Assert
     assert result.exit_code != 0
 
@@ -631,7 +631,7 @@ def test_sync_apply_mentions_phase(tmp_path):
     # Arrange
     runner = CliRunner()
     # Act
-    result = runner.invoke(main, ["sync", "--apply"])
+    result = runner.invoke(main, ["sync-store", "--apply"])
     # Assert
     assert "Phase 1" in result.output or "Phase 2" in result.output
 

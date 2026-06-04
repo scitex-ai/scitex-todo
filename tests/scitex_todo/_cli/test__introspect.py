@@ -24,7 +24,9 @@ def test_list_python_apis_lists_public_surface():
     # Act
     result = runner.invoke(main, ["list-python-apis"])
     # Assert
-    assert "build_mermaid" in result.output
+    # After audit §6 narrowing, the public surface is the 6 task-store
+    # functions (each matching a Convention A MCP tool name 1:1).
+    assert "add_task" in result.output
 
 
 def test_list_python_apis_json_is_parseable():
@@ -34,7 +36,7 @@ def test_list_python_apis_json_is_parseable():
     result = runner.invoke(main, ["list-python-apis", "--json"])
     names = {entry["name"] for entry in json.loads(result.output)}
     # Assert
-    assert "load_tasks" in names
+    assert "list_tasks" in names
 
 
 def test_list_python_apis_verbose_ladder_is_monotonic():

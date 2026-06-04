@@ -182,7 +182,7 @@ def list_tasks_cmd(
     """Print the resolved task list (filtered if any --scope/--assignee/--status)."""
     # Filter path (any filter or scope explicitly opted out via ""):
     if scope is not None or assignee is not None or status is not None:
-        from ._write import list_tasks_filtered
+        from ._admin import list_tasks_filtered
 
         list_tasks_filtered(scope, assignee, status, as_json, tasks_path)
         return

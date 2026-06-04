@@ -8,8 +8,8 @@ Tools (audit §6 Convention A — ``tool_name == python_api_name``):
     update_task       — mutate fields of an existing task (scitex_todo.update_task)
     complete_task     — mark done + stamp _log_meta     (scitex_todo.complete_task)
     list_tasks        — filter the store                (scitex_todo.list_tasks)
-    summary           — counts by status/scope/assignee (scitex_todo.summary)
-    where             — resolved store path + chain     (scitex_todo.where)
+    summarize_tasks   — counts by status/scope/assignee (scitex_todo.summarize_tasks)
+    resolve_store     — resolved store path + chain     (scitex_todo.resolve_store)
     todo_skills_list  — list bundled agent skills       (audit §5 required pair)
     todo_skills_get   — get one bundled skill's content (audit §5 required pair)
 
@@ -160,23 +160,23 @@ async def list_tasks(
 
 
 @mcp.tool()
-async def summary(
+async def summarize_tasks(
     scope: str | None = None,
     assignee: str | None = None,
     tasks_path: str | None = None,
 ) -> str:
     """Numeric progress: counts by status / scope / assignee."""
-    return json.dumps(_store.summary(tasks_path, scope=scope, assignee=assignee))
+    return json.dumps(_store.summarize_tasks(tasks_path, scope=scope, assignee=assignee))
 
 
 @mcp.tool()
-async def where(tasks_path: str | None = None) -> str:
+async def resolve_store(tasks_path: str | None = None) -> str:
     """Show the resolved store path and the precedence chain.
 
     Useful for an agent to confirm "yes, I am writing to the shared
     user-scope store, not to a project shadow."
     """
-    return json.dumps(_store.where(tasks_path))
+    return json.dumps(_store.resolve_store(tasks_path))
 
 
 # --------------------------------------------------------------------------- #
@@ -227,8 +227,8 @@ TOOL_NAMES: tuple[str, ...] = (
     "update_task",
     "complete_task",
     "list_tasks",
-    "summary",
-    "where",
+    "summarize_tasks",
+    "resolve_store",
     "todo_skills_list",
     "todo_skills_get",
 )

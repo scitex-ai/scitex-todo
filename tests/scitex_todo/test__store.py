@@ -466,7 +466,7 @@ def test_summary_total_count(populated_store):
     # Arrange
     store = populated_store
     # Act
-    info = _store.summary(store, scope="")
+    info = _store.summarize_tasks(store, scope="")
     # Assert
     assert info["total"] == 4
 
@@ -475,7 +475,7 @@ def test_summary_by_status_has_all_valid_statuses(populated_store):
     # Arrange
     store = populated_store
     # Act
-    info = _store.summary(store, scope="")
+    info = _store.summarize_tasks(store, scope="")
     # Assert
     for status in _model.VALID_STATUSES:
         assert status in info["by_status"]
@@ -485,7 +485,7 @@ def test_summary_by_status_pending_count(populated_store):
     # Arrange
     store = populated_store
     # Act
-    info = _store.summary(store, scope="")
+    info = _store.summarize_tasks(store, scope="")
     # Assert
     assert info["by_status"]["pending"] == 2
 
@@ -494,7 +494,7 @@ def test_summary_by_status_done_count(populated_store):
     # Arrange
     store = populated_store
     # Act
-    info = _store.summary(store, scope="")
+    info = _store.summarize_tasks(store, scope="")
     # Assert
     assert info["by_status"]["done"] == 1
 
@@ -503,7 +503,7 @@ def test_summary_by_status_in_progress_count(populated_store):
     # Arrange
     store = populated_store
     # Act
-    info = _store.summary(store, scope="")
+    info = _store.summarize_tasks(store, scope="")
     # Assert
     assert info["by_status"]["in_progress"] == 1
 
@@ -512,7 +512,7 @@ def test_summary_by_scope_lead_count(populated_store):
     # Arrange
     store = populated_store
     # Act
-    info = _store.summary(store, scope="")
+    info = _store.summarize_tasks(store, scope="")
     # Assert
     assert info["by_scope"]["agent:lead"] == 1
 
@@ -521,7 +521,7 @@ def test_summary_by_scope_proj_count(populated_store):
     # Arrange
     store = populated_store
     # Act
-    info = _store.summary(store, scope="")
+    info = _store.summarize_tasks(store, scope="")
     # Assert
     assert info["by_scope"]["agent:proj-scitex-todo"] == 2
 
@@ -530,7 +530,7 @@ def test_summary_by_scope_empty_count(populated_store):
     # Arrange
     store = populated_store
     # Act
-    info = _store.summary(store, scope="")
+    info = _store.summarize_tasks(store, scope="")
     # Assert
     assert info["by_scope"][""] == 1
 
@@ -539,7 +539,7 @@ def test_summary_by_assignee_proj_count(populated_store):
     # Arrange
     store = populated_store
     # Act
-    info = _store.summary(store, scope="")
+    info = _store.summarize_tasks(store, scope="")
     # Assert
     assert info["by_assignee"]["agent:proj-scitex-todo"] == 1
 
@@ -548,7 +548,7 @@ def test_summary_by_assignee_empty_count(populated_store):
     # Arrange
     store = populated_store
     # Act
-    info = _store.summary(store, scope="")
+    info = _store.summarize_tasks(store, scope="")
     # Assert
     assert info["by_assignee"][""] == 3
 
@@ -557,7 +557,7 @@ def test_summary_respects_scope_filter_total(populated_store):
     # Arrange
     store = populated_store
     # Act
-    info = _store.summary(store, scope="agent:proj-scitex-todo")
+    info = _store.summarize_tasks(store, scope="agent:proj-scitex-todo")
     # Assert
     assert info["total"] == 2
 
@@ -566,7 +566,7 @@ def test_summary_respects_scope_filter_pending(populated_store):
     # Arrange
     store = populated_store
     # Act
-    info = _store.summary(store, scope="agent:proj-scitex-todo")
+    info = _store.summarize_tasks(store, scope="agent:proj-scitex-todo")
     # Assert
     assert info["by_status"]["pending"] == 1
 
@@ -575,7 +575,7 @@ def test_summary_respects_scope_filter_in_progress(populated_store):
     # Arrange
     store = populated_store
     # Act
-    info = _store.summary(store, scope="agent:proj-scitex-todo")
+    info = _store.summarize_tasks(store, scope="agent:proj-scitex-todo")
     # Assert
     assert info["by_status"]["in_progress"] == 1
 

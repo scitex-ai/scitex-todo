@@ -308,7 +308,7 @@ def list_tasks(
     ]
 
 
-def summary(
+def summarize_tasks(
     store: str | Path | None = None,
     *,
     scope: str | None = None,
@@ -360,12 +360,12 @@ def summary(
     }
 
 
-def where(store: str | Path | None = None) -> dict:
+def resolve_store(store: str | Path | None = None) -> dict:
     """Return the resolved task store path and the precedence chain.
 
-    Mirrors the data the `scitex-todo which-store` CLI verb and the
-    `where` MCP tool emit. Keeping a Python API by the same name as the
-    MCP tool satisfies audit §6 (Convention A: tool_name == api_name).
+    Mirrors the data the `scitex-todo resolve-store` CLI verb and the
+    `resolve_store` MCP tool emit. Keeping a Python API by the same name
+    as the MCP tool satisfies audit §6 (Convention A: tool_name == api_name).
 
     Output shape::
 
@@ -409,9 +409,9 @@ __all__ = [
     "add_task",
     "complete_task",
     "list_tasks",
-    "summary",
+    "resolve_store",
+    "summarize_tasks",
     "update_task",
-    "where",
 ]
 
 # EOF

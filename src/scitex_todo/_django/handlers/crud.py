@@ -76,7 +76,8 @@ def _slug_id(title: str, taken: set[str]) -> str:
 
 def _save(tasks, board):
     """Validate + persist, resetting the cache. Returns an error response or None."""
-    from scitex_todo import TaskValidationError, save_tasks
+    from scitex_todo import TaskValidationError
+    from scitex_todo._model import save_tasks
 
     from ..services import _reset_cache
 

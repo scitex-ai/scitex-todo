@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from scitex_todo import bundled_example, resolve_tasks_path
+from scitex_todo._paths import bundled_example, resolve_tasks_path
 from scitex_todo._paths import ENV_TASKS
 
 

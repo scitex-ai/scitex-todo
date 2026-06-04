@@ -8,7 +8,8 @@ import contextlib
 
 import pytest
 
-from scitex_todo import TaskValidationError, load_tasks, save_tasks
+from scitex_todo import TaskValidationError
+from scitex_todo._model import load_tasks, save_tasks
 
 
 def _write(tmp_path, text):

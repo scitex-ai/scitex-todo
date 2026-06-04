@@ -88,12 +88,12 @@ def test_phase_1_tools_registered():
     # Arrange
     from scitex_todo._mcp_server import mcp
     expected = {
-        "scitex_todo_add_task",
-        "scitex_todo_update_task",
-        "scitex_todo_complete_task",
-        "scitex_todo_list_tasks",
-        "scitex_todo_summary",
-        "scitex_todo_where",
+        "add_task",
+        "update_task",
+        "complete_task",
+        "list_tasks",
+        "summarize_tasks",
+        "resolve_store",
     }
     # Act
     names = set(_tool_names(mcp))
@@ -106,11 +106,11 @@ def test_phase_1_tools_registered():
 # --------------------------------------------------------------------------- #
 def test_add_returns_id(tmp_path):
     # Arrange
-    from scitex_todo._mcp_server import scitex_todo_add_task
+    from scitex_todo._mcp_server import add_task
     store = str(tmp_path / "tasks.yaml")
     # Act
     add = asyncio.run(_call_tool(
-        scitex_todo_add_task,
+        add_task,
         id="a",
         title="A",
         scope="agent:test",
@@ -122,17 +122,17 @@ def test_add_returns_id(tmp_path):
 
 def test_add_then_list_round_trip(tmp_path):
     # Arrange
-    from scitex_todo._mcp_server import scitex_todo_add_task, scitex_todo_list_tasks
+    from scitex_todo._mcp_server import add_task, list_tasks
     store = str(tmp_path / "tasks.yaml")
     asyncio.run(_call_tool(
-        scitex_todo_add_task,
+        add_task,
         id="a",
         title="A",
         scope="agent:test",
         tasks_path=store,
     ))
     # Act
-    listed = asyncio.run(_call_tool(scitex_todo_list_tasks, tasks_path=store))
+    listed = asyncio.run(_call_tool(list_tasks, tasks_path=store))
     rows = json.loads(listed)
     # Assert
     assert {r["id"] for r in rows} == {"a"}
@@ -140,13 +140,13 @@ def test_add_then_list_round_trip(tmp_path):
 
 def test_scope_filter_excludes_other_scope(tmp_path):
     # Arrange
-    from scitex_todo._mcp_server import scitex_todo_add_task, scitex_todo_list_tasks
+    from scitex_todo._mcp_server import add_task, list_tasks
     store = str(tmp_path / "tasks.yaml")
     asyncio.run(_call_tool(
-        scitex_todo_add_task, id="a", title="A", scope="agent:lead", tasks_path=store
+        add_task, id="a", title="A", scope="agent:lead", tasks_path=store
     ))
     asyncio.run(_call_tool(
-        scitex_todo_add_task,
+        add_task,
         id="b",
         title="B",
         scope="agent:proj-scitex-todo",
@@ -154,7 +154,7 @@ def test_scope_filter_excludes_other_scope(tmp_path):
     ))
     # Act
     listed = asyncio.run(_call_tool(
-        scitex_todo_list_tasks, scope="agent:proj-scitex-todo", tasks_path=store
+        list_tasks, scope="agent:proj-scitex-todo", tasks_path=store
     ))
     # Assert
     assert {r["id"] for r in json.loads(listed)} == {"b"}
@@ -164,14 +164,14 @@ def test_complete_sets_status_done(tmp_path, env):
     # Arrange
     env.set("SCITEX_TODO_AGENT", "agent:mcp-test")
     from scitex_todo._mcp_server import (
-        scitex_todo_add_task,
-        scitex_todo_complete_task,
+        add_task,
+        complete_task,
     )
     store = str(tmp_path / "tasks.yaml")
-    asyncio.run(_call_tool(scitex_todo_add_task, id="a", title="A", tasks_path=store))
+    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
     # Act
     out = json.loads(
-        asyncio.run(_call_tool(scitex_todo_complete_task, task_id="a", tasks_path=store))
+        asyncio.run(_call_tool(complete_task, task_id="a", tasks_path=store))
     )
     # Assert
     assert out["status"] == "done"
@@ -181,14 +181,14 @@ def test_complete_stamps_completed_by(tmp_path, env):
     # Arrange
     env.set("SCITEX_TODO_AGENT", "agent:mcp-test")
     from scitex_todo._mcp_server import (
-        scitex_todo_add_task,
-        scitex_todo_complete_task,
+        add_task,
+        complete_task,
     )
     store = str(tmp_path / "tasks.yaml")
-    asyncio.run(_call_tool(scitex_todo_add_task, id="a", title="A", tasks_path=store))
+    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
     # Act
     out = json.loads(
-        asyncio.run(_call_tool(scitex_todo_complete_task, task_id="a", tasks_path=store))
+        asyncio.run(_call_tool(complete_task, task_id="a", tasks_path=store))
     )
     # Assert
     assert out["_log_meta"]["completed_by"] == "agent:mcp-test"
@@ -198,14 +198,14 @@ def test_complete_stamps_completed_at_z_suffix(tmp_path, env):
     # Arrange
     env.set("SCITEX_TODO_AGENT", "agent:mcp-test")
     from scitex_todo._mcp_server import (
-        scitex_todo_add_task,
-        scitex_todo_complete_task,
+        add_task,
+        complete_task,
     )
     store = str(tmp_path / "tasks.yaml")
-    asyncio.run(_call_tool(scitex_todo_add_task, id="a", title="A", tasks_path=store))
+    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
     # Act
     out = json.loads(
-        asyncio.run(_call_tool(scitex_todo_complete_task, task_id="a", tasks_path=store))
+        asyncio.run(_call_tool(complete_task, task_id="a", tasks_path=store))
     )
     # Assert
     assert out["_log_meta"]["completed_at"].endswith("Z")
@@ -213,13 +213,13 @@ def test_complete_stamps_completed_at_z_suffix(tmp_path, env):
 
 def test_update_sets_status(tmp_path):
     # Arrange
-    from scitex_todo._mcp_server import scitex_todo_add_task, scitex_todo_update_task
+    from scitex_todo._mcp_server import add_task, update_task
     store = str(tmp_path / "tasks.yaml")
-    asyncio.run(_call_tool(scitex_todo_add_task, id="a", title="A", tasks_path=store))
+    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
     # Act
     out = json.loads(
         asyncio.run(_call_tool(
-            scitex_todo_update_task,
+            update_task,
             task_id="a",
             status="in_progress",
             scope="agent:lead",
@@ -232,13 +232,13 @@ def test_update_sets_status(tmp_path):
 
 def test_update_sets_scope(tmp_path):
     # Arrange
-    from scitex_todo._mcp_server import scitex_todo_add_task, scitex_todo_update_task
+    from scitex_todo._mcp_server import add_task, update_task
     store = str(tmp_path / "tasks.yaml")
-    asyncio.run(_call_tool(scitex_todo_add_task, id="a", title="A", tasks_path=store))
+    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
     # Act
     out = json.loads(
         asyncio.run(_call_tool(
-            scitex_todo_update_task,
+            update_task,
             task_id="a",
             status="in_progress",
             scope="agent:lead",
@@ -251,62 +251,62 @@ def test_update_sets_scope(tmp_path):
 
 def test_summary_returns_total(tmp_path):
     # Arrange
-    from scitex_todo._mcp_server import scitex_todo_add_task, scitex_todo_summary
+    from scitex_todo._mcp_server import add_task, summarize_tasks
     store = str(tmp_path / "tasks.yaml")
-    asyncio.run(_call_tool(scitex_todo_add_task, id="a", title="A", tasks_path=store))
+    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
     asyncio.run(_call_tool(
-        scitex_todo_add_task, id="b", title="B", status="done", tasks_path=store
+        add_task, id="b", title="B", status="done", tasks_path=store
     ))
     # Act
-    info = json.loads(asyncio.run(_call_tool(scitex_todo_summary, tasks_path=store)))
+    info = json.loads(asyncio.run(_call_tool(summarize_tasks, tasks_path=store)))
     # Assert
     assert info["total"] == 2
 
 
 def test_summary_returns_done_count(tmp_path):
     # Arrange
-    from scitex_todo._mcp_server import scitex_todo_add_task, scitex_todo_summary
+    from scitex_todo._mcp_server import add_task, summarize_tasks
     store = str(tmp_path / "tasks.yaml")
-    asyncio.run(_call_tool(scitex_todo_add_task, id="a", title="A", tasks_path=store))
+    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
     asyncio.run(_call_tool(
-        scitex_todo_add_task, id="b", title="B", status="done", tasks_path=store
+        add_task, id="b", title="B", status="done", tasks_path=store
     ))
     # Act
-    info = json.loads(asyncio.run(_call_tool(scitex_todo_summary, tasks_path=store)))
+    info = json.loads(asyncio.run(_call_tool(summarize_tasks, tasks_path=store)))
     # Assert
     assert info["by_status"]["done"] == 1
 
 
 def test_summary_returns_pending_count(tmp_path):
     # Arrange
-    from scitex_todo._mcp_server import scitex_todo_add_task, scitex_todo_summary
+    from scitex_todo._mcp_server import add_task, summarize_tasks
     store = str(tmp_path / "tasks.yaml")
-    asyncio.run(_call_tool(scitex_todo_add_task, id="a", title="A", tasks_path=store))
+    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
     asyncio.run(_call_tool(
-        scitex_todo_add_task, id="b", title="B", status="done", tasks_path=store
+        add_task, id="b", title="B", status="done", tasks_path=store
     ))
     # Act
-    info = json.loads(asyncio.run(_call_tool(scitex_todo_summary, tasks_path=store)))
+    info = json.loads(asyncio.run(_call_tool(summarize_tasks, tasks_path=store)))
     # Assert
     assert info["by_status"]["pending"] == 1
 
 
 def test_where_returns_resolved_path(tmp_path):
     # Arrange
-    from scitex_todo._mcp_server import scitex_todo_where
+    from scitex_todo._mcp_server import resolve_store
     store = str(tmp_path / "tasks.yaml")
     # Act
-    info = json.loads(asyncio.run(_call_tool(scitex_todo_where, tasks_path=store)))
+    info = json.loads(asyncio.run(_call_tool(resolve_store, tasks_path=store)))
     # Assert
     assert info["resolved"] == store
 
 
 def test_where_returns_exists_false_when_absent(tmp_path):
     # Arrange
-    from scitex_todo._mcp_server import scitex_todo_where
+    from scitex_todo._mcp_server import resolve_store
     store = str(tmp_path / "tasks.yaml")
     # Act
-    info = json.loads(asyncio.run(_call_tool(scitex_todo_where, tasks_path=store)))
+    info = json.loads(asyncio.run(_call_tool(resolve_store, tasks_path=store)))
     # Assert
     assert info["exists"] is False
 

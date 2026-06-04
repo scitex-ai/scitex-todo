@@ -29,8 +29,8 @@ returns.
 | `update_task` | `scitex_todo.update_task` | Mutate fields of an existing task. |
 | `complete_task` | `scitex_todo.complete_task` | Mark done + stamp `_log_meta.completed_{at,by}`. |
 | `list_tasks` | `scitex_todo.list_tasks` | Filter the store by scope / assignee / status. |
-| `summary` | `scitex_todo.summary` | Counts by status / scope / assignee. |
-| `where` | `scitex_todo.where` | Resolved store path + the precedence chain. |
+| `summarize_tasks` | `scitex_todo.summarize_tasks` | Counts by status / scope / assignee. |
+| `resolve_store` | `scitex_todo.resolve_store` | Resolved store path + the precedence chain. |
 | `todo_skills_list` | (skills introspection) | List bundled agent skills (file names). |
 | `todo_skills_get` | (skills introspection) | Get the content of one bundled skill by name. |
 
@@ -42,7 +42,7 @@ returns.
 
 ## Scope filtering
 
-`list_tasks` / `summary` honor `$SCITEX_TODO_SCOPE` as the default
+`list_tasks` / `summarize_tasks` honor `$SCITEX_TODO_SCOPE` as the default
 `scope` value. Pass `scope=""` (empty string) to opt out of that env
 default and see every task. The agent-facing convention these tools
 respect is documented in [02_quick-start.md](02_quick-start.md).
