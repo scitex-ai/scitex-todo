@@ -33,7 +33,8 @@ def handle_priority(request, board):
     ``TaskValidationError`` raised by :func:`scitex_todo.save_tasks` surfaces
     as a 400 (the validator's message names the offending field).
     """
-    from scitex_todo import TaskValidationError, save_tasks
+    from scitex_todo import TaskValidationError
+    from scitex_todo._model import save_tasks
 
     from ..services import _reset_cache
 

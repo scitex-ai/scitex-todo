@@ -38,6 +38,7 @@ The store is resolved in precedence order: explicit `--tasks` →
 - [02_quick-start.md](02_quick-start.md) — load → build_mermaid → render
 - [03_python-api.md](03_python-api.md) — public callables and the schema
 - [04_cli-reference.md](04_cli-reference.md) — `scitex-todo` subcommands
+- [05_mcp-tools.md](05_mcp-tools.md) — the MCP tool surface (Convention A)
 
 ### Campaign helpers (10+)
 - [10_campaign-tracking.md](10_campaign-tracking.md) — companion tools

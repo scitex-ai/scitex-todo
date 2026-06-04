@@ -210,10 +210,10 @@ scitex-todo add wsl-ssh-key "regenerate ssh key" --scope host:wsl2-dev
 scitex-todo add memo-call-sarah "Call Sarah re: grant" --scope user:operator
 
 # All my tasks on this host
-scitex-todo list --scope "host:$(hostname)"
+scitex-todo list-tasks --scope "host:$(hostname)"
 
 # All my tasks across every host — the 串刺し view
-scitex-todo list --scope ""
+scitex-todo list-tasks --scope ""
 ```
 
 `host:` is a convention not an enum (Req 8 stance), so a task that
@@ -299,7 +299,7 @@ any participant can read any task by removing the filter.
 
 ```
 $ scitex-todo board                  # web UI on http://127.0.0.1:8051
-$ scitex-todo list                   # CLI listing
+$ scitex-todo list-tasks                   # CLI listing
 $ scitex-todo add note1 "Don't forget X" --scope private
 $ scitex-todo done note1
 ```
@@ -330,7 +330,7 @@ touches the schema. Cross-agent claim/handoff is a single
 ### 5.4 Team (operator + multiple agents on multiple hosts)
 
 Each host has `~/.scitex/todo/` as a git checkout of the private state
-repo. `scitex-todo sync --apply` runs locally (manual or cron) to push
+repo. `scitex-todo sync-store --apply` runs locally (manual or cron) to push
 local edits and pull peers' edits. Conflict-resolve via per-task LWW on
 `_log_meta.completed_at` (Phase-2 body — see `sync-substrate.md`).
 
@@ -394,7 +394,7 @@ When `proj-foo` is migrated (new host, new container, fresh restart, or
 ownership handed to `proj-bar`), the new instance:
 
 1. Reads `$SCITEX_TODO_SCOPE` from its env (e.g. `agent:proj-foo`).
-2. Runs `scitex-todo list --assignee agent:proj-foo --status in_progress`.
+2. Runs `scitex-todo list-tasks --assignee agent:proj-foo --status in_progress`.
 3. Picks up exactly where the old instance left off, with the `note`
    field as the handoff context.
 
@@ -437,7 +437,7 @@ new order. The board is the *one rope* every agent rows behind.
 
 3. **Private state-repo bootstrap.** The first time an agent comes up
    on a fresh host, `~/.scitex/todo/.git` doesn't exist yet. Phase-2
-   needs a `scitex-todo init --shared --from-remote <url>` mode that
+   needs a `scitex-todo init-store --shared --from-remote <url>` mode that
    `git clone`s the state repo. Currently the design assumes the dir is
    already a git repo.
 

@@ -146,8 +146,10 @@ def render_graph_cmd(tasks_path: str | None, output: str, print_mermaid: bool) -
 @main.command(
     "list-tasks",
     help=(
-        "List the resolved tasks (id, status, title).\n\n"
-        "Example:\n  scitex-todo list-tasks --json"
+        "List tasks with optional scope/assignee/status filters.\n\n"
+        "Without filters and without --json, prints the same plain-text\n"
+        "table as before (backward-compatible).\n\n"
+        "Example:\n  scitex-todo list-tasks --scope agent:proj-scitex-todo --json"
     ),
 )
 @click.option(
@@ -158,13 +160,33 @@ def render_graph_cmd(tasks_path: str | None, output: str, print_mermaid: bool) -
     "or $SCITEX_TODO_TASKS).",
 )
 @click.option(
+    "--scope",
+    default=None,
+    help="Match `scope` exactly (use '' to ignore $SCITEX_TODO_SCOPE).",
+)
+@click.option("--assignee", default=None, help="Match `assignee` exactly.")
+@click.option("--status", default=None, help="Match `status` exactly.")
+@click.option(
     "--json",
     "as_json",
     is_flag=True,
     help="Emit the resolved tasks as a JSON array.",
 )
-def list_tasks_cmd(tasks_path: str | None, as_json: bool) -> None:
-    """Print the resolved task list to stdout."""
+def list_tasks_cmd(
+    tasks_path: str | None,
+    scope: str | None,
+    assignee: str | None,
+    status: str | None,
+    as_json: bool,
+) -> None:
+    """Print the resolved task list (filtered if any --scope/--assignee/--status)."""
+    # Filter path (any filter or scope explicitly opted out via ""):
+    if scope is not None or assignee is not None or status is not None:
+        from ._admin import list_tasks_filtered
+
+        list_tasks_filtered(scope, assignee, status, as_json, tasks_path)
+        return
+    # Plain path — backward-compatible plain table / JSON array.
     resolved = resolve_tasks_path(tasks_path)
     tasks = load_tasks(resolved)
     if as_json:
@@ -235,11 +257,18 @@ def board_cmd(tasks_path: str | None, port: int, no_browser: bool) -> None:
 # --------------------------------------------------------------------------- #
 # Attach the §1a sub-groups (defined in sibling modules).                     #
 # --------------------------------------------------------------------------- #
-from . import _completion, _introspect, _skills  # noqa: E402
+from . import _completion, _introspect, _mcp, _skills, _write  # noqa: E402
 
 _introspect.register(main)
 _completion.register(main)
 _skills.register(main)
+# Phase 1 mutation/admin verbs: add / update / done / list / summary /
+# where / init / sync(stub). See GITIGNORED/ARCHITECTURE.md.
+_write.register(main)
+# Phase 1 MCP subgroup — §3 required four (start / doctor / list-tools /
+# install). The module itself loads cleanly without fastmcp installed;
+# individual verbs print a clear install hint when fastmcp is missing.
+_mcp.register(main)
 
 
 if __name__ == "__main__":

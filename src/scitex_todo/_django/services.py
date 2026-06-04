@@ -45,7 +45,8 @@ def get_board(tasks_path: Optional[str] = None) -> BoardState:
     BoardState
         The validated task list plus the resolved path and its mtime.
     """
-    from scitex_todo import load_tasks, resolve_tasks_path
+    from scitex_todo._model import load_tasks
+    from scitex_todo._paths import resolve_tasks_path
 
     _cleanup_expired()
 

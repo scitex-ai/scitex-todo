@@ -17,7 +17,7 @@ def _status_colors() -> dict:
     ``STATUS_STYLE`` maps status -> (fill, stroke, dasharray). The board only
     needs fill + stroke + dashed flag, so project that into a small JSON dict.
     """
-    from scitex_todo import STATUS_STYLE
+    from scitex_todo._mermaid import STATUS_STYLE
 
     return {
         status: {"fill": fill, "stroke": stroke, "dashed": bool(dash)}
@@ -27,7 +27,7 @@ def _status_colors() -> dict:
 
 def _build_graph(board) -> dict:
     """Build the {nodes, edges, status_colors, ...} payload from a board."""
-    from scitex_todo import build_mermaid
+    from scitex_todo._mermaid import build_mermaid
 
     ids = {t["id"] for t in board.tasks}
 

@@ -29,32 +29,43 @@ try:
 except ImportError:  # pragma: no cover — only on ancient Pythons
     __version__ = "0.0.0+local"
 
-from ._mermaid import STATUS_STYLE, build_mermaid
-from ._model import VALID_STATUSES, TaskValidationError, load_tasks, save_tasks
-from ._paths import bundled_example, resolve_tasks_path
-from ._render import (
-    RenderError,
-    find_chromium,
-    render,
-    render_with_kroki,
-    render_with_mmdc,
+#: Public API — Convention A (audit §6: every public Python API must match a
+#: registered MCP tool name 1:1). The MCP tool surface is documented in
+#: ``_skills/scitex-todo/05_mcp-tools.md`` and registered in ``_mcp_server.py``.
+#:
+#: Render / mermaid / paths / model helpers used to be re-exported here.
+#: They were moved off the top level (audit §6) but remain importable from
+#: their submodules:
+#:
+#:     from scitex_todo._render  import render, render_with_kroki, render_with_mmdc, find_chromium, RenderError
+#:     from scitex_todo._mermaid import build_mermaid, STATUS_STYLE
+#:     from scitex_todo._model   import load_tasks, save_tasks, VALID_STATUSES, TaskValidationError
+#:     from scitex_todo._paths   import resolve_tasks_path, bundled_example
+from ._model import TaskValidationError
+from ._store import (
+    ENV_AGENT,
+    ENV_SCOPE,
+    TaskNotFoundError,
+    add_task,
+    complete_task,
+    list_tasks,
+    resolve_store,
+    summarize_tasks,
+    update_task,
 )
 
 __all__ = [
     "__version__",
-    "STATUS_STYLE",
-    "VALID_STATUSES",
+    "ENV_AGENT",
+    "ENV_SCOPE",
+    "TaskNotFoundError",
     "TaskValidationError",
-    "RenderError",
-    "build_mermaid",
-    "bundled_example",
-    "find_chromium",
-    "load_tasks",
-    "save_tasks",
-    "render",
-    "render_with_kroki",
-    "render_with_mmdc",
-    "resolve_tasks_path",
+    "add_task",
+    "complete_task",
+    "list_tasks",
+    "resolve_store",
+    "summarize_tasks",
+    "update_task",
 ]
 
 # EOF

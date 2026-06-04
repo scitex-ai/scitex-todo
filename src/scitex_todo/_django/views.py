@@ -70,7 +70,7 @@ def _static_graph_page(request) -> str:
     PNG export uses, so the operator can view the graph even when the frontend
     toolchain has not produced a Vite bundle.
     """
-    from scitex_todo import build_mermaid
+    from scitex_todo._mermaid import build_mermaid
 
     try:
         board = get_board(_tasks_path_from_request(request))

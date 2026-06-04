@@ -14,12 +14,14 @@ Run:
 
 from __future__ import annotations
 
-import scitex_todo as todo
+from scitex_todo._mermaid import build_mermaid
+from scitex_todo._model import load_tasks
+from scitex_todo._paths import bundled_example
 
 if __name__ == "__main__":
-    store = todo.bundled_example()
-    tasks = todo.load_tasks(store)
-    mermaid_src = todo.build_mermaid(tasks)
+    store = bundled_example()
+    tasks = load_tasks(store)
+    mermaid_src = build_mermaid(tasks)
 
     print(f"# {len(tasks)} tasks from {store}")
     print(mermaid_src)
