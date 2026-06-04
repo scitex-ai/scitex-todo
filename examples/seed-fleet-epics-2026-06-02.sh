@@ -32,8 +32,8 @@
 #
 # Prerequisites:
 #   pip install 'scitex-todo[mcp]>=0.3.0'
-#   scitex-todo where     # confirm the resolved store path
-#   scitex-todo init --shared    # if ~/.scitex/todo/tasks.yaml doesn't exist
+#   scitex-todo resolve-store    # confirm the resolved store path
+#   scitex-todo init-store --shared    # if ~/.scitex/todo/tasks.yaml doesn't exist
 #
 # Usage:
 #   bash examples/seed-fleet-epics-2026-06-02.sh
@@ -52,7 +52,7 @@ set -euo pipefail
 TODO="${SCITEX_TODO:-scitex-todo}"
 
 echo "Seeding fleet epics into:"
-"$TODO" where
+"$TODO" resolve-store
 echo
 
 # ── E1 ────────────────────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ echo
 echo "Seeded 8 fleet epics. View on the board:"
 echo "  scitex-todo board"
 echo "Filter your slice:"
-echo "  scitex-todo list --scope project:sac"
-echo "  scitex-todo list --assignee agent:proj-scitex-agent-container"
+echo "  scitex-todo list-tasks --scope project:sac"
+echo "  scitex-todo list-tasks --assignee agent:proj-scitex-agent-container"
 
 # EOF

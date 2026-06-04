@@ -62,10 +62,10 @@ def seeded_store(tmp_path):
     env = os.environ.copy()
     env["SCITEX_TODO"] = _CLI
     env["SCITEX_TODO_TASKS"] = str(store)
-    # `scitex-todo init --shared` writes to $SCITEX_DIR/todo/tasks.yaml,
+    # `scitex-todo init-store --shared` writes to $SCITEX_DIR/todo/tasks.yaml,
     # NOT to $SCITEX_TODO_TASKS — so we redirect $SCITEX_DIR to tmp_path
-    # to keep `init` hermetic too (it doesn't touch the operator's real
-    # ~/.scitex/todo on this host).
+    # to keep `init-store` hermetic too (it doesn't touch the operator's
+    # real ~/.scitex/todo on this host).
     env["SCITEX_DIR"] = str(tmp_path)
     # Drop scope/agent envs the host may have set, otherwise the script's
     # output would be filtered.
@@ -89,8 +89,13 @@ def seeded_store(tmp_path):
 
 
 def test_seed_script_exits_zero(seeded_store):
-    # Fixture already asserted exit code; this test documents the contract.
-    assert seeded_store.exists()
+    # Arrange
+    store = seeded_store
+    # Act — fixture already ran the script; the contract here is that the
+    # script's side effect (writing the YAML store) materialized.
+    exists = store.exists()
+    # Assert
+    assert exists
 
 
 def test_seed_script_creates_eight_epic_ids(seeded_store):
@@ -134,15 +139,22 @@ def test_seed_script_sets_expected_scopes(seeded_store):
 
 def test_seed_script_pre_claims_e1_to_agent_container(seeded_store):
     # Arrange — E1 is the only pre-claimed epic per the lead's brief
-    # (assignee = agent:proj-scitex-agent-container); the other seven
-    # are claimable.
+    # (assignee = agent:proj-scitex-agent-container).
     with seeded_store.open() as handle:
         tasks = yaml.safe_load(handle)["tasks"]
     by_id = {t["id"]: t for t in tasks}
-    # Assert E1 is pre-claimed
-    assert by_id["e1-sac-acl"].get("assignee") == "agent:proj-scitex-agent-container"
-    # Assert every other epic is claimable (no assignee)
-    for eid in (
+    # Act
+    e1_assignee = by_id["e1-sac-acl"].get("assignee")
+    # Assert
+    assert e1_assignee == "agent:proj-scitex-agent-container"
+
+
+def test_seed_script_other_epics_are_claimable(seeded_store):
+    # Arrange — every epic OTHER than E1 must be claimable (no assignee).
+    with seeded_store.open() as handle:
+        tasks = yaml.safe_load(handle)["tasks"]
+    by_id = {t["id"]: t for t in tasks}
+    claimable_ids = (
         "e2-sac-locator",
         "e3-sac-agents-migrate",
         "e4-hub-nas-standup",
@@ -150,19 +162,25 @@ def test_seed_script_pre_claims_e1_to_agent_container(seeded_store):
         "e6-staging-env",
         "e7-sac-writable-creds",
         "e8-scitex-bugfixes",
-    ):
-        assert "assignee" not in by_id[eid], (
-            f"{eid!r} should be claimable but has assignee="
-            f"{by_id[eid].get('assignee')!r}"
-        )
+    )
+    # Act
+    pre_claimed = {
+        eid: by_id[eid].get("assignee")
+        for eid in claimable_ids
+        if "assignee" in by_id[eid]
+    }
+    # Assert
+    assert pre_claimed == {}, f"these epics should be claimable: {pre_claimed!r}"
 
 
 def test_seed_script_all_epics_start_pending(seeded_store):
     # Arrange
     with seeded_store.open() as handle:
         tasks = yaml.safe_load(handle)["tasks"]
+    # Act
+    statuses = {t.get("status") for t in tasks}
     # Assert
-    assert all(t.get("status") == "pending" for t in tasks)
+    assert statuses == {"pending"}
 
 
 def test_seed_script_priorities_monotonic_10_to_80(seeded_store):
@@ -181,9 +199,10 @@ def test_seed_script_every_epic_has_note(seeded_store):
     # claiming agent has the context without a separate handoff.
     with seeded_store.open() as handle:
         tasks = yaml.safe_load(handle)["tasks"]
+    # Act
+    missing_note = [t["id"] for t in tasks if not t.get("note")]
     # Assert
-    for task in tasks:
-        assert task.get("note"), f"{task['id']!r} missing required `note`"
+    assert missing_note == [], f"epics missing `note`: {missing_note!r}"
 
 
 # EOF
