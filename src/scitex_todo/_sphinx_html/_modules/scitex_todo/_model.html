@@ -67,17 +67,14 @@
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../api/scitex_todo.html">scitex_todo — Python API</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.TaskNotFoundError"><code class="docutils literal notranslate"><span class="pre">TaskNotFoundError</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.TaskValidationError"><code class="docutils literal notranslate"><span class="pre">TaskValidationError</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.RenderError"><code class="docutils literal notranslate"><span class="pre">RenderError</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.build_mermaid"><code class="docutils literal notranslate"><span class="pre">build_mermaid()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.bundled_example"><code class="docutils literal notranslate"><span class="pre">bundled_example()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.find_chromium"><code class="docutils literal notranslate"><span class="pre">find_chromium()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.load_tasks"><code class="docutils literal notranslate"><span class="pre">load_tasks()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.save_tasks"><code class="docutils literal notranslate"><span class="pre">save_tasks()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.render"><code class="docutils literal notranslate"><span class="pre">render()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.render_with_kroki"><code class="docutils literal notranslate"><span class="pre">render_with_kroki()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.render_with_mmdc"><code class="docutils literal notranslate"><span class="pre">render_with_mmdc()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.resolve_tasks_path"><code class="docutils literal notranslate"><span class="pre">resolve_tasks_path()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.add_task"><code class="docutils literal notranslate"><span class="pre">add_task()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.complete_task"><code class="docutils literal notranslate"><span class="pre">complete_task()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.list_tasks"><code class="docutils literal notranslate"><span class="pre">list_tasks()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.resolve_store"><code class="docutils literal notranslate"><span class="pre">resolve_store()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.summarize_tasks"><code class="docutils literal notranslate"><span class="pre">summarize_tasks()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.update_task"><code class="docutils literal notranslate"><span class="pre">update_task()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -130,6 +127,8 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
+<span class="kn">import</span><span class="w"> </span><span class="nn">contextlib</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">fcntl</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">yaml</span>
@@ -154,8 +153,6 @@
 
 
 
-<div class="viewcode-block" id="load_tasks">
-<a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.load_tasks">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">load_tasks</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Load and validate the task list from a YAML store.</span>
 
@@ -195,8 +192,7 @@
 
     <span class="n">tasks</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;tasks&quot;</span><span class="p">)</span>
     <span class="n">_validate_tasks</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">))</span>
-    <span class="k">return</span> <span class="n">tasks</span></div>
-
+    <span class="k">return</span> <span class="n">tasks</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_validate_tasks</span><span class="p">(</span><span class="n">tasks</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span> <span class="n">source</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
@@ -290,10 +286,72 @@
                         <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">entry</span><span class="si">!r}</span><span class="s2">; each comment must be a mapping with a &quot;</span>
                         <span class="sa">f</span><span class="s2">&quot;non-empty string &#39;text&#39;&quot;</span>
                     <span class="p">)</span>
+        <span class="c1"># `scope` and `assignee` are additive-optional shared-fleet fields</span>
+        <span class="c1"># (PHASE 1, Req 1 in GITIGNORED/ARCHITECTURE.md). Both are free-form</span>
+        <span class="c1"># non-empty strings — no enum, no referential integrity. Convention is</span>
+        <span class="c1"># `agent:&lt;name&gt;` / `project:&lt;name&gt;` / `private` but that&#39;s a</span>
+        <span class="c1"># docs/skills convention, not enforced here (Req 8: be generic).</span>
+        <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;scope&quot;</span><span class="p">,</span> <span class="s2">&quot;assignee&quot;</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">value</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has non-string </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">value</span><span class="si">!r}</span><span class="s2">; &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> must be a non-empty string or absent&quot;</span>
+                <span class="p">)</span>
+        <span class="c1"># `_log_meta` is an opaque event-stamp mapping written by</span>
+        <span class="c1"># `complete_task` etc. Keep it open-shaped — Phase 2 progress-history</span>
+        <span class="c1"># adapter shapes the keys. We only enforce &quot;if present, it&#39;s a</span>
+        <span class="c1"># mapping&quot; so a stray scalar can&#39;t corrupt downstream readers.</span>
+        <span class="n">log_meta</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;_log_meta&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">log_meta</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">log_meta</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has non-mapping _log_meta &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">log_meta</span><span class="si">!r}</span><span class="s2">; _log_meta must be a mapping or absent&quot;</span>
+            <span class="p">)</span>
 
 
-<div class="viewcode-block" id="save_tasks">
-<a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.save_tasks">[docs]</a>
+<span class="nd">@contextlib</span><span class="o">.</span><span class="n">contextmanager</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_store_lock</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Hold an exclusive `fcntl.flock` on a sibling `.&lt;name&gt;.lock` file.</span>
+
+<span class="sd">    Phase 1 prerequisite for the cross-host sync substrate (Req 2): two</span>
+<span class="sd">    concurrent writers — say a CLI verb and the board&#39;s `/priority` POST</span>
+<span class="sd">    handler — must serialize so the YAML payload they write is atomic at</span>
+<span class="sd">    the task-list granularity. We hold the lock on a separate `.lock`</span>
+<span class="sd">    sentinel file rather than on the store itself so we don&#39;t fight the</span>
+<span class="sd">    ruamel YAML reader/writer that re-opens the path.</span>
+
+<span class="sd">    The lock file is created if missing, never removed (next caller reuses</span>
+<span class="sd">    it). Empty mode is fine — only the lockf state matters.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    path : Path</span>
+<span class="sd">        The store path (e.g. ``~/.scitex/todo/tasks.yaml``). The lock</span>
+<span class="sd">        sentinel sits next to it as ``.tasks.yaml.lock``.</span>
+
+<span class="sd">    Yields</span>
+<span class="sd">    ------</span>
+<span class="sd">    None</span>
+<span class="sd">        After the lock is held; released on context exit (even on errors).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">lock_path</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;.</span><span class="si">{</span><span class="n">path</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">.lock&quot;</span>
+    <span class="n">lock_path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="c1"># `O_CREAT|O_RDWR` semantics via `open(&quot;a+&quot;)` — `a+` works even on</span>
+    <span class="c1"># FS that lack `O_EXLOCK` (e.g. WSL2 ext4) because we acquire the</span>
+    <span class="c1"># advisory lock via `fcntl.flock` after the open.</span>
+    <span class="n">fd</span> <span class="o">=</span> <span class="n">lock_path</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;a+&quot;</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">fcntl</span><span class="o">.</span><span class="n">flock</span><span class="p">(</span><span class="n">fd</span><span class="o">.</span><span class="n">fileno</span><span class="p">(),</span> <span class="n">fcntl</span><span class="o">.</span><span class="n">LOCK_EX</span><span class="p">)</span>
+        <span class="k">yield</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">fcntl</span><span class="o">.</span><span class="n">flock</span><span class="p">(</span><span class="n">fd</span><span class="o">.</span><span class="n">fileno</span><span class="p">(),</span> <span class="n">fcntl</span><span class="o">.</span><span class="n">LOCK_UN</span><span class="p">)</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="n">fd</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">save_tasks</span><span class="p">(</span><span class="n">tasks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate then write a task list back to a YAML store, preserving comments.</span>
 
@@ -322,15 +380,34 @@
 <span class="sd">    &gt;&gt;&gt; tasks[0][&quot;priority&quot;] = 1                    # doctest: +SKIP</span>
 <span class="sd">    &gt;&gt;&gt; save_tasks(tasks, &quot;tasks.yaml&quot;)            # doctest: +SKIP</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
+    <span class="c1"># Hold the cross-process advisory lock for the FULL read-modify-write</span>
+    <span class="c1"># cycle, not just the write — otherwise two writers could each load</span>
+    <span class="c1"># the file, mutate independently, and the second `dump` would silently</span>
+    <span class="c1"># clobber the first&#39;s mutation. The lock IS the at-most-once gate.</span>
+    <span class="n">path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">_store_lock</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+        <span class="n">_save_tasks_unlocked</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_save_tasks_unlocked</span><span class="p">(</span><span class="n">tasks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span> <span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate-and-write WITHOUT acquiring the store lock.</span>
+
+<span class="sd">    Used by callers (the `_store.add_task`/`update_task`/`complete_task`</span>
+<span class="sd">    Python API) that hold `_store_lock` for their whole read-modify-write</span>
+<span class="sd">    cycle. Calling `save_tasks` recursively would deadlock — `flock` on</span>
+<span class="sd">    a fresh fd to the same path blocks until the OUTER context releases.</span>
+
+<span class="sd">    Direct callers must already hold `_store_lock(path)`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">ruamel.yaml</span><span class="w"> </span><span class="kn">import</span> <span class="n">YAML</span>
 
-    <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
     <span class="n">_validate_tasks</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s2">&quot;&lt;save_tasks&gt;&quot;</span><span class="p">)</span>
 
     <span class="n">yaml_rt</span> <span class="o">=</span> <span class="n">YAML</span><span class="p">()</span>
     <span class="n">yaml_rt</span><span class="o">.</span><span class="n">preserve_quotes</span> <span class="o">=</span> <span class="kc">True</span>
-    <span class="c1"># Match the bundled store&#39;s hand layout (two-space block indent, lists</span>
-    <span class="c1"># indented under their key) so a round-trip is a minimal diff.</span>
+    <span class="c1"># Match the bundled store&#39;s hand layout (two-space block indent,</span>
+    <span class="c1"># lists indented under their key) so a round-trip is a minimal diff.</span>
     <span class="n">yaml_rt</span><span class="o">.</span><span class="n">indent</span><span class="p">(</span><span class="n">mapping</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">sequence</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
 
     <span class="n">existing_doc</span> <span class="o">=</span> <span class="kc">None</span>
@@ -341,22 +418,24 @@
             <span class="n">existing_doc</span> <span class="o">=</span> <span class="n">loaded</span>
 
     <span class="k">if</span> <span class="n">existing_doc</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="c1"># Merge the caller&#39;s task data into the round-trip-loaded structure by</span>
-        <span class="c1"># id, so per-item and inline comments attached to the original nodes</span>
-        <span class="c1"># survive. New ids are appended; removed ids are dropped.</span>
+        <span class="c1"># Merge the caller&#39;s task data into the round-trip-loaded</span>
+        <span class="c1"># structure by id, so per-item and inline comments attached to</span>
+        <span class="c1"># the original nodes survive. New ids are appended; removed</span>
+        <span class="c1"># ids are dropped.</span>
         <span class="n">doc</span> <span class="o">=</span> <span class="n">existing_doc</span>
         <span class="n">old_seq</span> <span class="o">=</span> <span class="n">doc</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;tasks&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">doc</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;tasks&quot;</span><span class="p">),</span> <span class="nb">list</span><span class="p">)</span> <span class="k">else</span> <span class="p">[]</span>
-        <span class="n">old_by_id</span> <span class="o">=</span> <span class="p">{</span><span class="n">t</span><span class="p">[</span><span class="s2">&quot;id&quot;</span><span class="p">]:</span> <span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">old_seq</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="n">t</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">)}</span>
+        <span class="n">old_by_id</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">t</span><span class="p">[</span><span class="s2">&quot;id&quot;</span><span class="p">]:</span> <span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">old_seq</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="n">t</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">)</span>
+        <span class="p">}</span>
         <span class="n">merged</span> <span class="o">=</span> <span class="n">_merge_tasks_into_seq</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">old_by_id</span><span class="p">)</span>
         <span class="n">doc</span><span class="p">[</span><span class="s2">&quot;tasks&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="c1"># No existing store (or a non-mapping top level): write a fresh doc.</span>
+        <span class="c1"># No existing store (or a non-mapping top level): write fresh.</span>
         <span class="n">doc</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;tasks&quot;</span><span class="p">:</span> <span class="n">tasks</span><span class="p">}</span>
 
     <span class="n">path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="k">with</span> <span class="n">path</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;w&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">handle</span><span class="p">:</span>
-        <span class="n">yaml_rt</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">doc</span><span class="p">,</span> <span class="n">handle</span><span class="p">)</span></div>
-
+        <span class="n">yaml_rt</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">doc</span><span class="p">,</span> <span class="n">handle</span><span class="p">)</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_merge_tasks_into_seq</span><span class="p">(</span><span class="n">tasks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span> <span class="n">old_by_id</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>

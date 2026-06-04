@@ -1,0 +1,574 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>scitex_todo._store &mdash; scitex-todo v0.2.1</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=37f418d5"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            scitex-todo
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../installation.html#extras">Extras</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../installation.html#rendering-backends">Rendering backends</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../installation.html#verify">Verify</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../quickstart.html">Quick Start</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../quickstart.html#task-schema">Task schema</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../quickstart.html#where-your-task-data-lives">Where your task data lives</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../cli_reference.html">CLI Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../cli_reference.html#universal-flags">Universal flags</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../api/scitex_todo.html">scitex_todo — Python API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.TaskNotFoundError"><code class="docutils literal notranslate"><span class="pre">TaskNotFoundError</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.TaskValidationError"><code class="docutils literal notranslate"><span class="pre">TaskValidationError</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.add_task"><code class="docutils literal notranslate"><span class="pre">add_task()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.complete_task"><code class="docutils literal notranslate"><span class="pre">complete_task()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.list_tasks"><code class="docutils literal notranslate"><span class="pre">list_tasks()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.resolve_store"><code class="docutils literal notranslate"><span class="pre">resolve_store()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.summarize_tasks"><code class="docutils literal notranslate"><span class="pre">summarize_tasks()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.update_task"><code class="docutils literal notranslate"><span class="pre">update_task()</span></code></a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">scitex-todo</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">scitex_todo._store</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for scitex_todo._store</h1><div class="highlight"><pre>
+<span></span><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;Mutation-side Python API for the scitex-todo task store.</span>
+
+<span class="sd">Sits on top of ``_model.load_tasks`` / ``_model.save_tasks`` to give agents,</span>
+<span class="sd">the CLI verbs, the MCP tools, and (later) the web GUI write handlers a</span>
+<span class="sd">single, well-tested surface for:</span>
+
+<span class="sd">    add_task        Append a new task to the store.</span>
+<span class="sd">    update_task     Mutate fields of an existing task by id.</span>
+<span class="sd">    complete_task   Convenience: set status=&#39;done&#39; + stamp completion meta.</span>
+<span class="sd">    list_tasks      Filter by scope / assignee / status.</span>
+<span class="sd">    summary         Count tasks per status (and by scope/assignee).</span>
+
+<span class="sd">Every mutation runs through :func:`_model.save_tasks`, which holds an</span>
+<span class="sd">``fcntl.flock``-based mutex on a sibling lock file so two concurrent writers</span>
+<span class="sd">cannot interleave (PHASE 1 prereq for the cross-host sync substrate — see</span>
+<span class="sd">``GITIGNORED/ARCHITECTURE.md`` Req 2).</span>
+
+<span class="sd">The filter functions are read-only and do NOT lock — they snapshot the</span>
+<span class="sd">store via :func:`_model.load_tasks` and apply the filter in memory.</span>
+
+<span class="sd">Design constraints</span>
+<span class="sd">------------------</span>
+<span class="sd">- **Generic** (Req 8): scope/assignee/status are free-form strings. The</span>
+<span class="sd">  helpers don&#39;t know what an &quot;agent&quot; is.</span>
+<span class="sd">- **Centralized** (Req 3): the default store is whatever</span>
+<span class="sd">  :func:`_paths.resolve_tasks_path` returns; callers can override with an</span>
+<span class="sd">  explicit ``store=`` path. The user-scope default</span>
+<span class="sd">  (``~/.scitex/todo/tasks.yaml``) covers Req 7.</span>
+<span class="sd">- **Shared with scopes** (Req 1): ``$SCITEX_TODO_SCOPE`` provides the</span>
+<span class="sd">  default value for ``list_tasks(scope=...)`` when the caller doesn&#39;t pass</span>
+<span class="sd">  one explicitly. Pass ``scope=&quot;&quot;`` (empty string) to ignore the env</span>
+<span class="sd">  default and see everything.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">_dt</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">getpass</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">._model</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">VALID_STATUSES</span><span class="p">,</span>
+    <span class="n">TaskValidationError</span><span class="p">,</span>
+    <span class="n">_save_tasks_unlocked</span><span class="p">,</span>
+    <span class="n">_store_lock</span><span class="p">,</span>
+    <span class="n">load_tasks</span><span class="p">,</span>
+    <span class="n">save_tasks</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._paths</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_tasks_path</span>
+
+<span class="c1">#: Env var name an agent sets to scope its default `list_tasks` / `summary`</span>
+<span class="c1">#: view. The CLI&#39;s `--scope` flag overrides this; pass `scope=&quot;&quot;` in the</span>
+<span class="c1">#: Python API to see the unfiltered store.</span>
+<span class="n">ENV_SCOPE</span> <span class="o">=</span> <span class="s2">&quot;SCITEX_TODO_SCOPE&quot;</span>
+
+<span class="c1">#: Env var name carrying the agent&#39;s identity. Used as the default</span>
+<span class="c1">#: `completed_by` when :func:`complete_task` doesn&#39;t get an explicit `by=`.</span>
+<span class="n">ENV_AGENT</span> <span class="o">=</span> <span class="s2">&quot;SCITEX_TODO_AGENT&quot;</span>
+
+
+<div class="viewcode-block" id="TaskNotFoundError">
+<a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.TaskNotFoundError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">TaskNotFoundError</span><span class="p">(</span><span class="ne">KeyError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when an update/complete target id is not in the store.&quot;&quot;&quot;</span></div>
+
+
+
+<span class="c1"># --------------------------------------------------------------------------- #</span>
+<span class="c1"># Internal helpers                                                            #</span>
+<span class="c1"># --------------------------------------------------------------------------- #</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolved_store</span><span class="p">(</span><span class="n">store</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolve a store path argument through the precedence chain.</span>
+
+<span class="sd">    ``None`` ⇒ apply the full resolution chain (`_paths.resolve_tasks_path`).</span>
+<span class="sd">    Explicit path ⇒ used as-is (must exist for reads; will be created for</span>
+<span class="sd">    fresh writes by :func:`_model.save_tasks`).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">resolve_tasks_path</span><span class="p">(</span><span class="n">store</span><span class="p">)</span> <span class="k">if</span> <span class="n">store</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">Path</span><span class="p">(</span><span class="n">store</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_default_scope</span><span class="p">(</span><span class="n">arg</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolve a scope argument, honoring ``$SCITEX_TODO_SCOPE`` as the</span>
+<span class="sd">    default.</span>
+
+<span class="sd">    ``None`` (caller didn&#39;t pass anything) → env var if set, else ``None``</span>
+<span class="sd">    (no filter).</span>
+<span class="sd">    Empty string ``&quot;&quot;`` → caller explicitly opted out of filtering.</span>
+<span class="sd">    Non-empty string → used as-is.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">arg</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">env</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">ENV_SCOPE</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">env</span> <span class="k">if</span> <span class="n">env</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">arg</span> <span class="o">==</span> <span class="s2">&quot;&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">arg</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_default_agent</span><span class="p">(</span><span class="n">arg</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolve a `completed_by` argument with the env→login→unknown chain.</span>
+
+<span class="sd">    Per ``GITIGNORED/QUESTIONS.md`` #2 the precedence is</span>
+<span class="sd">    ``$SCITEX_TODO_AGENT`` → ``getpass.getuser()`` → ``&quot;unknown&quot;`` (final</span>
+<span class="sd">    fallback handles environments where login info isn&#39;t available).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">arg</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">arg</span>
+    <span class="n">env</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">ENV_AGENT</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">env</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">env</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">getpass</span><span class="o">.</span><span class="n">getuser</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># pragma: no cover — extremely rare environments</span>
+        <span class="k">return</span> <span class="s2">&quot;unknown&quot;</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_utc_now_iso</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;ISO-8601 UTC timestamp with second resolution and the ``Z`` suffix.</span>
+
+<span class="sd">    Trims the microseconds (the operator reads these on the board; second</span>
+<span class="sd">    resolution is plenty) and uses the canonical ``Z`` suffix rather than</span>
+<span class="sd">    ``+00:00`` so the string round-trips losslessly through YAML.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">_dt</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">_dt</span><span class="o">.</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">microsecond</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">isoformat</span><span class="p">()</span>
+        <span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;+00:00&quot;</span><span class="p">,</span> <span class="s2">&quot;Z&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_match</span><span class="p">(</span><span class="n">task</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">scope</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">assignee</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+           <span class="n">status</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Three-way string-equality filter. Any argument that is None is</span>
+<span class="sd">    treated as &quot;no constraint&quot;.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">scope</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;scope&quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="n">scope</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">assignee</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;assignee&quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="n">assignee</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">status</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="n">status</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">return</span> <span class="kc">True</span>
+
+
+<span class="c1"># --------------------------------------------------------------------------- #</span>
+<span class="c1"># Public API                                                                  #</span>
+<span class="c1"># --------------------------------------------------------------------------- #</span>
+<div class="viewcode-block" id="add_task">
+<a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.add_task">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">add_task</span><span class="p">(</span>
+    <span class="n">store</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">status</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;pending&quot;</span><span class="p">,</span>
+    <span class="n">scope</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">assignee</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">priority</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">parent</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">note</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">depends_on</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">blocks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">repo</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Append a new task to ``store`` and persist via :func:`save_tasks`.</span>
+
+<span class="sd">    Returns the inserted task mapping (a fresh dict, not the underlying</span>
+<span class="sd">    YAML node) for convenient round-trip use by callers — the CLI prints</span>
+<span class="sd">    it, the MCP tools serialize it as the JSON result.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    TaskValidationError</span>
+<span class="sd">        On duplicate id or any other structural fault — `save_tasks`</span>
+<span class="sd">        re-runs the full validation gate before touching disk.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">resolved</span> <span class="o">=</span> <span class="n">_resolved_store</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>
+    <span class="n">resolved</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">new</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="nb">id</span><span class="p">,</span> <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="n">title</span><span class="p">,</span> <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="n">status</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">scope</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">new</span><span class="p">[</span><span class="s2">&quot;scope&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">scope</span>
+    <span class="k">if</span> <span class="n">assignee</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">new</span><span class="p">[</span><span class="s2">&quot;assignee&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">assignee</span>
+    <span class="k">if</span> <span class="n">priority</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">new</span><span class="p">[</span><span class="s2">&quot;priority&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">priority</span>
+    <span class="k">if</span> <span class="n">parent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">new</span><span class="p">[</span><span class="s2">&quot;parent&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">parent</span>
+    <span class="k">if</span> <span class="n">note</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">new</span><span class="p">[</span><span class="s2">&quot;note&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">note</span>
+    <span class="k">if</span> <span class="n">depends_on</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">new</span><span class="p">[</span><span class="s2">&quot;depends_on&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">depends_on</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">blocks</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">new</span><span class="p">[</span><span class="s2">&quot;blocks&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">blocks</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">repo</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">new</span><span class="p">[</span><span class="s2">&quot;repo&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">repo</span>
+
+    <span class="c1"># Lock for the FULL read-modify-write — without this, two concurrent</span>
+    <span class="c1"># writers each load a stale snapshot and the second `save_tasks` call</span>
+    <span class="c1"># silently clobbers the first writer&#39;s insert. See</span>
+    <span class="c1"># tests/scitex_todo/test__store.py::test_two_concurrent_writers...</span>
+    <span class="k">with</span> <span class="n">_store_lock</span><span class="p">(</span><span class="n">resolved</span><span class="p">):</span>
+        <span class="n">tasks</span> <span class="o">=</span> <span class="n">load_tasks</span><span class="p">(</span><span class="n">resolved</span><span class="p">)</span> <span class="k">if</span> <span class="n">resolved</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="k">else</span> <span class="p">[]</span>
+        <span class="n">tasks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new</span><span class="p">)</span>
+        <span class="n">_save_tasks_unlocked</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">resolved</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">new</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="update_task">
+<a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.update_task">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">update_task</span><span class="p">(</span>
+    <span class="n">store</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">task_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">fields</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Update fields of the task with id ``task_id``; return the merged dict.</span>
+
+<span class="sd">    Any keyword argument becomes a field on the task. Passing ``None`` for</span>
+<span class="sd">    a field DELETES it (matches the operator&#39;s mental model: &quot;clear the</span>
+<span class="sd">    scope&quot; = `update_task(..., scope=None)`). To leave a field untouched,</span>
+<span class="sd">    just omit it.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    TaskNotFoundError</span>
+<span class="sd">        If no task matches ``task_id``.</span>
+<span class="sd">    TaskValidationError</span>
+<span class="sd">        If the resulting mutation is structurally invalid.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">task_id</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;update_task() requires a non-empty task_id&quot;</span><span class="p">)</span>
+    <span class="n">resolved</span> <span class="o">=</span> <span class="n">_resolved_store</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">_store_lock</span><span class="p">(</span><span class="n">resolved</span><span class="p">):</span>
+        <span class="n">tasks</span> <span class="o">=</span> <span class="n">load_tasks</span><span class="p">(</span><span class="n">resolved</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">task</span> <span class="ow">in</span> <span class="n">tasks</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="n">task_id</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="n">task</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">task</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+                <span class="n">_save_tasks_unlocked</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">resolved</span><span class="p">)</span>
+                <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="n">TaskNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;task id </span><span class="si">{</span><span class="n">task_id</span><span class="si">!r}</span><span class="s2"> not found in </span><span class="si">{</span><span class="n">resolved</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="complete_task">
+<a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.complete_task">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">complete_task</span><span class="p">(</span>
+    <span class="n">store</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">task_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">by</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Mark ``task_id`` as ``done`` and stamp ``_log_meta.completed_{at,by}``.</span>
+
+<span class="sd">    Idempotent per ``GITIGNORED/QUESTIONS.md`` #3: re-completing a</span>
+<span class="sd">    ``done`` task is a no-op (timestamps stay frozen from the first</span>
+<span class="sd">    completion). Pass ``by=`` to override the</span>
+<span class="sd">    ``$SCITEX_TODO_AGENT`` → ``$USER`` → ``&quot;unknown&quot;`` precedence chain.</span>
+
+<span class="sd">    Returns the (post-mutation) task mapping.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    TaskNotFoundError</span>
+<span class="sd">        If no task matches ``task_id``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">task_id</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;complete_task() requires a non-empty task_id&quot;</span><span class="p">)</span>
+    <span class="n">resolved</span> <span class="o">=</span> <span class="n">_resolved_store</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">_store_lock</span><span class="p">(</span><span class="n">resolved</span><span class="p">):</span>
+        <span class="n">tasks</span> <span class="o">=</span> <span class="n">load_tasks</span><span class="p">(</span><span class="n">resolved</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">task</span> <span class="ow">in</span> <span class="n">tasks</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="n">task_id</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;done&quot;</span><span class="p">:</span>
+                    <span class="c1"># Idempotent: don&#39;t refresh the stamp, just return.</span>
+                    <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
+                <span class="n">task</span><span class="p">[</span><span class="s2">&quot;status&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;done&quot;</span>
+                <span class="n">log_meta</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;_log_meta&quot;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">log_meta</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                    <span class="n">log_meta</span> <span class="o">=</span> <span class="p">{}</span>
+                    <span class="n">task</span><span class="p">[</span><span class="s2">&quot;_log_meta&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">log_meta</span>
+                <span class="n">log_meta</span><span class="p">[</span><span class="s2">&quot;completed_at&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_utc_now_iso</span><span class="p">()</span>
+                <span class="n">log_meta</span><span class="p">[</span><span class="s2">&quot;completed_by&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_default_agent</span><span class="p">(</span><span class="n">by</span><span class="p">)</span>
+                <span class="n">_save_tasks_unlocked</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">resolved</span><span class="p">)</span>
+                <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="n">TaskNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;task id </span><span class="si">{</span><span class="n">task_id</span><span class="si">!r}</span><span class="s2"> not found in </span><span class="si">{</span><span class="n">resolved</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="list_tasks">
+<a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.list_tasks">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">list_tasks</span><span class="p">(</span>
+    <span class="n">store</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">scope</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">assignee</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">status</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Snapshot the store, then filter by scope / assignee / status.</span>
+
+<span class="sd">    Filter semantics:</span>
+<span class="sd">    - ``scope=None`` (default): use ``$SCITEX_TODO_SCOPE`` if set, else</span>
+<span class="sd">      no filter. ``scope=&quot;&quot;`` opts out of the env default explicitly.</span>
+<span class="sd">    - ``assignee`` / ``status``: ``None`` = no filter; any string = exact</span>
+<span class="sd">      match. (Generic Req 8 — no fuzzy / glob; callers compose.)</span>
+
+<span class="sd">    The returned list contains fresh dicts, safe to mutate without</span>
+<span class="sd">    affecting the on-disk store (no save here).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">resolved</span> <span class="o">=</span> <span class="n">_resolved_store</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>
+    <span class="n">tasks</span> <span class="o">=</span> <span class="n">load_tasks</span><span class="p">(</span><span class="n">resolved</span><span class="p">)</span>
+    <span class="n">scope_eff</span> <span class="o">=</span> <span class="n">_default_scope</span><span class="p">(</span><span class="n">scope</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">[</span>
+        <span class="nb">dict</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tasks</span>
+        <span class="k">if</span> <span class="n">_match</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="n">scope_eff</span><span class="p">,</span> <span class="n">assignee</span><span class="o">=</span><span class="n">assignee</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="n">status</span><span class="p">)</span>
+    <span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="summarize_tasks">
+<a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.summarize_tasks">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">summarize_tasks</span><span class="p">(</span>
+    <span class="n">store</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">scope</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">assignee</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return numeric progress counts grouped by status, scope, assignee.</span>
+
+<span class="sd">    Output shape (always present keys):</span>
+
+<span class="sd">    ::</span>
+
+<span class="sd">        {</span>
+<span class="sd">          &quot;store&quot;: &quot;/abs/path/to/tasks.yaml&quot;,</span>
+<span class="sd">          &quot;total&quot;: int,</span>
+<span class="sd">          &quot;by_status&quot;: {&lt;status&gt;: int, ...},  # one key per VALID_STATUSES</span>
+<span class="sd">          &quot;by_scope&quot;: {&lt;scope|&quot;&quot;&gt;: int, ...},</span>
+<span class="sd">          &quot;by_assignee&quot;: {&lt;assignee|&quot;&quot;&gt;: int, ...},</span>
+<span class="sd">        }</span>
+
+<span class="sd">    Tasks with no scope / assignee bucket under the empty string ``&quot;&quot;``.</span>
+<span class="sd">    The ``by_status`` map is densified to all :data:`VALID_STATUSES` so</span>
+<span class="sd">    consumers (web UI, progress widgets) don&#39;t have to special-case</span>
+<span class="sd">    zero-count keys.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">resolved</span> <span class="o">=</span> <span class="n">_resolved_store</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>
+    <span class="n">tasks</span> <span class="o">=</span> <span class="n">load_tasks</span><span class="p">(</span><span class="n">resolved</span><span class="p">)</span>
+    <span class="n">scope_eff</span> <span class="o">=</span> <span class="n">_default_scope</span><span class="p">(</span><span class="n">scope</span><span class="p">)</span>
+    <span class="n">by_status</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="n">s</span><span class="p">:</span> <span class="mi">0</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">VALID_STATUSES</span><span class="p">}</span>
+    <span class="n">by_scope</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">by_assignee</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">total</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">task</span> <span class="ow">in</span> <span class="n">tasks</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">_match</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="n">scope_eff</span><span class="p">,</span> <span class="n">assignee</span><span class="o">=</span><span class="n">assignee</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+            <span class="k">continue</span>
+        <span class="n">total</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">st</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">st</span> <span class="ow">in</span> <span class="n">by_status</span><span class="p">:</span>
+            <span class="n">by_status</span><span class="p">[</span><span class="n">st</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">sc</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;scope&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+        <span class="n">by_scope</span><span class="p">[</span><span class="n">sc</span><span class="p">]</span> <span class="o">=</span> <span class="n">by_scope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">sc</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="n">asg</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;assignee&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+        <span class="n">by_assignee</span><span class="p">[</span><span class="n">asg</span><span class="p">]</span> <span class="o">=</span> <span class="n">by_assignee</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">asg</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;store&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">resolved</span><span class="p">),</span>
+        <span class="s2">&quot;total&quot;</span><span class="p">:</span> <span class="n">total</span><span class="p">,</span>
+        <span class="s2">&quot;by_status&quot;</span><span class="p">:</span> <span class="n">by_status</span><span class="p">,</span>
+        <span class="s2">&quot;by_scope&quot;</span><span class="p">:</span> <span class="n">by_scope</span><span class="p">,</span>
+        <span class="s2">&quot;by_assignee&quot;</span><span class="p">:</span> <span class="n">by_assignee</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="resolve_store">
+<a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.resolve_store">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">resolve_store</span><span class="p">(</span><span class="n">store</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the resolved task store path and the precedence chain.</span>
+
+<span class="sd">    Mirrors the data the `scitex-todo resolve-store` CLI verb and the</span>
+<span class="sd">    `resolve_store` MCP tool emit. Keeping a Python API by the same name</span>
+<span class="sd">    as the MCP tool satisfies audit §6 (Convention A: tool_name == api_name).</span>
+
+<span class="sd">    Output shape::</span>
+
+<span class="sd">        {</span>
+<span class="sd">          &quot;resolved&quot;:         &quot;/abs/path/to/tasks.yaml&quot;,</span>
+<span class="sd">          &quot;explicit&quot;:         &lt;the `store` arg you passed, or None&gt;,</span>
+<span class="sd">          &quot;env_tasks&quot;:        &lt;value of $SCITEX_TODO_TASKS, or None&gt;,</span>
+<span class="sd">          &quot;user_store&quot;:       &quot;/abs/path/to/~/.scitex/todo/tasks.yaml&quot;,</span>
+<span class="sd">          &quot;bundled_example&quot;:  &quot;/abs/path/to/bundled/example.yaml&quot;,</span>
+<span class="sd">          &quot;pkg_short&quot;:        &quot;scitex_todo&quot;,</span>
+<span class="sd">          &quot;exists&quot;:           bool,</span>
+<span class="sd">        }</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+
+    <span class="kn">from</span><span class="w"> </span><span class="nn">._paths</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+        <span class="n">ENV_TASKS</span><span class="p">,</span>
+        <span class="n">PKG_SHORT</span><span class="p">,</span>
+        <span class="n">_user_root</span><span class="p">,</span>
+        <span class="n">bundled_example</span><span class="p">,</span>
+        <span class="n">resolve_tasks_path</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">resolved</span> <span class="o">=</span> <span class="n">resolve_tasks_path</span><span class="p">(</span><span class="n">store</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">store</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="kc">None</span><span class="p">)))</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">store</span><span class="p">))</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;resolved&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">resolved</span><span class="p">),</span>
+        <span class="s2">&quot;explicit&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">store</span><span class="p">)</span> <span class="k">if</span> <span class="n">store</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;env_tasks&quot;</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">ENV_TASKS</span><span class="p">),</span>
+        <span class="s2">&quot;user_store&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">_user_root</span><span class="p">()</span> <span class="o">/</span> <span class="s2">&quot;tasks.yaml&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;bundled_example&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">bundled_example</span><span class="p">()),</span>
+        <span class="s2">&quot;pkg_short&quot;</span><span class="p">:</span> <span class="n">PKG_SHORT</span><span class="p">,</span>
+        <span class="s2">&quot;exists&quot;</span><span class="p">:</span> <span class="n">Path</span><span class="p">(</span><span class="n">resolved</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">(),</span>
+    <span class="p">}</span></div>
+
+
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;ENV_AGENT&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ENV_SCOPE&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;TaskNotFoundError&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;TaskValidationError&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;add_task&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;complete_task&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;list_tasks&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;resolve_store&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;summarize_tasks&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;update_task&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+
+<span class="c1"># EOF</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Yusuke Watanabe.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
