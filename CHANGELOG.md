@@ -4,7 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — Phase 1 MVP: shared-fleet TODO
+## [0.3.0] - 2026-06-04 — Phase 1 MVP: shared-fleet TODO
+
+The universal-task-layer FLOOR for the agent fleet. Every agent can
+read/write the same YAML store across hosts, the board at
+http://127.0.0.1:8051 aggregates everyone's tasks for the operator,
+and the Python API / CLI / MCP surface follows scitex-dev audit
+conventions (Convention A: tool_name == python_api_name).
 
 ### Added
 - **Per-task `scope` / `assignee` fields** (additive-optional, free-form
