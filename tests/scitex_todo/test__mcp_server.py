@@ -13,7 +13,10 @@ The behaviour the suite covers:
   with an opaque trace) when fastmcp isn't installed.
 - When fastmcp IS installed, every Phase-1 tool is registered and
   dispatches correctly against a `tmp_path` store.
-- Tool naming follows §2 `<pkg>_<verb>_<noun>` — six tools.
+- Tool naming follows the audit conventions: Convention A
+  (tool_name == python_api_name, no `scitex_todo_` prefix) for the six
+  task-store tools, plus Convention B (`todo_<verb>_<noun>` per §5) for
+  the two skills tools — eight tools total.
 - The CLI `mcp list-tools` enumerates them.
 """
 
@@ -60,7 +63,7 @@ def test_mcp_server_name():
 
 
 def test_tool_naming_follows_convention():
-    """Every registered tool is prefixed with `scitex_todo_` (§2)."""
+    """At least one tool is registered (sanity for the rest of the suite)."""
     # Arrange
     from scitex_todo._mcp_server import mcp
 
@@ -70,16 +73,58 @@ def test_tool_naming_follows_convention():
     assert names, "expected at least one tool registered"
 
 
-def test_tool_names_all_start_with_prefix():
-    """Every registered tool name starts with `scitex_todo_`."""
+# Convention A — tool_name == python_api_name (audit §6, no `scitex_todo_`
+# prefix; audit §2 forbids the bare scitex_todo_<verb>_<noun> three-token
+# form for the task-store tools after Convention A is adopted).
+_CONVENTION_A_NAMES = {
+    "add_task",
+    "update_task",
+    "complete_task",
+    "list_tasks",
+    "summarize_tasks",
+    "resolve_store",
+}
+# Convention B — `todo_<verb>_<noun>` for the audit §5 required skills
+# tools. These don't map 1:1 to a Python API; they introspect the bundled
+# `_skills/` directory.
+_CONVENTION_B_NAMES = {
+    "todo_skills_list",
+    "todo_skills_get",
+}
+
+
+def test_no_tool_uses_dropped_scitex_todo_prefix():
+    """The `scitex_todo_` prefix was dropped per audit §6 Convention A.
+
+    Single-token names (`summary`, `where`) were also forbidden by audit
+    §2 and got renamed (`summarize_tasks`, `resolve_store`). This test
+    asserts the rename held — no tool reverts to the old prefix nor to a
+    bare single-token name.
+    """
     # Arrange
     from scitex_todo._mcp_server import mcp
     names = _tool_names(mcp)
     # Act
-    bad = [n for n in names if not n.startswith("scitex_todo_")]
+    bad_prefix = [n for n in names if n.startswith("scitex_todo_")]
+    single_token = [n for n in names if "_" not in n]
     # Assert
-    assert not bad, (
-        f"tools {bad!r} violate §2 <pkg>_<verb>_<noun> convention"
+    assert not bad_prefix and not single_token, (
+        f"tools {bad_prefix + single_token!r} regress audit §6 / §2"
+    )
+
+
+def test_tool_names_match_known_conventions():
+    """Every registered tool is either Convention A (task-store) or B (skills)."""
+    # Arrange
+    from scitex_todo._mcp_server import mcp
+    names = set(_tool_names(mcp))
+    allowed = _CONVENTION_A_NAMES | _CONVENTION_B_NAMES
+    # Act
+    extras = names - allowed
+    # Assert
+    assert not extras, (
+        f"unrecognised tool name(s) {extras!r} — add to "
+        f"_CONVENTION_A_NAMES / _CONVENTION_B_NAMES if intentional"
     )
 
 
