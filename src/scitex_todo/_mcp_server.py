@@ -2,17 +2,19 @@
 # -*- coding: utf-8 -*-
 """scitex-todo MCP server — one FastMCP instance per the SciTeX convention.
 
-Tools (§2 ``<pkg>_<verb>_<noun>`` naming):
+Tools (audit §6 Convention A — ``tool_name == python_api_name``):
 
-    scitex_todo_add_task          — add a new task
-    scitex_todo_update_task       — mutate fields of an existing task
-    scitex_todo_complete_task     — mark done + stamp _log_meta
-    scitex_todo_list_tasks        — filter the store
-    scitex_todo_summary           — counts by status/scope/assignee
-    scitex_todo_where             — print resolved store path + chain
+    add_task          — add a new task                  (scitex_todo.add_task)
+    update_task       — mutate fields of an existing task (scitex_todo.update_task)
+    complete_task     — mark done + stamp _log_meta     (scitex_todo.complete_task)
+    list_tasks        — filter the store                (scitex_todo.list_tasks)
+    summary           — counts by status/scope/assignee (scitex_todo.summary)
+    where             — resolved store path + chain     (scitex_todo.where)
+    todo_skills_list  — list bundled agent skills       (audit §5 required pair)
+    todo_skills_get   — get one bundled skill's content (audit §5 required pair)
 
-The tool surface is a thin wrapper around :mod:`scitex_todo._store` (the
-Python API) so MCP / CLI / GUI all share one logic path — §6 Python-API
+The task-store tool surface is a thin wrapper around :mod:`scitex_todo._store`
+(the Python API) so MCP / CLI / GUI all share one logic path — §6 Python-API
 parity. JSON-shape parity: every tool returns a JSON-string of the dict /
 list the Python API returns.
 
@@ -43,7 +45,7 @@ mcp = FastMCP(
     name="scitex-todo",
     instructions=(
         "scitex-todo: shared YAML task store across agents and hosts. "
-        "Use scitex_todo_list_tasks with a `scope` arg (e.g. "
+        "Use list_tasks with a `scope` arg (e.g. "
         "'agent:proj-scitex-todo') to see only your slice. The canonical "
         "store lives at ~/.scitex/todo/tasks.yaml; precedence is "
         "explicit > $SCITEX_TODO_TASKS > project (<git-root>/.scitex/todo) > "
@@ -53,10 +55,10 @@ mcp = FastMCP(
 
 
 # --------------------------------------------------------------------------- #
-# Tools                                                                       #
+# Task-store tools — Convention A (tool name == Python API name).             #
 # --------------------------------------------------------------------------- #
 @mcp.tool()
-async def scitex_todo_add_task(
+async def add_task(
     id: str,
     title: str,
     status: str = "pending",
@@ -89,7 +91,7 @@ async def scitex_todo_add_task(
 
 
 @mcp.tool()
-async def scitex_todo_update_task(
+async def update_task(
     task_id: str,
     title: str | None = None,
     status: str | None = None,
@@ -125,7 +127,7 @@ async def scitex_todo_update_task(
 
 
 @mcp.tool()
-async def scitex_todo_complete_task(
+async def complete_task(
     task_id: str,
     by: str | None = None,
     tasks_path: str | None = None,
@@ -140,7 +142,7 @@ async def scitex_todo_complete_task(
 
 
 @mcp.tool()
-async def scitex_todo_list_tasks(
+async def list_tasks(
     scope: str | None = None,
     assignee: str | None = None,
     status: str | None = None,
@@ -158,7 +160,7 @@ async def scitex_todo_list_tasks(
 
 
 @mcp.tool()
-async def scitex_todo_summary(
+async def summary(
     scope: str | None = None,
     assignee: str | None = None,
     tasks_path: str | None = None,
@@ -168,35 +170,52 @@ async def scitex_todo_summary(
 
 
 @mcp.tool()
-async def scitex_todo_where(tasks_path: str | None = None) -> str:
+async def where(tasks_path: str | None = None) -> str:
     """Show the resolved store path and the precedence chain.
 
     Useful for an agent to confirm "yes, I am writing to the shared
     user-scope store, not to a project shadow."
     """
-    import os
+    return json.dumps(_store.where(tasks_path))
+
+
+# --------------------------------------------------------------------------- #
+# Skills tools — audit §5 required pair.                                      #
+# Convention B (`todo_<verb>_<noun>`) because skills aren't a Python API      #
+# surface; they're file-system introspection on the bundled `_skills/` dir.   #
+# --------------------------------------------------------------------------- #
+def _skills_dir():
+    """Return the path to the bundled scitex-todo skill files."""
     from pathlib import Path
 
-    from ._paths import (
-        ENV_TASKS,
-        PKG_SHORT,
-        _user_root,
-        bundled_example,
-        resolve_tasks_path,
-    )
+    return Path(__file__).parent / "_skills" / "scitex-todo"
 
-    resolved = resolve_tasks_path(tasks_path)
-    return json.dumps(
-        {
-            "resolved": str(resolved),
-            "explicit": tasks_path,
-            "env_tasks": os.environ.get(ENV_TASKS),
-            "user_store": str(_user_root() / "tasks.yaml"),
-            "bundled_example": str(bundled_example()),
-            "pkg_short": PKG_SHORT,
-            "exists": Path(resolved).exists(),
-        }
-    )
+
+@mcp.tool()
+async def todo_skills_list() -> str:
+    """List bundled scitex-todo skill files. Returns a JSON array of names."""
+    skills_dir = _skills_dir()
+    if not skills_dir.exists():
+        return json.dumps([])
+    names = sorted(p.name for p in skills_dir.iterdir() if p.is_file())
+    return json.dumps(names)
+
+
+@mcp.tool()
+async def todo_skills_get(name: str) -> str:
+    """Return the content of one bundled scitex-todo skill file.
+
+    `name` must match a file in the bundled skills dir (e.g.
+    `"01_installation.md"`). Returns a JSON object
+    ``{"name": str, "content": str}`` or
+    ``{"name": str, "error": "not found"}`` if the name doesn't resolve.
+    """
+    skills_dir = _skills_dir()
+    target = skills_dir / name
+    # Guard path traversal — only allow direct children of skills_dir.
+    if target.parent.resolve() != skills_dir.resolve() or not target.is_file():
+        return json.dumps({"name": name, "error": "not found"})
+    return json.dumps({"name": name, "content": target.read_text(encoding="utf-8")})
 
 
 #: Canonical list of registered tool names — kept here as a constant so the
@@ -204,12 +223,14 @@ async def scitex_todo_where(tasks_path: str | None = None) -> str:
 #: FastMCP's internal registry (which drifts between 2.x and 3.x). Update
 #: this tuple whenever a `@mcp.tool()` is added or removed above.
 TOOL_NAMES: tuple[str, ...] = (
-    "scitex_todo_add_task",
-    "scitex_todo_update_task",
-    "scitex_todo_complete_task",
-    "scitex_todo_list_tasks",
-    "scitex_todo_summary",
-    "scitex_todo_where",
+    "add_task",
+    "update_task",
+    "complete_task",
+    "list_tasks",
+    "summary",
+    "where",
+    "todo_skills_list",
+    "todo_skills_get",
 )
 
 

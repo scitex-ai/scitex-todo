@@ -360,6 +360,47 @@ def summary(
     }
 
 
+def where(store: str | Path | None = None) -> dict:
+    """Return the resolved task store path and the precedence chain.
+
+    Mirrors the data the `scitex-todo which-store` CLI verb and the
+    `where` MCP tool emit. Keeping a Python API by the same name as the
+    MCP tool satisfies audit §6 (Convention A: tool_name == api_name).
+
+    Output shape::
+
+        {
+          "resolved":         "/abs/path/to/tasks.yaml",
+          "explicit":         <the `store` arg you passed, or None>,
+          "env_tasks":        <value of $SCITEX_TODO_TASKS, or None>,
+          "user_store":       "/abs/path/to/~/.scitex/todo/tasks.yaml",
+          "bundled_example":  "/abs/path/to/bundled/example.yaml",
+          "pkg_short":        "scitex_todo",
+          "exists":           bool,
+        }
+    """
+    import os
+
+    from ._paths import (
+        ENV_TASKS,
+        PKG_SHORT,
+        _user_root,
+        bundled_example,
+        resolve_tasks_path,
+    )
+
+    resolved = resolve_tasks_path(store if isinstance(store, (str, type(None))) else str(store))
+    return {
+        "resolved": str(resolved),
+        "explicit": str(store) if store is not None else None,
+        "env_tasks": os.environ.get(ENV_TASKS),
+        "user_store": str(_user_root() / "tasks.yaml"),
+        "bundled_example": str(bundled_example()),
+        "pkg_short": PKG_SHORT,
+        "exists": Path(resolved).exists(),
+    }
+
+
 __all__ = [
     "ENV_AGENT",
     "ENV_SCOPE",
@@ -370,6 +411,7 @@ __all__ = [
     "list_tasks",
     "summary",
     "update_task",
+    "where",
 ]
 
 # EOF

@@ -92,6 +92,17 @@ def _emit(payload, *, as_json: bool, human: str) -> None:
 )
 @click.option("--repo", default=None, help="Repo association (free-form string).")
 @click.option("--json", "as_json", is_flag=True, help="Emit the inserted task as JSON.")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Print what would be added and exit 0 without mutating the store.",
+)
+@click.option(
+    "-y",
+    "--yes",
+    is_flag=True,
+    help="Skip confirmation (no-op today — add is non-interactive; reserved for §2).",
+)
 @_TASKS_OPTION
 def add_cmd(
     id,
@@ -106,9 +117,18 @@ def add_cmd(
     blocks,
     repo,
     as_json,
+    dry_run,
+    yes,
     tasks_path,
 ) -> None:
     """Append a new task. Raises ``TaskValidationError`` on a duplicate id."""
+    _ = yes  # accepted for §2 compliance
+    if dry_run:
+        click.echo(
+            f"# dry-run: would add id={id!r} title={title!r} status={status!r} "
+            f"scope={scope!r} assignee={assignee!r}"
+        )
+        return
     try:
         inserted = _store.add_task(
             tasks_path,
@@ -155,6 +175,17 @@ def add_cmd(
 @click.option("--note", default=None)
 @click.option("--repo", default=None)
 @click.option("--json", "as_json", is_flag=True)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Print which fields would change and exit 0 without mutating the store.",
+)
+@click.option(
+    "-y",
+    "--yes",
+    is_flag=True,
+    help="Skip confirmation (no-op today — update is non-interactive; reserved for §2).",
+)
 @_TASKS_OPTION
 def update_cmd(
     task_id,
@@ -167,9 +198,12 @@ def update_cmd(
     note,
     repo,
     as_json,
+    dry_run,
+    yes,
     tasks_path,
 ) -> None:
     """Apply each provided field to the matching task."""
+    _ = yes  # accepted for §2 compliance
     fields: dict = {}
     # Pass through only the fields the user actually provided (click's
     # `None` default = "not passed"). Empty string is the explicit
@@ -195,6 +229,11 @@ def update_cmd(
             "--title/--status/--scope/--assignee/--priority/--parent/--note/--repo"
         )
 
+    if dry_run:
+        click.echo(
+            f"# dry-run: would update task_id={task_id!r} fields={fields!r}"
+        )
+        return
     try:
         merged = _store.update_task(tasks_path, task_id, **fields)
     except _store.TaskNotFoundError as exc:
@@ -244,24 +283,23 @@ def done_cmd(task_id, by, as_json, tasks_path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# list (extended — filter flags; backward-compatible default output)          #
+# list — was a sibling of list-tasks; per audit §1 we fold its filter flags   #
+# into `list-tasks` (see _cli/_main.py) so there is one canonical list verb.  #
+# `list_cmd` remains here as a thin reference body that `list-tasks` calls.   #
 # --------------------------------------------------------------------------- #
-@click.command(
-    "list",
-    help=(
-        "List tasks with optional scope/assignee/status filters.\n\n"
-        "Without filters and without --json, prints the same plain-text\n"
-        "table as `list-tasks` (backward-compatible).\n\n"
-        "Example:\n  scitex-todo list --scope agent:proj-scitex-todo --json"
-    ),
-)
-@click.option("--scope", default=None, help="Match `scope` exactly (use '' to ignore $SCITEX_TODO_SCOPE).")
-@click.option("--assignee", default=None, help="Match `assignee` exactly.")
-@click.option("--status", default=None, help="Match `status` exactly.")
-@click.option("--json", "as_json", is_flag=True)
-@_TASKS_OPTION
-def list_cmd(scope, assignee, status, as_json, tasks_path) -> None:
-    """Filter the store and print the matching tasks."""
+def list_tasks_filtered(
+    scope: str | None,
+    assignee: str | None,
+    status: str | None,
+    as_json: bool,
+    tasks_path: str | None,
+) -> None:
+    """Filter the store and print the matching tasks.
+
+    Helper used by the merged `list-tasks` Click command in
+    `_cli/_main.py` so the filter logic stays alongside the other
+    `_store`-backed verbs.
+    """
     rows = _store.list_tasks(
         tasks_path, scope=scope, assignee=assignee, status=status
     )
@@ -311,34 +349,22 @@ def summary_cmd(scope, assignee, as_json, tasks_path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# where                                                                       #
+# which-store (was `where` — renamed per audit §1: noun-like leaf)            #
 # --------------------------------------------------------------------------- #
 @click.command(
-    "where",
+    "which-store",
     help=(
         "Show which store would be used and the precedence chain.\n\n"
-        "Example:\n  scitex-todo where"
+        "Example:\n  scitex-todo which-store"
     ),
 )
 @click.option("--json", "as_json", is_flag=True)
 @_TASKS_OPTION
-def where_cmd(as_json, tasks_path) -> None:
+def which_store_cmd(as_json, tasks_path) -> None:
     """Resolve the store path and print the chain so agents can verify."""
-    import os
-    from pathlib import Path
+    from .. import _store
 
-    from .._paths import ENV_TASKS, PKG_SHORT, _user_root, bundled_example
-
-    resolved = resolve_tasks_path(tasks_path)
-    info = {
-        "resolved": str(resolved),
-        "explicit": tasks_path,
-        "env_tasks": os.environ.get(ENV_TASKS),
-        "user_store": str(_user_root() / "tasks.yaml"),
-        "bundled_example": str(bundled_example()),
-        "pkg_short": PKG_SHORT,
-        "exists": Path(resolved).exists(),
-    }
+    info = _store.where(tasks_path)
     if as_json:
         click.echo(json.dumps(info))
         return
@@ -351,15 +377,15 @@ def where_cmd(as_json, tasks_path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# init                                                                        #
+# init-store (was `init` — renamed per audit §1: needs object noun)           #
 # --------------------------------------------------------------------------- #
 @click.command(
-    "init",
+    "init-store",
     help=(
         "Create an empty task store at the chosen scope (idempotent).\n\n"
         "  --shared  -> ~/.scitex/todo/tasks.yaml (user scope, the default)\n"
         "  --project -> <git-root>/.scitex/todo/tasks.yaml\n\n"
-        "Example:\n  scitex-todo init --shared"
+        "Example:\n  scitex-todo init-store --shared"
     ),
 )
 @click.option(
@@ -375,8 +401,20 @@ def where_cmd(as_json, tasks_path) -> None:
     flag_value="project",
     help="Create <git-root>/.scitex/todo/tasks.yaml instead.",
 )
-def init_cmd(scope_choice) -> None:
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Print the target path and exit 0 without creating it.",
+)
+@click.option(
+    "-y",
+    "--yes",
+    is_flag=True,
+    help="Skip confirmation (no-op today — init-store is non-interactive; reserved for §2).",
+)
+def init_store_cmd(scope_choice, dry_run, yes) -> None:
     """Materialize an empty `tasks: []` store at the chosen scope."""
+    _ = yes  # accepted for §2 compliance
     from pathlib import Path
 
     from .._model import save_tasks
@@ -394,6 +432,9 @@ def init_cmd(scope_choice) -> None:
     else:
         target = _user_root() / "tasks.yaml"
 
+    if dry_run:
+        click.echo(f"# dry-run: would create {target} (scope={scope_choice})")
+        return
     if target.exists():
         click.echo(f"exists: {target}  (no-op)")
         return
@@ -403,16 +444,17 @@ def init_cmd(scope_choice) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# sync (Phase 1 STUB — Req 2 body in Phase 2)                                 #
+# sync-store (was `sync` — renamed per audit §1: needs object noun)           #
+# PHASE 1 STUB — Req 2 body lands in Phase 2.                                 #
 # --------------------------------------------------------------------------- #
 @click.command(
-    "sync",
+    "sync-store",
     help=(
         "Sync the user-scope store across hosts. PHASE-1 STUB.\n\n"
         "Phase 2 body: `git -C ~/.scitex/todo pull --rebase --autostash "
         "&& git push` against an operator-owned remote. The stub prints\n"
         "the plan and exits 0 so docs/skills can reference the verb today.\n\n"
-        "Example:\n  scitex-todo sync --dry-run"
+        "Example:\n  scitex-todo sync-store --dry-run"
     ),
 )
 @click.option(
@@ -433,8 +475,15 @@ def init_cmd(scope_choice) -> None:
     default=None,
     help="Optional remote name override; Phase 2 default = 'origin'.",
 )
-def sync_cmd(mode, remote) -> None:
+@click.option(
+    "-y",
+    "--yes",
+    is_flag=True,
+    help="Skip confirmation (no-op today — sync-store is non-interactive; reserved for §2).",
+)
+def sync_store_cmd(mode, remote, yes) -> None:
     """Sync stub. Prints the planned operations; --apply errors in Phase 1."""
+    _ = yes  # accepted for §2 compliance
     from .._paths import _user_root
 
     root = _user_root()
@@ -443,7 +492,7 @@ def sync_cmd(mode, remote) -> None:
         f"git -C {root} pull --rebase --autostash {remote}",
         f"git -C {root} push {remote}",
     ]
-    click.echo("# scitex-todo sync (PHASE-1 STUB)")
+    click.echo("# scitex-todo sync-store (PHASE-1 STUB)")
     click.echo(f"# store dir: {root}")
     click.echo(f"# remote:    {remote}")
     click.echo("# planned commands:")
@@ -460,15 +509,20 @@ def sync_cmd(mode, remote) -> None:
 # Registration                                                                #
 # --------------------------------------------------------------------------- #
 def register(main: click.Group) -> None:
-    """Attach the Phase-1 mutation/admin verbs to the root group."""
+    """Attach the Phase-1 mutation/admin verbs to the root group.
+
+    `list-tasks` is owned by `_cli/_main.py` (the filter flags from the
+    old `list` verb were folded in there). `where` was renamed to
+    `which-store`; `init` → `init-store`; `sync` → `sync-store`
+    (audit §1 — bare transitive verbs need a noun object at top level).
+    """
     main.add_command(add_cmd, name="add")
     main.add_command(update_cmd, name="update")
     main.add_command(done_cmd, name="done")
-    main.add_command(list_cmd, name="list")
     main.add_command(summary_cmd, name="summary")
-    main.add_command(where_cmd, name="where")
-    main.add_command(init_cmd, name="init")
-    main.add_command(sync_cmd, name="sync")
+    main.add_command(which_store_cmd, name="which-store")
+    main.add_command(init_store_cmd, name="init-store")
+    main.add_command(sync_store_cmd, name="sync-store")
 
 
 # EOF

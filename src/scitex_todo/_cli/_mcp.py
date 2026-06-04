@@ -59,11 +59,37 @@ def _fallback_mcp_group() -> click.Group:
         pass
 
     # ── start ─────────────────────────────────────────────────────────── #
-    @mcp_group.command("start", help="Launch the MCP server (stdio).")
+    @mcp_group.command(
+        "start",
+        help=(
+            "Launch the MCP server (stdio).\n\n"
+            "Example:\n  scitex-todo mcp start            # stdio (default)\n"
+            "  scitex-todo mcp start --http --port 7700"
+        ),
+    )
     @click.option("--http", is_flag=True, help="Use HTTP transport instead of stdio.")
     @click.option("--host", default="127.0.0.1", show_default=True)
     @click.option("--port", type=int, default=0, help="HTTP port (0 = auto).")
-    def start(http, host, port) -> None:
+    @click.option(
+        "--dry-run",
+        is_flag=True,
+        help="Print what would happen (transport/host/port) and exit 0 without launching.",
+    )
+    @click.option(
+        "-y",
+        "--yes",
+        is_flag=True,
+        help="Skip confirmation (no-op for the default stdio path; reserved for HTTP mode).",
+    )
+    def start(http, host, port, dry_run, yes) -> None:
+        _ = yes  # accepted for §2 compliance; no interactive prompt today
+        if dry_run:
+            transport = "http" if http else "stdio"
+            click.echo(
+                f"# dry-run: would launch MCP server transport={transport} "
+                f"host={host} port={port or 'auto'}"
+            )
+            return
         mcp_obj, hint = _try_import_mcp()
         if mcp_obj is None:
             raise click.ClickException(hint)
@@ -79,7 +105,13 @@ def _fallback_mcp_group() -> click.Group:
         mcp_obj.run()
 
     # ── doctor ────────────────────────────────────────────────────────── #
-    @mcp_group.command("doctor", help="Self-diagnose the MCP install.")
+    @mcp_group.command(
+        "doctor",
+        help=(
+            "Self-diagnose the MCP install.\n\n"
+            "Example:\n  scitex-todo mcp doctor --json"
+        ),
+    )
     @click.option("--json", "as_json", is_flag=True)
     def doctor(as_json) -> None:
         diag = {
@@ -125,7 +157,13 @@ def _fallback_mcp_group() -> click.Group:
         sys.exit(0 if diag["status"] == "ok" else 1)
 
     # ── list-tools ────────────────────────────────────────────────────── #
-    @mcp_group.command("list-tools", help="Enumerate registered MCP tools.")
+    @mcp_group.command(
+        "list-tools",
+        help=(
+            "Enumerate registered MCP tools.\n\n"
+            "Example:\n  scitex-todo mcp list-tools -vv"
+        ),
+    )
     @click.option("-v", "verbosity", count=True, help="Repeat for more detail.")
     @click.option("--json", "as_json", is_flag=True)
     def list_tools(verbosity, as_json) -> None:
@@ -151,7 +189,13 @@ def _fallback_mcp_group() -> click.Group:
                     click.echo(f"    full: {it}")
 
     # ── install ───────────────────────────────────────────────────────── #
-    @mcp_group.command("install", help="Print the Claude Code MCP install snippet.")
+    @mcp_group.command(
+        "install",
+        help=(
+            "Print the Claude Code MCP install snippet.\n\n"
+            "Example:\n  scitex-todo mcp install --format raw"
+        ),
+    )
     @click.option(
         "--format",
         "fmt",
@@ -159,7 +203,19 @@ def _fallback_mcp_group() -> click.Group:
         default="claude-code",
         show_default=True,
     )
-    def install(fmt) -> None:
+    @click.option(
+        "--dry-run",
+        is_flag=True,
+        help="Print what the snippet would look like (same as default print; explicit flag for §2).",
+    )
+    @click.option(
+        "-y",
+        "--yes",
+        is_flag=True,
+        help="Skip confirmation (no-op — install only prints the snippet).",
+    )
+    def install(fmt, dry_run, yes) -> None:
+        _ = (dry_run, yes)  # accepted for §2 compliance; install is print-only
         snippet = {
             "mcpServers": {
                 _CLI_NAME: {
