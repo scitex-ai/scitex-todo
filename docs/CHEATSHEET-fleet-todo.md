@@ -25,7 +25,7 @@ own slice via the `scope` and `assignee` fields.
 pip install 'scitex-todo[mcp]'   # [mcp] extra is needed for the MCP server
 
 # 1.2 Where do your tasks live? (read-only — won't create files)
-scitex-todo where                # ✅ LIVE — prints resolved path + precedence chain
+scitex-todo resolve-store                # ✅ LIVE — prints resolved path + precedence chain
 
 # 1.3 Tell the package who you are
 #     (these envs make all read verbs default to YOUR slice)
@@ -33,7 +33,7 @@ export SCITEX_TODO_SCOPE='agent:<your-name>'    # 🟡 PHASE-1
 export SCITEX_TODO_AGENT='agent:<your-name>'    # 🟡 PHASE-1 — used to stamp `completed_by`
 
 # 1.4 First-time create of the shared store on a fresh host (idempotent)
-scitex-todo init --shared        # 🟡 PHASE-1
+scitex-todo init-store --shared        # 🟡 PHASE-1
 ```
 
 **Convention for `<your-name>`.** Pick the literal sac peer name (e.g.
@@ -62,11 +62,11 @@ setup, host-specific config) so cross-host filters keep it in its lane.
 ### 2.1 Read
 
 ```bash
-scitex-todo list                                  # all tasks (filtered by $SCITEX_TODO_SCOPE if set)
-scitex-todo list --scope ""                       # opt out of env-default filter (see EVERYTHING)
-scitex-todo list --assignee agent:lead            # tasks owned by the lead
-scitex-todo list --status in_progress             # what's actively being worked
-scitex-todo list --status pending --json          # JSON for scripting
+scitex-todo list-tasks                                  # all tasks (filtered by $SCITEX_TODO_SCOPE if set)
+scitex-todo list-tasks --scope ""                       # opt out of env-default filter (see EVERYTHING)
+scitex-todo list-tasks --assignee agent:lead            # tasks owned by the lead
+scitex-todo list-tasks --status in_progress             # what's actively being worked
+scitex-todo list-tasks --status pending --json          # JSON for scripting
 scitex-todo summary --scope project:scitex-clew   # counts by status for one project
 ```
 
@@ -96,8 +96,8 @@ All write verbs above are 🟡 PHASE-1 (PR #14).
 ### 2.3 Cross-host sync (Phase-2 — designed, not yet built)
 
 ```bash
-scitex-todo sync --dry-run                       # 🟡 PHASE-1 STUB (no-op, prints plan)
-scitex-todo sync --apply --remote origin         # 🟠 PHASE-2 — git pull/push (TBD)
+scitex-todo sync-store --dry-run                       # 🟡 PHASE-1 STUB (no-op, prints plan)
+scitex-todo sync-store --apply --remote origin         # 🟠 PHASE-2 — git pull/push (TBD)
 ```
 
 ### 2.4 Visualize
@@ -121,7 +121,7 @@ import scitex_todo as todo
 # ── read (snapshot, no lock) ────────────────────────────────────
 mine = todo.list_tasks(scope="agent:proj-scitex-todo",        # 🟡 PHASE-1
                        status="pending")
-counts = todo.summary(scope="project:sac")                    # 🟡 PHASE-1
+counts = todo.summarize_tasks(scope="project:sac")            # 🟡 PHASE-1
 
 # ── write (locked via fcntl.flock around full RMW) ───────────────
 todo.add_task(id="my-task", title="Implement my-task",         # 🟡 PHASE-1
@@ -132,8 +132,12 @@ todo.update_task(task_id="my-task", status="in_progress")      # 🟡 PHASE-1
 todo.complete_task(task_id="my-task")                          # 🟡 PHASE-1
                                                                #   ↑ stamps _log_meta.completed_at + completed_by
 
-# ── load + raw read (always ✅ LIVE) ────────────────────────────
-tasks = todo.load_tasks(todo.resolve_tasks_path())
+# ── load + raw read (submodule imports — these helpers are not on
+#    the narrowed top-level surface; the audit §6 1:1 rule keeps the
+#    top level == the MCP tool set) ───────────────────────────────
+from scitex_todo._model import load_tasks
+from scitex_todo._paths import resolve_tasks_path
+tasks = load_tasks(resolve_tasks_path())
 ```
 
 **Concurrency.** Every mutator in `_store.py` acquires
@@ -147,16 +151,19 @@ field; the design relies on the lock for serialization and on
 
 ## 4 — The MCP tool surface (for sac agents and Claude harnesses)
 
-Six tools, all under the `<pkg>_<verb>_<noun>` convention:
+Eight tools — six task-store tools follow Convention A (`tool_name ==
+python_api_name`, no prefix), plus two skills-discovery tools:
 
-| Tool                          | Purpose                                      |
-| ----------------------------- | -------------------------------------------- |
-| `scitex_todo_add_task`        | Append a new task. Returns the inserted dict as JSON. |
-| `scitex_todo_update_task`     | Mutate fields of an existing task. Returns merged dict as JSON. |
-| `scitex_todo_complete_task`   | `status=done` + stamp `_log_meta`. Idempotent. |
-| `scitex_todo_list_tasks`      | Filter by scope/assignee/status. Returns list as JSON. |
-| `scitex_todo_summary`         | Counts by status/scope/assignee. Returns dict as JSON. |
-| `scitex_todo_where`           | Resolved store path + precedence chain.      |
+| Tool                | Purpose                                      |
+| ------------------- | -------------------------------------------- |
+| `add_task`          | Append a new task. Returns the inserted dict as JSON. |
+| `update_task`       | Mutate fields of an existing task. Returns merged dict as JSON. |
+| `complete_task`     | `status=done` + stamp `_log_meta`. Idempotent. |
+| `list_tasks`        | Filter by scope/assignee/status. Returns list as JSON. |
+| `summarize_tasks`   | Counts by status/scope/assignee. Returns dict as JSON. |
+| `resolve_store`     | Resolved store path + precedence chain.      |
+| `todo_skills_list`  | List bundled scitex-todo agent skill files.  |
+| `todo_skills_get`   | Read one bundled skill file by name.         |
 
 All 🟡 PHASE-1 (PR #14). Start the server:
 
@@ -223,7 +230,7 @@ cross-cut view; add the dir to the project's `.gitignore`.
 filesystem). To make the user-scope store fleet-shared, it is itself a
 **git checkout of a private state repo** (default name
 `ywatanabe1989-private/scitex-todo-state`); cross-host sync is
-`scitex-todo sync --apply` ≈ `git pull --rebase --autostash && git push`
+`scitex-todo sync-store --apply` ≈ `git pull --rebase --autostash && git push`
 (🟠 PHASE-2 body; the Phase-1 stub already exists).
 
 ```
@@ -242,7 +249,7 @@ That view is the 串刺し view: read-only-equivalent across the fleet.
 ### To see what your process is actually pointing at
 
 ```bash
-scitex-todo where --json         # 🟡 PHASE-1 — prints resolved path + chain
+scitex-todo resolve-store --json         # 🟡 PHASE-1 — prints resolved path + chain
 ```
 
 ### Conflict resolution (Phase 2, designed)
@@ -260,14 +267,14 @@ board if a merge picked badly.
 
 ```bash
 # Container has injected SCITEX_TODO_SCOPE=agent:<me>, SCITEX_TODO_AGENT=agent:<me>
-scitex-todo list --status in_progress      # what was I doing?
+scitex-todo list-tasks --status in_progress      # what was I doing?
 # pick the top one, read its `note` field for handoff context, resume
 ```
 
 ### 7.2 "I'm an agent claiming a task off the queue"
 
 ```bash
-scitex-todo list --assignee '' --status pending  # unowned pending work
+scitex-todo list-tasks --assignee '' --status pending  # unowned pending work
 scitex-todo update <id> --assignee agent:<me> --status in_progress
 ```
 
@@ -302,8 +309,8 @@ the cross-HOST axis. With both, "every task on every host" is just
 
 ```bash
 # On any host, after a sync:
-scitex-todo sync --apply             # 🟠 PHASE-2 — pull/push the state repo
-scitex-todo list --scope ''          # the full 串刺し view (no scope filter)
+scitex-todo sync-store --apply             # 🟠 PHASE-2 — pull/push the state repo
+scitex-todo list-tasks --scope ''          # the full 串刺し view (no scope filter)
 scitex-todo summary --scope ''       # numeric digest of the same
 ```
 
@@ -315,13 +322,13 @@ Slice the 串刺し view by host with the `host:<hostname>` scope label
 scitex-todo add wsl-ssh-key "regenerate ssh key" --scope "host:$(hostname)"
 
 # What's on this host?
-scitex-todo list --scope "host:$(hostname)"
+scitex-todo list-tasks --scope "host:$(hostname)"
 
 # What's on the MBA?
-scitex-todo list --scope "host:mba-arm64"
+scitex-todo list-tasks --scope "host:mba-arm64"
 
 # Everything everywhere (the operator's cross-cut dashboard)
-scitex-todo list --scope ''
+scitex-todo list-tasks --scope ''
 ```
 
 The web board (`scitex-todo board`) renders the same 串刺し view —
@@ -335,10 +342,10 @@ the cross-project 串刺し view:
 
 ```bash
 cd ~/proj/scitex-foo
-scitex-todo init --project           # 🟡 PHASE-1 — creates ./.scitex/todo/tasks.yaml
+scitex-todo init-store --project           # 🟡 PHASE-1 — creates ./.scitex/todo/tasks.yaml
 echo ".scitex/" >> .gitignore        # don't commit the local task list
-scitex-todo list                     # now reads the PROJECT store (overrides user)
-scitex-todo where                    # confirms which store the verbs hit
+scitex-todo list-tasks                     # now reads the PROJECT store (overrides user)
+scitex-todo resolve-store                    # confirms which store the verbs hit
 ```
 
 Removing the project-scope file (or `cd`-ing outside the project tree)

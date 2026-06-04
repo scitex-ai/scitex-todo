@@ -15,14 +15,29 @@ All notable changes to this project are documented here. The format follows
   `completed_by`. Phase-2 progress-history substrate.
 - **Mutation Python API** (`scitex_todo._store`, re-exported from
   `scitex_todo`): `add_task`, `update_task`, `complete_task`, `list_tasks`,
-  `summary`, `TaskNotFoundError`, `ENV_SCOPE`, `ENV_AGENT`.
-- **CLI write verbs**: `add`, `update`, `done`, `list` (extended with
-  `--scope` / `--assignee` / `--status` filters; backward-compatible
-  default output for existing `list-tasks` users), `summary`, `where`,
-  `init [--shared|--project]`, `sync [--dry-run|--apply]` (Phase-1 stub).
+  `summarize_tasks`, `resolve_store`, `TaskNotFoundError`, `ENV_SCOPE`,
+  `ENV_AGENT`. The public top-level surface is narrowed to these six
+  task-store functions (plus errors / env constants) to satisfy audit §6
+  (Convention A: tool_name == python_api_name). The mermaid / render /
+  model / paths helpers remain importable from their submodules
+  (`scitex_todo._mermaid`, `scitex_todo._render`, `scitex_todo._model`,
+  `scitex_todo._paths`).
+- **CLI write / admin verbs**: `add`, `update`, `done`, `summary`, plus
+  `list-tasks` (extended with `--scope` / `--assignee` / `--status`
+  filters; backward-compatible default output for existing `list-tasks`
+  users), `resolve-store`, `init-store [--shared|--project]`,
+  `sync-store [--dry-run|--apply]` (Phase-1 stub). Mutating verbs
+  (`add`, `update`, `init-store`, `sync-store`, `mcp start`, `mcp install`)
+  accept `--dry-run` + `-y`/`--yes` per audit §2. The pre-audit names
+  `list` / `where` / `init` / `sync` were renamed per audit §1 (bare
+  transitive verbs at the top level need an object noun).
 - **MCP server** (`scitex_todo._mcp_server`) behind the new `[mcp]` extra
-  (`fastmcp>=2.0`). Six tools under the §2 `scitex_todo_<verb>_<noun>`
-  prefix. `import scitex_todo` works fine without the extra installed.
+  (`fastmcp>=2.0`). Eight tools — six task-store tools follow
+  Convention A (tool_name == python_api_name, no prefix): `add_task`,
+  `update_task`, `complete_task`, `list_tasks`, `summarize_tasks`,
+  `resolve_store`; plus `todo_skills_list` / `todo_skills_get` for
+  bundled-skill discovery. `import scitex_todo` works fine without the
+  extra installed.
 - **`mcp` CLI subgroup** — §3 required four (`start`, `doctor`,
   `list-tools`, `install`). Prefers `scitex_dev._mcp_cli` when present;
   hand-rolled fallback otherwise.
