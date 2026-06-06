@@ -1322,3 +1322,45 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   background: var(--stx-hover-bg);
   color: var(--stx-accent);
 }
+
+/* ---------------------------------------------------------------------------
+ * BLOCKER VISIBILITY (operator UX 2026-06-06: "ブロッカーが何かわからないので、
+ * todo にブロッカー可視化") — three coordinated cues:
+ *   (a) `.stx-todo-node__blocked`   — red 🚧 glyph prefix on the node label
+ *                                     for any status=blocked task. Renders
+ *                                     inside both leafLabel and parentLabel.
+ *   (b) `.stx-todo-progress__chip--blocked` — clickable chip in the progress
+ *                                     summary that toggles the blocked-only
+ *                                     status filter. Highlighted when active.
+ *   (c) `.stx-todo-blockers` (+ children) — the new "🚧 Blockers" section in
+ *                                     the NodeDetailPanel listing upstream
+ *                                     deps + downstream waiters.
+ * ------------------------------------------------------------------------- */
+
+.stx-todo-node__blocked {
+  /* Drop-shadow keeps the emoji legible on darker status fills (blocked
+   * status uses a muted grey-blue tone); margin-right adds breathing room
+   * before the title text. */
+  margin-right: 4px;
+  filter: drop-shadow(0 0 1px rgba(207, 36, 36, 0.85));
+}
+
+.stx-todo-progress__chip--blocked {
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid #c0392b;
+  color: #c0392b;
+  font-weight: 600;
+  padding: 0 8px;
+  border-radius: 999px;
+  transition:
+    background 100ms ease,
+    color 100ms ease;
+}
+.stx-todo-progress__chip--blocked:hover {
+  background: rgba(192, 57, 43, 0.12);
+}
+.stx-todo-progress__chip--blocked.stx-todo-progress__chip--on {
+  background: #c0392b;
+  color: #fff;
+}

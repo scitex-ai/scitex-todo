@@ -172,10 +172,17 @@ export function parentNodeStyle(
  *     tooltip says "Drill into <title> (N children)" on hover, matching
  *     the pool-side affordance.
  */
-function parentLabel(title: string, kids: number, suffix: string): ReactNode {
-  const tip = `Drill into ${title} (${kids} ${
-    kids === 1 ? "child" : "children"
-  })`;
+function parentLabel(
+  title: string,
+  kids: number,
+  suffix: string,
+  blocked: boolean,
+): ReactNode {
+  const tip = blocked
+    ? `Drill into ${title} (${kids} ${
+        kids === 1 ? "child" : "children"
+      }) — this branch is BLOCKED`
+    : `Drill into ${title} (${kids} ${kids === 1 ? "child" : "children"})`;
   return createElement(
     "span",
     { className: "stx-todo-node__label", title: tip },
@@ -184,6 +191,17 @@ function parentLabel(title: string, kids: number, suffix: string): ReactNode {
       { className: "stx-todo-node__badge", "aria-label": tip },
       `${kids} ↓`,
     ),
+    blocked
+      ? createElement(
+          "span",
+          {
+            className: "stx-todo-node__blocked",
+            "aria-label": "blocked",
+            title: "Blocked — see Blockers section in the detail drawer",
+          },
+          "🚧 ",
+        )
+      : null,
     createElement(
       "span",
       { className: "stx-todo-node__glyph", "aria-hidden": "true" },
@@ -196,14 +214,33 @@ function parentLabel(title: string, kids: number, suffix: string): ReactNode {
 /** Label for a leaf node — plain text content but wrapped in a span with a
  * `title` attr so the browser tooltip explicitly says "Open details for
  * <title>", giving the operator a hover-time confirmation that this click
- * opens the markdown drawer (not drill-down). */
-function leafLabel(title: string, suffix: string): ReactNode {
+ * opens the markdown drawer (not drill-down).
+ *
+ * When the task is `status: blocked`, a leading "🚧" glyph is prepended so the
+ * board reads at a glance which threads are stuck (the operator's UX request
+ * 2026-06-06: "ブロッカーが何かわからないので、todo にブロッカー可視化"). The
+ * tooltip also flags it as blocked so a hover confirms what's wrong without
+ * opening the drawer. */
+function leafLabel(title: string, suffix: string, blocked: boolean): ReactNode {
+  const tip = blocked
+    ? `BLOCKED — ${title} (open details to see what is blocking it)`
+    : `Open details for ${title}`;
   return createElement(
     "span",
     {
       className: "stx-todo-node__label",
-      title: `Open details for ${title}`,
+      title: tip,
     },
+    blocked
+      ? createElement(
+          "span",
+          {
+            className: "stx-todo-node__blocked",
+            "aria-label": "blocked",
+          },
+          "🚧 ",
+        )
+      : null,
     `${title}${suffix}`,
   );
 }
@@ -301,9 +338,14 @@ export function buildFlow(
     const ncomments = n.comments?.length ?? 0;
     const chat = ncomments > 0 ? `  💬${ncomments}` : "";
     const suffix = `${prio}${chat}`;
+    // Blocked-task affordance (operator UX 2026-06-06): leading "🚧" glyph on
+    // any task whose status is "blocked" so the board reads at a glance which
+    // threads are stuck. The NodeDetailPanel's new Blockers section shows the
+    // concrete dep/blocks chain when the drawer is opened.
+    const blocked = n.status === "blocked";
     const label = isParent
-      ? parentLabel(n.title, kids, suffix)
-      : leafLabel(n.title, suffix);
+      ? parentLabel(n.title, kids, suffix, blocked)
+      : leafLabel(n.title, suffix, blocked);
     const base = nodeStyle(graph.status_colors[n.status]);
     return {
       id: n.id,

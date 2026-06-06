@@ -89,9 +89,17 @@ function Legend({ colors }: { colors: Record<string, StatusColor> }) {
 }
 
 /** Per-status progress summary. Narrows to the current drill scope when one
- * is active (direct children of the scope), else counts the whole store. */
+ * is active (direct children of the scope), else counts the whole store.
+ *
+ * The "blocked N" chip is clickable (operator UX 2026-06-06): clicking it
+ * toggles a filter to status=blocked so the operator can jump from "what is
+ * the SHAPE of progress" to "show me the things that need unblocking" in one
+ * click. Other status chips are passive (read-only display); blocking is the
+ * one most worth a shortcut because acting on it unblocks the rest. */
 function Progress({ graph }: { graph: GraphPayload }) {
   const drillPath = useBoardStore((s) => s.drillPath);
+  const activeStatuses = useBoardStore((s) => s.activeStatuses);
+  const toggleStatus = useBoardStore((s) => s.toggleStatus);
   const scope = drillPath.length ? drillPath[drillPath.length - 1] : null;
   const scoped = useMemo(
     () =>
@@ -118,6 +126,7 @@ function Progress({ graph }: { graph: GraphPayload }) {
     "failed",
     "done",
   ];
+  const blockedOn = activeStatuses.includes("blocked");
   return (
     <span className="stx-todo-progress" aria-label="Progress summary">
       <strong>
@@ -126,11 +135,30 @@ function Progress({ graph }: { graph: GraphPayload }) {
       </strong>
       {order
         .filter((s) => counts[s])
-        .map((s) => (
-          <span key={s} className="stx-todo-progress__chip">
-            {s} {counts[s]}
-          </span>
-        ))}
+        .map((s) =>
+          s === "blocked" ? (
+            <button
+              key={s}
+              type="button"
+              className={`stx-todo-progress__chip stx-todo-progress__chip--blocked${
+                blockedOn ? " stx-todo-progress__chip--on" : ""
+              }`}
+              onClick={() => toggleStatus("blocked")}
+              aria-pressed={blockedOn}
+              title={
+                blockedOn
+                  ? "Clear the blocked-only filter"
+                  : "Filter the board to blocked tasks only"
+              }
+            >
+              🚧 blocked {counts[s]}
+            </button>
+          ) : (
+            <span key={s} className="stx-todo-progress__chip">
+              {s} {counts[s]}
+            </span>
+          ),
+        )}
     </span>
   );
 }
