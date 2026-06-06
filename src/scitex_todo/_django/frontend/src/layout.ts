@@ -172,10 +172,18 @@ export function parentNodeStyle(
  *     tooltip says "Drill into <title> (N children)" on hover, matching
  *     the pool-side affordance.
  */
-function parentLabel(title: string, kids: number, suffix: string): ReactNode {
-  const tip = `Drill into ${title} (${kids} ${
-    kids === 1 ? "child" : "children"
-  })`;
+function parentLabel(
+  title: string,
+  kids: number,
+  suffix: string,
+  blocked: boolean,
+  blockerId: string | null,
+): ReactNode {
+  const tip = blocked
+    ? `Drill into ${title} (${kids} ${
+        kids === 1 ? "child" : "children"
+      }) — this branch is BLOCKED${blockerId ? ` by ${blockerId}` : ""}`
+    : `Drill into ${title} (${kids} ${kids === 1 ? "child" : "children"})`;
   return createElement(
     "span",
     { className: "stx-todo-node__label", title: tip },
@@ -184,28 +192,119 @@ function parentLabel(title: string, kids: number, suffix: string): ReactNode {
       { className: "stx-todo-node__badge", "aria-label": tip },
       `${kids} ↓`,
     ),
+    blocked
+      ? createElement(
+          "span",
+          {
+            className: "stx-todo-node__blocked",
+            "aria-label": "blocked",
+            title: "Blocked — see Blockers section in the detail drawer",
+          },
+          "🚧 ",
+        )
+      : null,
     createElement(
       "span",
       { className: "stx-todo-node__glyph", "aria-hidden": "true" },
       "⊞ ",
     ),
     `${title}${suffix}`,
+    blocked && blockerId
+      ? createElement(
+          "span",
+          {
+            className: "stx-todo-node__blocked-by",
+            title: `Blocked by ${blockerId}`,
+          },
+          `← ${truncateId(blockerId)}`,
+        )
+      : null,
   );
 }
 
 /** Label for a leaf node — plain text content but wrapped in a span with a
  * `title` attr so the browser tooltip explicitly says "Open details for
  * <title>", giving the operator a hover-time confirmation that this click
- * opens the markdown drawer (not drill-down). */
-function leafLabel(title: string, suffix: string): ReactNode {
+ * opens the markdown drawer (not drill-down).
+ *
+ * When the task is `status: blocked`, a leading "🚧" glyph is prepended so the
+ * board reads at a glance which threads are stuck (the operator's UX request
+ * 2026-06-06: "ブロッカーが何かわからないので、todo にブロッカー可視化"). The
+ * tooltip also flags it as blocked so a hover confirms what's wrong without
+ * opening the drawer. */
+function leafLabel(
+  title: string,
+  suffix: string,
+  blocked: boolean,
+  blockerId: string | null,
+): ReactNode {
+  const tip = blocked
+    ? `BLOCKED — ${title}${
+        blockerId ? ` (blocked by ${blockerId})` : ""
+      } (open details to see the full chain)`
+    : `Open details for ${title}`;
   return createElement(
     "span",
     {
       className: "stx-todo-node__label",
-      title: `Open details for ${title}`,
+      title: tip,
     },
+    blocked
+      ? createElement(
+          "span",
+          {
+            className: "stx-todo-node__blocked",
+            "aria-label": "blocked",
+          },
+          "🚧 ",
+        )
+      : null,
     `${title}${suffix}`,
+    blocked && blockerId
+      ? createElement(
+          "span",
+          {
+            className: "stx-todo-node__blocked-by",
+            title: `Blocked by ${blockerId}`,
+          },
+          `← ${truncateId(blockerId)}`,
+        )
+      : null,
   );
+}
+
+/** Shorten a long blocker id for an inline node badge. Full id is preserved in
+ * the hover tooltip + the Blockers section of the drawer. 16 chars keeps the
+ * "← <id>" chip readable on the node without pushing the title off the row. */
+function truncateId(id: string, max = 16): string {
+  return id.length > max ? `${id.slice(0, max - 1)}…` : id;
+}
+
+/** First upstream blocker id for node X — used for the inline "← <id>" node
+ * badge so the operator can see WHO is blocking X without opening the drawer.
+ *
+ * Order of precedence (matches the BlockersSection in NodeDetailPanel):
+ *   1) explicit `blocks` edges into X (source = blocker, target = X)
+ *   2) incoming `depends_on` deps whose status is not yet `done`
+ * Returns null when X has no unresolved blocker (a status=blocked task with
+ * NO blocker chain means a manual block — drawer is the right place for
+ * detail; the node still gets the 🚧 prefix glyph). */
+function firstBlockerFor(
+  graph: GraphPayload,
+  nodeId: string,
+): string | null {
+  const byId = new Map(graph.nodes.map((n) => [n.id, n] as const));
+  const explicit = graph.edges.find(
+    (e) => e.kind === "blocks" && e.target === nodeId,
+  );
+  if (explicit && byId.has(explicit.source)) return explicit.source;
+  const dep = graph.edges.find(
+    (e) =>
+      e.kind === "depends_on" &&
+      e.target === nodeId &&
+      byId.get(e.source)?.status !== "done",
+  );
+  return dep ? dep.source : null;
 }
 
 /** Split nodes into the connected dependency graph vs the uncategorized pool.
@@ -301,9 +400,17 @@ export function buildFlow(
     const ncomments = n.comments?.length ?? 0;
     const chat = ncomments > 0 ? `  💬${ncomments}` : "";
     const suffix = `${prio}${chat}`;
+    // Blocked-task affordance (operator UX 2026-06-06): leading "🚧" glyph on
+    // any task whose status is "blocked" so the board reads at a glance which
+    // threads are stuck. We also embed an inline "← <id>" chip carrying the
+    // FIRST blocker's id (lead-callout 2026-06-06 b9503957: "secret-migration-
+    // phase3 ← blocked by ← ci-recovery-wave should jump out"). The full chain
+    // is in the NodeDetailPanel's Blockers section when the drawer opens.
+    const blocked = n.status === "blocked";
+    const blockerId = blocked ? firstBlockerFor(graph, n.id) : null;
     const label = isParent
-      ? parentLabel(n.title, kids, suffix)
-      : leafLabel(n.title, suffix);
+      ? parentLabel(n.title, kids, suffix, blocked, blockerId)
+      : leafLabel(n.title, suffix, blocked, blockerId);
     const base = nodeStyle(graph.status_colors[n.status]);
     return {
       id: n.id,
@@ -330,10 +437,26 @@ export function buildFlow(
     };
   });
 
+  // Lookup of node status by id so edges can detect "is the target currently
+  // blocked?" without re-scanning the nodes list per edge.
+  const statusById = new Map(graph.nodes.map((n) => [n.id, n.status] as const));
+
   const edges: Edge[] = graph.edges
     .filter((e) => inGraph.has(e.source) && inGraph.has(e.target))
     .map((e, i) => {
       const isBlock = e.kind === "blocks";
+      // Edges INTO a status=blocked target are the live "this is what's
+      // keeping you stuck" lines. Thicken + recolor them red so the blocker
+      // chain jumps out on the canvas (lead 2026-06-06 b9503957: "bold/
+      // colored the blocks + depends_on edges"). Non-blocked targets keep
+      // their kind-default styling so the canvas doesn't become a sea of red.
+      const targetBlocked = statusById.get(e.target) === "blocked";
+      const stroke = targetBlocked
+        ? EDGE_COLOR_BLOCKS
+        : isBlock
+        ? EDGE_COLOR_BLOCKS
+        : EDGE_COLOR_DEPENDS;
+      const strokeWidth = targetBlocked ? 3 : 2;
       // depends_on: default smoothstep edge with an arrowhead marker.
       // blocks:    custom `inhibition` edge (InhibitionEdge.tsx) — same body
       //            line as depends_on but with a perpendicular tee instead of
@@ -347,13 +470,13 @@ export function buildFlow(
         // which task field (depends_on vs blocks) to scrub.
         data: { kind: e.kind },
         animated: false,
-        style: {
-          stroke: isBlock ? EDGE_COLOR_BLOCKS : EDGE_COLOR_DEPENDS,
-          strokeWidth: 2,
-        },
+        style: { stroke, strokeWidth },
         markerEnd: isBlock
           ? undefined
-          : { type: MarkerType.ArrowClosed, color: EDGE_COLOR_DEPENDS },
+          : {
+              type: MarkerType.ArrowClosed,
+              color: targetBlocked ? EDGE_COLOR_BLOCKS : EDGE_COLOR_DEPENDS,
+            },
       };
     });
 
