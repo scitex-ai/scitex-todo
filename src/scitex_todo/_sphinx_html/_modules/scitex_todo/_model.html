@@ -145,6 +145,23 @@
     <span class="s2">&quot;failed&quot;</span><span class="p">,</span>
 <span class="p">)</span>
 
+<span class="c1"># Valid task kinds — north-star pillar #1 (HANDOFF.md): dependencies extend</span>
+<span class="c1"># down to COMPUTE STATE. A row with ``kind: compute`` represents an external</span>
+<span class="c1"># compute job (Spartan slurm submission, SIF rebuild, …) whose status is</span>
+<span class="c1"># updated by an automated writer (out-of-scope for the schema; see the</span>
+<span class="c1"># writer-side contract in tasks/proj-scitex-todo-compute-state-deps/</span>
+<span class="c1"># description.md). Any other task uses ``kind: task`` (the default, can be</span>
+<span class="c1"># omitted). Extensible to ``&quot;ci&quot;`` etc. when task #15 wires GH-Actions rows;</span>
+<span class="c1"># add to this tuple when that lands.</span>
+<span class="c1">#</span>
+<span class="c1"># Closed validated set per lead directive 2026-06-06 a2a `2c7a431d` —</span>
+<span class="c1"># fail-loud on unknown values (e.g. a &quot;comput&quot; typo) so silent</span>
+<span class="c1"># misconfiguration is impossible.</span>
+<span class="n">VALID_KINDS</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="s2">&quot;task&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;compute&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+
 
 <div class="viewcode-block" id="TaskValidationError">
 <a class="viewcode-back" href="../../api/scitex_todo.html#scitex_todo.TaskValidationError">[docs]</a>
@@ -308,6 +325,41 @@
                 <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has non-mapping _log_meta &quot;</span>
                 <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">log_meta</span><span class="si">!r}</span><span class="s2">; _log_meta must be a mapping or absent&quot;</span>
             <span class="p">)</span>
+        <span class="c1"># `kind` is the discriminator between an ordinary task row and a</span>
+        <span class="c1"># compute-job row (north-star pillar #1). Closed validated set per</span>
+        <span class="c1"># `VALID_KINDS`; absence is equivalent to `kind: &quot;task&quot;` (the</span>
+        <span class="c1"># default). Fail-loud on unknown values — a &quot;comput&quot; typo would</span>
+        <span class="c1"># otherwise silently create an unrecognized kind, defeating the</span>
+        <span class="c1"># discriminator.</span>
+        <span class="n">kind</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;kind&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">kind</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">kind</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">VALID_KINDS</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has invalid kind </span><span class="si">{</span><span class="n">kind</span><span class="si">!r}</span><span class="s2">; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;must be one of </span><span class="si">{</span><span class="n">VALID_KINDS</span><span class="si">}</span><span class="s2"> or absent (defaults to &#39;task&#39;)&quot;</span>
+            <span class="p">)</span>
+        <span class="c1"># Compute metadata fields — only allowed when `kind: compute`. Each</span>
+        <span class="c1"># is an optional non-empty string. `started_at` / `finished_at` are</span>
+        <span class="c1"># expected to be ISO-8601 timestamps but we don&#39;t strict-parse them</span>
+        <span class="c1"># here — the writer (Spartan watcher / CI watcher, task #15) is</span>
+        <span class="c1"># responsible for the content; the schema only enforces TYPE so a</span>
+        <span class="c1"># stray scalar can&#39;t corrupt downstream readers.</span>
+        <span class="n">is_compute</span> <span class="o">=</span> <span class="n">kind</span> <span class="o">==</span> <span class="s2">&quot;compute&quot;</span>
+        <span class="n">compute_fields</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;job_id&quot;</span><span class="p">,</span> <span class="s2">&quot;host&quot;</span><span class="p">,</span> <span class="s2">&quot;command&quot;</span><span class="p">,</span> <span class="s2">&quot;started_at&quot;</span><span class="p">,</span> <span class="s2">&quot;finished_at&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">compute_fields</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">is_compute</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has compute metadata </span><span class="si">{</span><span class="n">label</span><span class="si">!r}</span><span class="s2"> &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;but kind is </span><span class="si">{</span><span class="n">kind</span><span class="si">!r}</span><span class="s2">; set kind: compute or remove the &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> field&quot;</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">value</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has non-string </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">value</span><span class="si">!r}</span><span class="s2">; </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> must be a non-empty string or absent&quot;</span>
+                <span class="p">)</span>
 
 
 <span class="nd">@contextlib</span><span class="o">.</span><span class="n">contextmanager</span>
