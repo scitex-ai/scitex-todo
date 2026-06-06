@@ -340,18 +340,24 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   cursor: zoom-in;
   /* `rotate` is an INDIVIDUAL transform property, so it composes with React
    * Flow's inline `transform: translate(...)` instead of overriding it —
-   * letting us tilt the stack on hover without breaking node positioning. */
+   * letting us nudge the stack on hover without breaking node positioning.
+   * (Operator UX 2026-06-06 TG 229: the earlier -3deg tilt read as
+   * "やりすぎ" — kept the cue but at a much smaller amplitude so the
+   * affordance still registers without being loud.) */
   transition:
     rotate 0.12s ease,
     filter 0.12s ease;
 }
 
 .stx-todo-flow .react-flow__node.stx-todo-node--parent:hover {
-  /* On-cursor rotation: the group "stack" tilts slightly when hovered, plus a
-   * stronger lift than the generic node hover so the parent affordance stays
-   * dominant. */
-  filter: brightness(1.14);
-  rotate: -3deg;
+  /* Subtle hover cue for parent / drill-in nodes: a small brightness lift
+   * + a barely-perceptible -1deg tilt (was -3deg / brightness 1.14 pre-
+   * TG-229). The dominant parent affordance is still carried by the
+   * static cues (5px double border + stacked-card box-shadow + purple
+   * halo + the "N ↓" pill + the ⊞ glyph + the zoom-in cursor) — the
+   * hover animation is now icing, not the headline. */
+  filter: brightness(1.08);
+  rotate: -1deg;
 }
 
 .stx-todo-flow .react-flow__node.stx-todo-node--leaf {

@@ -28,6 +28,7 @@ import {
   Background,
   Controls,
   MiniMap,
+  PanOnScrollMode,
   ReactFlow,
   applyNodeChanges,
   useReactFlow,
@@ -711,7 +712,7 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
             // Pinch-to-zoom on trackpads keeps working via zoomOnPinch
             // (default true, left implicit).
             panOnScroll={true}
-            panOnScrollMode="free"
+            panOnScrollMode={PanOnScrollMode.Free}
             zoomActivationKeyCode="Control"
             proOptions={{ hideAttribution: true }}
           >
