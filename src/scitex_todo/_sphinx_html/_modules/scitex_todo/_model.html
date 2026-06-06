@@ -199,10 +199,32 @@
 <span class="c1"># rule from ADR-0002.</span>
 <span class="n">VALID_BLOCKERS</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
     <span class="s2">&quot;compute&quot;</span><span class="p">,</span>
+    <span class="c1"># ``&quot;dependency&quot;`` is the canonical spelling per operator co-design</span>
+    <span class="c1"># (TG 9667, lead a2a `6d9b6073`). ``&quot;dep&quot;`` is the legacy alias from</span>
+    <span class="c1"># ADR-0004&#39;s first cut; the validator accepts BOTH during a</span>
+    <span class="c1"># deprecation window and normalizes on write (`_normalize_blocker`).</span>
+    <span class="c1"># Once existing tasks.yaml stores are swept, ``&quot;dep&quot;`` drops out.</span>
+    <span class="s2">&quot;dependency&quot;</span><span class="p">,</span>
     <span class="s2">&quot;dep&quot;</span><span class="p">,</span>
     <span class="s2">&quot;operator-decision&quot;</span><span class="p">,</span>
     <span class="s2">&quot;agent-wait&quot;</span><span class="p">,</span>
+    <span class="c1"># ``&quot;none&quot;`` is the explicit &quot;no specific blocker named&quot; value</span>
+    <span class="c1"># (vs the soft-degrade case where the field is absent on a blocked</span>
+    <span class="c1"># row). Lets the operator set blocker:none in a Resolve flow to</span>
+    <span class="c1"># mean &quot;I looked, no blocker&quot; — distinct from &quot;we haven&#39;t named</span>
+    <span class="c1"># one yet.&quot; Operator co-design TG 9667.</span>
+    <span class="s2">&quot;none&quot;</span><span class="p">,</span>
 <span class="p">)</span>
+
+
+<span class="c1"># Canonical → legacy alias normalization for the blocker enum.</span>
+<span class="c1"># Used by Task.from_dict to flip incoming ``&quot;dep&quot;`` → ``&quot;dependency&quot;``</span>
+<span class="c1"># on read, so the in-memory dataclass always carries the canonical</span>
+<span class="c1"># spelling. The validator still accepts both spellings (deprecation</span>
+<span class="c1"># window); only the dataclass normalizes.</span>
+<span class="n">_BLOCKER_ALIASES</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;dep&quot;</span><span class="p">:</span> <span class="s2">&quot;dependency&quot;</span><span class="p">,</span>
+<span class="p">}</span>
 
 
 <div class="viewcode-block" id="TaskValidationError">
@@ -210,6 +232,169 @@
 <span class="k">class</span><span class="w"> </span><span class="nc">TaskValidationError</span><span class="p">(</span><span class="ne">ValueError</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when a task store fails structural validation.&quot;&quot;&quot;</span></div>
 
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Task dataclass — SINGLE schema source (ADR-0007, quality-hygiene PR)</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1">#</span>
+<span class="c1"># The dataclass IS the canonical schema. It feeds:</span>
+<span class="c1">#   - the validator (`_validate_tasks`)</span>
+<span class="c1">#   - the board UI render contract (ADR-0006 — every card field maps to one</span>
+<span class="c1">#     dataclass attribute)</span>
+<span class="c1">#   - the Gitea field-map (HANDOFF.md — every dataclass field maps to a</span>
+<span class="c1">#     Gitea-issue field via label / milestone / assignee / body)</span>
+<span class="c1">#   - the future README-frontmatter pivot (HANDOFF.md SSoT-layout)</span>
+<span class="c1">#</span>
+<span class="c1"># Heuristic pinned in HANDOFF.md: ANY schema evolution touches the dataclass</span>
+<span class="c1"># FIRST; validator + adapters follow mechanically. Two-sources-of-truth is</span>
+<span class="c1"># what this dataclass is collapsing.</span>
+<span class="c1">#</span>
+<span class="c1"># Back-compat: existing dict-style consumers (handlers/graph.py, _store.py,</span>
+<span class="c1"># the MCP layer) keep working — `Task.from_dict()` reads any historical</span>
+<span class="c1"># task shape, `Task.to_dict()` round-trips to a dict the existing writers</span>
+<span class="c1"># can consume. The migration to attribute-style access is incremental per</span>
+<span class="c1"># the operator&#39;s &quot;no big-bang&quot; rule.</span>
+
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">fields</span> <span class="k">as</span> <span class="n">_dc_fields</span>  <span class="c1"># noqa: E402</span>
+
+
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">slots</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Task</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Canonical task shape — the single schema source for scitex-todo.</span>
+
+<span class="sd">    Field layout follows the operator&#39;s co-design (TG 9667, lead a2a</span>
+<span class="sd">    `6d9b6073`): the operator&#39;s named fields come first</span>
+<span class="sd">    (`id` / `title` / `task` / `project` / `host` / `created_at` /</span>
+<span class="sd">    `goal`), then the UI-driving + workflow fields (`status` / `agent` /</span>
+<span class="sd">    `last_activity` / `blocker` / `pr_url` / `issue_url`), then the</span>
+<span class="sd">    graph-wiring fields preserved from pre-PR-#52 (`depends_on` / `blocks`</span>
+<span class="sd">    / `parent` / `priority` / `note` / `comments`), then the kind</span>
+<span class="sd">    discriminator + compute metadata (ADR-0002 / 0003), then the legacy</span>
+<span class="sd">    shared-fleet additive fields (`scope` / `assignee` / `_log_meta`).</span>
+
+<span class="sd">    Construction: prefer :meth:`Task.from_dict` for loading from a YAML</span>
+<span class="sd">    row — it handles legacy spellings (e.g. `blocker: &quot;dep&quot;` → canonical</span>
+<span class="sd">    `&quot;dependency&quot;`), missing fields (filled with the dataclass default),</span>
+<span class="sd">    and ignores unknown keys defensively (so a forward-compat YAML with</span>
+<span class="sd">    a future field doesn&#39;t crash an older loader).</span>
+
+<span class="sd">    Persistence: :meth:`to_dict` round-trips to the dict shape the</span>
+<span class="sd">    ruamel writer in :func:`save_tasks` expects. Fields with default</span>
+<span class="sd">    values (None / empty list / empty dict) are OMITTED from the dict</span>
+<span class="sd">    so the YAML stays compact. Required fields (id, title) are always</span>
+<span class="sd">    emitted.</span>
+
+<span class="sd">    See ADR-0007 in ``docs/adr/`` for the rationale + the migration</span>
+<span class="sd">    plan from the legacy dict-style API.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># --- operator&#39;s core fields (TG 9667) ----------------------------------</span>
+    <span class="nb">id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="c1"># `task` is the operator&#39;s &quot;1-line current task&quot; — the BIG text on the</span>
+    <span class="c1"># board card. Distinct from `title` (which is the short scannable label)</span>
+    <span class="c1"># and from `note` (which is free-form markdown detail). Optional during</span>
+    <span class="c1"># the deprecation window so legacy rows that only carry `title` keep</span>
+    <span class="c1"># loading; the FE falls back `task or title` when rendering the BIG</span>
+    <span class="c1"># text. Once dogfooded, agents start populating `task` and the FE prefers</span>
+    <span class="c1"># it.</span>
+    <span class="n">task</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">project</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># directory / repo basename</span>
+    <span class="n">host</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>     <span class="c1"># where the work happens (operator co-design TG 9667)</span>
+    <span class="n">created_at</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># ISO-8601 UTC; emit at insert</span>
+    <span class="n">goal</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>     <span class="c1"># WHY (parent-goal text); rendered as 🎯 line on card</span>
+
+    <span class="c1"># --- lead-added: drives UI color + blocker views (TG 9667) -------------</span>
+    <span class="n">status</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;pending&quot;</span>     <span class="c1"># current canonical = VALID_STATUSES (7-value);</span>
+                                <span class="c1"># the operator&#39;s 4-value enum (working/waiting/done/blocked)</span>
+                                <span class="c1"># is mapped IN THE FE renderer for now, not in the</span>
+                                <span class="c1"># schema. See ADR-0007 Consequences for the</span>
+                                <span class="c1"># deferred 7→4 schema migration.</span>
+    <span class="n">agent</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>     <span class="c1"># owning agent (distinct from `assignee` legacy field)</span>
+    <span class="n">last_activity</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># ISO-8601 UTC; recency drives green/amber/red coloring</span>
+    <span class="n">blocker</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>        <span class="c1"># one of VALID_BLOCKERS or absent; only on status=blocked</span>
+    <span class="n">pr_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>         <span class="c1"># optional GH/Gitea PR link</span>
+    <span class="n">issue_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>      <span class="c1"># optional GH/Gitea issue link</span>
+
+    <span class="c1"># --- graph wiring (preserved from pre-#52) -----------------------------</span>
+    <span class="n">depends_on</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>
+    <span class="n">blocks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>
+    <span class="n">parent</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">priority</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">note</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">comments</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>
+
+    <span class="c1"># --- kind discriminator + compute metadata (ADR-0002 / 0003) -----------</span>
+    <span class="n">kind</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>     <span class="c1"># one of VALID_KINDS or absent (defaults to &quot;task&quot;)</span>
+    <span class="n">job_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">command</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">started_at</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">finished_at</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="c1"># --- legacy shared-fleet additive fields (Phase-1 SSoT) ---------------</span>
+    <span class="n">scope</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">assignee</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>     <span class="c1"># legacy; `agent` is the operator-co-designed replacement</span>
+    <span class="n">_log_meta</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>   <span class="c1"># opaque writer-side event stamps</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">from_dict</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">d</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Task&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Construct from a tasks.yaml dict.</span>
+
+<span class="sd">        - Unknown keys are silently dropped (forward-compat).</span>
+<span class="sd">        - Missing keys fill with the dataclass default.</span>
+<span class="sd">        - Legacy blocker spellings (e.g. ``&quot;dep&quot;``) normalize to canonical</span>
+<span class="sd">          (``&quot;dependency&quot;``) — see ``_BLOCKER_ALIASES``.</span>
+
+<span class="sd">        Does NOT raise on schema violations — that&#39;s :func:`_validate_tasks`&#39;s</span>
+<span class="sd">        job. Defensive construction so legacy / forward / partial rows can</span>
+<span class="sd">        always be read; validation is a separate check.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">valid_names</span> <span class="o">=</span> <span class="p">{</span><span class="n">f</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">_dc_fields</span><span class="p">(</span><span class="bp">cls</span><span class="p">)}</span>
+        <span class="c1"># `comments` default needs the list factory so legacy missing-comments</span>
+        <span class="c1"># rows construct cleanly (None would break list-of-mapping invariants</span>
+        <span class="c1"># downstream).</span>
+        <span class="n">kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">d</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">valid_names</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">if</span> <span class="n">k</span> <span class="o">==</span> <span class="s2">&quot;blocker&quot;</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="n">v</span> <span class="o">=</span> <span class="n">_BLOCKER_ALIASES</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
+        <span class="c1"># comments / depends_on / blocks: replace None with the empty default</span>
+        <span class="c1"># so downstream code can iterate without isinstance(.., None) checks.</span>
+        <span class="k">for</span> <span class="n">list_field</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;comments&quot;</span><span class="p">,</span> <span class="s2">&quot;depends_on&quot;</span><span class="p">,</span> <span class="s2">&quot;blocks&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">list_field</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">list_field</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>  <span class="c1"># type: ignore[arg-type]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Round-trip to a plain dict suitable for the ruamel writer.</span>
+
+<span class="sd">        Fields with default values (None / empty list / empty dict) are</span>
+<span class="sd">        OMITTED so the YAML stays compact. The validator-REQUIRED fields</span>
+<span class="sd">        (`id`, `title`, `status`) always emit — including when `status`</span>
+<span class="sd">        equals the `&quot;pending&quot;` default — because a row missing `status`</span>
+<span class="sd">        would fail `_validate_tasks` on the next load. Required fields</span>
+<span class="sd">        survive the to_dict-then-from_dict round-trip even at defaults.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">result</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">object</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">_dc_fields</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+            <span class="c1"># Always-emit: validator-required fields.</span>
+            <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">,</span> <span class="s2">&quot;title&quot;</span><span class="p">,</span> <span class="s2">&quot;status&quot;</span><span class="p">):</span>
+                <span class="n">result</span><span class="p">[</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+                <span class="k">continue</span>
+            <span class="c1"># Default-equal values are omitted (keeps YAML compact).</span>
+            <span class="n">default</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">default</span> <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">default</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">f</span><span class="o">.</span><span class="n">default_factory</span> <span class="k">else</span> <span class="n">f</span><span class="o">.</span><span class="n">default_factory</span><span class="p">()</span>  <span class="c1"># type: ignore[misc]</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="o">==</span> <span class="n">default</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="c1"># Empty containers: omit so the YAML stays compact.</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">dict</span><span class="p">))</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">value</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">result</span><span class="p">[</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="k">return</span> <span class="n">result</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">load_tasks</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
@@ -345,6 +530,30 @@
                         <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">entry</span><span class="si">!r}</span><span class="s2">; each comment must be a mapping with a &quot;</span>
                         <span class="sa">f</span><span class="s2">&quot;non-empty string &#39;text&#39;&quot;</span>
                     <span class="p">)</span>
+        <span class="c1"># Additive operator-co-designed fields (TG 9667, lead a2a `6d9b6073`):</span>
+        <span class="c1"># task / project / host / created_at / goal / agent / last_activity /</span>
+        <span class="c1"># pr_url / issue_url — all optional non-empty strings, no enum, no</span>
+        <span class="c1"># referential integrity. The dataclass Task carries the full shape;</span>
+        <span class="c1"># this validator just type-checks the wire so a stray scalar can&#39;t</span>
+        <span class="c1"># corrupt downstream readers. Convention details (ISO-8601 for</span>
+        <span class="c1"># timestamps, URL form for pr_url/issue_url) are render-layer rules.</span>
+        <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="p">(</span>
+            <span class="s2">&quot;task&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;project&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;host&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;created_at&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;goal&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;agent&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;last_activity&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;pr_url&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;issue_url&quot;</span><span class="p">,</span>
+        <span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">value</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has non-string </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">value</span><span class="si">!r}</span><span class="s2">; &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> must be a non-empty string or absent&quot;</span>
+                <span class="p">)</span>
         <span class="c1"># `scope` and `assignee` are additive-optional shared-fleet fields</span>
         <span class="c1"># (PHASE 1, Req 1 in GITIGNORED/ARCHITECTURE.md). Both are free-form</span>
         <span class="c1"># non-empty strings — no enum, no referential integrity. Convention is</span>
@@ -386,7 +595,16 @@
         <span class="c1"># responsible for the content; the schema only enforces TYPE so a</span>
         <span class="c1"># stray scalar can&#39;t corrupt downstream readers.</span>
         <span class="n">is_compute</span> <span class="o">=</span> <span class="n">kind</span> <span class="o">==</span> <span class="s2">&quot;compute&quot;</span>
-        <span class="n">compute_fields</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;job_id&quot;</span><span class="p">,</span> <span class="s2">&quot;host&quot;</span><span class="p">,</span> <span class="s2">&quot;command&quot;</span><span class="p">,</span> <span class="s2">&quot;started_at&quot;</span><span class="p">,</span> <span class="s2">&quot;finished_at&quot;</span><span class="p">)</span>
+        <span class="c1"># Note: `host` USED to be in this compute-only list (ADR-0002). The</span>
+        <span class="c1"># operator-co-designed generic shape (TG 9667) makes `host` a</span>
+        <span class="c1"># general-purpose &quot;where does this task live/run&quot; field — any row</span>
+        <span class="c1"># can carry it, not just compute rows. So `host` moved out of the</span>
+        <span class="c1"># compute-only fence and into the generic operator-field block</span>
+        <span class="c1"># above. The remaining compute-only fields (`job_id` / `command` /</span>
+        <span class="c1"># `started_at` / `finished_at`) STAY compute-only because their</span>
+        <span class="c1"># semantic (&quot;the compute job&#39;s identifier / invocation / runtime</span>
+        <span class="c1"># bookends&quot;) doesn&#39;t fit a non-compute task.</span>
+        <span class="n">compute_fields</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;job_id&quot;</span><span class="p">,</span> <span class="s2">&quot;command&quot;</span><span class="p">,</span> <span class="s2">&quot;started_at&quot;</span><span class="p">,</span> <span class="s2">&quot;finished_at&quot;</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">compute_fields</span><span class="p">:</span>
             <span class="n">value</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
