@@ -118,6 +118,21 @@ function Progress({ graph }: { graph: GraphPayload }) {
     for (const n of scoped) c[n.status] = (c[n.status] ?? 0) + 1;
     return c;
   }, [scoped]);
+  // "Awaiting operator" lens count (lead a2a `554435df` + `2bd37bd2`):
+  // STRICT predicate — kind=="decision" AND status=="blocked" AND
+  // blocker=="operator-decision". Do NOT dilute with transitive
+  // dependents (those are reachable via the BlockersSection drill-in;
+  // re-cluttering the lens defeats the whole anti-flood point).
+  const awaitingOperator = useMemo(
+    () =>
+      scoped.filter(
+        (n) =>
+          n.kind === "decision" &&
+          n.status === "blocked" &&
+          n.blocker === "operator-decision",
+      ).length,
+    [scoped],
+  );
   const total = scoped.length;
   const done = counts["done"] ?? 0;
   const pct = total ? Math.round((done / total) * 100) : 0;
@@ -138,6 +153,14 @@ function Progress({ graph }: { graph: GraphPayload }) {
         {scope ? "scope " : ""}
         {done}/{total} done ({pct}%)
       </strong>
+      {awaitingOperator > 0 && (
+        <span
+          className="stx-todo-progress__chip stx-todo-progress__chip--awaiting-operator"
+          title="Decision nodes awaiting the operator (kind=decision, status=blocked, blocker=operator-decision). Click a node to open its ADR (adr.md)."
+        >
+          👤 awaiting you {awaitingOperator}
+        </span>
+      )}
       {order
         .filter((s) => counts[s])
         .map((s) =>

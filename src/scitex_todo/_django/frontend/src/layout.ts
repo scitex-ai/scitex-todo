@@ -179,8 +179,12 @@ function parentLabel(
   blocked: boolean,
   blockerId: string | null,
   compute: ComputeMeta | null,
+  decision: DecisionMeta | null,
 ): ReactNode {
-  const tip = compute
+  const tip = decision
+    ? composeDecisionTooltip(title, decision, blocked, blockerId) +
+      `\n(${kids} ${kids === 1 ? "child" : "children"} — click to drill in)`
+    : compute
     ? composeComputeTooltip(title, compute, blocked, blockerId) +
       `\n(${kids} ${kids === 1 ? "child" : "children"} — click to drill in)`
     : blocked
@@ -196,6 +200,17 @@ function parentLabel(
       { className: "stx-todo-node__badge", "aria-label": tip },
       `${kids} ↓`,
     ),
+    decision
+      ? createElement(
+          "span",
+          {
+            className: "stx-todo-node__decision",
+            "aria-label": "decision node",
+            title: "Decision node — body in tasks/<id>/adr.md (kind: decision)",
+          },
+          "⚖️ ",
+        )
+      : null,
     compute
       ? createElement(
           "span",
@@ -234,6 +249,22 @@ function parentLabel(
           `← ${truncateId(blockerId)}`,
         )
       : null,
+    decision && decision.impact > 0
+      ? createElement(
+          "span",
+          {
+            className: `stx-todo-node__decision-impact${
+              decision.impact >= 5
+                ? " stx-todo-node__decision-impact--high"
+                : ""
+            }`,
+            title: `Resolving this decision will auto-unblock ${decision.impact} task${
+              decision.impact === 1 ? "" : "s"
+            }`,
+          },
+          `⚖️ unblocks ${decision.impact}`,
+        )
+      : null,
     // Hover-hint pill: invisible until the parent node is hovered, then
     // fades in to spell out the action explicitly. Operator UX 2026-06-06
     // TG 245 ("ドリルというか視覚的に持ってくれるといいな…誰にでもわかる
@@ -267,20 +298,34 @@ function leafLabel(
   blocked: boolean,
   blockerId: string | null,
   compute: ComputeMeta | null,
+  decision: DecisionMeta | null,
 ): ReactNode {
-  const tip = compute
-    ? composeComputeTooltip(title, compute, blocked, blockerId)
-    : blocked
-      ? `BLOCKED — ${title}${
-          blockerId ? ` (blocked by ${blockerId})` : ""
-        } (open details to see the full chain)`
-      : `Open details for ${title}`;
+  const tip = decision
+    ? composeDecisionTooltip(title, decision, blocked, blockerId)
+    : compute
+      ? composeComputeTooltip(title, compute, blocked, blockerId)
+      : blocked
+        ? `BLOCKED — ${title}${
+            blockerId ? ` (blocked by ${blockerId})` : ""
+          } (open details to see the full chain)`
+        : `Open details for ${title}`;
   return createElement(
     "span",
     {
       className: "stx-todo-node__label",
       title: tip,
     },
+    decision
+      ? createElement(
+          "span",
+          {
+            className: "stx-todo-node__decision",
+            "aria-label": "decision node",
+            title: "Decision node — body lives in tasks/<id>/adr.md (kind: decision)",
+          },
+          "⚖️ ",
+        )
+      : null,
     compute
       ? createElement(
           "span",
@@ -311,6 +356,22 @@ function leafLabel(
             title: `Blocked by ${blockerId}`,
           },
           `← ${truncateId(blockerId)}`,
+        )
+      : null,
+    decision && decision.impact > 0
+      ? createElement(
+          "span",
+          {
+            className: `stx-todo-node__decision-impact${
+              decision.impact >= 5
+                ? " stx-todo-node__decision-impact--high"
+                : ""
+            }`,
+            title: `Resolving this decision will auto-unblock ${decision.impact} task${
+              decision.impact === 1 ? "" : "s"
+            }`,
+          },
+          `⚖️ unblocks ${decision.impact}`,
         )
       : null,
   );
@@ -356,6 +417,74 @@ function composeComputeTooltip(
 
 function truncateText(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+}
+
+/** Subset of fields used to render decision-node affordances on the canvas.
+ * `impact` = how many tasks auto-unblock when this decision flips to done
+ * (see decisionImpactCount). `blocker` carries through so the label-builder
+ * can light the LOUD halo when blocker == "operator-decision".  */
+export interface DecisionMeta {
+  impact: number;
+  blocker: string | null;
+}
+
+/** Build the canvas tooltip for a decision-node. Short, one-line per fact;
+ * the full Context / Decision / Consequences body lives in the per-task
+ * adr.md, opened via the drawer. */
+function composeDecisionTooltip(
+  title: string,
+  d: DecisionMeta,
+  blocked: boolean,
+  blockerId: string | null,
+): string {
+  const parts: string[] = [];
+  if (d.impact > 0) {
+    parts.push(`unblocks ${d.impact} task${d.impact === 1 ? "" : "s"} on resolve`);
+  }
+  if (d.blocker) parts.push(`blocker=${d.blocker}`);
+  const blockedSuffix = blocked
+    ? `\nBLOCKED${blockerId ? ` by ${blockerId}` : ""}`
+    : "";
+  const summary = parts.length ? `\n${parts.join(" · ")}` : "";
+  return `${title} (decision)${summary}${blockedSuffix}\n\n(click to open details — full ADR body in adr.md)`;
+}
+
+/** Forward closure count from a decision-node — how many tasks would
+ * auto-unblock when this decision's status flips to `done`. Operator's
+ * leverage signal (lead a2a `554435df`): "decision that unblocks N tasks
+ * = N-leverage; decide the high-N one first."
+ *
+ * Implementation: BFS over `depends_on` edges where source = the decision
+ * node, recursively gathering reachable nodes. Restricted to NOT-YET-DONE
+ * targets — a task that's already past this decision wouldn't count as
+ * "unblocked by it." Self-loops + cycles are bounded by the visited set;
+ * returns 0 for a decision with no dependents.
+ *
+ * Used to render the "⚖️ unblocks N" impact badge on every kind=decision
+ * node label. Larger N = brighter chip on the board (high-leverage
+ * decisions pop relative to single-task ones).
+ */
+export function decisionImpactCount(
+  graph: GraphPayload,
+  decisionId: string,
+): number {
+  const byId = new Map(graph.nodes.map((n) => [n.id, n] as const));
+  const stack = [decisionId];
+  const visited = new Set<string>([decisionId]);
+  let count = 0;
+  while (stack.length) {
+    const cur = stack.pop()!;
+    for (const e of graph.edges) {
+      if (e.kind !== "depends_on" || e.source !== cur) continue;
+      const target = byId.get(e.target);
+      if (!target || visited.has(target.id)) continue;
+      visited.add(target.id);
+      // Only count rows that aren't already past this decision.
+      if (target.status !== "done") count += 1;
+      stack.push(target.id);
+    }
+  }
+  return count;
 }
 
 /** Shorten a long blocker id for an inline node badge. Full id is preserved in
@@ -508,9 +637,21 @@ export function buildFlow(
             finished_at: n.finished_at,
           }
         : null;
+    // Decision-node affordance (north-star pillar #4, lead a2a 4691b114 +
+    // 554435df, operator TG 9524): a leading "⚖️" glyph + an "unblocks N"
+    // impact-count badge on every `kind: "decision"` row. The impact count
+    // (forward closure over depends_on) gives the operator the prioritization
+    // signal — "this decision unblocks 7 tasks vs 1, so do this one first."
+    const decision: DecisionMeta | null =
+      n.kind === "decision"
+        ? {
+            impact: decisionImpactCount(graph, n.id),
+            blocker: n.blocker,
+          }
+        : null;
     const label = isParent
-      ? parentLabel(n.title, kids, suffix, blocked, blockerId, compute)
-      : leafLabel(n.title, suffix, blocked, blockerId, compute);
+      ? parentLabel(n.title, kids, suffix, blocked, blockerId, compute, decision)
+      : leafLabel(n.title, suffix, blocked, blockerId, compute, decision);
     const base = nodeStyle(graph.status_colors[n.status]);
     return {
       id: n.id,
@@ -525,9 +666,19 @@ export function buildFlow(
       // Per-node className is forwarded by React Flow onto the wrapper DOM
       // element — used by board.css to set the hover cursor and tooltip
       // ("drill in" vs "details") and to scope a hover halo brighten.
-      className: isParent
-        ? "stx-todo-node stx-todo-node--parent"
-        : "stx-todo-node stx-todo-node--leaf",
+      // Decision-nodes with blocker=operator-decision get an extra
+      // `--decision-operator` modifier to drive the LOUD purple-gold halo
+      // (this is the one the operator opens the UI to find — ADR-0003).
+      className: [
+        "stx-todo-node",
+        isParent ? "stx-todo-node--parent" : "stx-todo-node--leaf",
+        n.kind === "decision" ? "stx-todo-node--decision" : "",
+        n.kind === "decision" && n.blocker === "operator-decision"
+          ? "stx-todo-node--decision-operator"
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
       // `draggable: true` so dragging a node BODY moves it (drag-reorder →
       // onNodeDragStop persists priority); a per-node `false` would override
       // the root `nodesDraggable` and make a node-drag pan the canvas instead.

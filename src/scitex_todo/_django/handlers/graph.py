@@ -50,16 +50,23 @@ def _build_graph(board) -> dict:
             "comments": t.get("comments") or [],
             # `kind` discriminator + compute metadata (north-star pillar #1,
             # validated by `_model._validate_tasks`). `kind: null` over the
-            # wire is equivalent to "task" (the default ordinary row); the FE
-            # only renders the compute affordances (⚙ glyph on the node label
-            # + KV table in the NodeDetailPanel) when `kind === "compute"`.
-            # The metadata fields are absent / null on non-compute rows.
+            # wire = "task" (the default). FE renders compute affordances
+            # (⚙ glyph + KV table) on `kind === "compute"` and decision
+            # affordances (⚖️ glyph + LOUD operator-decision halo + impact
+            # badge) on `kind === "decision"`.
             "kind": t.get("kind"),
             "job_id": t.get("job_id"),
             "host": t.get("host"),
             "command": t.get("command"),
             "started_at": t.get("started_at"),
             "finished_at": t.get("finished_at"),
+            # `blocker` — variant that's blocking a status=blocked row
+            # (operator TG 9522 + 9524, ADR-0004). Closed enum
+            # `compute|dep|operator-decision|agent-wait`; `null` on non-
+            # blocked rows + on blocked rows where the variant hasn't been
+            # named yet (soft-degrade — FE renders a generic 🚧 in that
+            # case, no extra badge).
+            "blocker": t.get("blocker"),
         }
         for t in board.tasks
     ]
