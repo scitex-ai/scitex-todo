@@ -178,8 +178,12 @@ function parentLabel(
   suffix: string,
   blocked: boolean,
   blockerId: string | null,
+  compute: ComputeMeta | null,
 ): ReactNode {
-  const tip = blocked
+  const tip = compute
+    ? composeComputeTooltip(title, compute, blocked, blockerId) +
+      `\n(${kids} ${kids === 1 ? "child" : "children"} — click to drill in)`
+    : blocked
     ? `Drill into ${title} (${kids} ${
         kids === 1 ? "child" : "children"
       }) — this branch is BLOCKED${blockerId ? ` by ${blockerId}` : ""}`
@@ -192,6 +196,17 @@ function parentLabel(
       { className: "stx-todo-node__badge", "aria-label": tip },
       `${kids} ↓`,
     ),
+    compute
+      ? createElement(
+          "span",
+          {
+            className: "stx-todo-node__compute",
+            "aria-label": "compute job",
+            title: "Compute job — externally-updated row (kind: compute)",
+          },
+          "⚙ ",
+        )
+      : null,
     blocked
       ? createElement(
           "span",
@@ -237,18 +252,32 @@ function leafLabel(
   suffix: string,
   blocked: boolean,
   blockerId: string | null,
+  compute: ComputeMeta | null,
 ): ReactNode {
-  const tip = blocked
-    ? `BLOCKED — ${title}${
-        blockerId ? ` (blocked by ${blockerId})` : ""
-      } (open details to see the full chain)`
-    : `Open details for ${title}`;
+  const tip = compute
+    ? composeComputeTooltip(title, compute, blocked, blockerId)
+    : blocked
+      ? `BLOCKED — ${title}${
+          blockerId ? ` (blocked by ${blockerId})` : ""
+        } (open details to see the full chain)`
+      : `Open details for ${title}`;
   return createElement(
     "span",
     {
       className: "stx-todo-node__label",
       title: tip,
     },
+    compute
+      ? createElement(
+          "span",
+          {
+            className: "stx-todo-node__compute",
+            "aria-label": "compute job",
+            title: "Compute job — externally-updated row (kind: compute)",
+          },
+          "⚙ ",
+        )
+      : null,
     blocked
       ? createElement(
           "span",
@@ -271,6 +300,48 @@ function leafLabel(
         )
       : null,
   );
+}
+
+/** Subset of compute-row metadata used by the node label + tooltip. Mirrors
+ * the fields validated by `_model._validate_tasks` (job_id / host / command
+ * / started_at / finished_at). Always null on a `kind: "task"` row (the
+ * default) so the label-builder can skip the compute affordances with a
+ * single `compute ? …` ternary. */
+export interface ComputeMeta {
+  job_id: string | null;
+  host: string | null;
+  command: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+/** Build the tooltip for a compute node — short, multi-line, ~100-char
+ * command-truncation per lead a2a `2c7a431d` ("~100 chars truncation +
+ * full-on-hover is sensible"). The full command + all metadata are rendered
+ * as a KV table in the NodeDetailPanel when the operator clicks the node;
+ * this is the at-a-glance summary on the canvas. */
+function composeComputeTooltip(
+  title: string,
+  c: ComputeMeta,
+  blocked: boolean,
+  blockerId: string | null,
+): string {
+  const bits: string[] = [];
+  if (c.host) bits.push(`host=${c.host}`);
+  if (c.job_id) bits.push(`job=${c.job_id}`);
+  // Slice ISO timestamps to YYYY-MM-DDTHH:MM for compactness; the drawer KV
+  // table renders the full string.
+  if (c.started_at) bits.push(`started ${c.started_at.slice(0, 16)}`);
+  if (c.finished_at) bits.push(`finished ${c.finished_at.slice(0, 16)}`);
+  if (c.command) bits.push(`cmd: ${truncateText(c.command, 100)}`);
+  const blockedSuffix = blocked
+    ? `\nBLOCKED${blockerId ? ` by ${blockerId}` : ""}`
+    : "";
+  return `${title} (compute job)\n${bits.join(" · ")}${blockedSuffix}\n\n(click to open details)`;
+}
+
+function truncateText(s: string, max: number): string {
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
 /** Shorten a long blocker id for an inline node badge. Full id is preserved in
@@ -408,9 +479,24 @@ export function buildFlow(
     // is in the NodeDetailPanel's Blockers section when the drawer opens.
     const blocked = n.status === "blocked";
     const blockerId = blocked ? firstBlockerFor(graph, n.id) : null;
+    // Compute-state affordance (north-star pillar #1, lead a2a 2c7a431d): a
+    // leading "⚙" glyph + a richer tooltip on any row with `kind: "compute"`
+    // so the operator can see at a glance which graph nodes are compute jobs
+    // updated by an external writer (Spartan watcher / CI watcher etc., wired
+    // by task #15) vs ordinary tasks the operator updates by hand.
+    const compute: ComputeMeta | null =
+      n.kind === "compute"
+        ? {
+            job_id: n.job_id,
+            host: n.host,
+            command: n.command,
+            started_at: n.started_at,
+            finished_at: n.finished_at,
+          }
+        : null;
     const label = isParent
-      ? parentLabel(n.title, kids, suffix, blocked, blockerId)
-      : leafLabel(n.title, suffix, blocked, blockerId);
+      ? parentLabel(n.title, kids, suffix, blocked, blockerId, compute)
+      : leafLabel(n.title, suffix, blocked, blockerId, compute);
     const base = nodeStyle(graph.status_colors[n.status]);
     return {
       id: n.id,

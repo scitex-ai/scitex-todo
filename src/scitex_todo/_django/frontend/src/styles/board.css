@@ -1351,6 +1351,16 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   filter: drop-shadow(0 0 1px rgba(207, 36, 36, 0.85));
 }
 
+/* Compute-job glyph — leading "⚙" on every `kind: "compute"` node label
+ * (north-star pillar #1, lead a2a 2c7a431d). Parallel to `.stx-todo-node__
+ * blocked` (🚧) and the parent-drill ⊞ glyph; together the three answer at
+ * a glance: who's stuck / who's a container / who's externally updated.
+ * Slate-blue drop-shadow differentiates from the red blocked glyph. */
+.stx-todo-node__compute {
+  margin-right: 4px;
+  filter: drop-shadow(0 0 1px rgba(40, 90, 150, 0.7));
+}
+
 /* Inline "← <blocker-id>" chip rendered AFTER the title on a status=blocked
  * node, so the operator sees the actual blocker id without opening the
  * drawer. Full id stays in the hover title attr. (lead-callout b9503957:

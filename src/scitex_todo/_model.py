@@ -39,6 +39,23 @@ VALID_STATUSES: tuple[str, ...] = (
     "failed",
 )
 
+# Valid task kinds — north-star pillar #1 (HANDOFF.md): dependencies extend
+# down to COMPUTE STATE. A row with ``kind: compute`` represents an external
+# compute job (Spartan slurm submission, SIF rebuild, …) whose status is
+# updated by an automated writer (out-of-scope for the schema; see the
+# writer-side contract in tasks/proj-scitex-todo-compute-state-deps/
+# description.md). Any other task uses ``kind: task`` (the default, can be
+# omitted). Extensible to ``"ci"`` etc. when task #15 wires GH-Actions rows;
+# add to this tuple when that lands.
+#
+# Closed validated set per lead directive 2026-06-06 a2a `2c7a431d` —
+# fail-loud on unknown values (e.g. a "comput" typo) so silent
+# misconfiguration is impossible.
+VALID_KINDS: tuple[str, ...] = (
+    "task",
+    "compute",
+)
+
 
 class TaskValidationError(ValueError):
     """Raised when a task store fails structural validation."""
@@ -199,6 +216,41 @@ def _validate_tasks(tasks: object, source: str) -> None:
                 f"{source}: task {tid!r} has non-mapping _log_meta "
                 f"{log_meta!r}; _log_meta must be a mapping or absent"
             )
+        # `kind` is the discriminator between an ordinary task row and a
+        # compute-job row (north-star pillar #1). Closed validated set per
+        # `VALID_KINDS`; absence is equivalent to `kind: "task"` (the
+        # default). Fail-loud on unknown values — a "comput" typo would
+        # otherwise silently create an unrecognized kind, defeating the
+        # discriminator.
+        kind = task.get("kind")
+        if kind is not None and kind not in VALID_KINDS:
+            raise TaskValidationError(
+                f"{source}: task {tid!r} has invalid kind {kind!r}; "
+                f"must be one of {VALID_KINDS} or absent (defaults to 'task')"
+            )
+        # Compute metadata fields — only allowed when `kind: compute`. Each
+        # is an optional non-empty string. `started_at` / `finished_at` are
+        # expected to be ISO-8601 timestamps but we don't strict-parse them
+        # here — the writer (Spartan watcher / CI watcher, task #15) is
+        # responsible for the content; the schema only enforces TYPE so a
+        # stray scalar can't corrupt downstream readers.
+        is_compute = kind == "compute"
+        compute_fields = ("job_id", "host", "command", "started_at", "finished_at")
+        for label in compute_fields:
+            value = task.get(label)
+            if value is None:
+                continue
+            if not is_compute:
+                raise TaskValidationError(
+                    f"{source}: task {tid!r} has compute metadata {label!r} "
+                    f"but kind is {kind!r}; set kind: compute or remove the "
+                    f"{label} field"
+                )
+            if not (isinstance(value, str) and value):
+                raise TaskValidationError(
+                    f"{source}: task {tid!r} has non-string {label} "
+                    f"{value!r}; {label} must be a non-empty string or absent"
+                )
 
 
 @contextlib.contextmanager

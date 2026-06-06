@@ -519,4 +519,132 @@ def test_save_tasks_round_trip_preserves_log_meta_completed_at(tmp_path):
     assert reloaded["_log_meta"]["completed_at"] == "2026-05-27T10:00:00Z"
 
 
+# ---------------------------------------------------------------------------
+# kind: Literal["task", "compute"] (north-star pillar #1 — compute-state deps)
+# Closed validated enum per lead a2a `2c7a431d` — fail-loud on unknown values
+# so a "comput" typo can't silently create an unrecognized kind.
+# ---------------------------------------------------------------------------
+
+def test_load_tasks_kind_defaults_to_task_when_absent(tmp_path):
+    """Absence of `kind` is equivalent to `kind: task` (the default)."""
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: t1, title: Plain, status: pending}\n",
+    )
+    tasks = load_tasks(store)
+    # The loader doesn't synthesize a value — `kind` is simply absent on plain
+    # rows. Downstream consumers treat absence as "task".
+    assert "kind" not in tasks[0]
+
+
+def test_load_tasks_accepts_kind_task(tmp_path):
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: t1, title: Plain, status: pending, kind: task}\n",
+    )
+    tasks = load_tasks(store)
+    assert tasks[0]["kind"] == "task"
+
+
+def test_load_tasks_accepts_kind_compute_with_metadata(tmp_path):
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - id: spartan-pac\n"
+        "    title: 'compute: PAC SLE multi-lane'\n"
+        "    status: in_progress\n"
+        "    kind: compute\n"
+        "    job_id: '25754194'\n"
+        "    host: spartan\n"
+        "    command: srun -p h100 -t 12:00:00 python pac/sle.py\n"
+        "    started_at: '2026-06-06T03:14:00Z'\n",
+    )
+    tasks = load_tasks(store)
+    assert tasks[0]["kind"] == "compute"
+    assert tasks[0]["job_id"] == "25754194"
+    assert tasks[0]["host"] == "spartan"
+    assert tasks[0]["started_at"] == "2026-06-06T03:14:00Z"
+
+
+def test_load_tasks_raises_on_unknown_kind(tmp_path):
+    """`comput` typo (or any value not in VALID_KINDS) is fail-loud."""
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: x, title: X, status: pending, kind: comput}\n",
+    )
+    with pytest.raises(TaskValidationError) as exc_info:
+        load_tasks(store)
+    # Error must NAME the bad value + the valid set so the writer can fix it.
+    assert "comput" in str(exc_info.value)
+    assert "task" in str(exc_info.value) and "compute" in str(exc_info.value)
+
+
+def test_load_tasks_raises_on_compute_metadata_without_kind(tmp_path):
+    """Setting job_id/host/etc. on a non-compute row is a config error.
+
+    The lead's `kind` discriminator is what tells the writer-side watcher
+    "this row is mine to update". Allowing compute metadata on a plain task
+    would silently break that contract — fail-loud instead.
+    """
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: x, title: X, status: pending, job_id: '12345'}\n",
+    )
+    with pytest.raises(TaskValidationError) as exc_info:
+        load_tasks(store)
+    assert "job_id" in str(exc_info.value)
+    assert "kind: compute" in str(exc_info.value)
+
+
+def test_load_tasks_raises_on_compute_metadata_with_kind_task(tmp_path):
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: x, title: X, status: pending, kind: task, host: spartan}\n",
+    )
+    with pytest.raises(TaskValidationError) as exc_info:
+        load_tasks(store)
+    assert "host" in str(exc_info.value)
+
+
+def test_load_tasks_raises_on_non_string_compute_field(tmp_path):
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - id: bad\n"
+        "    title: bad\n"
+        "    status: pending\n"
+        "    kind: compute\n"
+        "    job_id: 25754194\n",  # int, not string
+    )
+    with pytest.raises(TaskValidationError) as exc_info:
+        load_tasks(store)
+    assert "job_id" in str(exc_info.value)
+    assert "non-string" in str(exc_info.value)
+
+
+def test_save_tasks_round_trips_kind_and_compute_metadata(tmp_path):
+    """ruamel round-trip preserves `kind:` + compute fields with comments."""
+    store = _write(
+        tmp_path,
+        "# preserved header\n"
+        "tasks:\n"
+        "  - id: c1\n"
+        "    title: 'compute: example'\n"
+        "    status: in_progress\n"
+        "    kind: compute\n"
+        "    job_id: '99'\n"
+        "    host: spartan\n"
+        "    command: echo hi\n",
+    )
+    tasks = load_tasks(store)
+    tasks[0]["status"] = "done"
+    tasks[0]["finished_at"] = "2026-06-06T13:30:00Z"
+    save_tasks(tasks, store)
+    reloaded = load_tasks(store)[0]
+    assert reloaded["kind"] == "compute"
+    assert reloaded["job_id"] == "99"
+    assert reloaded["finished_at"] == "2026-06-06T13:30:00Z"
+    # Comment must survive.
+    assert "# preserved header" in store.read_text()
+
 # EOF
