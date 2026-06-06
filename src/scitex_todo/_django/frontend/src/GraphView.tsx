@@ -698,6 +698,21 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
             nodesDraggable={true}
             nodesConnectable={true}
             elementsSelectable={true}
+            // Operator UX 2026-06-06 Telegram 227: "ドラッグスクロールか
+            // スクロールを上下左右にすると左右がまず動かなくて上下がズーム
+            // アウトになってしまってる. ズームイン OUT は Control を押し
+            // ながらのスクロールでお願いします." Switch to Google-Maps /
+            // Miro / Figma-style scroll behaviour:
+            //   - plain wheel / trackpad two-finger scroll → PAN (free, in
+            //     any direction — panOnScroll:true + panOnScrollMode:"free")
+            //   - Ctrl + wheel → ZOOM (zoomActivationKeyCode:"Control" gates
+            //     the existing zoomOnScroll behaviour so plain scroll no
+            //     longer changes zoom).
+            // Pinch-to-zoom on trackpads keeps working via zoomOnPinch
+            // (default true, left implicit).
+            panOnScroll={true}
+            panOnScrollMode="free"
+            zoomActivationKeyCode="Control"
             proOptions={{ hideAttribution: true }}
           >
             <FitOnChange dep={fitKey} focusIds={focusIds} />
