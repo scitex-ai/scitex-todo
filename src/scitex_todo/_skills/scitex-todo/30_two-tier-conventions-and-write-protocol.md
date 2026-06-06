@@ -389,3 +389,47 @@ GitHub-vs-SSH-fanout split above.
 - **`scitex_dev` skill** `general/05_paths/01_local-state-dirs` —
   the ecosystem local-state directories convention this skill
   inherits from.
+
+## Canonical auto-merge poll — CI-green = `{CLEAN, UNSTABLE}`
+
+Lead a2a `9c4d3dc4` (2026-06-07): a wedge discovered on PR #52 + #55
+because the auto-merge poll only treated `CLEAN` as terminal. Both
+PRs sat at `UNSTABLE` for 85+ minutes — required checks were green,
+but a NON-required check was failing, so the poll slept forever.
+
+**Canonical rule** (every fleet auto-merge loop should treat this
+the same — capture for clew / neurovista / ripple / etc. patterns):
+
+> The operator's standing **"CI-green ⇒ auto-merge"** authorization
+> applies when `mergeStateStatus` is in `{CLEAN, UNSTABLE}`.
+> `UNSTABLE` means a NON-required check is red while all required
+> checks pass, which is still mergeable per branch protection.
+
+Bash shape (the bug-fixed version every auto-merge poll should use):
+
+```bash
+until s=$(gh pr view "$PR" --json mergeStateStatus -q .mergeStateStatus 2>/dev/null); \
+        [ "$s" = "CLEAN" ] \
+     || [ "$s" = "UNSTABLE" ] \
+     || [ "$s" = "DIRTY" ] \
+     || [ "$s" = "BLOCKED" ] \
+     || [ "$s" = "HAS_HOOKS" ] \
+     || [ "$s" = "BEHIND" ]; do
+    sleep 30
+done
+# Terminal-mergeable: CLEAN or UNSTABLE → gh pr merge --squash
+# Non-mergeable terminal: DIRTY (conflicts) / BLOCKED (required check
+# failed) / BEHIND (base moved) / HAS_HOOKS (commit hooks failing) →
+# investigate, don't auto-merge.
+```
+
+**Hygiene caveat** (lead a2a `9c4d3dc4`): `UNSTABLE` hides WHICH
+non-required check is failing. Auto-merge on it is correct, but if
+the SAME check is unstable across many PRs, the check is probably a
+real signal we're ignoring and should be PROMOTED to required.
+Flag the pattern — don't let "always UNSTABLE" become invisible.
+
+This pattern is canonical for every fleet auto-merge loop, not just
+scitex-todo's. clew / neurovista / ripple / etc. that ship their own
+wait-on-CI auto-merge loops should match this shape. Documented here
+as the reference for the fleet's dogfood-of-scitex-todo adoption.
