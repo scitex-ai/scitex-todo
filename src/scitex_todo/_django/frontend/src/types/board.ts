@@ -8,12 +8,40 @@ export interface TaskComment {
   text: string;
 }
 
-/** Task kind — discriminator between an ordinary task row and a compute-job
- * row. Closed validated set (matches `VALID_KINDS` in `_model.py`); absence
- * over the wire (null) is equivalent to `"task"` (the default). Extensible
- * to `"ci"` etc. when task #15 wires GH-Actions rows; add the variant here
- * and in the Python validator together. */
-export type TaskKind = "task" | "compute";
+/** Task kind — discriminator across the three row shapes the board renders.
+ * Closed validated set (matches `VALID_KINDS` in `_model.py`); absence over
+ * the wire (null) = `"task"` (the default). Extensible to `"ci"` etc. when
+ * task #15 wires GH-Actions rows; add the variant here and in the Python
+ * validator together.
+ *
+ *  - "task"     — ordinary, human-updated row (default).
+ *  - "compute"  — external compute job; status auto-updated by a writer.
+ *                 ⚙ glyph + KV table in the drawer. ADR-0002.
+ *  - "decision" — operator/agent decision other tasks depends_on. Body
+ *                 lives in `tasks/<id>/adr.md` (1:1 with the ADR
+ *                 convention). When `status` flips to `done`, dependents
+ *                 auto-unblock via the dep-graph wire (no new machinery).
+ *                 ⚖️ glyph + LOUD halo when blocker == "operator-decision".
+ *                 ADR-0003 (this PR). North-star pillar #4.
+ */
+export type TaskKind = "task" | "compute" | "decision";
+
+/** Blocker variant on a `status: "blocked"` row — what kind of thing is
+ * blocking it. Operator's enumeration (TG 9524), closed validated set
+ * (matches `VALID_BLOCKERS` in `_model.py`). ORTHOGONAL to `TaskKind`:
+ * a kind=decision row usually has blocker=operator-decision but can have
+ * any variant.
+ *
+ *  - "compute"           — 計算リソース    — waiting on a kind=compute row
+ *  - "dep"               — 依存            — waiting on another task
+ *  - "operator-decision" — ユーザー判断    — waiting on the operator (LOUD)
+ *  - "agent-wait"        — 他エージェント待ち — waiting on a specific agent action
+ */
+export type BlockerKind =
+  | "compute"
+  | "dep"
+  | "operator-decision"
+  | "agent-wait";
 
 export interface GraphNode {
   id: string;
@@ -52,6 +80,13 @@ export interface GraphNode {
   /** ISO-8601 timestamp when the writer observed completion (success OR
    *  failure). Only meaningful when `kind === "compute"`. */
   finished_at: string | null;
+
+  /** Blocker variant for a `status === "blocked"` row — names what is
+   *  blocking it (compute / dep / operator-decision / agent-wait). null
+   *  on non-blocked rows AND on blocked rows where the variant hasn't
+   *  been named yet (soft-degrade — FE renders the generic 🚧 with no
+   *  extra badge in that case). ADR-0004. */
+  blocker: BlockerKind | null;
 }
 
 export type EdgeKind = "depends_on" | "blocks";

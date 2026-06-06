@@ -1397,6 +1397,65 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   filter: drop-shadow(0 0 1px rgba(40, 90, 150, 0.7));
 }
 
+/* Decision-node glyph + impact badge + LOUD operator-decision halo
+ * (north-star pillar #4, ADR-0003 + ADR-0004 in docs/adr/, lead a2a
+ * 4691b114 + 554435df, operator TG 9524). Three pieces:
+ *  - `.stx-todo-node__decision`           = leading "⚖️" glyph on label
+ *  - `.stx-todo-node__decision-impact`    = "⚖️ unblocks N" leverage chip
+ *  - `.stx-todo-node--decision-operator`  = LOUD purple-gold halo on kind=
+ *                                           decision rows whose blocker is
+ *                                           "operator-decision" — the one
+ *                                           the operator OPENS the UI to find.
+ */
+.stx-todo-node__decision {
+  margin-right: 4px;
+  filter: drop-shadow(0 0 1px rgba(155, 127, 214, 0.85));
+}
+
+.stx-todo-node__decision-impact {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border: 1px solid #9b7fd6;
+  background: rgba(155, 127, 214, 0.14);
+  color: #6d4cad;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.stx-todo-node__decision-impact--high {
+  /* High-leverage decisions pop louder so the operator can prioritize
+   * "deciding hub-cutover unblocks the whole prod chain" vs single-task
+   * decisions at a glance. Lead a2a `554435df` impact-badge spec. */
+  background: #6d4cad;
+  color: #fff;
+  border-color: #6d4cad;
+  box-shadow: 0 0 8px 1px rgba(155, 127, 214, 0.6);
+}
+
+/* LOUD operator-decision halo. Purple = decision family, gold = LOUD
+ * importance. Three-tier ring (gold inner / purple middle / soft outer)
+ * so the gold pops against any status-fill underneath. Layered ADDITIVE
+ * with the existing parent-style stacked-card shadows if this row is
+ * also a parent. */
+.stx-todo-flow .react-flow__node.stx-todo-node--decision-operator {
+  box-shadow:
+    0 0 0 3px #ffc107,
+    0 0 0 6px #6d4cad,
+    0 0 18px 6px rgba(255, 193, 7, 0.45),
+    0 0 28px 10px rgba(155, 127, 214, 0.35);
+}
+.stx-todo-flow .react-flow__node.stx-todo-node--decision-operator:hover {
+  box-shadow:
+    0 0 0 3px #ffc107,
+    0 0 0 6px #6d4cad,
+    0 0 24px 8px rgba(255, 193, 7, 0.65),
+    0 0 36px 14px rgba(155, 127, 214, 0.50);
+  filter: brightness(1.10);
+}
+
 /* Inline "← <blocker-id>" chip rendered AFTER the title on a status=blocked
  * node, so the operator sees the actual blocker id without opening the
  * drawer. Full id stays in the hover title attr. (lead-callout b9503957:
@@ -1433,6 +1492,21 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
 .stx-todo-progress__chip--blocked.stx-todo-progress__chip--on {
   background: #c0392b;
   color: #fff;
+}
+
+/* "👤 awaiting you N" lens — purple-gold to match the LOUD operator-decision
+ * halo on the node itself. Visible whenever N > 0; the operator's anti-
+ * flood quick-glance signal (lead a2a `554435df`). Not clickable in v1
+ * (the awaiting list is reachable by clicking any LOUD decision node);
+ * pure status display. */
+.stx-todo-progress__chip--awaiting-operator {
+  background: #ffc107;
+  color: #6d4cad;
+  border: 1px solid #6d4cad;
+  font-weight: 700;
+  padding: 0 9px;
+  border-radius: 999px;
+  box-shadow: 0 0 6px 1px rgba(255, 193, 7, 0.45);
 }
 
 /* ---------------------------------------------------------------------------

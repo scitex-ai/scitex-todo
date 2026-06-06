@@ -647,4 +647,146 @@ def test_save_tasks_round_trips_kind_and_compute_metadata(tmp_path):
     # Comment must survive.
     assert "# preserved header" in store.read_text()
 
+
+# ---------------------------------------------------------------------------
+# kind="decision" — decision-nodes are first-class graph nodes (north-star
+# pillar #4, operator TG 9524). Extends VALID_KINDS from ADR-0002.
+# ---------------------------------------------------------------------------
+
+def test_load_tasks_accepts_kind_decision(tmp_path):
+    """`kind: decision` is a valid kind alongside task / compute."""
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - id: decide-x\n"
+        "    title: 'decide: X'\n"
+        "    status: pending\n"
+        "    kind: decision\n",
+    )
+    tasks = load_tasks(store)
+    assert tasks[0]["kind"] == "decision"
+
+
+def test_load_tasks_decision_kind_uses_existing_statuses(tmp_path):
+    """A decision-node's lifecycle uses VALID_STATUSES (pending → done)."""
+    # Pending decision — awaiting resolution.
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: d1, title: 'decide: a/b', status: pending, kind: decision}\n",
+    )
+    assert load_tasks(store)[0]["status"] == "pending"
+
+
+# ---------------------------------------------------------------------------
+# blocker: Literal["compute", "dep", "operator-decision", "agent-wait"]
+# Operator TG 9522/9524, lead a2a 4691b114/c839c59b/2bd37bd2/554435df.
+# ADR-0004: closed validated enum, fail-loud, only on status=blocked rows.
+# ---------------------------------------------------------------------------
+
+def test_load_tasks_accepts_blocker_operator_decision_on_blocked(tmp_path):
+    """`blocker: operator-decision` valid on a status=blocked task."""
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - {id: x, title: X, status: blocked, blocker: operator-decision}\n",
+    )
+    assert load_tasks(store)[0]["blocker"] == "operator-decision"
+
+
+def test_load_tasks_accepts_all_four_blocker_variants(tmp_path):
+    """The four operator-named blocker variants each load cleanly."""
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - {id: a, title: A, status: blocked, blocker: compute}\n"
+        "  - {id: b, title: B, status: blocked, blocker: dep}\n"
+        "  - {id: c, title: C, status: blocked, blocker: operator-decision}\n"
+        "  - {id: d, title: D, status: blocked, blocker: agent-wait}\n",
+    )
+    tasks = load_tasks(store)
+    blockers = [t["blocker"] for t in tasks]
+    assert blockers == ["compute", "dep", "operator-decision", "agent-wait"]
+
+
+def test_load_tasks_raises_on_unknown_blocker(tmp_path):
+    """A typo (or any value not in VALID_BLOCKERS) is fail-loud."""
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: x, title: X, status: blocked, blocker: oprator}\n",
+    )
+    with pytest.raises(TaskValidationError) as exc_info:
+        load_tasks(store)
+    assert "oprator" in str(exc_info.value)
+    assert "operator-decision" in str(exc_info.value)
+
+
+def test_load_tasks_raises_on_blocker_with_non_blocked_status(tmp_path):
+    """Naming a blocker on a non-blocked task is a config error."""
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - {id: x, title: X, status: in_progress, blocker: operator-decision}\n",
+    )
+    with pytest.raises(TaskValidationError) as exc_info:
+        load_tasks(store)
+    assert "blocker" in str(exc_info.value)
+    assert "status: blocked" in str(exc_info.value)
+
+
+def test_load_tasks_blocker_absent_on_blocked_is_acceptable(tmp_path):
+    """A blocked task without a `blocker` field is still valid.
+
+    (Documented as a soft-degrade: "we know it's blocked but haven't named
+    the variant yet." The board can render a generic 🚧 with no badge.)
+    """
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: x, title: X, status: blocked}\n",
+    )
+    tasks = load_tasks(store)
+    assert "blocker" not in tasks[0]
+
+
+def test_load_tasks_blocker_and_kind_are_orthogonal(tmp_path):
+    """A kind=decision row can have ANY blocker variant — enums are independent.
+
+    The "decisions usually have blocker=operator-decision" relationship is
+    convention, not validator-enforced (ADR-0004 Notes).
+    """
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - id: d1\n"
+        "    title: 'decide: model-picks-a-or-b'\n"
+        "    status: blocked\n"
+        "    kind: decision\n"
+        "    blocker: compute\n",  # ← decision blocked on a model run; unusual but legal
+    )
+    t = load_tasks(store)[0]
+    assert t["kind"] == "decision"
+    assert t["blocker"] == "compute"
+
+
+def test_save_tasks_round_trips_decision_kind_and_blocker(tmp_path):
+    """ruamel preserves the new fields + a hand-written comment."""
+    store = _write(
+        tmp_path,
+        "# preserved\n"
+        "tasks:\n"
+        "  - id: decide-hub-cutover\n"
+        "    title: 'decide: hub prod-cutover final GO'\n"
+        "    status: blocked\n"
+        "    kind: decision\n"
+        "    blocker: operator-decision\n",
+    )
+    tasks = load_tasks(store)
+    tasks[0]["status"] = "done"   # operator decided
+    tasks[0].pop("blocker")        # no longer blocked
+    save_tasks(tasks, store)
+    reloaded = load_tasks(store)[0]
+    assert reloaded["status"] == "done"
+    assert "blocker" not in reloaded
+    assert reloaded["kind"] == "decision"
+    assert "# preserved" in store.read_text()
+
 # EOF

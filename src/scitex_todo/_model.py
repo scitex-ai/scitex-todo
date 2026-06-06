@@ -39,21 +39,63 @@ VALID_STATUSES: tuple[str, ...] = (
     "failed",
 )
 
-# Valid task kinds — north-star pillar #1 (HANDOFF.md): dependencies extend
-# down to COMPUTE STATE. A row with ``kind: compute`` represents an external
-# compute job (Spartan slurm submission, SIF rebuild, …) whose status is
-# updated by an automated writer (out-of-scope for the schema; see the
-# writer-side contract in tasks/proj-scitex-todo-compute-state-deps/
-# description.md). Any other task uses ``kind: task`` (the default, can be
-# omitted). Extensible to ``"ci"`` etc. when task #15 wires GH-Actions rows;
-# add to this tuple when that lands.
+# Valid task kinds — north-star pillars #1 (compute state) + #4 (operator
+# pain "where am I the blocker"). A row with ``kind: compute`` represents
+# an external compute job whose status is updated by an automated writer
+# (see tasks/proj-scitex-todo-compute-state-deps/README.md). A row with
+# ``kind: decision`` represents an operator/agent decision that other tasks
+# can ``depends_on`` — when the decision-node's status flips to ``done``
+# (the decision is made) the dependents auto-unblock via the existing dep-
+# graph wire (no new machinery; the per-task adr.md is its body, 1:1).
+# Other tasks use ``kind: task`` (the default, can be omitted). Extensible
+# to ``"ci"`` etc. when task #15 wires GH-Actions rows.
 #
-# Closed validated set per lead directive 2026-06-06 a2a `2c7a431d` —
-# fail-loud on unknown values (e.g. a "comput" typo) so silent
-# misconfiguration is impossible.
+# Closed validated set — fail-loud on unknown values per ADR-0002
+# (a2a `2c7a431d`) and ADR-0003 (this PR; extending to "decision").
 VALID_KINDS: tuple[str, ...] = (
     "task",
     "compute",
+    "decision",
+)
+
+
+# Valid `blocker` values — operator TG 9522 + 9524, lead a2a
+# `4691b114` / `c839c59b` / `2bd37bd2` / `554435df`. The operator's exact
+# pain: "I cannot tell what is waiting on ME." A blocked task can be stuck
+# on different things; each gets a different signal on the board.
+#
+# Operator's enumeration (verbatim, TG 9524):
+#   compute            (計算リソース)      — waiting on a kind=compute row to finish
+#   dep                (依存)              — waiting on another task (explicit form of the implicit
+#                                            dep-edge case; useful when the dep is the *concept*
+#                                            even if no edge id is known yet)
+#   operator-decision  (ユーザー判断)      — waiting on the operator to decide; this is the LOUD
+#                                            variant the operator opens the UI to find. Usually
+#                                            paired with kind=decision rows but the enums are
+#                                            ORTHOGONAL (a kind=task can also be blocker=
+#                                            operator-decision if it's waiting on a decision that
+#                                            hasn't been promoted to its own kind=decision node
+#                                            yet).
+#   agent-wait         (他エージェント待ち) — waiting on a specific agent action (e.g. "lead to
+#                                            write the ADR-0007 entry"). Distinct from `dep`
+#                                            because the blocker is a *human/agent action*, not
+#                                            a graph-edge dep.
+#
+# Closed validated set per ADR-0004 (this PR) — same fail-loud pattern as
+# VALID_KINDS / VALID_STATUSES: an unknown value raises with the bad value
+# and the valid set in the error message. Extensible by editing this tuple
+# — closed-in-the-typo sense, open-in-the-variant sense.
+#
+# Allowed ONLY when `status == "blocked"`: setting a `blocker` on a non-
+# blocked row is a config error (the row isn't blocked, so naming a blocker
+# is meaningless). Validator raises with "set status: blocked or remove the
+# blocker field" — same shape as the compute-fields-only-on-kind=compute
+# rule from ADR-0002.
+VALID_BLOCKERS: tuple[str, ...] = (
+    "compute",
+    "dep",
+    "operator-decision",
+    "agent-wait",
 )
 
 
@@ -250,6 +292,34 @@ def _validate_tasks(tasks: object, source: str) -> None:
                 raise TaskValidationError(
                     f"{source}: task {tid!r} has non-string {label} "
                     f"{value!r}; {label} must be a non-empty string or absent"
+                )
+        # `blocker` is the discriminator for what KIND of thing is blocking
+        # a status=blocked row (north-star "what's waiting on me" — operator
+        # TG 9522 + 9524). Closed validated set per `VALID_BLOCKERS`; absence
+        # is acceptable on a blocked task ("we know it's blocked but haven't
+        # named the blocker variant yet"). The orthogonality matters: `kind`
+        # and `blocker` validate independently — a `kind: "decision"` row's
+        # blocker is USUALLY `"operator-decision"` but can be `"agent-wait"`
+        # (an agent confirming) or `"compute"` (a model picking). The
+        # validator does NOT cross-imply.
+        #
+        # Fail-loud rules:
+        #  (a) Unknown `blocker` value → raise, name the bad value + the
+        #      valid set.
+        #  (b) `blocker` set on a non-blocked row → raise, since naming the
+        #      blocker variant is meaningless when the row isn't blocked.
+        blocker = task.get("blocker")
+        if blocker is not None:
+            if blocker not in VALID_BLOCKERS:
+                raise TaskValidationError(
+                    f"{source}: task {tid!r} has invalid blocker {blocker!r}; "
+                    f"must be one of {VALID_BLOCKERS} or absent"
+                )
+            if status != "blocked":
+                raise TaskValidationError(
+                    f"{source}: task {tid!r} has blocker {blocker!r} but "
+                    f"status is {status!r}; set status: blocked or remove "
+                    f"the blocker field"
                 )
 
 
