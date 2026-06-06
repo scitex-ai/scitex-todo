@@ -416,6 +416,64 @@ function BlockersSection({
   );
 }
 
+/** KV table for the compute-job metadata on a `kind: "compute"` row.
+ *
+ * Lead a2a `2c7a431d` directive: "opening a compute card answers 'what is
+ * this and where does it run' immediately." Renders the validated compute
+ * fields (job_id / host / command / started_at / finished_at) as a small
+ * two-column table at the top of the drawer body, before the Blockers
+ * section. Rows with a null/empty value are omitted so the table stays
+ * compact for in-flight jobs that don't have a finished_at yet.
+ *
+ * The `command` row is special — long shell pipelines are common, so it
+ * gets its own full-width row below the compact KV grid and wraps as
+ * pre-wrap text. The canvas tooltip shows the same command truncated to
+ * ~100 chars; here we show the full string.
+ */
+function ComputeMetaSection({ node }: { node: GraphNode }) {
+  if (node.kind !== "compute") return null;
+
+  const rows: Array<{ label: string; value: string }> = [];
+  if (node.host) rows.push({ label: "host", value: node.host });
+  if (node.job_id) rows.push({ label: "job_id", value: node.job_id });
+  if (node.started_at) rows.push({ label: "started_at", value: node.started_at });
+  if (node.finished_at) rows.push({ label: "finished_at", value: node.finished_at });
+
+  return (
+    <section
+      className="stx-todo-compute"
+      aria-label="Compute job metadata"
+    >
+      <h3 className="stx-todo-compute__title">⚙ Compute job</h3>
+      {rows.length > 0 && (
+        <dl className="stx-todo-compute__kv">
+          {rows.map((r) => (
+            <div className="stx-todo-compute__row" key={r.label}>
+              <dt className="stx-todo-compute__key">{r.label}</dt>
+              <dd className="stx-todo-compute__val">
+                <code>{r.value}</code>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {node.command && (
+        <div className="stx-todo-compute__cmd">
+          <div className="stx-todo-compute__cmd-label">command</div>
+          <pre className="stx-todo-compute__cmd-text">
+            <code>{node.command}</code>
+          </pre>
+        </div>
+      )}
+      {rows.length === 0 && !node.command && (
+        <p className="stx-todo-compute__empty">
+          <em>No compute metadata recorded yet (writer hasn't populated this row).</em>
+        </p>
+      )}
+    </section>
+  );
+}
+
 function DetailReader({
   node,
   graph,
@@ -427,6 +485,7 @@ function DetailReader({
   const hasNote = note.length > 0 && note !== "uncategorized";
   return (
     <div className="stx-todo-detail__body">
+      <ComputeMetaSection node={node} />
       <BlockersSection node={node} graph={graph} />
       {hasNote ? (
         <div className="stx-todo-detail__markdown">

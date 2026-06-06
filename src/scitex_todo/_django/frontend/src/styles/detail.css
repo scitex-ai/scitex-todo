@@ -314,3 +314,87 @@
 .stx-todo-blockers__satisfied[open] summary {
   margin-bottom: 6px;
 }
+
+/* ---------------------------------------------------------------------------
+ * COMPUTE METADATA — kind: "compute" rows render a KV table at the top of
+ * the NodeDetailPanel body, before the Blockers section (north-star pillar
+ * #1, lead a2a 2c7a431d "opening a compute card answers 'what is this and
+ * where does it run' immediately"). Visually paired with `.stx-todo-blockers`
+ * via the matching left-border accent (here: slate-blue vs blockers' red),
+ * so the two sections read as the same "structural cards" shape.
+ * ------------------------------------------------------------------------- */
+
+.stx-todo-compute {
+  margin: 0 0 14px 0;
+  padding: 10px 12px;
+  background: var(--stx-panel-bg);
+  border: 1px solid var(--stx-border);
+  border-left: 3px solid #285a96;
+  border-radius: 6px;
+}
+.stx-todo-compute__title {
+  margin: 0 0 6px 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--stx-text);
+}
+.stx-todo-compute__kv {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(80px, max-content) 1fr;
+  gap: 4px 12px;
+}
+.stx-todo-compute__row {
+  display: contents;
+}
+.stx-todo-compute__key {
+  margin: 0;
+  color: var(--stx-text-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  align-self: center;
+}
+.stx-todo-compute__val {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--stx-text);
+  word-break: break-all;
+}
+.stx-todo-compute__val code {
+  font-family: var(--stx-mono-font, ui-monospace, SFMono-Regular, Menlo, monospace);
+  background: transparent;
+  padding: 0;
+}
+.stx-todo-compute__cmd {
+  margin-top: 8px;
+}
+.stx-todo-compute__cmd-label {
+  color: var(--stx-text-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.stx-todo-compute__cmd-text {
+  margin: 0;
+  padding: 6px 8px;
+  background: var(--stx-input-bg);
+  border: 1px solid var(--stx-border);
+  border-radius: 4px;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+  max-height: 180px;
+}
+.stx-todo-compute__cmd-text code {
+  background: transparent;
+  padding: 0;
+}
+.stx-todo-compute__empty {
+  margin: 4px 0 0 0;
+  color: var(--stx-text-muted);
+  font-size: 0.85rem;
+}

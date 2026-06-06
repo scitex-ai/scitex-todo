@@ -48,6 +48,18 @@ def _build_graph(board) -> dict:
             # Append-only comment thread (list of {ts, author, text}); always
             # a list so the frontend can render / count without null-checks.
             "comments": t.get("comments") or [],
+            # `kind` discriminator + compute metadata (north-star pillar #1,
+            # validated by `_model._validate_tasks`). `kind: null` over the
+            # wire is equivalent to "task" (the default ordinary row); the FE
+            # only renders the compute affordances (⚙ glyph on the node label
+            # + KV table in the NodeDetailPanel) when `kind === "compute"`.
+            # The metadata fields are absent / null on non-compute rows.
+            "kind": t.get("kind"),
+            "job_id": t.get("job_id"),
+            "host": t.get("host"),
+            "command": t.get("command"),
+            "started_at": t.get("started_at"),
+            "finished_at": t.get("finished_at"),
         }
         for t in board.tasks
     ]

@@ -217,6 +217,12 @@ A YAML document with a top-level `tasks:` list. Each task:
 | `note`       | no       | free-text annotation, shown under the title                      |
 | `priority`   | no       | integer rank (lower = higher); document order if absent          |
 | `parent`     | no       | id of the task this nests under (drill-down view)                |
+| `kind`       | no       | `task` (default) \| `compute` — closed enum; `compute` marks a row whose status is updated by an external writer (Spartan/CI watcher) |
+| `job_id`     | no       | opaque compute-job id (slurm id, GH Actions run, …); only with `kind: compute`  |
+| `host`       | no       | where the compute job runs (`spartan`, `mba`, `github`, …); only with `kind: compute` |
+| `command`    | no       | shell invocation / pipeline for the compute job; only with `kind: compute`     |
+| `started_at` | no       | ISO-8601 timestamp the writer observed start; only with `kind: compute`        |
+| `finished_at`| no       | ISO-8601 timestamp the writer observed completion; only with `kind: compute`   |
 
 ### status -> color
 
