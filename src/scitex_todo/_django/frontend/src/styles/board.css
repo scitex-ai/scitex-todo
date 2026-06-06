@@ -1426,6 +1426,64 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   opacity: 0.85;
 }
 
+/* Explicit "← Back" button in the breadcrumb (operator UX TG 233: after
+ * a drill click they didn't read "Home" as a back-button). Sits right
+ * after the "DRILL:" hint, before the first crumb. Hidden at top level. */
+.stx-todo-breadcrumb__back {
+  margin-right: 8px;
+  padding: 2px 8px;
+  border: 1px solid #6d4cad;
+  background: rgba(155, 127, 214, 0.14);
+  color: #6d4cad;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+.stx-todo-breadcrumb__back:hover {
+  background: #6d4cad;
+  color: #fff;
+}
+
+/* Empty-canvas explainer when drilled in but no edges exist in the scope
+ * (operator UX TG 233 photo 8: drilled in, canvas blank, "クリックした
+ * あとえ、なに？どゆこと？"). Sits centered inside the React Flow canvas
+ * area as an overlay; pointer-events:none so React Flow's pan/zoom keeps
+ * working underneath. */
+.stx-todo-flow__canvas {
+  /* `position: relative` was set in the earlier region-label block; keep
+   * it so this `.stx-todo-flow__empty` overlay anchors against the
+   * canvas, not the whole flow. */
+}
+.stx-todo-flow__empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  max-width: 460px;
+  padding: 18px 22px;
+  background: var(--stx-panel-bg);
+  border: 1px dashed var(--stx-border);
+  border-radius: 10px;
+  text-align: center;
+  pointer-events: none; /* let pan/zoom pass through */
+  user-select: none;
+}
+.stx-todo-flow__empty-title {
+  margin: 0 0 8px 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--stx-text);
+}
+.stx-todo-flow__empty-body {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--stx-text-muted);
+  line-height: 1.5;
+}
+
 /* `Canvas` pill floats inside the React Flow root, top-left corner. Pointer-
  * events disabled so it never blocks a click on the underlying graph. The
  * React Flow surface owns the rest of the area. */
