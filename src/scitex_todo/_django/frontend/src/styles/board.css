@@ -1345,6 +1345,24 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   filter: drop-shadow(0 0 1px rgba(207, 36, 36, 0.85));
 }
 
+/* Inline "← <blocker-id>" chip rendered AFTER the title on a status=blocked
+ * node, so the operator sees the actual blocker id without opening the
+ * drawer. Full id stays in the hover title attr. (lead-callout b9503957:
+ * "secret-migration-phase3 ← blocked by ← ci-recovery-wave should jump out".) */
+.stx-todo-node__blocked-by {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid #c0392b;
+  background: rgba(192, 57, 43, 0.12);
+  color: #c0392b;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 .stx-todo-progress__chip--blocked {
   cursor: pointer;
   background: transparent;
