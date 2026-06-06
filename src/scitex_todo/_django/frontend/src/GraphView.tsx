@@ -141,6 +141,18 @@ function Breadcrumb({
 
   return (
     <nav className="stx-todo-breadcrumb" aria-label="Drill-down breadcrumb">
+      {/* "Drill:" prefix label (operator UX 2026-06-06: "canvas/drill/pool/
+        * table/board とか UI 上にヒント的に書いておいて") so the user can see
+        * THIS strip = the drill-down state, not a generic title bar. The
+        * label is visually muted so it doesn't fight the breadcrumb crumbs.
+        */}
+      <span
+        className="stx-todo-breadcrumb__hint"
+        aria-hidden="true"
+        title="Drill-down path — click a parent crumb to go back"
+      >
+        Drill:
+      </span>
       {atTop ? (
         <span
           className="stx-todo-breadcrumb__crumb stx-todo-breadcrumb__crumb--current"
@@ -345,7 +357,7 @@ function UncategorizedPool({
             ▸
           </span>
           <span className="stx-todo-pool__expand-label">
-            Uncategorized ({visible.length})
+            Pool — Uncategorized ({visible.length})
           </span>
         </button>
       </aside>
@@ -362,7 +374,7 @@ function UncategorizedPool({
           aria-expanded={open}
           title="Collapse"
         >
-          ▾ Uncategorized ({visible.length})
+          ▾ Pool — Uncategorized ({visible.length})
         </button>
         <button
           type="button"
@@ -657,6 +669,18 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
           activeRepos={activeRepos}
         />
         <div className="stx-todo-flow__canvas">
+          {/* Region hint label (operator UX 2026-06-06): floating top-left
+            * pill saying "Canvas" so the user can name what they're looking
+            * at vs the Pool aside and the Breadcrumb strip. Pointer-events
+            * disabled so it never steals clicks from the React Flow surface
+            * underneath. */}
+          <span
+            className="stx-todo-flow__canvas-label"
+            aria-hidden="true"
+            title="Canvas — the connected dependency graph for the current drill scope"
+          >
+            Canvas
+          </span>
           <ReactFlow
             nodes={viewNodes}
             edges={edges}

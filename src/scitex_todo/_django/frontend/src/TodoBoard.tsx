@@ -11,7 +11,12 @@ import { AutoRefresh } from "./AutoRefresh";
 import { DrillHistory } from "./DrillHistory";
 import { Toast } from "./Toast";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
-import { EDGE_COLOR_BLOCKS, EDGE_COLOR_DEPENDS } from "./layout";
+import {
+  EDGE_COLOR_BLOCKS,
+  EDGE_COLOR_DEPENDS,
+  nodeChildCount,
+  partitionNodes,
+} from "./layout";
 import {
   taskMatchesFilter,
   useBoardStore,
@@ -300,6 +305,83 @@ function ExportGroup({ graph }: { graph: GraphPayload }) {
   );
 }
 
+/** "Total · Showing · In nested parents · Pool" counter breakdown.
+ *
+ * Operator UX 2026-06-06 ("267件が全部ここに一覧に出てるわけじゃなくて
+ * カードの中にカードがあって…数が合わない"): the board counts displayed at
+ * the top never summed to the store's actual task count because the canvas
+ * only shows the CURRENT drill scope while children of parent nodes hide
+ * inside the "N ↓" pill, and the Pool sidebar carries the disconnected
+ * tasks. This component makes the arithmetic explicit:
+ *
+ *   - Total      = every task in the store (graph.task_count).
+ *   - Showing    = nodes rendered on the canvas RIGHT NOW (current drill
+ *                  scope, partitioned, NOT including children of parents
+ *                  that haven't been drilled into).
+ *   - Nested     = how many tasks live INSIDE the parent cards currently
+ *                  on the canvas (you'd see them by drilling into a parent).
+ *   - Pool       = uncategorized / disconnected tasks in the sidebar at
+ *                  the current scope.
+ *
+ * The four add up to the total at the top scope; deeper scopes sum to the
+ * scope's total (the chip flips its tooltip to make that explicit). */
+function CountBreakdown({ graph }: { graph: GraphPayload }) {
+  const drillPath = useBoardStore((s) => s.drillPath);
+  const scope = drillPath.length ? drillPath[drillPath.length - 1] : null;
+
+  const counts = useMemo(() => {
+    const total = graph.task_count;
+    // Scope-aware partition: graphNodes = the connected dependency subgraph
+    // for THIS drill level; poolNodes = uncategorized/disconnected at THIS
+    // level.  See `partitionNodes` in layout.ts.
+    const { graphNodes, poolNodes } = partitionNodes(graph, scope);
+    const showing = graphNodes.length;
+    const pool = poolNodes.length;
+    // "Nested" = number of tasks hidden inside parent cards currently on
+    // the canvas. Sum nodeChildCount for parent nodes only (kids > 0).
+    let nested = 0;
+    for (const n of graphNodes) nested += nodeChildCount(graph, n.id);
+    return { total, showing, nested, pool };
+  }, [graph, scope]);
+
+  const tooltip = scope
+    ? `Scope counts at this drill level (parent: ${scope}). "Total" is the full store.`
+    : `Total store size + breakdown of what is on the canvas vs hidden in parent cards vs in the Pool.`;
+
+  return (
+    <span
+      className="stx-todo-counts"
+      aria-label="Task counts"
+      title={tooltip}
+    >
+      <span className="stx-todo-counts__chip stx-todo-counts__chip--total">
+        Total {counts.total}
+      </span>
+      <span className="stx-todo-counts__sep" aria-hidden="true">·</span>
+      <span
+        className="stx-todo-counts__chip"
+        title="Tasks rendered on the Canvas right now (this drill scope)"
+      >
+        Showing {counts.showing}
+      </span>
+      <span className="stx-todo-counts__sep" aria-hidden="true">·</span>
+      <span
+        className="stx-todo-counts__chip"
+        title="Tasks hidden inside parent cards on the canvas — drill in to see"
+      >
+        Nested {counts.nested}
+      </span>
+      <span className="stx-todo-counts__sep" aria-hidden="true">·</span>
+      <span
+        className="stx-todo-counts__chip"
+        title="Uncategorized / disconnected tasks in the Pool sidebar"
+      >
+        Pool {counts.pool}
+      </span>
+    </span>
+  );
+}
+
 export function TodoBoard() {
   const { graph, loading, error, load } = useBoardStore();
   const view = useBoardStore((s) => s.view);
@@ -323,12 +405,26 @@ export function TodoBoard() {
   return (
     <div className="stx-todo-board">
       <header className="stx-todo-board__header">
+        {/* "Board" region hint — operator UX 2026-06-06: "canvas/drill/pool/
+          * table/board とか UI 上にヒント的に書いておいて" — pairs with the
+          * "Drill:" label on the breadcrumb, "Canvas" on the React Flow root,
+          * and the "Pool —" prefix in the UncategorizedPool. The original
+          * "SciTeX Todo — dependency graph" still sits next to it as the
+          * full title; the new chip is just the at-a-glance region name. */}
+        <span
+          className="stx-todo-board__region"
+          aria-hidden="true"
+          title="Board — the whole dependency graph page"
+        >
+          Board
+        </span>
         <span className="stx-todo-board__title">
           SciTeX Todo — dependency graph
         </span>
         <span className="stx-todo-board__meta">
           <code>{graph.store_path}</code>
         </span>
+        <CountBreakdown graph={graph} />
         <Progress graph={graph} />
         <ViewToggle />
         <Legend colors={graph.status_colors} />
