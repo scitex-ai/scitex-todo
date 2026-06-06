@@ -597,13 +597,32 @@ def test_load_tasks_raises_on_compute_metadata_without_kind(tmp_path):
 
 
 def test_load_tasks_raises_on_compute_metadata_with_kind_task(tmp_path):
+    """`job_id` (a TRUE compute-only field) on a kind=task row fails-loud.
+
+    Note: pre-PR-#57, `host` was also in the compute-only fence and was
+    used as the example here. Per operator co-design TG 9667, `host` is
+    now a generic field allowed on any row (it's the universal "where
+    does this live/run" handle). The compute-only fence still covers
+    job_id / command / started_at / finished_at — those four have a
+    compute-job-specific semantic that doesn't fit other kinds.
+    """
     store = _write(
         tmp_path,
-        "tasks:\n  - {id: x, title: X, status: pending, kind: task, host: spartan}\n",
+        "tasks:\n  - {id: x, title: X, status: pending, kind: task, job_id: '42'}\n",
     )
     with pytest.raises(TaskValidationError) as exc_info:
         load_tasks(store)
-    assert "host" in str(exc_info.value)
+    assert "job_id" in str(exc_info.value)
+
+
+def test_load_tasks_allows_host_on_kind_task_row(tmp_path):
+    """`host` is GENERIC (operator TG 9667) — allowed on any row, not just compute."""
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: x, title: X, status: pending, host: ywata-note-win}\n",
+    )
+    # No kind set + host present → valid; host is generic.
+    assert load_tasks(store)[0]["host"] == "ywata-note-win"
 
 
 def test_load_tasks_raises_on_non_string_compute_field(tmp_path):
@@ -788,5 +807,193 @@ def test_save_tasks_round_trips_decision_kind_and_blocker(tmp_path):
     assert "blocker" not in reloaded
     assert reloaded["kind"] == "decision"
     assert "# preserved" in store.read_text()
+
+
+# ===========================================================================
+# Task dataclass — the SINGLE schema source (ADR-0007 / quality-hygiene PR)
+# Operator co-design TG 9667 + lead a2a `6d9b6073` + `a62db48c`.
+# ===========================================================================
+
+
+def test_task_dataclass_from_dict_constructs_minimum_shape():
+    from scitex_todo._model import Task
+
+    t = Task.from_dict({"id": "x", "title": "X"})
+    assert t.id == "x"
+    assert t.title == "X"
+    assert t.status == "pending"   # default
+    assert t.comments == []         # default factory
+
+
+def test_task_dataclass_from_dict_carries_all_operator_fields():
+    from scitex_todo._model import Task
+
+    t = Task.from_dict({
+        "id": "x", "title": "X",
+        "task": "the BIG line",
+        "project": "scitex-todo",
+        "host": "ywata-note-win",
+        "created_at": "2026-06-07T01:00:00Z",
+        "goal": "make the board the fleet's shared SSoT",
+        "agent": "proj-scitex-todo",
+        "last_activity": "12s ago",
+        "pr_url": "https://github.com/ywatanabe1989/scitex-todo/pull/54",
+        "issue_url": "https://github.com/ywatanabe1989/scitex-agent-container/issues/324",
+    })
+    assert t.task == "the BIG line"
+    assert t.project == "scitex-todo"
+    assert t.host == "ywata-note-win"
+    assert t.goal == "make the board the fleet's shared SSoT"
+    assert t.pr_url.endswith("/pull/54")
+
+
+def test_task_dataclass_from_dict_ignores_unknown_keys():
+    from scitex_todo._model import Task
+
+    t = Task.from_dict({"id": "x", "title": "X", "future_field": "ok"})
+    assert t.id == "x"
+    # No error; unknown key dropped (forward-compat).
+
+
+def test_task_dataclass_from_dict_normalizes_legacy_dep_to_dependency():
+    """Legacy `blocker: "dep"` → canonical `"dependency"` on dataclass read."""
+    from scitex_todo._model import Task
+
+    t = Task.from_dict({"id": "x", "title": "X", "status": "blocked", "blocker": "dep"})
+    assert t.blocker == "dependency"
+
+
+def test_task_dataclass_to_dict_omits_default_fields():
+    from scitex_todo._model import Task
+
+    t = Task(id="x", title="X")
+    d = t.to_dict()
+    assert d == {"id": "x", "title": "X", "status": "pending"}
+
+
+def test_task_dataclass_to_dict_omits_empty_lists():
+    from scitex_todo._model import Task
+
+    t = Task(id="x", title="X", depends_on=[], blocks=[], comments=[])
+    d = t.to_dict()
+    assert "depends_on" not in d and "blocks" not in d and "comments" not in d
+
+
+def test_task_dataclass_round_trip_preserves_fields():
+    from scitex_todo._model import Task
+
+    payload = {
+        "id": "x", "title": "X", "task": "do the thing",
+        "project": "scitex-todo", "host": "ywata", "agent": "proj-scitex-todo",
+        "status": "blocked", "blocker": "operator-decision",
+        "goal": "ship the board", "depends_on": ["a", "b"],
+        "tags": ["P0", "infra"],   # ← unknown key, gets dropped
+    }
+    t = Task.from_dict(payload)
+    d = t.to_dict()
+    # Round-trip preserves every known field; unknown `tags` is dropped.
+    assert d["task"] == "do the thing"
+    assert d["status"] == "blocked"
+    assert d["blocker"] == "operator-decision"
+    assert d["depends_on"] == ["a", "b"]
+    assert "tags" not in d
+
+
+# ---------------------------------------------------------------------------
+# `dependency` enum rename + `none` value (operator co-design TG 9667)
+# ---------------------------------------------------------------------------
+
+
+def test_load_tasks_accepts_canonical_dependency_blocker(tmp_path):
+    """`blocker: "dependency"` (the canonical spelling) loads cleanly."""
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: x, title: X, status: blocked, blocker: dependency}\n",
+    )
+    assert load_tasks(store)[0]["blocker"] == "dependency"
+
+
+def test_load_tasks_still_accepts_legacy_dep_blocker(tmp_path):
+    """Legacy `blocker: "dep"` is still accepted during the deprecation window."""
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: x, title: X, status: blocked, blocker: dep}\n",
+    )
+    # Validator passes; the dict still carries "dep". The Task dataclass
+    # normalizes on read; legacy writers that go through save_tasks
+    # without converting still produce "dep" until they migrate.
+    assert load_tasks(store)[0]["blocker"] == "dep"
+
+
+def test_load_tasks_accepts_none_blocker(tmp_path):
+    """`blocker: "none"` explicitly says "we looked, no blocker named" — distinct from absent."""
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: x, title: X, status: blocked, blocker: none}\n",
+    )
+    assert load_tasks(store)[0]["blocker"] == "none"
+
+
+# ---------------------------------------------------------------------------
+# New operator-co-designed fields — additive validators only.
+# ---------------------------------------------------------------------------
+
+
+def test_load_tasks_accepts_all_new_operator_fields(tmp_path):
+    """task / project / host / created_at / goal / agent / last_activity /
+    pr_url / issue_url all load cleanly when present."""
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - id: x\n"
+        "    title: X\n"
+        "    status: pending\n"
+        "    task: 'PR #54 in CI'\n"
+        "    project: scitex-todo\n"
+        "    host: ywata-note-win\n"
+        "    created_at: '2026-06-07T01:00:00Z'\n"
+        "    goal: ship the board\n"
+        "    agent: proj-scitex-todo\n"
+        "    last_activity: '12s ago'\n"
+        "    pr_url: https://github.com/ywatanabe1989/scitex-todo/pull/54\n"
+        "    issue_url: https://github.com/ywatanabe1989/scitex-agent-container/issues/324\n",
+    )
+    t = load_tasks(store)[0]
+    assert t["task"] == "PR #54 in CI"
+    assert t["host"] == "ywata-note-win"
+
+
+def test_load_tasks_raises_on_non_string_task_field(tmp_path):
+    """`task: 123` (int) fails-loud — type-check on write."""
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: x, title: X, status: pending, task: 123}\n",
+    )
+    with pytest.raises(TaskValidationError) as exc_info:
+        load_tasks(store)
+    assert "task" in str(exc_info.value)
+    assert "non-string" in str(exc_info.value)
+
+
+def test_load_tasks_raises_on_non_string_pr_url(tmp_path):
+    """`pr_url: 12345` (int) fails-loud — URL must be a string."""
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: x, title: X, status: pending, pr_url: 12345}\n",
+    )
+    with pytest.raises(TaskValidationError) as exc_info:
+        load_tasks(store)
+    assert "pr_url" in str(exc_info.value)
+
+
+def test_load_tasks_raises_on_empty_goal_string(tmp_path):
+    """`goal: ""` (empty string) fails-loud — non-empty rule."""
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: x, title: X, status: pending, goal: \"\"}\n",
+    )
+    with pytest.raises(TaskValidationError) as exc_info:
+        load_tasks(store)
+    assert "goal" in str(exc_info.value)
 
 # EOF
