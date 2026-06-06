@@ -63,6 +63,33 @@ def board_page(request):
     return HttpResponse(_static_graph_page(request))
 
 
+def board_v3_page(request):
+    """Serve the live board-v3 layout — operator's visual deliverable.
+
+    Parallel to ``board_page`` (per lead a2a `62094366` — isolable, screen-
+    shottable, A/B-comparable against the static :8052 prototype). Renders
+    a self-contained HTML page that fetches ``/graph`` for real tasks.yaml
+    data + renders the operator-co-designed layout (project columns +
+    BLOCKING YOU panel + Resolve→``/resolve`` button per ADR-0006/0007).
+
+    Server-rendered + inline-everything so it works regardless of Vite
+    build state. The future React-SPA equivalent can re-render the same
+    shape at the same URL when the FE rewrite lands.
+    """
+    from django.template.loader import render_to_string
+
+    try:
+        html = render_to_string(
+            "scitex_todo/board_v3.html",
+            {"app_name": "scitex-todo", "app_label": "SciTeX Todo — Board v3"},
+            request=request,
+        )
+        return HttpResponse(html)
+    except Exception:
+        logger.exception("[scitex-todo] board_v3 render failed; using fallback")
+        return HttpResponse(_static_graph_page(request))
+
+
 def _static_graph_page(request) -> str:
     """Render a self-contained mermaid graph page (no React build needed).
 
