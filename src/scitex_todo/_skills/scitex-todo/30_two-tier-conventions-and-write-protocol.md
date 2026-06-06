@@ -245,6 +245,102 @@ The `global_=True` parameter bypasses the project-tier precedence
 when an agent specifically wants the FLEET view (e.g. to find a
 cross-repo dep, or to render its own dashboard panel).
 
+## Cross-host sync — git-backed durable, SSH-fanout live (ADR-0006)
+
+Two-tier sync model (operator + lead a2a `3d7a20e7`):
+
+| Tier                                | Sync mechanism                                          | Latency  |
+| ----------------------------------- | ------------------------------------------------------- | -------- |
+| project `<proj>/.scitex/todo/`      | git commits + GitHub push/pull (no peer rsync)         | minutes  |
+| global `~/.scitex/todo/tasks.yaml`  | aggregator sidecar rebuilds from SSH-fanout to project tiers | 5s tick  |
+| global `~/.scitex/todo/agents.json` | sac-status-writer sidecar rebuilds from SSH-fanout to peer sac registries | 5s tick |
+
+The **project tier is the SSoT** (durable, git-backed); the **global
+tier is ephemeral**, rebuilt continuously by sidecars on the
+operator's host. Failure modes:
+
+- GitHub down: live SSH-fanout still rebuilds the global; operator
+  sees current state; durable sync resumes when GitHub returns.
+- SSH-fanout fails for a peer: the global flags that project tier
+  UNREACHABLE (per-tier as_of stamp surfaces; not silently omitted).
+- Both: stale data with explicit staleness markers per row.
+
+Agents writing their OWN project-tier `tasks.yaml` should
+`git commit + git push` after the write (or batch — committer's
+choice). The aggregator picks up changes from the SSH-fanout read
+within 5s even before the commit; the commit is what makes the
+state durable across host restarts.
+
+## Task referencing / citation — `<project>/<local-id>` (ADR-0006)
+
+Stable, fleet-wide task ids use a slash-separated two-segment form:
+
+```
+<project>/<local-id>
+```
+
+- `<project>` = the project's directory basename (matches `Task.project`).
+- `<local-id>` = the agent's chosen string, unique within the project.
+
+Examples:
+
+```
+paper-scitex-clew/cohort-a-rerun
+scitex-hub/decide-prod-cutover-final-go
+scitex-todo/proj-scitex-todo-fleet-liveness
+```
+
+**URL scheme** (the board's Django serves it):
+
+```
+http://<board-host>:8051/task/<project>/<local-id>       # canonical
+http://<board-host>:8051/t/<project>/<local-id>          # short alias
+```
+
+Operator / lead / agents cite this URL in chat / a2a / comments.
+Pasting it into a markdown comments[] entry auto-links via the
+board's renderer. Citation in chat: "see
+`paper-scitex-clew/cohort-a-rerun`" is unambiguous across the
+fleet.
+
+**Backward-compat**: existing single-segment ids
+(`proj-scitex-todo-compute-state-deps`) carry through; the
+aggregator stamps `_log_meta.canonical_id = "<project>/<id>"` on
+read so the URL works on legacy rows.
+
+## Update → subscriber notification — reuse a2a/channel push (ADR-0006)
+
+When a task is updated (via the board's `_store.update_task`, an
+agent's direct YAML edit + commit, or the operator's Resolve button),
+the change is **published on the sac channel bus** the fleet already
+uses for agent wake-ups:
+
+```
+event channel: scitex-todo:task:<project>/<local-id>
+payload:       {task_id, changes, ts, actor}
+```
+
+**Subscription rules**:
+
+| Subscriber       | Subscribes to                                            | Action on receive                                                            |
+| ---------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| owning agent     | `scitex-todo:task:<own-project>/*`                       | wakes (empty-beacon-fix + wake-generalize) + acts on the change              |
+| dependent agent  | `scitex-todo:task:<each-of-its-depends_on-ids>`          | wakes + re-evaluates readiness; auto-unblock if a dep flipped to done       |
+| UI (every viewer)| `scitex-todo:task:*` (filtered client-side)              | re-fetches /graph + re-renders affected card / panel                         |
+| lead             | `scitex-todo:task:*` firehose                            | logs into _log_meta; no auto-action                                          |
+| operator         | (interacts via UI; UI is the subscriber)                 | UI surfaces the change visually                                              |
+
+**Critical synergy**: this rides the SAME push infra being hardened
+by the empty-beacon fix (proj-scitex-agent-container) + the
+wake-generalize (any-channel-wakes-idle-agent). scitex-todo is one
+of the loadiest consumers — every task update is a potential
+agent-wake event. **Do NOT invent a parallel notification system.**
+
+**Fallback to polling**: if the push bus is down, subscribers fall
+back to the existing 5s `/rev` polling (AutoRefresh.tsx). Push is
+the FAST path; poll is the durable path. Same shape as the
+GitHub-vs-SSH-fanout split above.
+
 ## Cross-reference
 
 - **HANDOFF.md** — SSoT DATA LAYOUT + NORTH STAR pillars #3
