@@ -12,6 +12,7 @@ from .crud import (
     handle_create,
     handle_delete,
     handle_edge,
+    handle_resolve,
     handle_restore,
     handle_update,
 )
@@ -31,6 +32,7 @@ HANDLERS = {
     "comment": handle_comment,
     "edge": handle_edge,
     "restore": handle_restore,
+    "resolve": handle_resolve,
 }
 
 # Endpoints that work without a loaded board (health checks).

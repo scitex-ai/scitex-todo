@@ -62,11 +62,25 @@ def _build_graph(board) -> dict:
             "finished_at": t.get("finished_at"),
             # `blocker` — variant that's blocking a status=blocked row
             # (operator TG 9522 + 9524, ADR-0004). Closed enum
-            # `compute|dep|operator-decision|agent-wait`; `null` on non-
-            # blocked rows + on blocked rows where the variant hasn't been
-            # named yet (soft-degrade — FE renders a generic 🚧 in that
-            # case, no extra badge).
+            # `compute|dependency|dep|operator-decision|agent-wait|none`;
+            # `null` on non-blocked rows + on blocked rows where the
+            # variant hasn't been named yet (soft-degrade — FE renders a
+            # generic 🚧 in that case, no extra badge). `dep` is the
+            # legacy spelling kept during the deprecation window; `dependency`
+            # is canonical per ADR-0007.
             "blocker": t.get("blocker"),
+            # Operator-co-designed fields (TG 9667 / ADR-0007). Forwarded
+            # verbatim to the FE so the board-v3 layout (filter bar + cards
+            # + BLOCKING YOU panel) can render directly from the Task
+            # dataclass shape without a second wire format.
+            "task": t.get("task"),
+            "project": t.get("project"),
+            "created_at": t.get("created_at"),
+            "goal": t.get("goal"),
+            "agent": t.get("agent"),
+            "last_activity": t.get("last_activity"),
+            "pr_url": t.get("pr_url"),
+            "issue_url": t.get("issue_url"),
         }
         for t in board.tasks
     ]
