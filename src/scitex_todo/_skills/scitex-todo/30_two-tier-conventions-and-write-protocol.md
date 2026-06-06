@@ -27,6 +27,40 @@ This skill documents BOTH tiers + the write protocol that connects
 them. Once a project adopts this convention, the fleet can read each
 other's task state from one place + the board surfaces the whole map.
 
+## Architectural backbone — `scitex-todo` is STANDALONE; the fleet plugs in via PORTS
+
+Operator's defining rule (TG 9678, lead a2a `fae53b8e`):
+
+> "scitex-todo はそれだけで独立したパッケージであるべきで、他を知らないが、
+> extension port は持っている"
+> (scitex-todo MUST be standalone, knows nothing about fleet/sac/
+> scitex-specifics, but exposes extension ports through which
+> fleet-specific behaviour plugs in.)
+
+This skill describes the *conventions* an adopting agent must follow.
+Those conventions are wired through extension ports — the **core
+package never imports sac, a2a, SSH-fanout, or the 6-stream list**.
+Reading this skill, mentally replace:
+
+- "sync via git + GitHub" ⇒ "the TaskSyncPort impl your fleet installs"
+- "publish on `scitex-todo:task:<id>`" ⇒ "NotificationPort.publish"
+- "SSH-fanout to peer hosts for liveness" ⇒ "LivenessPort.list_agents"
+- "sac fleet groups gate ACL" ⇒ "IdentityACLPort answers"
+
+The fleet-specific implementations live in a SEPARATE package
+(e.g. `scitex-todo-fleet` or in the scitex-agent-container glue),
+not inside `scitex-todo`. ADR-0006 in `docs/adr/` has the four port
+Protocol definitions + the dependency-injection wiring. This skill
+documents the **adoption-side** conventions; the **core-side**
+contract is in the ADR.
+
+A standalone `pip install scitex-todo` ships with default
+implementations (LocalFileSync / InProcessPubSub / NullLiveness /
+OpenACL) so the package is independently usable. The conventions
+below describe the FLEET deployment shape — operator-host
+running aggregator + watcher + board, agents writing project
+tiers, etc.
+
 ## Tier 1 — project-level `<project>/.scitex/todo/`
 
 Every project (= every git repo where an agent works) gets its own
