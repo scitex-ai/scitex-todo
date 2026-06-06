@@ -1382,3 +1382,97 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   background: #c0392b;
   color: #fff;
 }
+
+/* ---------------------------------------------------------------------------
+ * REGION LABELS (operator UX 2026-06-06: "canvas/drill/pool/table/board とか
+ * UI 上にヒント的に書いておいて") — the operator can't tell from looking at
+ * the board which area is which. Small purple pill labels sit on each region
+ * to name it explicitly, so a glance answers "what am I looking at?":
+ *   - `.stx-todo-board__region`            → "Board"      (top-left of header)
+ *   - `.stx-todo-breadcrumb__hint`         → "Drill:"     (prefix on breadcrumb)
+ *   - `.stx-todo-flow__canvas-label`       → "Canvas"     (corner of React Flow)
+ *   - `Pool —` prefix in the pool title    → handled in markup, not CSS
+ * The original "SciTeX Todo — dependency graph" title stays alongside; the
+ * region chip is the at-a-glance name.
+ * ------------------------------------------------------------------------- */
+
+.stx-todo-board__region {
+  display: inline-block;
+  padding: 2px 9px;
+  background: rgba(155, 127, 214, 0.18);
+  color: #6d4cad;
+  border: 1px solid #9b7fd6;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-right: 8px;
+}
+
+.stx-todo-breadcrumb__hint {
+  margin-right: 6px;
+  color: #6d4cad;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
+}
+
+/* `Canvas` pill floats inside the React Flow root, top-left corner. Pointer-
+ * events disabled so it never blocks a click on the underlying graph. The
+ * React Flow surface owns the rest of the area. */
+.stx-todo-flow__canvas {
+  position: relative;
+}
+.stx-todo-flow__canvas-label {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 6; /* above React Flow's `.react-flow__panel` (z-index 5) */
+  padding: 2px 9px;
+  background: rgba(155, 127, 214, 0.18);
+  color: #6d4cad;
+  border: 1px solid #9b7fd6;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ---------------------------------------------------------------------------
+ * COUNT BREAKDOWN (operator UX 2026-06-06: "数が合わない"). Renders next to
+ * the Board title; explicit `Total · Showing · Nested · Pool` breakdown so the
+ * arithmetic adds up. Total is the SSoT count, the rest segments the current
+ * drill scope into "on canvas" vs "hidden in parent cards" vs "in pool".
+ * ------------------------------------------------------------------------- */
+
+.stx-todo-counts {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 12px;
+  font-size: 0.78rem;
+  color: var(--stx-text);
+}
+.stx-todo-counts__chip {
+  padding: 1px 6px;
+  border: 1px solid var(--stx-border);
+  border-radius: 999px;
+  background: var(--stx-panel-bg);
+  white-space: nowrap;
+}
+.stx-todo-counts__chip--total {
+  border-color: #6d4cad;
+  background: rgba(155, 127, 214, 0.14);
+  color: #6d4cad;
+  font-weight: 700;
+}
+.stx-todo-counts__sep {
+  color: var(--stx-text-muted);
+  opacity: 0.5;
+}
