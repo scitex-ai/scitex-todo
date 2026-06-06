@@ -219,6 +219,20 @@ function parentLabel(
           `← ${truncateId(blockerId)}`,
         )
       : null,
+    // Hover-hint pill: invisible until the parent node is hovered, then
+    // fades in to spell out the action explicitly. Operator UX 2026-06-06
+    // TG 245 ("ドリルというか視覚的に持ってくれるといいな…誰にでもわかる
+    // ように"). Pairs with the removal of the -1deg hover tilt — the
+    // hover affordance is now a CLEAN, in-place text reveal instead of
+    // a card rotation that obscured the graph behind.
+    createElement(
+      "span",
+      {
+        className: "stx-todo-node__hover-hint",
+        "aria-hidden": "true",
+      },
+      "⊞ Drill in",
+    ),
   );
 }
 
