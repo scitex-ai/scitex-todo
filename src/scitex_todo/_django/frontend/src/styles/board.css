@@ -338,26 +338,62 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
  * affordance). */
 .stx-todo-flow .react-flow__node.stx-todo-node--parent {
   cursor: zoom-in;
-  /* `rotate` is an INDIVIDUAL transform property, so it composes with React
-   * Flow's inline `transform: translate(...)` instead of overriding it —
-   * letting us nudge the stack on hover without breaking node positioning.
-   * (Operator UX 2026-06-06 TG 229: the earlier -3deg tilt read as
-   * "やりすぎ" — kept the cue but at a much smaller amplitude so the
-   * affordance still registers without being loud.) */
+  /* Operator UX evolution on parent-hover (TG 229 → 245):
+   *   TG 229 (-3deg → -1deg): "やりすぎ" — toned down.
+   *   TG 245: "まだ傾いている、傾きは全くなくしてもらって大丈夫です他の
+   *   視覚的フィードバックで…ホバリングした時にその下のグラフがまた見える
+   *   という感じで分かりやすい UI/UX に."
+   * So the rotate is GONE entirely. The hover cue is now:
+   *   - a brighter `filter: brightness` lift
+   *   - a stronger purple halo (`box-shadow` extension) so the parent
+   *     "glows" through the canvas — the operator's "下のグラフがまた
+   *     見える" reads cleanly because we don't tilt the card OVER the
+   *     graph anymore, we just light it up IN PLACE.
+   *   - the `.stx-todo-node__hover-hint` ("⊞ Drill in") becomes visible
+   *     next to the badge so the click affordance is unambiguous.
+   * Transition list trimmed accordingly — no rotate, just filter +
+   * box-shadow. */
   transition:
-    rotate 0.12s ease,
-    filter 0.12s ease;
+    filter 0.12s ease,
+    box-shadow 0.12s ease;
 }
 
 .stx-todo-flow .react-flow__node.stx-todo-node--parent:hover {
-  /* Subtle hover cue for parent / drill-in nodes: a small brightness lift
-   * + a barely-perceptible -1deg tilt (was -3deg / brightness 1.14 pre-
-   * TG-229). The dominant parent affordance is still carried by the
-   * static cues (5px double border + stacked-card box-shadow + purple
-   * halo + the "N ↓" pill + the ⊞ glyph + the zoom-in cursor) — the
-   * hover animation is now icing, not the headline. */
-  filter: brightness(1.08);
-  rotate: -1deg;
+  /* In-place hover lift: brightness + a wider purple halo. NO ROTATE —
+   * neighbouring cards stay aligned; the graph "underneath" remains
+   * visible because nothing tilts over it. */
+  filter: brightness(1.10);
+  /* Stronger halo than the static `parentNodeStyle` purple ring;
+   * additive so the existing stacked-card shadows survive. */
+  box-shadow:
+    0 0 0 5px rgba(155, 127, 214, 0.55),
+    0 0 18px 4px rgba(155, 127, 214, 0.35);
+}
+
+/* The "⊞ Drill in" hover hint — initially `opacity: 0`, fades in on
+ * parent-node hover. Lives inside the parent label (see layout.ts
+ * parentLabel) next to the corner badge. Operator UX TG 245: "ドリル
+ * というか視覚的に持ってくれるといいなと思います" — name the action
+ * explicitly so anyone reading the canvas can tell click=drill. */
+.stx-todo-node__hover-hint {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  background: rgba(155, 127, 214, 0.18);
+  color: #6d4cad;
+  border: 1px solid #9b7fd6;
+  border-radius: 999px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  vertical-align: middle;
+  pointer-events: none;
+}
+.stx-todo-flow .react-flow__node.stx-todo-node--parent:hover
+  .stx-todo-node__hover-hint {
+  opacity: 1;
 }
 
 .stx-todo-flow .react-flow__node.stx-todo-node--leaf {
