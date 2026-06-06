@@ -21,13 +21,23 @@ from __future__ import annotations
 import sys
 
 # fill, stroke, stroke-dasharray (empty = solid border)
+#
+# Intensification 2026-06-06 (operator UX "ブロッカーが何かわからない" / lead
+# a2a 2843279f): `blocked` was pale `#fff3e0` and `deferred` was near-invisible
+# `#f5f5f5` — both got lost in the canvas + mermaid renderings. Bumped to a
+# bright orange + a saturated amber so stuck threads jump out across BOTH the
+# Django board (FE reads `_status_colors()` from /graph) AND the mermaid
+# artifacts (Python `build_mermaid()` reads this same table directly), keeping
+# the visual cue consistent everywhere. `goal` stays softer-amber so the new
+# `deferred` doesn't collide with it — `deferred`'s dashed `5 3` border is the
+# kept differentiator from `goal`'s solid border.
 STATUS_STYLE: dict[str, tuple[str, str, str]] = {
     "goal": ("#ffe082", "#ff6f00", ""),
     "done": ("#c8e6c9", "#2e7d32", ""),
     "in_progress": ("#fff9c4", "#f9a825", ""),
-    "blocked": ("#fff3e0", "#ef6c00", ""),
+    "blocked": ("#ff8a65", "#bf360c", ""),
     "pending": ("#eceff1", "#90a4ae", ""),
-    "deferred": ("#f5f5f5", "#bdbdbd", "5 3"),
+    "deferred": ("#ffca28", "#ff8f00", "5 3"),
     "failed": ("#ffcdd2", "#c62828", ""),
 }
 

@@ -225,9 +225,9 @@ A YAML document with a top-level `tasks:` list. Each task:
 | `goal`        | gold `#ffe082`  | solid         |
 | `done`        | green `#c8e6c9` | solid         |
 | `in_progress` | yellow `#fff9c4`| solid         |
-| `blocked`     | orange `#fff3e0`| solid         |
-| `pending`     | grey `#eceff1`  | solid         |
-| `deferred`    | grey `#f5f5f5`  | dashed border |
+| `blocked`     | bright-orange `#ff8a65` | solid         |
+| `pending`     | grey `#eceff1`          | solid         |
+| `deferred`    | amber `#ffca28`         | dashed border |
 | `failed`      | red `#ffcdd2`   | solid         |
 
 ## Roadmap
