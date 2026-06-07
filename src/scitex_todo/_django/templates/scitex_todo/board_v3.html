@@ -1,10 +1,23 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SciTeX Todo — Board v3</title>
-<link rel="icon" type="image/svg+xml" href="/favicon.ico">
+{% extends "scitex_ui/standalone_shell.html" %}
+{% load static %}
+{% comment %}
+  Board v3 now extends the scitex-ui workspace shell (operator-asked,
+  TG msg 302 / 303 — wants Alt+I element-inspector + shared chrome
+  parity with the legacy GraphView). All inline content is repacked
+  into the shell's three blocks: extra_css holds the page-local
+  styles, app_content holds the kanban + BLOCKING-YOU panel + detail
+  modal, extra_js holds the page logic.
+
+  Alt+I element-inspector wires up automatically via scitex-ui's
+  context_processor (settings.py guards the install at scitex-ui
+  ≥0.5.0). For older scitex-ui installs the inspector degrades
+  silently; the board itself works either way.
+
+  The favicon link is injected via extra_css (the shell template has
+  no favicon block; extra_css renders inside <head>).
+{% endcomment %}
+{% block extra_css %}
+<link rel="icon" type="image/svg+xml" href="{% static 'scitex_todo/favicon.svg' %}">
 <style>
   :root {
     --bg: #0f1419;
@@ -508,8 +521,9 @@
     padding: 30px; font-style: italic;
   }
 </style>
-</head>
-<body>
+{% endblock extra_css %}
+
+{% block app_content %}
   <div class="filterbar">
     <h1>SciTeX Todo <span class="small">— Board v3</span></h1>
     <span class="small"><span class="live-dot"></span>LIVE</span>
@@ -587,7 +601,9 @@
   </div>
 
   <div class="toast" id="toast"></div>
+{% endblock app_content %}
 
+{% block extra_js %}
   <script>
     // Status mapping — the existing 7-value enum on the wire maps to the
     // operator-co-designed 4-color set on the FE (ADR-0007 follow-up #4
@@ -1193,5 +1209,4 @@
     loadGraph();
     setInterval(autoRefreshTick, 5000);
   </script>
-</body>
-</html>
+{% endblock extra_js %}
