@@ -17,10 +17,14 @@ tags:
 
 # For consuming agents — adopt `.scitex/todo/` as YOUR task SSoT
 
-You are a fleet agent (a `proj-<something>` SAC peer). The operator has
-made `~/.scitex/todo/` the **single canonical home** for fleet task
-state — yours, the lead's, every other agent's. This skill tells you
-exactly what to do.
+You are a fleet agent (a `proj-<something>` SAC peer) **OR the lead**.
+The operator has made `.scitex/todo/` the **single canonical home**
+for fleet task state — yours, the lead's, every other agent's, the
+operator's own. This skill tells you exactly what to do.
+
+This skill is the **teaching surface** — wire it as a `required_skill`
+in your spec.yaml (see [§ Propagation](#propagation--the-path-mechanism)
+below) and it auto-loads on every agent boot.
 
 Three rules, in priority order:
 
@@ -39,41 +43,109 @@ Three rules, in priority order:
 
 ---
 
-## Where YOUR tasks go — two-tier scope
+## Your first task, in 30 seconds (fresh agent quick-start)
 
-`scitex-todo` resolves the store in this precedence order (first
-existing wins):
+```bash
+# 1. Confirm scitex-todo is installed + which tier it resolves to.
+scitex-todo --version
+scitex-todo resolve-store                  # prints the resolved path + chain
 
-| Precedence | Path                                              | Use for                                                                    |
-| ---------- | ------------------------------------------------- | -------------------------------------------------------------------------- |
-| 1          | `$SCITEX_TODO_TASKS` (explicit env)               | Container glue (the spec.yaml sets this for the agent's chosen scope).     |
-| 2          | `<git-root>/.scitex/todo/tasks.yaml` (PROJECT)    | Tasks scoped to ONE project (this repo). Default for an in-repo agent.     |
-| 3          | `~/.scitex/todo/tasks.yaml` (USER, fleet-shared)  | Fleet-wide aggregate; cross-project work the operator + lead coordinate.   |
-| 4          | bundled `examples/tasks.yaml`                     | Read-only fallback; never written.                                         |
+# 2. Add a smoke task to YOUR slice.
+scitex-todo add proj-<you>-smoke-$(date +%s) \
+    '[P2] smoke: confirm I can write to .scitex/todo' \
+    --scope agent:proj-<you> \
+    --assignee proj-<you> \
+    --status pending
 
-**Which tier do I write to?**
+# 3. List your slice + confirm the row is there.
+scitex-todo list-tasks --scope agent:proj-<you> --json | jq '.[].id'
 
-- **Default:** your project tier — `<your-project>/.scitex/todo/tasks.yaml`.
-  This is "your own lane" — only YOU write here. The fleet aggregator
-  rolls it into the global tier within 5s (no manual sync).
-- **Cross-project tasks** (e.g. "block on neurovista's PR landing"):
-  still write to YOUR project tier, with `depends_on: ["neurovista/<their-id>"]`.
-  The dep edge crosses tiers; the aggregator resolves it.
-- **Fleet-coordination tasks** (e.g. release-cutover, ADR-0007 follow-up):
-  the LEAD writes those to the global tier. You don't.
+# 4. Mark it done.
+scitex-todo done proj-<you>-smoke-<that-stamp> --by proj-<you>
 
-If you're running inside an agent container, your spec.yaml has
-exported `$SCITEX_TODO_TASKS` for you — `scitex-todo` resolves to
-the right tier automatically. Confirm with:
+# 5. See yourself on the board.
+# Open http://<board-host>:8051/  — your row is visible within 5s.
+```
+
+If any step fails: STOP and `reply` to your lead with the exact
+failing command + full stderr. Don't retry-loop. ([§ Operating
+discipline](#operating-discipline--what-not-to-do))
+
+---
+
+## The two roots — `~/.scitex/todo/` vs `<git-root>/.scitex/todo/`
+
+**This is the most important section.** Get this wrong and your tasks
+land in the wrong place or get overwritten.
+
+There are exactly TWO roots. They serve different purposes:
+
+| Root                                | Scope                  | Who writes                                                                  | When to use                                                                                                            |
+| ----------------------------------- | ---------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `<git-root>/.scitex/todo/`          | PROJECT-LOCAL          | ONLY the agent who owns this repo (the project's lead-of-record)            | Tasks scoped to ONE project (this repo's code). 99 % of a worker agent's writes go here.                               |
+| `~/.scitex/todo/`                   | USER-GLOBAL, fleet-shared | The lead, the operator, the aggregator sidecar, and (rarely) a worker agent on cross-project asks | Cross-project / fleet-coordination tasks: release cutovers, multi-repo decisions, the operator's "what's blocking me?" panel. |
+
+**Plain-language rule (the one the operator wants every agent to know):**
+
+- _"Is this task only about MY repo?"_ → **project-local** root
+  (`<git-root>/.scitex/todo/tasks.yaml`).
+- _"Does this task involve more than one repo, or is it a
+  fleet-coordination ask the lead or operator needs to see?"_ →
+  **user-global** root (`~/.scitex/todo/tasks.yaml`).
+
+When in doubt, write to your **project-local** root — the aggregator
+sidecar rolls it up into the user-global root within 5s, so the lead
++ operator still see it on the board. The cost of being wrong is
+zero if you stayed local.
+
+### How precedence picks one for you
+
+`scitex-todo` resolves the store in this order; first existing wins:
+
+| # | Path                                                  | Role                                                                       |
+| - | ----------------------------------------------------- | -------------------------------------------------------------------------- |
+| 1 | `$SCITEX_TODO_TASKS` (explicit env)                   | Container glue (spec.yaml sets this for the agent's chosen scope).         |
+| 2 | `<git-root>/.scitex/todo/tasks.yaml` (PROJECT-LOCAL)  | Default when you `cd <a repo>` — auto-picks the project-local root.         |
+| 3 | `~/.scitex/todo/tasks.yaml` (USER-GLOBAL)             | Default when you're outside a git repo (or on the operator's host).         |
+| 4 | bundled `examples/tasks.yaml`                         | Read-only fallback; never written.                                          |
+
+Confirm where you're about to write BEFORE you write:
 
 ```bash
 scitex-todo resolve-store
-# → prints the resolved path + the precedence chain
+# → prints {resolved: <path>, chain: [...]}
 ```
 
+### Forcing one root explicitly
+
+Sometimes you NEED to override the precedence. The two patterns:
+
+```bash
+# Write into the user-global root from inside a repo:
+scitex-todo --tasks ~/.scitex/todo/tasks.yaml add fleet-cutover-2026Q3 \
+    '[P0] [GOAL] Fleet release cutover 2026Q3' ...
+
+# Or env-pin for a session (useful in scripts):
+SCITEX_TODO_TASKS=~/.scitex/todo/tasks.yaml scitex-todo list-tasks --json
+```
+
+If you're running inside an agent container, the spec.yaml has
+exported `$SCITEX_TODO_TASKS` for you. The container glue chose
+the right tier; trust it unless an explicit cross-tier need says
+otherwise.
+
+### What lives at each root (the per-task-dir layout repeats)
+
+Both roots have the **same shape** — `tasks.yaml` + a `tasks/<id>/`
+directory holding `README.md` (Issue body) + `adr.md` (decision log).
+The shape repeats because the rules repeat: structured YAML for
+the graph + metadata; markdown prose for the per-task body + the
+decision log. See [§ Long-form prose](#long-form-prose--tasksidreadmemd--adrmd)
+below.
+
 See [30_two-tier-conventions-and-write-protocol.md](30_two-tier-conventions-and-write-protocol.md)
-for the full write-protocol contract (who writes when, conflict rules,
-ACL).
+for the full write-protocol contract (who writes when, aggregator
+rules, conflict resolution, ACL).
 
 ---
 
@@ -354,27 +426,113 @@ even with the best intentions.
 
 ---
 
-## Lead↔worker sync — what the lead sees vs what you do
+## Lead-role usage — the lead is a consumer too
 
-- **You write to your project tier.** Frequency: as your work
-  changes. CLI / MCP / Python — your choice.
-- **The aggregator** (sidecar on the operator's host) reads every
-  project tier every 5s via SSH-fanout, rebuilds the global tier.
-- **The lead reads the global tier** through the board (`:8051`) +
-  `~/.scitex/todo/tasks.yaml` + cross-project ADRs.
-- **GitHub** is the durable cross-host sync substrate. Run `git
-  commit && git push` on your project's `.scitex/todo/` directory
-  (today gitignored by default — your project can opt-in to commit
-  it once stable; OR rely solely on aggregator SSH-fanout for
-  liveness + GitHub for durable). See ADR-0006 for the
-  GitHub-vs-SSH-fanout split.
+The lead (`scitex-lead`) is a first-class consumer of this skill, not
+just the worker agents. Operator's explicit standing direction
+(2026-06-07): "the lead writes its own board into `.scitex/todo`."
+So when this skill is wired into the lead's spec.yaml via
+`required_skills`, the lead reads + writes through the same surface.
 
-You can ALSO directly read the global tier when you need the fleet
-view (e.g. "what's the lead waiting on across all projects?"):
+The lead's writes differ from a worker's in **scope**, not in
+**mechanics**:
+
+- **Default root:** **user-global** `~/.scitex/todo/tasks.yaml` (vs
+  a worker's project-local). The lead coordinates ACROSS projects,
+  so its natural home is the fleet tier.
+- **Cross-project rows it owns:** release cutovers, ADRs that touch
+  multiple repos, the operator's "BLOCKING YOU" queue, fleet-wide
+  campaigns.
+- **Per-task agent:** `agent: scitex-lead` on rows the lead drives;
+  rows the lead REASSIGNS to a worker land with that worker's
+  `agent` value (and the worker takes ownership from then on).
+- **Resolves rows on behalf of the operator:** when the operator
+  delegates a Resolve, the lead writes the resolution + an
+  `adr.md` Notes entry capturing the rationale + provenance.
+
+The lead can write into a project-local root when it's seeding a
+follow-up for a specific repo's agent (then the worker takes over):
+
+```bash
+# Lead seeding a task into the proj-scitex-todo project tier:
+scitex-todo --tasks ~/proj/scitex-todo/.scitex/todo/tasks.yaml \
+  add proj-scitex-todo-fleet-rollout \
+  '[P0] Fleet rollout of scitex-todo skill across agents' \
+  --scope agent:proj-scitex-todo \
+  --assignee proj-scitex-todo \
+  --status pending
+```
+
+After seeding, the row's owning agent (`assignee`) inherits the
+write-lane and the lead steps back to monitoring.
+
+## Lead ↔ worker shared-board sync
+
+The shared board is the operator's at-a-glance view of the whole
+fleet. Both the lead and every worker need to converge on what it
+shows. Three sync wires connect them; understanding all three keeps
+you out of "did anyone tell me?" mode.
+
+| Wire                            | Who runs it           | Latency  | Failure mode                                                                                  |
+| ------------------------------- | --------------------- | -------- | --------------------------------------------------------------------------------------------- |
+| Aggregator sidecar (SSH-fanout) | operator's host       | 5 s tick | Per-tier `as_of` stamp surfaces UNREACHABLE; not silently omitted.                             |
+| GitHub `git push/pull`          | every writer          | minutes  | Durable cross-host substrate; survives host restarts; the aggregator is the LIVE complement.   |
+| sac channel push (a2a notify)   | the writer            | sub-second | If the bus is down, the aggregator's 5 s poll catches up; push is FAST path, poll is durable. |
+
+### What the WORKER does
+
+- **Writes** to its project-local root (`<git-root>/.scitex/todo/`).
+  Frequency: as work changes. CLI / MCP / Python — your choice.
+- **Pushes** a sac channel event on `scitex-todo:task:<project>/<id>`
+  for high-priority status flips so the lead + operator wake
+  immediately (vs the 5 s poll).
+- **Optionally `git commit && git push`** on its project's
+  `.scitex/todo/` after batches of writes — this is what makes the
+  state durable cross-host. Default is gitignored; opt in once your
+  project's task store is stable.
+
+### What the LEAD does
+
+- **Reads** the user-global root through the board (`:8051`) +
+  `~/.scitex/todo/tasks.yaml` directly + the per-task `adr.md`
+  files when context is needed.
+- **Writes** to the user-global root for fleet-coordination rows.
+- **Subscribes** to the `scitex-todo:task:*` firehose on the sac
+  channel bus — every worker write surfaces as a wake-up. Logs into
+  `_log_meta`; no auto-action unless the row's a `kind: decision`
+  one the lead is on the hook for.
+- **Resolves** operator-decision rows on the BLOCKING YOU panel when
+  delegated; appends the resolution into the row's `adr.md` Notes.
+
+### What the OPERATOR sees
+
+- The board (`:8051`) — auto-refreshes every 5 s via `/rev` mtime
+  poll. AutoRefresh.tsx pulls + re-renders when the count or mtime
+  changes.
+- The BLOCKING YOU panel — strict predicate
+  `status == "blocked" AND blocker == "operator-decision"`. Resolve
+  button writes `status: done`, fires a `notify <agent>` a2a, and
+  optionally appends a `comments[]` entry.
+
+### Cross-reading the other tier
+
+When a worker needs the fleet view (e.g. "what's the lead waiting on
+across all projects?"):
 
 ```bash
 SCITEX_TODO_TASKS=~/.scitex/todo/tasks.yaml scitex-todo list-tasks --json
 ```
+
+When the lead needs a specific worker's project tier (e.g. to verify
+a row hasn't yet propagated):
+
+```bash
+SCITEX_TODO_TASKS=~/proj/<worker-repo>/.scitex/todo/tasks.yaml \
+    scitex-todo list-tasks --json
+```
+
+Same CLI, same flags — the only thing changing is which root you
+read.
 
 ---
 
@@ -419,6 +577,40 @@ applies to you using it too — silent dropouts are the bug we're
 trying to eliminate.
 
 ---
+
+## Propagation — the @path mechanism
+
+This skill is the **teaching surface**: the operator's directive
+(2026-06-07) is that every fleet agent auto-loads it on boot, so
+"how do I file a TODO" is the same answer everywhere.
+
+Mechanism (in the order a fresh agent picks it up):
+
+1. **Pip-install pins the version** — `pip install
+   scitex-todo>=<version>` lands the bundled skills under
+   `<site-packages>/scitex_todo/_skills/scitex-todo/`.
+2. **Agent's `spec.yaml` references the bundled path** under a
+   `required_skills:` entry — exact grammar is the SAC container
+   glue's domain, but the canonical reference shape is:
+
+   ```yaml
+   required_skills:
+     - "@scitex_todo:_skills/scitex-todo/40_for-consuming-agents.md"
+   ```
+
+   (See [41_cli-mcp-gap-analysis.md § G](41_cli-mcp-gap-analysis.md#g-propagation-the-path-mechanism)
+   for the wiring rationale.)
+3. **Container boot resolves the reference** — the skill text loads
+   into the agent's context; the agent now knows the protocol.
+4. **Operator host: `scitex-todo skills install --claude-symlink`**
+   back-fills the symlink under `~/.claude/skills/scitex/` so
+   Claude Code on the operator's host sees the same skill.
+
+**Versioning**: the skill is **version-pinned via the package**, NOT
+edited live. Editing one skill leaf does NOT propagate via spec.yaml
+until the consumer pip-bumps `scitex-todo`. That gives the lead a
+deterministic rollout — pin the version on one agent at a time,
+watch it adopt, broaden once stable.
 
 ## Reference
 
