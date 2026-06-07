@@ -63,3 +63,11 @@ The store is resolved in precedence order: explicit `--tasks` →
   live), task referencing scheme, push-notification model, Core vs
   Extension Ports vs Fleet Adapters architectural backbone. Reference
   spec; for the short how-to, use 11.
+
+### Operations (40+)
+- [40_task-escalation.md](40_task-escalation.md) — backlog burn-down /
+  blocker-driven scheduling. Two-state model (BLOCKED with
+  reason+dependency from a 4-value enum vs RUNNABLE), the sweep cycle
+  (re-check blockers → escalate runnable), lead-centric funnel routing,
+  and what the lead a2a's to whom. Keeps consumption rate > arrival
+  rate so the board doesn't drift out of sync with the codebase.
