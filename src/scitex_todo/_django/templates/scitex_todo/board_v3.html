@@ -569,6 +569,22 @@
         });
       });
     }
+
+    // ESC closes the open modal — operator TG 265: "popup は常に esc 有効
+    // なように." HIG / WAI-ARIA universal expectation. Long-term home is
+    // the scitex-ui Modal primitive (so every scitex-app gets it for free);
+    // this local handler is the short-term scitex-todo fix until that lands.
+    // Listens on document so the focus can be anywhere (the modal contents,
+    // an input field, the body) and ESC still closes.
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      const backdrop = document.getElementById("detail-backdrop");
+      if (backdrop && backdrop.classList.contains("show")) {
+        closeDetail();
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
     function toggleBlockingMe(e) {
       STATE.filters.blockingMe = !STATE.filters.blockingMe;
       e.currentTarget.classList.toggle("on", STATE.filters.blockingMe);
