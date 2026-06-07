@@ -939,11 +939,8 @@ def test_load_tasks_accepts_none_blocker(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_load_tasks_accepts_all_new_operator_fields(tmp_path):
-    """task / project / host / created_at / goal / agent / last_activity /
-    pr_url / issue_url all load cleanly when present."""
-    store = _write(
-        tmp_path,
+def _all_operator_fields_yaml() -> str:
+    return (
         "tasks:\n"
         "  - id: x\n"
         "    title: X\n"
@@ -956,44 +953,69 @@ def test_load_tasks_accepts_all_new_operator_fields(tmp_path):
         "    agent: proj-scitex-todo\n"
         "    last_activity: '12s ago'\n"
         "    pr_url: https://github.com/ywatanabe1989/scitex-todo/pull/54\n"
-        "    issue_url: https://github.com/ywatanabe1989/scitex-agent-container/issues/324\n",
+        "    issue_url: https://github.com/ywatanabe1989/scitex-agent-container/issues/324\n"
     )
+
+
+def test_load_tasks_accepts_new_operator_field_task(tmp_path):
+    """`task` (BIG board-card text) loads cleanly when present."""
+    # Arrange
+    store = _write(tmp_path, _all_operator_fields_yaml())
+    # Act
     t = load_tasks(store)[0]
+    # Assert
     assert t["task"] == "PR #54 in CI"
+
+
+def test_load_tasks_accepts_new_operator_field_host(tmp_path):
+    """`host` (where the work happens) loads cleanly when present."""
+    # Arrange
+    store = _write(tmp_path, _all_operator_fields_yaml())
+    # Act
+    t = load_tasks(store)[0]
+    # Assert
     assert t["host"] == "ywata-note-win"
 
 
 def test_load_tasks_raises_on_non_string_task_field(tmp_path):
-    """`task: 123` (int) fails-loud — type-check on write."""
+    """`task: 123` (int) fails-loud with a message naming the bad field."""
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n  - {id: x, title: X, status: pending, task: 123}\n",
     )
-    with pytest.raises(TaskValidationError) as exc_info:
+    # Act
+    ctx = pytest.raises(TaskValidationError, match=r"task.*non-string")
+    # Assert
+    with ctx:
         load_tasks(store)
-    assert "task" in str(exc_info.value)
-    assert "non-string" in str(exc_info.value)
 
 
 def test_load_tasks_raises_on_non_string_pr_url(tmp_path):
     """`pr_url: 12345` (int) fails-loud — URL must be a string."""
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n  - {id: x, title: X, status: pending, pr_url: 12345}\n",
     )
-    with pytest.raises(TaskValidationError) as exc_info:
+    # Act
+    ctx = pytest.raises(TaskValidationError, match="pr_url")
+    # Assert
+    with ctx:
         load_tasks(store)
-    assert "pr_url" in str(exc_info.value)
 
 
 def test_load_tasks_raises_on_empty_goal_string(tmp_path):
     """`goal: ""` (empty string) fails-loud — non-empty rule."""
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n  - {id: x, title: X, status: pending, goal: \"\"}\n",
     )
-    with pytest.raises(TaskValidationError) as exc_info:
+    # Act
+    ctx = pytest.raises(TaskValidationError, match="goal")
+    # Assert
+    with ctx:
         load_tasks(store)
-    assert "goal" in str(exc_info.value)
 
 # EOF
