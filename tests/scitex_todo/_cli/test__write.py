@@ -644,24 +644,20 @@ def test_list_filter_multi_status_unions(tmp_path):
 
 
 def test_list_filter_blocking_me_flag(tmp_path):
-    # Arrange
+    # Arrange — seed via CLI for shape + Python API for the blocker
+    # field (the CLI --blocker flag lands in a sibling PR; this PR's
+    # filter logic doesn't need the CLI surface to test the predicate).
     runner = CliRunner()
     store = _store_path(tmp_path)
     runner.invoke(main, ["add", "a", "A", "--tasks", store])
     runner.invoke(
-        main,
-        [
-            "add", "b", "B", "--tasks", store,
-            "--status", "blocked", "--blocker", "operator-decision",
-        ],
+        main, ["add", "b", "B", "--tasks", store, "--status", "blocked"]
     )
+    _store.update_task(store, "b", blocker="operator-decision")
     runner.invoke(
-        main,
-        [
-            "add", "c", "C", "--tasks", store,
-            "--status", "blocked", "--blocker", "dependency",
-        ],
+        main, ["add", "c", "C", "--tasks", store, "--status", "blocked"]
     )
+    _store.update_task(store, "c", blocker="dependency")
     # Act
     result = runner.invoke(
         main,
