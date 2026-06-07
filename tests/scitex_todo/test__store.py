@@ -32,8 +32,11 @@ def test_add_task_returns_inserted_dict(tmp_path):
     inserted = _store.add_task(
         store, id="design", title="Design phase", status="pending"
     )
-    # Assert
-    assert inserted == {"id": "design", "title": "Design phase", "status": "pending"}
+    # Assert — core fields present (created_at + last_activity auto-stamped
+    # by D11 partial-fix; their exact ISO values are tested separately).
+    assert {k: inserted[k] for k in ("id", "title", "status")} == {
+        "id": "design", "title": "Design phase", "status": "pending"
+    }
 
 
 def test_add_task_creates_store_on_disk(tmp_path):
@@ -235,6 +238,71 @@ def test_add_task_none_extras_are_dropped(tmp_path):
     on_disk = _model.load_tasks(store)[0]
     # Assert
     assert "project" not in on_disk
+
+# --------------------------------------------------------------------------- #
+# D11 partial-fix — auto-stamp created_at + last_activity (PR #67-stamps)     #
+# --------------------------------------------------------------------------- #
+def test_add_task_auto_stamps_created_at(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    # Act
+    inserted = _store.add_task(store, id="a", title="A")
+    # Assert — created_at present and ISO-Z formatted
+    assert inserted["created_at"].endswith("Z")
+
+
+def test_add_task_auto_stamps_last_activity(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    # Act
+    inserted = _store.add_task(store, id="a", title="A")
+    # Assert
+    assert inserted["last_activity"].endswith("Z")
+
+
+def test_add_task_created_at_equals_last_activity_on_insert(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    # Act
+    inserted = _store.add_task(store, id="a", title="A")
+    # Assert
+    assert inserted["created_at"] == inserted["last_activity"]
+
+
+def test_update_task_auto_bumps_last_activity(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    inserted = _store.add_task(store, id="a", title="A")
+    insert_stamp = inserted["last_activity"]
+    # Wait a beat so the next stamp differs at second resolution.
+    import time as _time
+    _time.sleep(1.1)
+    # Act
+    merged = _store.update_task(store, "a", status="in_progress")
+    # Assert
+    assert merged["last_activity"] != insert_stamp
+
+
+def test_update_task_preserves_created_at(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    inserted = _store.add_task(store, id="a", title="A")
+    created = inserted["created_at"]
+    # Act
+    merged = _store.update_task(store, "a", status="in_progress")
+    # Assert
+    assert merged["created_at"] == created
+
+
+def test_update_task_explicit_last_activity_wins_over_auto_stamp(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    _store.add_task(store, id="a", title="A")
+    explicit = "2026-01-01T00:00:00Z"
+    # Act
+    merged = _store.update_task(store, "a", last_activity=explicit)
+    # Assert
+    assert merged["last_activity"] == explicit
 
 
 # --------------------------------------------------------------------------- #
