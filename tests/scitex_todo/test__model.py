@@ -696,44 +696,50 @@ _COMPUTE_ROUND_TRIP_SETUP_YAML = (
 )
 
 
-def _seed_compute_round_trip(tmp_path):
-    """Helper: write + load + mutate; returns (store, reloaded-after-save)."""
+def _prepare_compute_store(tmp_path):
+    """Arrange helper: write + load + mutate; returns (store_path, tasks)."""
     store = _write(tmp_path, _COMPUTE_ROUND_TRIP_SETUP_YAML)
     tasks = load_tasks(store)
     tasks[0]["status"] = "done"
     tasks[0]["finished_at"] = "2026-06-06T13:30:00Z"
-    save_tasks(tasks, store)
-    return store, load_tasks(store)[0]
+    return store, tasks
 
 
 def test_save_tasks_round_trip_preserves_kind_compute(tmp_path):
     # Arrange
+    store, tasks = _prepare_compute_store(tmp_path)
     # Act
-    _, reloaded = _seed_compute_round_trip(tmp_path)
+    save_tasks(tasks, store)
+    reloaded = load_tasks(store)[0]
     # Assert
     assert reloaded["kind"] == "compute"
 
 
 def test_save_tasks_round_trip_preserves_job_id(tmp_path):
     # Arrange
+    store, tasks = _prepare_compute_store(tmp_path)
     # Act
-    _, reloaded = _seed_compute_round_trip(tmp_path)
+    save_tasks(tasks, store)
+    reloaded = load_tasks(store)[0]
     # Assert
     assert reloaded["job_id"] == "99"
 
 
 def test_save_tasks_round_trip_writes_finished_at(tmp_path):
     # Arrange
+    store, tasks = _prepare_compute_store(tmp_path)
     # Act
-    _, reloaded = _seed_compute_round_trip(tmp_path)
+    save_tasks(tasks, store)
+    reloaded = load_tasks(store)[0]
     # Assert
     assert reloaded["finished_at"] == "2026-06-06T13:30:00Z"
 
 
 def test_save_tasks_round_trip_preserves_header_comment(tmp_path):
     # Arrange
+    store, tasks = _prepare_compute_store(tmp_path)
     # Act
-    store, _ = _seed_compute_round_trip(tmp_path)
+    save_tasks(tasks, store)
     # Assert
     assert "# preserved header" in store.read_text()
 
@@ -897,44 +903,50 @@ _DECISION_ROUND_TRIP_YAML = (
 )
 
 
-def _seed_decision_round_trip(tmp_path):
-    """Helper: write + load + mutate; returns (store, reloaded-after-save)."""
+def _prepare_decision_store(tmp_path):
+    """Arrange helper: write + load + mutate; returns (store_path, tasks)."""
     store = _write(tmp_path, _DECISION_ROUND_TRIP_YAML)
     tasks = load_tasks(store)
     tasks[0]["status"] = "done"   # operator decided
     tasks[0].pop("blocker")        # no longer blocked
-    save_tasks(tasks, store)
-    return store, load_tasks(store)[0]
+    return store, tasks
 
 
 def test_save_tasks_round_trip_decision_flips_status_to_done(tmp_path):
     # Arrange
+    store, tasks = _prepare_decision_store(tmp_path)
     # Act
-    _, reloaded = _seed_decision_round_trip(tmp_path)
+    save_tasks(tasks, store)
+    reloaded = load_tasks(store)[0]
     # Assert
     assert reloaded["status"] == "done"
 
 
 def test_save_tasks_round_trip_decision_drops_blocker(tmp_path):
     # Arrange
+    store, tasks = _prepare_decision_store(tmp_path)
     # Act
-    _, reloaded = _seed_decision_round_trip(tmp_path)
+    save_tasks(tasks, store)
+    reloaded = load_tasks(store)[0]
     # Assert
     assert "blocker" not in reloaded
 
 
 def test_save_tasks_round_trip_decision_preserves_kind(tmp_path):
     # Arrange
+    store, tasks = _prepare_decision_store(tmp_path)
     # Act
-    _, reloaded = _seed_decision_round_trip(tmp_path)
+    save_tasks(tasks, store)
+    reloaded = load_tasks(store)[0]
     # Assert
     assert reloaded["kind"] == "decision"
 
 
 def test_save_tasks_round_trip_decision_preserves_header_comment(tmp_path):
     # Arrange
+    store, tasks = _prepare_decision_store(tmp_path)
     # Act
-    store, _ = _seed_decision_round_trip(tmp_path)
+    save_tasks(tasks, store)
     # Assert
     assert "# preserved" in store.read_text()
 
@@ -1112,47 +1124,52 @@ _ROUND_TRIP_PAYLOAD = {
 }
 
 
-def _round_trip_dataclass():
-    from scitex_todo._model import Task
-    return Task.from_dict(_ROUND_TRIP_PAYLOAD).to_dict()
-
-
 def test_task_dataclass_round_trip_preserves_task_field():
     # Arrange
+    from scitex_todo._model import Task
+    payload = _ROUND_TRIP_PAYLOAD
     # Act
-    d = _round_trip_dataclass()
+    d = Task.from_dict(payload).to_dict()
     # Assert
     assert d["task"] == "do the thing"
 
 
 def test_task_dataclass_round_trip_preserves_status():
     # Arrange
+    from scitex_todo._model import Task
+    payload = _ROUND_TRIP_PAYLOAD
     # Act
-    d = _round_trip_dataclass()
+    d = Task.from_dict(payload).to_dict()
     # Assert
     assert d["status"] == "blocked"
 
 
 def test_task_dataclass_round_trip_preserves_blocker():
     # Arrange
+    from scitex_todo._model import Task
+    payload = _ROUND_TRIP_PAYLOAD
     # Act
-    d = _round_trip_dataclass()
+    d = Task.from_dict(payload).to_dict()
     # Assert
     assert d["blocker"] == "operator-decision"
 
 
 def test_task_dataclass_round_trip_preserves_depends_on():
     # Arrange
+    from scitex_todo._model import Task
+    payload = _ROUND_TRIP_PAYLOAD
     # Act
-    d = _round_trip_dataclass()
+    d = Task.from_dict(payload).to_dict()
     # Assert
     assert d["depends_on"] == ["a", "b"]
 
 
 def test_task_dataclass_round_trip_drops_unknown_tags_field():
     # Arrange
+    from scitex_todo._model import Task
+    payload = _ROUND_TRIP_PAYLOAD
     # Act
-    d = _round_trip_dataclass()
+    d = Task.from_dict(payload).to_dict()
     # Assert
     assert "tags" not in d
 
