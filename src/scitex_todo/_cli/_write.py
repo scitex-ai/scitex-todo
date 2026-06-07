@@ -421,6 +421,93 @@ def done_cmd(task_id, by, as_json, tasks_path) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# comment                                                                     #
+# --------------------------------------------------------------------------- #
+@click.command(
+    "comment",
+    help=(
+        "Append a comment to a task's comments[] (append-only activity log).\n\n"
+        "Defaults: --author falls through $SCITEX_TODO_AGENT -> $USER; --ts "
+        "auto-stamps ISO-8601 UTC now() if omitted.\n\n"
+        "Example:\n"
+        "  scitex-todo comment my-task 'PR #123 landed; CI green'"
+    ),
+)
+@click.argument("task_id")
+@click.argument("text")
+@click.option(
+    "--author",
+    default=None,
+    help="Comment author (default: $SCITEX_TODO_AGENT, then $USER).",
+)
+@click.option(
+    "--ts",
+    default=None,
+    help="Comment timestamp (ISO-8601; default: UTC now()).",
+)
+@click.option(
+    "--in-reply-to",
+    "in_reply_to",
+    default=None,
+    help="Earlier comment's ts to reply to (renders as a nested thread).",
+)
+@click.option("--json", "as_json", is_flag=True, help="Emit the inserted comment as JSON.")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Print what would be appended and exit 0 without mutating the store.",
+)
+@click.option(
+    "-y",
+    "--yes",
+    is_flag=True,
+    help="Skip confirmation (no-op today — comment is non-interactive; reserved for §2).",
+)
+@_TASKS_OPTION
+def comment_cmd(
+    task_id,
+    text,
+    author,
+    ts,
+    in_reply_to,
+    as_json,
+    dry_run,
+    yes,
+    tasks_path,
+) -> None:
+    """Append ``text`` to ``task_id``'s ``comments[]``."""
+    _ = yes  # accepted for §2 compliance
+    if dry_run:
+        click.echo(
+            f"# dry-run: would append comment to task_id={task_id!r} "
+            f"author={author!r} ts={ts!r} in_reply_to={in_reply_to!r} "
+            f"text={text!r}"
+        )
+        return
+    try:
+        entry = _store.add_comment(
+            tasks_path,
+            task_id,
+            text,
+            author=author,
+            ts=ts,
+            in_reply_to=in_reply_to,
+        )
+    except _store.TaskNotFoundError as exc:
+        raise click.ClickException(str(exc)) from None
+    except _store.TaskValidationError as exc:
+        raise click.ClickException(str(exc)) from None
+    _emit(
+        entry,
+        as_json=as_json,
+        human=(
+            f"commented {task_id}  "
+            f"({entry['author']} at {entry['ts']}): {entry['text']}"
+        ),
+    )
+
+
+# --------------------------------------------------------------------------- #
 # summary                                                                     #
 # --------------------------------------------------------------------------- #
 @click.command(
@@ -469,6 +556,7 @@ def register(main: click.Group) -> None:
     main.add_command(add_cmd, name="add")
     main.add_command(update_cmd, name="update")
     main.add_command(done_cmd, name="done")
+    main.add_command(comment_cmd, name="comment")
     main.add_command(summary_cmd, name="summary")
     _admin.register(main)
 

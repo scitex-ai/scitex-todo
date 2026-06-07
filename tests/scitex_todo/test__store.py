@@ -516,6 +516,149 @@ def test_complete_task_missing_raises(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# add_comment                                                                 #
+# --------------------------------------------------------------------------- #
+def test_add_comment_appends_entry_on_disk(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:test")
+    _store.add_task(store, id="a", title="A")
+    # Act
+    _store.add_comment(store, "a", "first comment")
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert len(on_disk["comments"]) == 1
+
+
+def test_add_comment_persists_text(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:test")
+    _store.add_task(store, id="a", title="A")
+    # Act
+    _store.add_comment(store, "a", "first comment")
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["comments"][0]["text"] == "first comment"
+
+
+def test_add_comment_default_author_from_env(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:proj-scitex-todo")
+    _store.add_task(store, id="a", title="A")
+    # Act
+    entry = _store.add_comment(store, "a", "first")
+    # Assert
+    assert entry["author"] == "agent:proj-scitex-todo"
+
+
+def test_add_comment_explicit_author_overrides_env(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:default")
+    _store.add_task(store, id="a", title="A")
+    # Act
+    entry = _store.add_comment(store, "a", "first", author="lead")
+    # Assert
+    assert entry["author"] == "lead"
+
+
+def test_add_comment_auto_stamps_ts_iso8601_utc_z(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:test")
+    _store.add_task(store, id="a", title="A")
+    # Act
+    entry = _store.add_comment(store, "a", "first")
+    # Assert
+    assert entry["ts"].endswith("Z")
+
+
+def test_add_comment_explicit_ts_preserved(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:test")
+    _store.add_task(store, id="a", title="A")
+    # Act
+    entry = _store.add_comment(store, "a", "first", ts="2026-06-07T00:00:00Z")
+    # Assert
+    assert entry["ts"] == "2026-06-07T00:00:00Z"
+
+
+def test_add_comment_preserves_existing_comments(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:test")
+    _store.add_task(store, id="a", title="A")
+    _store.add_comment(store, "a", "first")
+    # Act
+    _store.add_comment(store, "a", "second")
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert [c["text"] for c in on_disk["comments"]] == ["first", "second"]
+
+
+def test_add_comment_in_reply_to_persists(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:test")
+    _store.add_task(store, id="a", title="A")
+    _store.add_comment(store, "a", "parent", ts="2026-06-07T00:00:00Z")
+    # Act
+    _store.add_comment(store, "a", "reply", in_reply_to="2026-06-07T00:00:00Z")
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["comments"][1]["in_reply_to"] == "2026-06-07T00:00:00Z"
+
+
+def test_add_comment_no_in_reply_to_omits_field(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:test")
+    _store.add_task(store, id="a", title="A")
+    # Act
+    entry = _store.add_comment(store, "a", "top-level")
+    # Assert
+    assert "in_reply_to" not in entry
+
+
+def test_add_comment_unknown_task_raises_TaskNotFound(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:test")
+    _store.add_task(store, id="a", title="A")
+    # Act
+    ctx = pytest.raises(_store.TaskNotFoundError)
+    # Assert
+    with ctx:
+        _store.add_comment(store, "missing", "text")
+
+
+def test_add_comment_empty_task_id_raises_typeerror(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    _store.add_task(store, id="a", title="A")
+    # Act
+    ctx = pytest.raises(TypeError)
+    # Assert
+    with ctx:
+        _store.add_comment(store, "", "text")
+
+
+def test_add_comment_empty_text_raises_typeerror(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:test")
+    _store.add_task(store, id="a", title="A")
+    # Act
+    ctx = pytest.raises(TypeError)
+    # Assert
+    with ctx:
+        _store.add_comment(store, "a", "")
+
+
+# --------------------------------------------------------------------------- #
 # list_tasks (scope/assignee/status filters)                                  #
 # --------------------------------------------------------------------------- #
 @pytest.fixture

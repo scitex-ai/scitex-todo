@@ -220,6 +220,37 @@ async def complete_task(
 
 
 @mcp.tool()
+async def add_comment(
+    task_id: str,
+    text: str,
+    author: str | None = None,
+    ts: str | None = None,
+    in_reply_to: str | None = None,
+    tasks_path: str | None = None,
+) -> str:
+    """Append a ``{ts, author, text}`` entry to a task's ``comments[]``.
+
+    The append-only activity log for cross-agent coordination on a task.
+    Defaults: ``author`` falls through $SCITEX_TODO_AGENT → $USER;
+    ``ts`` auto-stamps ISO-8601 UTC now() if omitted. ``in_reply_to``
+    optionally points at an earlier comment's ``ts`` to render as a
+    nested reply (referential-integrity NOT enforced today — same
+    lenience as ``depends_on``).
+
+    Returns the inserted comment entry as JSON.
+    """
+    entry = _store.add_comment(
+        tasks_path,
+        task_id,
+        text,
+        author=author,
+        ts=ts,
+        in_reply_to=in_reply_to,
+    )
+    return json.dumps(entry)
+
+
+@mcp.tool()
 async def list_tasks(
     scope: str | None = None,
     assignee: str | None = None,

@@ -306,13 +306,19 @@ def handle_restore(request, board):
 def handle_comment(request, board):
     """POST comment -> append a comment to a task's thread.
 
-    Body: ``{id, text, author?}``. The server stamps ``ts`` (ISO-8601 UTC)
-    and defaults ``author`` to the supplied value, else ``$USER``, else
-    ``"user"``. Append-only: it reads the task's current ``comments`` list and
-    adds one entry, so concurrent comments from other agents are not clobbered
-    the way a wholesale rewrite would. Unknown id -> 404. Returns the appended
-    comment plus the task's new comment count.
+    Body: ``{id, text, author?, in_reply_to?}``. The server stamps ``ts``
+    (ISO-8601 UTC) and defaults ``author`` to the supplied value, else the
+    full ``$SCITEX_TODO_AGENT → $USER → "user"`` chain. Append-only via
+    :func:`scitex_todo._store.add_comment` so the same read-modify-write
+    lock + validator gate covers GUI / CLI / MCP / Python writes —
+    concurrent comments from other writers are serialised, not clobbered.
+    Unknown id -> 404; bad text -> 400. ``in_reply_to`` optionally points
+    at an earlier comment's ``ts`` so the FE renders the entry as a
+    nested reply.
     """
+    from scitex_todo import TaskNotFoundError, _store
+    from ..services import _reset_cache
+
     if request.method != "POST":
         return JsonResponse({"error": "comment endpoint requires POST"}, status=405)
     payload, err = _parse_body(request)
@@ -330,37 +336,46 @@ def handle_comment(request, board):
         )
 
     author = payload.get("author")
-    if not isinstance(author, str) or not author.strip():
-        author = os.environ.get("USER") or "user"
+    if isinstance(author, str) and author.strip():
+        author = author.strip()
+    else:
+        # Defer to _store.add_comment's default chain
+        # ($SCITEX_TODO_AGENT → $USER → "unknown") rather than re-implementing.
+        author = None
 
-    tasks = list(board.tasks)
-    task = next((t for t in tasks if t["id"] == task_id), None)
-    if task is None:
+    in_reply_to = payload.get("in_reply_to")
+    if in_reply_to is not None and (
+        not isinstance(in_reply_to, str) or not in_reply_to.strip()
+    ):
+        return JsonResponse(
+            {"error": "comment 'in_reply_to' must be a non-empty string"},
+            status=400,
+        )
+
+    try:
+        comment = _store.add_comment(
+            board.store_path,
+            task_id,
+            text.strip(),
+            author=author,
+            in_reply_to=in_reply_to,
+        )
+    except TaskNotFoundError:
         return JsonResponse({"error": f"no task with id {task_id!r}"}, status=404)
 
-    comment = {
-        "ts": datetime.datetime.now(datetime.timezone.utc)
-        .replace(microsecond=0)
-        .isoformat(),
-        "author": author.strip(),
-        "text": text.strip(),
-    }
-    existing = task.get("comments")
-    task["comments"] = ([*existing] if isinstance(existing, list) else []) + [comment]
+    # Cache reset so the next /graph read sees the new comment within the
+    # same request cycle (AutoRefresh's 5s poll also catches it via /rev).
+    _reset_cache()
 
-    err = _save(tasks, board)
-    if err:
-        return err
     logger.info(
         "[scitex-todo] comment on %s by %s in %s",
         task_id,
-        author,
+        comment["author"],
         board.store_path,
     )
     return JsonResponse(
         {
             "comment": comment,
-            "count": len(task["comments"]),
             "store_path": str(board.store_path),
         }
     )

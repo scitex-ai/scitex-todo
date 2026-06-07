@@ -80,6 +80,7 @@ _CONVENTION_A_NAMES = {
     "add_task",
     "update_task",
     "complete_task",
+    "add_comment",
     "list_tasks",
     "summarize_tasks",
     "resolve_store",
@@ -303,6 +304,59 @@ def test_update_task_sets_agent(tmp_path):
     )))
     # Assert
     assert out["agent"] == "proj-scitex-todo"
+
+
+def test_add_comment_returns_text(tmp_path, env):
+    # Arrange
+    env.set("SCITEX_TODO_AGENT", "agent:mcp-test")
+    from scitex_todo._mcp_server import add_comment, add_task
+    store = str(tmp_path / "tasks.yaml")
+    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
+    # Act
+    out = json.loads(
+        asyncio.run(_call_tool(
+            add_comment, task_id="a", text="first", tasks_path=store
+        ))
+    )
+    # Assert
+    assert out["text"] == "first"
+
+
+def test_add_comment_default_author_from_env(tmp_path, env):
+    # Arrange
+    env.set("SCITEX_TODO_AGENT", "agent:mcp-test")
+    from scitex_todo._mcp_server import add_comment, add_task
+    store = str(tmp_path / "tasks.yaml")
+    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
+    # Act
+    out = json.loads(
+        asyncio.run(_call_tool(
+            add_comment, task_id="a", text="first", tasks_path=store
+        ))
+    )
+    # Assert
+    assert out["author"] == "agent:mcp-test"
+
+
+def test_add_comment_in_reply_to_persists(tmp_path, env):
+    # Arrange
+    env.set("SCITEX_TODO_AGENT", "agent:mcp-test")
+    from scitex_todo._mcp_server import add_comment, add_task
+    store = str(tmp_path / "tasks.yaml")
+    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
+    asyncio.run(_call_tool(
+        add_comment, task_id="a", text="parent",
+        ts="2026-06-07T00:00:00Z", tasks_path=store,
+    ))
+    # Act
+    out = json.loads(
+        asyncio.run(_call_tool(
+            add_comment, task_id="a", text="reply",
+            in_reply_to="2026-06-07T00:00:00Z", tasks_path=store,
+        ))
+    )
+    # Assert
+    assert out["in_reply_to"] == "2026-06-07T00:00:00Z"
 
 
 def test_update_sets_status(tmp_path):

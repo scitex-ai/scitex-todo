@@ -302,6 +302,40 @@ def test_comment_unknown_id_returns_404(store):
     assert response.status_code == 404
 
 
+def test_comment_in_reply_to_persists(store):
+    # Arrange — seed a parent comment first with an explicit author so the
+    # author chain is deterministic across CI environments.
+    _post("comment", store, {"id": "build", "text": "parent", "author": "a"})
+    parent_ts = _load(store)["build"]["comments"][0]["ts"]
+    # Act
+    _post(
+        "comment",
+        store,
+        {"id": "build", "text": "reply", "author": "b", "in_reply_to": parent_ts},
+    )
+    reply = _load(store)["build"]["comments"][1]
+    # Assert
+    assert reply["in_reply_to"] == parent_ts
+
+
+def test_comment_in_reply_to_omitted_field_when_top_level(store):
+    # Arrange
+    _post("comment", store, {"id": "build", "text": "top", "author": "a"})
+    # Act
+    top = _load(store)["build"]["comments"][0]
+    # Assert
+    assert "in_reply_to" not in top
+
+
+def test_comment_empty_in_reply_to_rejected_with_400(store):
+    # Arrange
+    body = {"id": "build", "text": "x", "author": "a", "in_reply_to": ""}
+    # Act
+    response = _post("comment", store, body)
+    # Assert
+    assert response.status_code == 400
+
+
 # ── edge ─────────────────────────────────────────────────────────────────
 def test_edge_add_depends_on_returns_ok(store):
     # Arrange

@@ -315,6 +315,70 @@ def complete_task(
     raise TaskNotFoundError(f"task id {task_id!r} not found in {resolved}")
 
 
+def add_comment(
+    store: str | Path | None = None,
+    task_id: str | None = None,
+    text: str | None = None,
+    *,
+    author: str | None = None,
+    ts: str | None = None,
+    in_reply_to: str | None = None,
+) -> dict:
+    """Append a ``{ts, author, text}`` entry to ``task_id``'s ``comments[]``.
+
+    The append-only activity log per the operator's fleet protocol — every
+    agent + the operator + the lead use this to coordinate on a task
+    without overwriting other writers' state. Returns the inserted
+    comment dict (not the merged task) so callers can echo "what just
+    landed."
+
+    Defaults:
+        ``ts`` → :func:`_utc_now_iso` if omitted (second-resolution UTC).
+        ``author`` → :func:`_default_agent` chain
+                     (``$SCITEX_TODO_AGENT`` → ``getpass.getuser()`` →
+                     ``"unknown"``) if omitted.
+        ``in_reply_to`` → optional pointer at an earlier comment's
+                          ``ts``. When set, the FE renders the entry as
+                          a reply (tree fold). Referential-integrity is
+                          NOT enforced today (matches ``depends_on``'s
+                          lenience); a future PR closes the gap.
+
+    Raises
+    ------
+    TaskNotFoundError
+        If no task matches ``task_id``.
+    TaskValidationError
+        If the resulting ``comments[]`` shape fails ``_validate_tasks``
+        (``text`` non-empty + entry is a mapping with ``text`` key).
+    TypeError
+        If ``task_id`` or ``text`` is empty / None.
+    """
+    if not task_id:
+        raise TypeError("add_comment() requires a non-empty task_id")
+    if text is None or text == "":
+        raise TypeError("add_comment() requires a non-empty text")
+    resolved = _resolved_store(store)
+    entry: dict = {
+        "ts": ts if ts else _utc_now_iso(),
+        "author": _default_agent(author),
+        "text": text,
+    }
+    if in_reply_to:
+        entry["in_reply_to"] = in_reply_to
+    with _store_lock(resolved):
+        tasks = load_tasks(resolved)
+        for task in tasks:
+            if task.get("id") == task_id:
+                comments = task.get("comments")
+                if not isinstance(comments, list):
+                    comments = []
+                    task["comments"] = comments
+                comments.append(entry)
+                _save_tasks_unlocked(tasks, resolved)
+                return dict(entry)
+    raise TaskNotFoundError(f"task id {task_id!r} not found in {resolved}")
+
+
 def list_tasks(
     store: str | Path | None = None,
     *,

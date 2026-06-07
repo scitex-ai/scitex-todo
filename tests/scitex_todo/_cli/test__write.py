@@ -532,6 +532,169 @@ def test_done_by_overrides_env_on_disk(tmp_path, env):
 
 
 # --------------------------------------------------------------------------- #
+# comment                                                                     #
+# --------------------------------------------------------------------------- #
+def test_comment_exits_zero(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    # Act
+    result = runner.invoke(
+        main, ["comment", "a", "first comment", "--tasks", store]
+    )
+    # Assert
+    assert result.exit_code == 0, result.output
+
+
+def test_comment_human_output_mentions_text(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    # Act
+    result = runner.invoke(
+        main, ["comment", "a", "first comment", "--tasks", store]
+    )
+    # Assert
+    assert "first comment" in result.output
+
+
+def test_comment_persists_text_on_disk(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    runner.invoke(main, ["comment", "a", "first comment", "--tasks", store])
+    # Act
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["comments"][0]["text"] == "first comment"
+
+
+def test_comment_persists_author_from_env(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:proj-scitex-todo")
+    runner.invoke(main, ["comment", "a", "first", "--tasks", store])
+    # Act
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["comments"][0]["author"] == "agent:proj-scitex-todo"
+
+
+def test_comment_author_flag_overrides_env(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:env")
+    runner.invoke(
+        main,
+        ["comment", "a", "first", "--tasks", store, "--author", "lead"],
+    )
+    # Act
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["comments"][0]["author"] == "lead"
+
+
+def test_comment_explicit_ts_persists(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    runner.invoke(
+        main,
+        [
+            "comment", "a", "first", "--tasks", store,
+            "--ts", "2026-06-07T00:00:00Z",
+        ],
+    )
+    # Act
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["comments"][0]["ts"] == "2026-06-07T00:00:00Z"
+
+
+def test_comment_in_reply_to_persists(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    runner.invoke(
+        main,
+        [
+            "comment", "a", "parent", "--tasks", store,
+            "--ts", "2026-06-07T00:00:00Z",
+        ],
+    )
+    runner.invoke(
+        main,
+        [
+            "comment", "a", "reply", "--tasks", store,
+            "--in-reply-to", "2026-06-07T00:00:00Z",
+        ],
+    )
+    # Act
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["comments"][1]["in_reply_to"] == "2026-06-07T00:00:00Z"
+
+
+def test_comment_dry_run_does_not_mutate_store(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    runner.invoke(
+        main,
+        ["comment", "a", "first", "--tasks", store, "--dry-run"],
+    )
+    # Act
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert "comments" not in on_disk or len(on_disk.get("comments") or []) == 0
+
+
+def test_comment_missing_task_id_exits_nonzero(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    # Act
+    result = runner.invoke(
+        main, ["comment", "missing", "first", "--tasks", store]
+    )
+    # Assert
+    assert result.exit_code != 0
+
+
+def test_comment_json_output_parses_to_dict(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    # Act
+    result = runner.invoke(
+        main, ["comment", "a", "first", "--tasks", store, "--json"]
+    )
+    parsed = json.loads(result.output)
+    # Assert
+    assert parsed["text"] == "first"
+
+
+# --------------------------------------------------------------------------- #
 # list (extended w/ filters)                                                  #
 # --------------------------------------------------------------------------- #
 def test_list_filters_by_scope_exits_zero(tmp_path):
