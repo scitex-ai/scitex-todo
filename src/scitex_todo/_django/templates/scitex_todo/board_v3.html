@@ -516,6 +516,150 @@
   }
   .card--hidden { opacity: 0.55; filter: grayscale(0.3); }
 
+  /* ── CRUD wiring — Add Task button + Add Task modal + project-hide ──
+     Operator TG 344 — operator could not create/update/delete/hide
+     projects from the browser. All four ops wire to the existing
+     /create /update /delete /restore endpoints (board v3 was
+     read-only-plus-Resolve before this PR). */
+  .add-task-btn {
+    padding: 5px 11px;
+    background: rgba(76,175,80,0.20);
+    color: var(--green);
+    border: 1px solid var(--green);
+    border-radius: 6px;
+    font: inherit; font-size: 0.82rem; font-weight: 700;
+    cursor: pointer;
+  }
+  .add-task-btn:hover {
+    background: var(--green); color: #fff;
+    box-shadow: 0 0 8px 1px rgba(76,175,80,0.45);
+  }
+  .proj-hide {
+    position: relative;
+    font-size: 0.78rem;
+  }
+  .proj-hide > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 5px 11px;
+    background: rgba(255,255,255,0.04);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .proj-hide > summary::-webkit-details-marker { display: none; }
+  .proj-hide > summary:hover { color: var(--text); border-color: var(--purple); }
+  .proj-hide[open] > summary {
+    background: var(--purple);
+    color: #fff; border-color: var(--purple);
+  }
+  .proj-hide-list {
+    position: absolute; top: calc(100% + 4px); left: 0;
+    z-index: 25;
+    min-width: 220px; max-width: 320px;
+    max-height: 280px; overflow-y: auto;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px; display: flex; flex-direction: column; gap: 2px;
+    box-shadow: 0 6px 22px rgba(0,0,0,0.45);
+  }
+  .proj-hide-row {
+    display: flex; align-items: center; gap: 7px;
+    padding: 5px 8px; border-radius: 5px;
+    color: var(--text); cursor: pointer; user-select: none;
+  }
+  .proj-hide-row:hover { background: rgba(255,255,255,0.06); }
+  .proj-hide-row input { cursor: pointer; }
+  .proj-hide-empty { color: var(--text-muted); font-style: italic; padding: 6px 8px; }
+  .col--proj-hidden { display: none; }  /* hide whole project column */
+
+  /* Add Task modal — minimal form with title + project + status. */
+  .at-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55);
+    display: none; align-items: center; justify-content: center;
+    z-index: 110;
+  }
+  .at-backdrop.show { display: flex; }
+  .at-modal {
+    background: var(--card-bg);
+    border: 1px solid var(--green); border-radius: 10px;
+    padding: 22px; width: 90%; max-width: 520px;
+    box-shadow: 0 6px 40px rgba(0,0,0,0.5);
+  }
+  .at-modal h2 {
+    margin: 0 0 14px 0; color: var(--green); font-size: 1.1rem;
+  }
+  .at-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+  .at-row label {
+    color: var(--text-muted); font-size: 0.72rem;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .at-input, .at-select {
+    background: #232a36; color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 10px; font: inherit; font-size: 0.92rem;
+  }
+  .at-input:focus, .at-select:focus {
+    outline: none; border-color: var(--green);
+  }
+  .at-actions {
+    display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px;
+    border-top: 1px solid var(--border); padding-top: 14px;
+  }
+  .at-btn {
+    padding: 7px 16px; border-radius: 6px;
+    font: inherit; cursor: pointer;
+  }
+  .at-btn-cancel {
+    background: transparent; color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
+  .at-btn-create {
+    background: var(--green); color: #fff;
+    border: 1px solid var(--green); font-weight: 700;
+    box-shadow: 0 0 8px 1px rgba(76,175,80,0.45);
+  }
+  .at-btn-create:hover { background: #5dbb60; box-shadow: 0 0 14px 3px rgba(76,175,80,0.65); }
+  .at-btn-create:disabled { opacity: 0.55; cursor: wait; }
+
+  /* Edit + Delete buttons inside the detail modal. */
+  .detail-edit {
+    background: transparent; color: var(--purple);
+    border: 1px solid var(--purple);
+    padding: 7px 14px; border-radius: 6px; cursor: pointer;
+    font: inherit; font-weight: 700;
+  }
+  .detail-edit:hover { background: var(--purple); color: #fff; }
+  .detail-delete {
+    background: transparent; color: var(--red);
+    border: 1px solid var(--red);
+    padding: 7px 14px; border-radius: 6px; cursor: pointer;
+    font: inherit; font-weight: 700;
+  }
+  .detail-delete:hover { background: var(--red); color: #fff; box-shadow: 0 0 8px 1px rgba(244,67,54,0.45); }
+  .detail-edit-form { display: none; flex-direction: column; gap: 10px; margin-top: 10px; }
+  .detail-edit-form.show { display: flex; }
+  .d-edit-input, .d-edit-select, .d-edit-textarea {
+    background: #232a36; color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 10px; font: inherit; font-size: 0.92rem;
+  }
+  .d-edit-textarea { min-height: 80px; resize: vertical; font-family: ui-monospace, monospace; }
+  .d-edit-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .d-edit-save { background: var(--purple); color: #fff; border: 1px solid var(--purple); padding: 5px 14px; border-radius: 6px; cursor: pointer; font: inherit; font-weight: 700; }
+  .d-edit-cancel { background: transparent; color: var(--text-muted); border: 1px solid var(--border); padding: 5px 14px; border-radius: 6px; cursor: pointer; font: inherit; }
+
+  /* Undo toast — repurposes the existing .toast with an Undo button. */
+  .toast-undo {
+    margin-left: 12px; padding: 2px 10px;
+    background: rgba(255,255,255,0.18); color: #fff;
+    border: 1px solid #fff; border-radius: 4px;
+    font: inherit; font-size: 0.82rem; cursor: pointer; font-weight: 700;
+  }
+  .toast-undo:hover { background: #fff; color: #333; }
+
   .loading {
     text-align: center; color: var(--text-muted);
     padding: 30px; font-style: italic;
@@ -533,6 +677,23 @@
     <select class="filt" id="f-blocker"><option value="">All blockers</option></select>
     <select class="filt" id="f-agent"><option value="">All agents</option></select>
     <button id="reload" class="reload-btn" onclick="loadGraph()">Reload</button>
+    <!-- Add Task — operator-CRUD wiring (TG 344): one-click new-task
+         entry from the filterbar. Opens the #add-task-backdrop modal
+         below; POST /create on submit; loadGraph() refresh. -->
+    <button id="add-task-btn" class="add-task-btn" onclick="openAddTaskModal()"
+            title="Add a new task (Cmd/Ctrl-N)">+ Add Task</button>
+    <!-- Project-hide — per-project COLUMN hide (operator TG 344
+         "プロジェクトの crud/hide"). Soft, client-side, localStorage-
+         backed; mirror the per-card hide pattern below so hidden
+         projects survive reload. -->
+    <details id="proj-hide-wrap" class="proj-hide">
+      <summary id="proj-hide-summary" title="Hide entire project columns from view">
+        🙈 hide project (<span id="proj-hidden-count">0</span>)
+      </summary>
+      <div id="proj-hide-list" class="proj-hide-list">
+        <div class="proj-hide-empty">No projects loaded yet.</div>
+      </div>
+    </details>
     <button id="t-block" class="toggle-block" onclick="toggleBlockingMe(event)">
       🚧 blocking me
     </button>
@@ -591,11 +752,110 @@
           </div>
         </div>
       </div>
+      <!-- Inline edit form (toggled by the Edit button below). The form
+           mirrors the Add-Task modal fields so the operator can change
+           title / status / blocker / note / project / agent / task. POST
+           goes to /update; success reloads via loadGraph(). -->
+      <div class="detail-edit-form" id="d-edit-form">
+        <div class="at-row">
+          <label for="d-edit-title">Title</label>
+          <input class="d-edit-input" id="d-edit-title" type="text">
+        </div>
+        <div class="at-row" style="flex-direction: row; gap: 10px;">
+          <div style="flex: 1;">
+            <label for="d-edit-status">Status</label>
+            <select class="d-edit-select" id="d-edit-status">
+              <option value="pending">pending</option>
+              <option value="in_progress">in_progress</option>
+              <option value="blocked">blocked</option>
+              <option value="done">done</option>
+              <option value="deferred">deferred</option>
+              <option value="failed">failed</option>
+              <option value="goal">goal</option>
+            </select>
+          </div>
+          <div style="flex: 1;">
+            <label for="d-edit-blocker">Blocker</label>
+            <select class="d-edit-select" id="d-edit-blocker">
+              <option value="">(none)</option>
+              <option value="compute">compute</option>
+              <option value="quota">quota</option>
+              <option value="user-pending">user-pending</option>
+              <option value="task-dependency">task-dependency</option>
+              <option value="operator-decision">operator-decision</option>
+            </select>
+          </div>
+        </div>
+        <div class="at-row" style="flex-direction: row; gap: 10px;">
+          <div style="flex: 1;">
+            <label for="d-edit-project">Project</label>
+            <input class="d-edit-input" id="d-edit-project" type="text">
+          </div>
+          <div style="flex: 1;">
+            <label for="d-edit-agent">Agent</label>
+            <input class="d-edit-input" id="d-edit-agent" type="text">
+          </div>
+        </div>
+        <div class="at-row">
+          <label for="d-edit-task">Task (one-line current focus)</label>
+          <input class="d-edit-input" id="d-edit-task" type="text">
+        </div>
+        <div class="at-row">
+          <label for="d-edit-note">Note (markdown body)</label>
+          <textarea class="d-edit-textarea" id="d-edit-note"></textarea>
+        </div>
+        <div class="d-edit-actions">
+          <button class="d-edit-cancel" onclick="cancelDetailEdit()">Cancel</button>
+          <button class="d-edit-save" onclick="saveDetailEdit()">Save</button>
+        </div>
+      </div>
       <div class="detail-actions">
         <button class="detail-close" onclick="closeDetail()">Close</button>
+        <button class="detail-edit" id="d-edit" onclick="enterDetailEdit()">Edit</button>
+        <button class="detail-delete" id="d-delete" onclick="deleteCurrentTask()">Delete</button>
         <button class="detail-cancel-resolve" id="d-cancel-resolve" onclick="disarmResolve()"
                 style="display: none;">Cancel</button>
         <button class="detail-resolve" id="d-resolve" onclick="resolveTask()">Resolve → notify agent</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Task modal (operator TG 344 — create from browser). POST /create,
+       reload board, close modal. project picker pre-fills from existing
+       projects via the auto-discovered list. -->
+  <div class="at-backdrop" id="add-task-backdrop" onclick="closeAddTaskModal(event)">
+    <div class="at-modal" onclick="event.stopPropagation()">
+      <h2>+ Add Task</h2>
+      <div class="at-row">
+        <label for="at-title">Title <span style="color: var(--red);">*</span></label>
+        <input class="at-input" id="at-title" type="text" autocomplete="off"
+               placeholder="What needs to get done?">
+      </div>
+      <div class="at-row" style="flex-direction: row; gap: 10px;">
+        <div style="flex: 1;">
+          <label for="at-project">Project</label>
+          <input class="at-input" id="at-project" list="at-project-list" type="text"
+                 placeholder="e.g. scitex-todo">
+          <datalist id="at-project-list"></datalist>
+        </div>
+        <div style="flex: 1;">
+          <label for="at-status">Status</label>
+          <select class="at-select" id="at-status">
+            <option value="pending">pending</option>
+            <option value="in_progress">in_progress</option>
+            <option value="blocked">blocked</option>
+            <option value="goal">goal</option>
+          </select>
+        </div>
+      </div>
+      <div class="at-row">
+        <label for="at-task">Task (one-line current focus) — optional</label>
+        <input class="at-input" id="at-task" type="text"
+               placeholder="What's the current step? (shows on the card)">
+      </div>
+      <div class="at-actions">
+        <button class="at-btn at-btn-cancel" onclick="closeAddTaskModal()">Cancel</button>
+        <button class="at-btn at-btn-create" id="at-create" onclick="submitAddTask()">Create</button>
       </div>
     </div>
   </div>
@@ -1204,6 +1464,264 @@
         }
       } catch { /* transient; try next tick */ }
     }
+
+    // === CRUD wiring (operator TG 344) ====================================
+    // Backend already implements /create /update /delete /restore (see
+    // _django/handlers/crud.py + 33 tests in test_crud.py); board v3
+    // previously only used /graph /rev /resolve. This block adds the
+    // browser-side wiring for the missing four ops.
+
+    // -- Project-column hide (client-side, localStorage, soft) ---------
+    const PROJ_HIDDEN_KEY = "scitex-todo:proj-hidden";
+    function projHiddenSet() {
+      try { return new Set(JSON.parse(localStorage.getItem(PROJ_HIDDEN_KEY) || "[]")); }
+      catch { return new Set(); }
+    }
+    function saveProjHidden(s) {
+      localStorage.setItem(PROJ_HIDDEN_KEY, JSON.stringify([...s]));
+      const cnt = document.getElementById("proj-hidden-count");
+      if (cnt) cnt.textContent = String(s.size);
+    }
+    function toggleProjHidden(p, checked) {
+      const s = projHiddenSet();
+      if (checked) s.add(p); else s.delete(p);
+      saveProjHidden(s);
+      render();
+    }
+    function rebuildProjHideList() {
+      if (!STATE.graph) return;
+      const projects = new Set(
+        STATE.graph.nodes.map(n => n.project || "—").filter(Boolean)
+      );
+      const sorted = [...projects].sort();
+      const hidden = projHiddenSet();
+      const list = document.getElementById("proj-hide-list");
+      if (!list) return;
+      if (sorted.length === 0) {
+        list.innerHTML = `<div class="proj-hide-empty">No projects loaded yet.</div>`;
+      } else {
+        list.innerHTML = sorted.map(p => `
+          <label class="proj-hide-row" title="Hide column for project ${escapeHtml(p)}">
+            <input type="checkbox" ${hidden.has(p) ? "checked" : ""}
+                   onchange="toggleProjHidden('${escapeHtml(p)}', this.checked)">
+            <span>${escapeHtml(p)}</span>
+          </label>
+        `).join("");
+      }
+      saveProjHidden(hidden);  // refresh count
+    }
+
+    // -- Add Task modal -----------------------------------------------------
+    function openAddTaskModal() {
+      // Pre-populate the project datalist with auto-discovered projects.
+      if (STATE.graph) {
+        const projects = [...new Set(
+          STATE.graph.nodes.map(n => n.project).filter(Boolean)
+        )].sort();
+        document.getElementById("at-project-list").innerHTML =
+          projects.map(p => `<option value="${escapeHtml(p)}">`).join("");
+      }
+      document.getElementById("at-title").value = "";
+      document.getElementById("at-project").value = "";
+      document.getElementById("at-status").value = "pending";
+      document.getElementById("at-task").value = "";
+      document.getElementById("add-task-backdrop").classList.add("show");
+      setTimeout(() => document.getElementById("at-title").focus(), 50);
+    }
+    function closeAddTaskModal(e) {
+      if (e && e.target && !e.target.classList.contains("at-backdrop")) return;
+      document.getElementById("add-task-backdrop").classList.remove("show");
+    }
+    async function submitAddTask() {
+      const title = document.getElementById("at-title").value.trim();
+      if (!title) {
+        toast("title is required", true);
+        document.getElementById("at-title").focus();
+        return;
+      }
+      const project = document.getElementById("at-project").value.trim();
+      const status = document.getElementById("at-status").value;
+      const task = document.getElementById("at-task").value.trim();
+      const btn = document.getElementById("at-create");
+      btn.disabled = true; btn.textContent = "creating…";
+      try {
+        const body = { title, status };
+        if (project) body.project = project;
+        if (task) body.task = task;
+        const r = await fetch("/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${r.status}`);
+        }
+        const result = await r.json();
+        toast(`✓ Created ${result.id || title}`);
+        document.getElementById("add-task-backdrop").classList.remove("show");
+        await loadGraph();
+      } catch (e) {
+        toast(`✗ ${e.message}`, true);
+      } finally {
+        btn.disabled = false; btn.textContent = "Create";
+      }
+    }
+
+    // -- Detail edit (in-drawer form, toggled by Edit button) ---------------
+    function enterDetailEdit() {
+      if (!STATE.openId) return;
+      const t = (STATE.graph?.nodes || []).find(x => x.id === STATE.openId);
+      if (!t) return;
+      document.getElementById("d-edit-title").value = t.title || "";
+      document.getElementById("d-edit-status").value = t.status || "pending";
+      document.getElementById("d-edit-blocker").value = t.blocker || "";
+      document.getElementById("d-edit-project").value = t.project || "";
+      document.getElementById("d-edit-agent").value = t.agent || "";
+      document.getElementById("d-edit-task").value = t.task || "";
+      document.getElementById("d-edit-note").value = t.note || "";
+      document.getElementById("d-edit-form").classList.add("show");
+      document.getElementById("d-edit").style.display = "none";
+      document.getElementById("d-rows").style.display = "none";
+    }
+    function cancelDetailEdit() {
+      document.getElementById("d-edit-form").classList.remove("show");
+      document.getElementById("d-edit").style.display = "";
+      document.getElementById("d-rows").style.display = "";
+    }
+    async function saveDetailEdit() {
+      if (!STATE.openId) return;
+      const patch = {
+        id: STATE.openId,
+        title: document.getElementById("d-edit-title").value,
+        status: document.getElementById("d-edit-status").value,
+        project: document.getElementById("d-edit-project").value,
+        agent: document.getElementById("d-edit-agent").value,
+        task: document.getElementById("d-edit-task").value,
+        note: document.getElementById("d-edit-note").value,
+      };
+      const blocker = document.getElementById("d-edit-blocker").value;
+      // /update accepts patch semantics — only set blocker when provided
+      // AND status is blocked (the validator enforces that pairing).
+      patch.blocker = blocker || null;
+      try {
+        const r = await fetch("/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${r.status}`);
+        }
+        toast(`✓ Updated ${STATE.openId}`);
+        cancelDetailEdit();
+        closeDetail();
+        await loadGraph();
+      } catch (e) {
+        toast(`✗ ${e.message}`, true);
+      }
+    }
+
+    // -- Delete + Undo ------------------------------------------------------
+    async function deleteCurrentTask() {
+      if (!STATE.openId) return;
+      const id = STATE.openId;
+      const t = (STATE.graph?.nodes || []).find(x => x.id === id);
+      const label = t ? `"${t.title}" (${id})` : id;
+      if (!window.confirm(`Delete ${label}?\n\nThis will scrub depends_on / blocks / parent references too. Undo is available for ~10s after delete.`)) return;
+      try {
+        const r = await fetch("/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${r.status}`);
+        }
+        const result = await r.json();
+        // Undo: POST /restore with the same removed payload + refs.
+        const undo = async () => {
+          try {
+            const rr = await fetch("/restore", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                task: result.removed,
+                refs: result.refs || [],
+              }),
+            });
+            if (!rr.ok) throw new Error(`HTTP ${rr.status}`);
+            await loadGraph();
+            toast(`↶ Restored ${id}`);
+          } catch (e) {
+            toast(`✗ Undo failed: ${e.message}`, true);
+          }
+        };
+        showUndoToast(`✓ Deleted ${id}`, undo);
+        closeDetail();
+        await loadGraph();
+      } catch (e) {
+        toast(`✗ ${e.message}`, true);
+      }
+    }
+    function showUndoToast(msg, undoFn) {
+      const el = document.getElementById("toast");
+      el.innerHTML = `${escapeHtml(msg)} <button class="toast-undo" id="t-undo-btn">Undo</button>`;
+      el.classList.remove("toast--err");
+      el.classList.add("show");
+      document.getElementById("t-undo-btn").onclick = async () => {
+        el.classList.remove("show");
+        await undoFn();
+      };
+      setTimeout(() => el.classList.remove("show"), 10000);
+    }
+
+    // -- Render-time integration --------------------------------------------
+    // Hook into render() via a wrapper that ALSO refreshes the project-hide
+    // list + hides any column whose project is in the hidden set. The
+    // original render() lives above; we wrap it without touching the body.
+    const _origRender = render;
+    render = function() {
+      _origRender();
+      rebuildProjHideList();
+      // Hide entire columns for projects in the hidden set.
+      const hidden = projHiddenSet();
+      document.querySelectorAll(".col").forEach(col => {
+        const nameEl = col.querySelector(".col-name");
+        if (!nameEl) return;
+        const name = nameEl.textContent.trim();
+        col.classList.toggle("col--proj-hidden", hidden.has(name));
+      });
+    };
+
+    // -- Keyboard shortcuts -------------------------------------------------
+    // Cmd/Ctrl+N opens the Add Task modal (operator-friendly create entry).
+    document.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+        const backdrop = document.getElementById("add-task-backdrop");
+        if (backdrop && !backdrop.classList.contains("show")) {
+          e.preventDefault();
+          openAddTaskModal();
+        }
+      }
+      // Cmd/Ctrl-Enter inside the Add Task title submits.
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        const at = document.getElementById("add-task-backdrop");
+        if (at && at.classList.contains("show")) {
+          e.preventDefault();
+          submitAddTask();
+        }
+      }
+      // ESC closes the Add Task modal (the legacy ESC handler covers detail).
+      if (e.key === "Escape") {
+        const at = document.getElementById("add-task-backdrop");
+        if (at && at.classList.contains("show")) {
+          closeAddTaskModal({ target: { classList: { contains: () => true } } });
+        }
+      }
+    });
 
     attachFilters();
     loadGraph();
