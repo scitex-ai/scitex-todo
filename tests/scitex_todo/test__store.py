@@ -169,6 +169,75 @@ def test_add_task_rejects_invalid_status(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# add_task — operator-co-designed fields via **extras (PR #65)                #
+# --------------------------------------------------------------------------- #
+def test_add_task_accepts_project_via_extras(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    # Act
+    _store.add_task(store, id="a", title="A", project="scitex-todo")
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["project"] == "scitex-todo"
+
+
+def test_add_task_accepts_agent_via_extras(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    # Act
+    _store.add_task(store, id="a", title="A", agent="proj-scitex-todo")
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["agent"] == "proj-scitex-todo"
+
+
+def test_add_task_accepts_pr_url_via_extras(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    url = "https://github.com/ywatanabe1989/scitex-todo/pull/65"
+    # Act
+    _store.add_task(store, id="a", title="A", pr_url=url)
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["pr_url"] == url
+
+
+def test_add_task_kind_compute_persists_kind(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    # Act
+    _store.add_task(
+        store, id="a", title="A",
+        kind="compute", job_id="25754194",
+        command="srun -p gpu my_script.py",
+        started_at="2026-06-07T00:00:00Z",
+    )
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["kind"] == "compute"
+
+
+def test_add_task_invalid_kind_raises_validation_error(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    # Act
+    ctx = pytest.raises(_model.TaskValidationError)
+    # Assert
+    with ctx:
+        _store.add_task(store, id="a", title="A", kind="bogus")
+
+
+def test_add_task_none_extras_are_dropped(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    # Act
+    _store.add_task(store, id="a", title="A", project=None, agent=None)
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert "project" not in on_disk
+
+
+# --------------------------------------------------------------------------- #
 # update_task                                                                 #
 # --------------------------------------------------------------------------- #
 def test_update_task_changes_status(tmp_path):

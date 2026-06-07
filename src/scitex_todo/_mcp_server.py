@@ -68,12 +68,34 @@ async def add_task(
     parent: str | None = None,
     note: str | None = None,
     repo: str | None = None,
+    depends_on: list[str] | None = None,
+    blocks: list[str] | None = None,
+    # Operator-co-designed surface (TG 9667).
+    task: str | None = None,
+    project: str | None = None,
+    host: str | None = None,
+    agent: str | None = None,
+    goal: str | None = None,
+    last_activity: str | None = None,
+    blocker: str | None = None,
+    pr_url: str | None = None,
+    issue_url: str | None = None,
+    kind: str | None = None,
+    # Compute-kind metadata (ADR-0002).
+    job_id: str | None = None,
+    command: str | None = None,
+    started_at: str | None = None,
+    finished_at: str | None = None,
     tasks_path: str | None = None,
 ) -> str:
     """Append a new task to the store. Returns the inserted task as JSON.
 
-    `tasks_path` overrides the default resolution chain; pass `None` to
+    ``tasks_path`` overrides the default resolution chain; pass ``None`` to
     use the resolved default (project → user → bundled).
+
+    Closed-enum fields (``status`` / ``kind`` / ``blocker``) are gated by
+    the writer's validator — typos raise ``TaskValidationError`` with the
+    bad value and the valid set.
     """
     inserted = _store.add_task(
         tasks_path,
@@ -86,6 +108,22 @@ async def add_task(
         parent=parent,
         note=note,
         repo=repo,
+        depends_on=depends_on,
+        blocks=blocks,
+        task=task,
+        project=project,
+        host=host,
+        agent=agent,
+        goal=goal,
+        last_activity=last_activity,
+        blocker=blocker,
+        pr_url=pr_url,
+        issue_url=issue_url,
+        kind=kind,
+        job_id=job_id,
+        command=command,
+        started_at=started_at,
+        finished_at=finished_at,
     )
     return json.dumps(inserted)
 
@@ -101,12 +139,32 @@ async def update_task(
     parent: str | None = None,
     note: str | None = None,
     repo: str | None = None,
+    depends_on: list[str] | None = None,
+    blocks: list[str] | None = None,
+    # Operator-co-designed surface (TG 9667).
+    task: str | None = None,
+    project: str | None = None,
+    host: str | None = None,
+    agent: str | None = None,
+    goal: str | None = None,
+    last_activity: str | None = None,
+    blocker: str | None = None,
+    pr_url: str | None = None,
+    issue_url: str | None = None,
+    kind: str | None = None,
+    # Compute-kind metadata (ADR-0002).
+    job_id: str | None = None,
+    command: str | None = None,
+    started_at: str | None = None,
+    finished_at: str | None = None,
     tasks_path: str | None = None,
 ) -> str:
     """Mutate fields of an existing task. Returns the merged task as JSON.
 
-    Pass an empty string (e.g. `scope=""`) to CLEAR a field. Omit a field
-    to leave it untouched.
+    Pass an empty string (e.g. ``scope=""``) to CLEAR a string field.
+    Pass an empty list to CLEAR a list field. Omit a field to leave it
+    untouched. Closed-enum values (``status`` / ``kind`` / ``blocker``)
+    are gated by the writer's validator.
     """
     fields: dict = {}
     for key, value in (
@@ -118,10 +176,30 @@ async def update_task(
         ("parent", parent),
         ("note", note),
         ("repo", repo),
+        ("task", task),
+        ("project", project),
+        ("host", host),
+        ("agent", agent),
+        ("goal", goal),
+        ("last_activity", last_activity),
+        ("blocker", blocker),
+        ("pr_url", pr_url),
+        ("issue_url", issue_url),
+        ("kind", kind),
+        ("job_id", job_id),
+        ("command", command),
+        ("started_at", started_at),
+        ("finished_at", finished_at),
     ):
         if value is None:
             continue
         fields[key] = None if value == "" else value
+    # List fields: ``None`` = leave untouched (filtered above);
+    # empty list = clear; non-empty list = replace.
+    if depends_on is not None:
+        fields["depends_on"] = list(depends_on) if depends_on else None
+    if blocks is not None:
+        fields["blocks"] = list(blocks) if blocks else None
     merged = _store.update_task(tasks_path, task_id, **fields)
     return json.dumps(merged)
 

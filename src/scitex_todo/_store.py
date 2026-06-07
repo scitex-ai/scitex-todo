@@ -158,12 +158,24 @@ def add_task(
     depends_on: list[str] | None = None,
     blocks: list[str] | None = None,
     repo: str | None = None,
+    **extras,
 ) -> dict:
     """Append a new task to ``store`` and persist via :func:`save_tasks`.
 
     Returns the inserted task mapping (a fresh dict, not the underlying
     YAML node) for convenient round-trip use by callers — the CLI prints
     it, the MCP tools serialize it as the JSON result.
+
+    The ``**extras`` keyword catches operator-co-designed Task dataclass
+    fields (``task`` / ``project`` / ``host`` / ``agent`` / ``goal`` /
+    ``last_activity`` / ``blocker`` / ``pr_url`` / ``issue_url`` / ``kind``
+    + compute metadata ``job_id`` / ``command`` / ``started_at`` /
+    ``finished_at``) without an explosion of named parameters. ``None``
+    values are dropped; non-``None`` values flow into the new task dict
+    and the writer's validator gates closed enums (``status`` / ``kind``
+    / ``blocker``) — typos raise ``TaskValidationError`` with the bad
+    value and the valid set. Unknown keys are accepted at this layer
+    (forward-compat); the validator decides whether they're shape-valid.
 
     Raises
     ------
@@ -190,6 +202,14 @@ def add_task(
         new["blocks"] = list(blocks)
     if repo is not None:
         new["repo"] = repo
+    # Operator-co-designed surface (TG 9667) + compute metadata
+    # (ADR-0002). Forwarded through **extras so callers don't have to
+    # match a long explicit parameter list and the writer's validator
+    # gates the closed enums.
+    for key, value in extras.items():
+        if value is None:
+            continue
+        new[key] = value
 
     # Lock for the FULL read-modify-write — without this, two concurrent
     # writers each load a stale snapshot and the second `save_tasks` call

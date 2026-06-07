@@ -256,6 +256,45 @@ def test_complete_stamps_completed_at_z_suffix(tmp_path, env):
     assert out["_log_meta"]["completed_at"].endswith("Z")
 
 
+def test_add_task_accepts_agent_field(tmp_path):
+    # Arrange
+    from scitex_todo._mcp_server import add_task
+    store = str(tmp_path / "tasks.yaml")
+    # Act
+    out = json.loads(asyncio.run(_call_tool(
+        add_task, id="a", title="A",
+        agent="proj-scitex-todo", tasks_path=store,
+    )))
+    # Assert
+    assert out["agent"] == "proj-scitex-todo"
+
+
+def test_add_task_accepts_kind_compute(tmp_path):
+    # Arrange
+    from scitex_todo._mcp_server import add_task
+    store = str(tmp_path / "tasks.yaml")
+    # Act
+    out = json.loads(asyncio.run(_call_tool(
+        add_task, id="a", title="A",
+        kind="compute", job_id="123", tasks_path=store,
+    )))
+    # Assert
+    assert out["kind"] == "compute"
+
+
+def test_update_task_sets_agent(tmp_path):
+    # Arrange
+    from scitex_todo._mcp_server import add_task, update_task
+    store = str(tmp_path / "tasks.yaml")
+    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
+    # Act
+    out = json.loads(asyncio.run(_call_tool(
+        update_task, task_id="a", agent="proj-scitex-todo", tasks_path=store,
+    )))
+    # Assert
+    assert out["agent"] == "proj-scitex-todo"
+
+
 def test_update_sets_status(tmp_path):
     # Arrange
     from scitex_todo._mcp_server import add_task, update_task

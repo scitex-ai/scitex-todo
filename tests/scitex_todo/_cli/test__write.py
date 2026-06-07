@@ -280,6 +280,165 @@ def test_update_missing_id_mentions_not_found(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# add — operator-co-designed flags + closed-enum validation (PR #65)          #
+# --------------------------------------------------------------------------- #
+def test_add_agent_flag_persists(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    # Act
+    runner.invoke(
+        main, ["add", "a", "A", "--tasks", store, "--agent", "proj-scitex-todo"]
+    )
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["agent"] == "proj-scitex-todo"
+
+
+def test_add_project_flag_persists(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    # Act
+    runner.invoke(
+        main, ["add", "a", "A", "--tasks", store, "--project", "scitex-todo"]
+    )
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["project"] == "scitex-todo"
+
+
+def test_add_pr_url_flag_persists(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    url = "https://github.com/ywatanabe1989/scitex-todo/pull/65"
+    # Act
+    runner.invoke(main, ["add", "a", "A", "--tasks", store, "--pr-url", url])
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["pr_url"] == url
+
+
+def test_add_kind_compute_persists(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    # Act
+    runner.invoke(
+        main,
+        [
+            "add", "a", "A", "--tasks", store,
+            "--kind", "compute", "--job-id", "25754194",
+            "--command", "srun -p gpu my.py",
+        ],
+    )
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["kind"] == "compute"
+
+
+def test_add_invalid_status_rejected_by_click(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    # Act
+    result = runner.invoke(
+        main, ["add", "a", "A", "--tasks", store, "--status", "bogus"]
+    )
+    # Assert
+    assert result.exit_code != 0
+
+
+def test_add_invalid_kind_rejected_by_click(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    # Act
+    result = runner.invoke(
+        main, ["add", "a", "A", "--tasks", store, "--kind", "bogus"]
+    )
+    # Assert
+    assert result.exit_code != 0
+
+
+def test_add_invalid_blocker_rejected_by_click(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    # Act
+    result = runner.invoke(
+        main,
+        ["add", "a", "A", "--tasks", store, "--status", "blocked", "--blocker", "bogus"],
+    )
+    # Assert
+    assert result.exit_code != 0
+
+
+# --------------------------------------------------------------------------- #
+# update — new field flags + depends_on/blocks REPLACE semantics (PR #65)     #
+# --------------------------------------------------------------------------- #
+def test_update_agent_persists(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    # Act
+    runner.invoke(
+        main, ["update", "a", "--tasks", store, "--agent", "proj-scitex-todo"]
+    )
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["agent"] == "proj-scitex-todo"
+
+
+def test_update_depends_on_replaces_list(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(
+        main, ["add", "a", "A", "--tasks", store, "--depends-on", "x"]
+    )
+    # Act — repeat --depends-on per id
+    runner.invoke(
+        main,
+        ["update", "a", "--tasks", store, "--depends-on", "y", "--depends-on", "z"],
+    )
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["depends_on"] == ["y", "z"]
+
+
+def test_update_depends_on_empty_clears_list(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(
+        main, ["add", "a", "A", "--tasks", store, "--depends-on", "x"]
+    )
+    # Act — single --depends-on '' clears
+    runner.invoke(
+        main, ["update", "a", "--tasks", store, "--depends-on", ""]
+    )
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert "depends_on" not in on_disk
+
+
+def test_update_invalid_blocker_rejected_by_click(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    # Act
+    result = runner.invoke(
+        main, ["update", "a", "--tasks", store, "--blocker", "bogus"]
+    )
+    # Assert
+    assert result.exit_code != 0
+
+
+# --------------------------------------------------------------------------- #
 # done                                                                        #
 # --------------------------------------------------------------------------- #
 def test_done_exits_zero(tmp_path, env):
