@@ -602,30 +602,37 @@ def test_list_tasks_explicit_empty_string_overrides_env(populated_store, env):
 # --------------------------------------------------------------------------- #
 @pytest.fixture
 def extended_store(tmp_path):
-    """Store seeded with the operator-co-designed fields for filter tests."""
+    """Store seeded with operator-co-designed fields for filter tests.
+
+    Uses ``add_task`` for the schema fields the develop-side API
+    accepts directly, then ``update_task(**fields)`` for the
+    operator-co-designed extras (project / host / agent / blocker /
+    kind / job_id). The CLI / Python **extras surface on add_task
+    lands in a sibling PR; this PR's filter logic doesn't require
+    that surface to be exercised end-to-end.
+    """
     store = tmp_path / "tasks.yaml"
-    _store.add_task(
-        store, id="proj-x-1", title="X1",
-        agent="proj-x", project="x", host="alpha",
+    _store.add_task(store, id="proj-x-1", title="X1")
+    _store.update_task(
+        store, "proj-x-1", agent="proj-x", project="x", host="alpha"
     )
-    _store.add_task(
-        store, id="proj-x-2", title="X2",
-        agent="proj-x", project="x", host="beta",
-        status="in_progress",
+    _store.add_task(store, id="proj-x-2", title="X2", status="in_progress")
+    _store.update_task(
+        store, "proj-x-2", agent="proj-x", project="x", host="beta"
     )
-    _store.add_task(
-        store, id="proj-y-1", title="Y1",
-        agent="proj-y", project="y", host="alpha",
-        status="blocked", blocker="operator-decision",
+    _store.add_task(store, id="proj-y-1", title="Y1", status="blocked")
+    _store.update_task(
+        store, "proj-y-1", agent="proj-y", project="y", host="alpha",
+        blocker="operator-decision",
     )
-    _store.add_task(
-        store, id="proj-y-2", title="Y2",
-        agent="proj-y", project="y", host="alpha",
-        status="blocked", blocker="dependency",
+    _store.add_task(store, id="proj-y-2", title="Y2", status="blocked")
+    _store.update_task(
+        store, "proj-y-2", agent="proj-y", project="y", host="alpha",
+        blocker="dependency",
     )
-    _store.add_task(
-        store, id="compute-1", title="C1",
-        agent="proj-x", kind="compute", job_id="999",
+    _store.add_task(store, id="compute-1", title="C1")
+    _store.update_task(
+        store, "compute-1", agent="proj-x", kind="compute", job_id="999"
     )
     return store
 
