@@ -50,7 +50,7 @@ Missing (Task dataclass fields — operator-co-designed surface TG 9667):
 | `--task`            | str                       | The BIG board-card text (distinct from `--title`'s short scannable label).             |
 | `--project`         | str                       | Project / repo basename. Matches the canonical id prefix.                              |
 | `--host`            | str                       | Where the work happens.                                                                |
-| `--agent`           | str                       | Owning agent — replaces legacy `--assignee` long-term. Keep `--assignee` deprecation-window. |
+| `--agent`           | str                       | Owning agent — forward-compat alias for `--assignee`. `assignee` STAYS the primary linking field today (lead empirical 2026-06-07: `list-tasks --assignee proj-X` filters correctly). `--agent` lands as a CLI alias once the dataclass migration completes. |
 | `--goal`            | str                       | WHY (parent-goal text); rendered as 🎯 line.                                           |
 | `--last-activity`   | ISO-8601                  | Drives card recency color.                                                             |
 | `--blocker`         | closed enum               | One of VALID_BLOCKERS; CLI must reject unknowns (fail-loud parity with `_model`).      |
@@ -86,7 +86,6 @@ Missing filters:
 
 | Flag                | Semantics                                                                          |
 | ------------------- | ---------------------------------------------------------------------------------- |
-| `--agent`           | Match `agent` exactly (vs the legacy `--assignee`).                                |
 | `--project`         | Match `project` exactly.                                                           |
 | `--host`            | Match `host` exactly.                                                              |
 | `--blocker`         | Match `blocker` exactly; `__none` for "no blocker".                                |
@@ -94,6 +93,7 @@ Missing filters:
 | `--blocking-me`     | Predicate: `status == "blocked" AND blocker == "operator-decision"` (BLOCKING YOU). |
 | `--status` (repeat) | Multi-status filter (e.g. `--status pending --status in_progress`).                |
 | `--id-prefix`       | Substring/prefix match on `id` (cheap "find my project's rows").                   |
+| `--agent`           | Forward-compat alias for `--assignee` once the dataclass migration completes. NOT a gap today — `--assignee` is already primary + works (lead empirical 2026-06-07). |
 
 ### `scitex-todo done`
 

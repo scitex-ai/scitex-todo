@@ -174,6 +174,15 @@ blocker on a non-blocked row raises.
 
 **Recommended fields (operator-co-designed surface, TG 9667):**
 
+- `assignee` (str) — **PRIMARY agent-linking field. Set this to YOUR
+  agent name** (e.g. `proj-scitex-todo`). The lead's empirical
+  dogfood (2026-06-07) confirms `scitex-todo list-tasks --assignee
+  proj-X` filters correctly — this is THE field that lets every
+  consumer (lead, board, you) ask "show me agent X's open tasks."
+  Forward-compat: the dataclass also has an `agent` field as the
+  operator-co-designed long-term replacement; the migration is
+  staged (CLI gains `--agent` as alias, deprecates `--assignee`)
+  but TODAY you write `assignee`.
 - `task` (str) — the 1-line CURRENT-task BIG text on the board card.
   Distinct from `title` (the short scannable label). Populate this for
   the card to read well.
@@ -181,8 +190,6 @@ blocker on a non-blocked row raises.
   `scitex-todo`). Matches the canonical id prefix.
 - `host` (str) — where the work happens (`spartan` / `ywata-note-win`
   / etc.).
-- `agent` (str) — owning agent — YOU (e.g. `proj-scitex-todo`).
-  Operator-co-designed replacement for the legacy `assignee`.
 - `goal` (str) — WHY (parent-goal text); rendered as the 🎯 line on the
   card. One short sentence.
 - `priority` (int) — lower = higher priority. Within your project
@@ -443,9 +450,11 @@ The lead's writes differ from a worker's in **scope**, not in
 - **Cross-project rows it owns:** release cutovers, ADRs that touch
   multiple repos, the operator's "BLOCKING YOU" queue, fleet-wide
   campaigns.
-- **Per-task agent:** `agent: scitex-lead` on rows the lead drives;
-  rows the lead REASSIGNS to a worker land with that worker's
-  `agent` value (and the worker takes ownership from then on).
+- **Per-task assignee:** `assignee: scitex-lead` on rows the lead
+  drives; rows the lead REASSIGNS to a worker land with that
+  worker's `assignee` value (and the worker takes ownership from
+  then on). (Same field reconciliation as workers: `assignee` is
+  primary today; `agent` is the forward-compat migration target.)
 - **Resolves rows on behalf of the operator:** when the operator
   delegates a Resolve, the lead writes the resolution + an
   `adr.md` Notes entry capturing the rationale + provenance.
