@@ -469,6 +469,125 @@ def handle_resolve(request, board):
     )
 
 
+def handle_reopen(request, board):
+    """POST reopen -> undo a prior resolve (board-v3 Undo affordance).
+
+    Body: ``{id, prior_status?, prior_blocker?, actor?}``. Reverses a previous
+    ``/resolve``: restores ``status`` to ``prior_status`` (default ``"blocked"``)
+    and ``blocker`` to ``prior_blocker`` (default ``"operator-decision"``).
+    The schema validator rejects ``blocker`` on non-blocked rows, so when the
+    restored status is anything other than ``"blocked"`` the field is dropped.
+    Appends a ``[UNDONE via board-v3]`` comment and publishes a notification.
+    Unknown id -> 404.
+
+    This is the load-bearing safety net for operator pain TG 9763 (a UI test
+    click made the clew card vanish destructively, with no way back). Pairs
+    with the v3 board's 2-click confirm + Undo-toast so Resolve stops being
+    a trap. Lossless today because notification fan-out is in-process — the
+    dependent agent has not been told yet via SacChannel.
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "reopen endpoint requires POST"}, status=405)
+    payload, err = _parse_body(request)
+    if err:
+        return err
+
+    task_id = payload.get("id")
+    if not isinstance(task_id, str) or not task_id:
+        return JsonResponse({"error": "reopen requires 'id'"}, status=400)
+
+    actor = payload.get("actor")
+    if not isinstance(actor, str) or not actor.strip():
+        actor = os.environ.get("USER") or "operator"
+
+    new_status = payload.get("prior_status") or "blocked"
+    new_blocker = payload.get("prior_blocker")
+    # Default blocker only when restoring to blocked AND caller didn't supply one.
+    if new_status == "blocked" and not new_blocker:
+        new_blocker = "operator-decision"
+
+    tasks = list(board.tasks)
+    task = next((t for t in tasks if t["id"] == task_id), None)
+    if task is None:
+        return JsonResponse({"error": f"no task with id {task_id!r}"}, status=404)
+
+    pre_status = task.get("status")
+    pre_blocker = task.get("blocker")
+
+    task["status"] = new_status
+    if new_status == "blocked" and new_blocker:
+        task["blocker"] = new_blocker
+    else:
+        # Schema disallows blocker on non-blocked rows.
+        task.pop("blocker", None)
+
+    reopen_comment = {
+        "ts": datetime.datetime.now(datetime.timezone.utc)
+        .replace(microsecond=0)
+        .isoformat(),
+        "author": actor.strip(),
+        "text": (
+            f"[UNDONE via board-v3] re-opened by {actor.strip()}; "
+            f"status={pre_status!r}→{new_status!r}"
+            + (
+                f", blocker={pre_blocker!r}→{new_blocker!r}"
+                if (pre_blocker or new_blocker)
+                else ""
+            )
+            + ". Reverses the prior /resolve. Lossless: SacChannel wake "
+            "adapter not wired yet, dependent agent was never notified."
+        ),
+    }
+    existing = task.get("comments")
+    task["comments"] = (
+        [*existing] if isinstance(existing, list) else []
+    ) + [reopen_comment]
+
+    err = _save(tasks, board)
+    if err:
+        return err
+
+    # Mirror the resolve publish path so any in-process subscriber gets the
+    # reopen as a first-class change event.
+    try:
+        from scitex_todo._adapters import InProcessPubSub
+
+        _BUS = getattr(handle_reopen, "_BUS", None)
+        if _BUS is None:
+            _BUS = InProcessPubSub()
+            handle_reopen._BUS = _BUS  # type: ignore[attr-defined]
+        channel = f"scitex-todo:task:{task.get('project', 'unknown')}/{task_id}"
+        _BUS.publish(channel, {
+            "task_id": task_id,
+            "changes": {"status": new_status, "blocker": new_blocker},
+            "ts": reopen_comment["ts"],
+            "actor": actor.strip(),
+            "undo_of": "resolve",
+        })
+    except Exception:  # noqa: BLE001 — publish-failure is non-fatal
+        logger.exception("[scitex-todo] reopen notify-publish failed (non-fatal)")
+
+    logger.info(
+        "[scitex-todo] REOPENED %s by %s in %s (status %r->%r)",
+        task_id,
+        actor,
+        board.store_path,
+        pre_status,
+        new_status,
+    )
+    return JsonResponse(
+        {
+            "id": task_id,
+            "status": new_status,
+            "blocker": new_blocker,
+            "prior_status": pre_status,
+            "prior_blocker": pre_blocker,
+            "comment": reopen_comment,
+            "store_path": str(board.store_path),
+        }
+    )
+
+
 def handle_edge(request, board):
     """POST edge -> add or remove a dependency edge between two tasks.
 
