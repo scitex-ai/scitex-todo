@@ -40,10 +40,26 @@ The store is resolved in precedence order: explicit `--tasks` →
 - [04_cli-reference.md](04_cli-reference.md) — `scitex-todo` subcommands
 - [05_mcp-tools.md](05_mcp-tools.md) — the MCP tool surface (Convention A)
 
-### Campaign helpers (10+)
+### Workflows (10+)
 - [10_campaign-tracking.md](10_campaign-tracking.md) — companion tools
   (`check_releases.py`, `campaign_report.py`) under `~/.scitex/todo/`
   for multi-package release/audit campaigns
+- [11_adopting-from-a-project.md](11_adopting-from-a-project.md) — the
+  30-second adoption path: how a project agent (clew / neurovista /
+  scitex-dev / scitex-hub / ripple-wm / scitex-orochi / scitex-agent-
+  container / etc.) writes its tasks to `~/.scitex/todo/tasks.yaml` so
+  the operator's live board (http://127.0.0.1:8051/) auto-renders the
+  agent's column. Operator-decision blockers + GUI Resolve loop are
+  covered here too. **READ THIS FIRST** if your agent doesn't yet
+  appear on the operator's board.
 
 ### Meta (20+)
 - [20_env-vars.md](20_env-vars.md) — environment variables and local state
+
+### Architecture (30+)
+- [30_two-tier-conventions-and-write-protocol.md](30_two-tier-conventions-and-write-protocol.md)
+  — full fleet spec: project tier vs global tier, write-protocol table
+  (who writes when), cross-host sync (git-backed durable + SSH-fanout
+  live), task referencing scheme, push-notification model, Core vs
+  Extension Ports vs Fleet Adapters architectural backbone. Reference
+  spec; for the short how-to, use 11.
