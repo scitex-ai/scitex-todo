@@ -215,6 +215,41 @@ def test_scope_filter_excludes_other_scope(tmp_path):
     assert {r["id"] for r in json.loads(listed)} == {"b"}
 
 
+def test_list_tasks_filter_by_agent(tmp_path):
+    # Arrange
+    from scitex_todo._mcp_server import add_task, list_tasks
+    store = str(tmp_path / "tasks.yaml")
+    asyncio.run(_call_tool(
+        add_task, id="a", title="A", agent="proj-x", tasks_path=store
+    ))
+    asyncio.run(_call_tool(
+        add_task, id="b", title="B", agent="proj-y", tasks_path=store
+    ))
+    # Act
+    listed = asyncio.run(_call_tool(
+        list_tasks, scope="", agent="proj-x", tasks_path=store
+    ))
+    # Assert
+    assert {r["id"] for r in json.loads(listed)} == {"a"}
+
+
+def test_list_tasks_filter_blocking_me(tmp_path):
+    # Arrange
+    from scitex_todo._mcp_server import add_task, list_tasks
+    store = str(tmp_path / "tasks.yaml")
+    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
+    asyncio.run(_call_tool(
+        add_task, id="b", title="B",
+        status="blocked", blocker="operator-decision", tasks_path=store,
+    ))
+    # Act
+    listed = asyncio.run(_call_tool(
+        list_tasks, scope="", blocking_me=True, tasks_path=store
+    ))
+    # Assert
+    assert {r["id"] for r in json.loads(listed)} == {"b"}
+
+
 def test_complete_sets_status_done(tmp_path, env):
     # Arrange
     env.set("SCITEX_TODO_AGENT", "agent:mcp-test")
