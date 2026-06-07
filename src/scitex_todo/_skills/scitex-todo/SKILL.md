@@ -65,9 +65,14 @@ The store is resolved in precedence order: explicit `--tasks` →
   spec; for the short how-to, use 11.
 
 ### Operations (40+)
-- [40_task-escalation.md](40_task-escalation.md) — backlog burn-down /
-  blocker-driven scheduling. Two-state model (BLOCKED with
-  reason+dependency from a 4-value enum vs RUNNABLE), the sweep cycle
-  (re-check blockers → escalate runnable), lead-centric funnel routing,
-  and what the lead a2a's to whom. Keeps consumption rate > arrival
-  rate so the board doesn't drift out of sync with the codebase.
+- [40_task-harvest.md](40_task-harvest.md) — task harvest:
+  blocker-driven backlog consumption. Two-state model (BLOCKED with
+  reason+dependency from a 4-value enum vs RUNNABLE), 2-phase harvest
+  pass (Phase 1 re-check blockers + walk `task-dependency` chains to
+  their LEAF / root blocker; Phase 2 escalate every RUNNABLE task to
+  its owning agent), lead-centric funnel routing, and registration as
+  a `scitex-dev cron` JobSpec (the ecosystem plugin pattern, same
+  shape as `ci-watch` / `quota-keepalive`). Keeps consumption rate >
+  arrival rate so the board doesn't drift out of sync with the
+  codebase. Name locked by operator TG 332 + 335: must carry "task";
+  no "branch" / "graph" metaphors.
