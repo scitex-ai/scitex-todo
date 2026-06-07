@@ -297,6 +297,14 @@
     <span class="n">resolved</span> <span class="o">=</span> <span class="n">_resolved_store</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>
     <span class="n">resolved</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="n">new</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="nb">id</span><span class="p">,</span> <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="n">title</span><span class="p">,</span> <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="n">status</span><span class="p">}</span>
+    <span class="c1"># D11 partial-fix (ADR-0008): auto-stamp ``created_at`` +</span>
+    <span class="c1"># ``last_activity`` at insert time. ``created_at`` is the immutable</span>
+    <span class="c1"># insert stamp; ``last_activity`` starts equal and ticks on every</span>
+    <span class="c1"># subsequent successful update_task. Callers can override by passing</span>
+    <span class="c1"># the field explicitly (e.g. importers replaying historical state).</span>
+    <span class="n">_stamp</span> <span class="o">=</span> <span class="n">_utc_now_iso</span><span class="p">()</span>
+    <span class="n">new</span><span class="p">[</span><span class="s2">&quot;created_at&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_stamp</span>
+    <span class="n">new</span><span class="p">[</span><span class="s2">&quot;last_activity&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_stamp</span>
     <span class="k">if</span> <span class="n">scope</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">new</span><span class="p">[</span><span class="s2">&quot;scope&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">scope</span>
     <span class="k">if</span> <span class="n">assignee</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -367,6 +375,13 @@
                         <span class="n">task</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
                     <span class="k">else</span><span class="p">:</span>
                         <span class="n">task</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+                <span class="c1"># D11 partial-fix (ADR-0008): auto-stamp ``last_activity``</span>
+                <span class="c1"># on every successful mutation (drives the recency-color</span>
+                <span class="c1"># signal on the board). Skip if the caller passed an</span>
+                <span class="c1"># explicit ``last_activity`` field this call — their</span>
+                <span class="c1"># value wins over the auto-stamp.</span>
+                <span class="k">if</span> <span class="s2">&quot;last_activity&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">fields</span><span class="p">:</span>
+                    <span class="n">task</span><span class="p">[</span><span class="s2">&quot;last_activity&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_utc_now_iso</span><span class="p">()</span>
                 <span class="n">_save_tasks_unlocked</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">resolved</span><span class="p">)</span>
                 <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
     <span class="k">raise</span> <span class="n">TaskNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;task id </span><span class="si">{</span><span class="n">task_id</span><span class="si">!r}</span><span class="s2"> not found in </span><span class="si">{</span><span class="n">resolved</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
