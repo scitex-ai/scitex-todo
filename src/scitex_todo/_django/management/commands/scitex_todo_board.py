@@ -14,6 +14,22 @@ import webbrowser
 from django.core.management.base import BaseCommand
 
 
+def _apply_tasks_env(tasks: str) -> None:
+    """Export ``SCITEX_TODO_TASKS=tasks`` when the operator passed
+    ``--tasks PATH``.
+
+    Lifted out of ``Command.handle`` so the env-precedence behaviour can be
+    unit-tested without starting a Django ``runserver``. Empty string (the
+    argparse default for a missing ``--tasks``) is a no-op so an inherited
+    ``SCITEX_TODO_TASKS`` keeps winning. A non-empty value overrides any
+    inherited env (``os.environ[...]`` instead of ``setdefault``) to match
+    the resolver's documented precedence: an explicit ``--tasks`` wins
+    over ``$SCITEX_TODO_TASKS`` wins over the project store.
+    """
+    if tasks:
+        os.environ["SCITEX_TODO_TASKS"] = tasks
+
+
 class Command(BaseCommand):
     help = "Run the scitex-todo dependency-graph board as a standalone server"
 
@@ -41,6 +57,19 @@ class Command(BaseCommand):
 
         tasks = options["tasks"]
         port = options["port"]
+        # When the operator passes ``--tasks PATH``, export
+        # ``SCITEX_TODO_TASKS=PATH`` so the in-process Django views (and any
+        # subprocess they fork) actually resolve to that store. Without this
+        # the server fell through the project-store -> user-store -> bundled
+        # fallback chain (``resolve_store_path``) and silently ignored
+        # ``--tasks`` whenever a ``.scitex/todo/tasks.yaml`` existed at the
+        # git-root -- the ``?store=`` query-string we add below only hints
+        # the browser, it never reaches the resolver. The helper uses
+        # ``os.environ[...]`` (NOT ``setdefault``) so an explicit CLI value
+        # wins over any stale inherited env var, matching the resolver
+        # precedence documented in ``scitex-todo --help`` ("an explicit
+        # --tasks path, then $SCITEX_TODO_TASKS, then the project store, ...").
+        _apply_tasks_env(tasks)
         url = f"http://127.0.0.1:{port}/"
         if tasks:
             url += f"?store={tasks}"
