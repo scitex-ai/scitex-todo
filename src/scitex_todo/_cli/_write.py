@@ -28,6 +28,7 @@ import json
 import click
 
 from .. import _store
+from .._model import VALID_BLOCKERS, VALID_KINDS, VALID_STATUSES
 from .._paths import resolve_tasks_path
 
 # --------------------------------------------------------------------------- #
@@ -40,6 +41,14 @@ _TASKS_OPTION = click.option(
     help="Path to tasks.yaml (default: project -> user -> bundled example, "
     "or $SCITEX_TODO_TASKS).",
 )
+
+# Closed-enum CLI validation (fail-fast at click-parse time) — mirrors
+# the _model validators so typos raise BEFORE we touch the disk. Matches
+# the operator's "fail loud, fail fast" rule (TG 9494) one layer earlier
+# than save_tasks.
+_STATUS_CHOICE = click.Choice(list(VALID_STATUSES), case_sensitive=True)
+_KIND_CHOICE = click.Choice(list(VALID_KINDS), case_sensitive=True)
+_BLOCKER_CHOICE = click.Choice(list(VALID_BLOCKERS), case_sensitive=True)
 
 
 def _emit(payload, *, as_json: bool, human: str) -> None:
@@ -59,21 +68,48 @@ def _emit(payload, *, as_json: bool, human: str) -> None:
         "Append a new task to the store.\n\n"
         "Example:\n"
         "  scitex-todo add my-task 'Implement my-task' "
-        "--scope agent:proj-scitex-todo"
+        "--agent proj-scitex-todo --project scitex-todo"
     ),
 )
 @click.argument("id")
 @click.argument("title")
 @click.option(
     "--status",
+    type=_STATUS_CHOICE,
     default="pending",
     show_default=True,
-    help="Initial status (one of: pending, in_progress, blocked, done, "
-    "deferred, failed, goal).",
+    help="Initial status (closed enum — see VALID_STATUSES).",
 )
+# Operator-co-designed surface (TG 9667).
+@click.option("--task", default=None, help="The BIG board-card text (distinct from --title).")
+@click.option("--project", default=None, help="Project / repo basename (e.g. 'scitex-todo').")
+@click.option("--host", default=None, help="Where the work happens (hostname).")
+@click.option("--agent", default=None, help="Owning agent (forward-compat alias for --assignee).")
+@click.option("--goal", default=None, help="WHY (parent-goal text); 🎯 line on the card.")
+@click.option("--last-activity", "last_activity", default=None, help="ISO-8601 UTC; drives recency color.")
+@click.option(
+    "--blocker",
+    type=_BLOCKER_CHOICE,
+    default=None,
+    help="Closed enum (only valid when --status blocked).",
+)
+@click.option("--pr-url", "pr_url", default=None, help="GH/Gitea PR link.")
+@click.option("--issue-url", "issue_url", default=None, help="GH/Gitea issue link.")
+@click.option(
+    "--kind",
+    type=_KIND_CHOICE,
+    default=None,
+    help="Closed enum (absent ⇒ 'task').",
+)
+# Compute-kind metadata (ADR-0002).
+@click.option("--job-id", "job_id", default=None, help="kind=compute: scheduler job id.")
+@click.option("--command", default=None, help="kind=compute: command line.")
+@click.option("--started-at", "started_at", default=None, help="kind=compute: start ISO-8601 UTC.")
+@click.option("--finished-at", "finished_at", default=None, help="kind=compute: finish ISO-8601 UTC.")
+# Legacy fields (preserved — assignee stays primary today per ADR-0008 D2).
 @click.option("--scope", default=None, help="Audience label (free-form string).")
 @click.option(
-    "--assignee", default=None, help="Who should act on this (free-form string)."
+    "--assignee", default=None, help="Who should act on this (PRIMARY linking field today)."
 )
 @click.option("--priority", type=int, default=None, help="Integer priority (lower = earlier).")
 @click.option("--parent", default=None, help="Parent task id (nests this task under it).")
@@ -108,6 +144,20 @@ def add_cmd(
     id,
     title,
     status,
+    task,
+    project,
+    host,
+    agent,
+    goal,
+    last_activity,
+    blocker,
+    pr_url,
+    issue_url,
+    kind,
+    job_id,
+    command,
+    started_at,
+    finished_at,
     scope,
     assignee,
     priority,
@@ -126,7 +176,7 @@ def add_cmd(
     if dry_run:
         click.echo(
             f"# dry-run: would add id={id!r} title={title!r} status={status!r} "
-            f"scope={scope!r} assignee={assignee!r}"
+            f"agent={agent!r} project={project!r} kind={kind!r} blocker={blocker!r}"
         )
         return
     try:
@@ -143,6 +193,21 @@ def add_cmd(
             depends_on=list(depends_on) if depends_on else None,
             blocks=list(blocks) if blocks else None,
             repo=repo,
+            # Operator-co-designed + compute fields forwarded via **extras.
+            task=task,
+            project=project,
+            host=host,
+            agent=agent,
+            goal=goal,
+            last_activity=last_activity,
+            blocker=blocker,
+            pr_url=pr_url,
+            issue_url=issue_url,
+            kind=kind,
+            job_id=job_id,
+            command=command,
+            started_at=started_at,
+            finished_at=finished_at,
         )
     except _store.TaskValidationError as exc:
         raise click.ClickException(str(exc)) from None
@@ -160,14 +225,47 @@ def add_cmd(
     "update",
     help=(
         "Mutate fields of an existing task by id.\n\n"
-        "Pass an empty string (e.g. --scope '') to CLEAR a field.\n\n"
+        "Pass an empty string (e.g. --scope '') to CLEAR a field.\n"
+        "--depends-on / --blocks REPLACE the list (repeat the flag per id; "
+        "pass once with '' to clear; +/- delta semantics are a follow-up PR).\n\n"
         "Example:\n"
-        "  scitex-todo update my-task --status in_progress --priority 1"
+        "  scitex-todo update my-task --status in_progress --priority 1 "
+        "--agent proj-scitex-todo"
     ),
 )
 @click.argument("task_id")
 @click.option("--title", default=None)
-@click.option("--status", default=None)
+@click.option("--status", type=_STATUS_CHOICE, default=None)
+# Operator-co-designed surface (TG 9667).
+@click.option("--task", default=None, help="The BIG board-card text.")
+@click.option("--project", default=None)
+@click.option("--host", default=None)
+@click.option("--agent", default=None, help="Owning agent (forward-compat alias for --assignee).")
+@click.option("--goal", default=None)
+@click.option("--last-activity", "last_activity", default=None)
+@click.option("--blocker", type=_BLOCKER_CHOICE, default=None)
+@click.option("--pr-url", "pr_url", default=None)
+@click.option("--issue-url", "issue_url", default=None)
+@click.option("--kind", type=_KIND_CHOICE, default=None)
+# Compute-kind metadata.
+@click.option("--job-id", "job_id", default=None)
+@click.option("--command", default=None)
+@click.option("--started-at", "started_at", default=None)
+@click.option("--finished-at", "finished_at", default=None)
+# Graph wiring (now supported on update, not just add).
+@click.option(
+    "--depends-on",
+    "depends_on",
+    multiple=True,
+    help="REPLACE depends_on list. Repeat the flag per id; pass once with '' to clear.",
+)
+@click.option(
+    "--blocks",
+    "blocks",
+    multiple=True,
+    help="REPLACE blocks list. Repeat the flag per id; pass once with '' to clear.",
+)
+# Legacy fields.
 @click.option("--scope", default=None, help="New scope (use '' to clear).")
 @click.option("--assignee", default=None, help="New assignee (use '' to clear).")
 @click.option("--priority", type=int, default=None)
@@ -191,6 +289,22 @@ def update_cmd(
     task_id,
     title,
     status,
+    task,
+    project,
+    host,
+    agent,
+    goal,
+    last_activity,
+    blocker,
+    pr_url,
+    issue_url,
+    kind,
+    job_id,
+    command,
+    started_at,
+    finished_at,
+    depends_on,
+    blocks,
     scope,
     assignee,
     priority,
@@ -212,6 +326,20 @@ def update_cmd(
     for key, value in (
         ("title", title),
         ("status", status),
+        ("task", task),
+        ("project", project),
+        ("host", host),
+        ("agent", agent),
+        ("goal", goal),
+        ("last_activity", last_activity),
+        ("blocker", blocker),
+        ("pr_url", pr_url),
+        ("issue_url", issue_url),
+        ("kind", kind),
+        ("job_id", job_id),
+        ("command", command),
+        ("started_at", started_at),
+        ("finished_at", finished_at),
         ("scope", scope),
         ("assignee", assignee),
         ("priority", priority),
@@ -223,10 +351,20 @@ def update_cmd(
             continue
         fields[key] = None if value == "" else value
 
+    # --depends-on / --blocks: click's `multiple=True` returns a tuple.
+    # Empty tuple = flag not passed → don't touch. Tuple of one empty
+    # string = explicit "clear list". Otherwise REPLACE the list.
+    for key, multi in (("depends_on", depends_on), ("blocks", blocks)):
+        if not multi:
+            continue
+        if len(multi) == 1 and multi[0] == "":
+            fields[key] = None
+        else:
+            fields[key] = [v for v in multi if v != ""]
+
     if not fields:
         raise click.ClickException(
-            "no fields to update; pass at least one of "
-            "--title/--status/--scope/--assignee/--priority/--parent/--note/--repo"
+            "no fields to update; pass at least one field flag (see --help)"
         )
 
     if dry_run:
