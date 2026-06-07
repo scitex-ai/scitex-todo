@@ -186,6 +186,14 @@ def add_task(
     resolved = _resolved_store(store)
     resolved.parent.mkdir(parents=True, exist_ok=True)
     new: dict = {"id": id, "title": title, "status": status}
+    # D11 partial-fix (ADR-0008): auto-stamp ``created_at`` +
+    # ``last_activity`` at insert time. ``created_at`` is the immutable
+    # insert stamp; ``last_activity`` starts equal and ticks on every
+    # subsequent successful update_task. Callers can override by passing
+    # the field explicitly (e.g. importers replaying historical state).
+    _stamp = _utc_now_iso()
+    new["created_at"] = _stamp
+    new["last_activity"] = _stamp
     if scope is not None:
         new["scope"] = scope
     if assignee is not None:
@@ -253,6 +261,13 @@ def update_task(
                         task.pop(key, None)
                     else:
                         task[key] = value
+                # D11 partial-fix (ADR-0008): auto-stamp ``last_activity``
+                # on every successful mutation (drives the recency-color
+                # signal on the board). Skip if the caller passed an
+                # explicit ``last_activity`` field this call — their
+                # value wins over the auto-stamp.
+                if "last_activity" not in fields:
+                    task["last_activity"] = _utc_now_iso()
                 _save_tasks_unlocked(tasks, resolved)
                 return dict(task)
     raise TaskNotFoundError(f"task id {task_id!r} not found in {resolved}")
