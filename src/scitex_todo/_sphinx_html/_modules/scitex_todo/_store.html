@@ -269,12 +269,24 @@
     <span class="n">depends_on</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">blocks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">repo</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">extras</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Append a new task to ``store`` and persist via :func:`save_tasks`.</span>
 
 <span class="sd">    Returns the inserted task mapping (a fresh dict, not the underlying</span>
 <span class="sd">    YAML node) for convenient round-trip use by callers — the CLI prints</span>
 <span class="sd">    it, the MCP tools serialize it as the JSON result.</span>
+
+<span class="sd">    The ``**extras`` keyword catches operator-co-designed Task dataclass</span>
+<span class="sd">    fields (``task`` / ``project`` / ``host`` / ``agent`` / ``goal`` /</span>
+<span class="sd">    ``last_activity`` / ``blocker`` / ``pr_url`` / ``issue_url`` / ``kind``</span>
+<span class="sd">    + compute metadata ``job_id`` / ``command`` / ``started_at`` /</span>
+<span class="sd">    ``finished_at``) without an explosion of named parameters. ``None``</span>
+<span class="sd">    values are dropped; non-``None`` values flow into the new task dict</span>
+<span class="sd">    and the writer&#39;s validator gates closed enums (``status`` / ``kind``</span>
+<span class="sd">    / ``blocker``) — typos raise ``TaskValidationError`` with the bad</span>
+<span class="sd">    value and the valid set. Unknown keys are accepted at this layer</span>
+<span class="sd">    (forward-compat); the validator decides whether they&#39;re shape-valid.</span>
 
 <span class="sd">    Raises</span>
 <span class="sd">    ------</span>
@@ -301,6 +313,14 @@
         <span class="n">new</span><span class="p">[</span><span class="s2">&quot;blocks&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">blocks</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">repo</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">new</span><span class="p">[</span><span class="s2">&quot;repo&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">repo</span>
+    <span class="c1"># Operator-co-designed surface (TG 9667) + compute metadata</span>
+    <span class="c1"># (ADR-0002). Forwarded through **extras so callers don&#39;t have to</span>
+    <span class="c1"># match a long explicit parameter list and the writer&#39;s validator</span>
+    <span class="c1"># gates the closed enums.</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">extras</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">new</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
 
     <span class="c1"># Lock for the FULL read-modify-write — without this, two concurrent</span>
     <span class="c1"># writers each load a stale snapshot and the second `save_tasks` call</span>
