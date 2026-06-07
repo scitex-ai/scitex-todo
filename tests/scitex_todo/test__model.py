@@ -527,56 +527,91 @@ def test_save_tasks_round_trip_preserves_log_meta_completed_at(tmp_path):
 
 def test_load_tasks_kind_defaults_to_task_when_absent(tmp_path):
     """Absence of `kind` is equivalent to `kind: task` (the default)."""
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n  - {id: t1, title: Plain, status: pending}\n",
     )
+    # Act
     tasks = load_tasks(store)
-    # The loader doesn't synthesize a value — `kind` is simply absent on plain
-    # rows. Downstream consumers treat absence as "task".
+    # Assert — the loader doesn't synthesize a value; downstream consumers
+    # treat absence as "task".
     assert "kind" not in tasks[0]
 
 
 def test_load_tasks_accepts_kind_task(tmp_path):
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n  - {id: t1, title: Plain, status: pending, kind: task}\n",
     )
+    # Act
     tasks = load_tasks(store)
+    # Assert
     assert tasks[0]["kind"] == "task"
 
 
-def test_load_tasks_accepts_kind_compute_with_metadata(tmp_path):
-    store = _write(
-        tmp_path,
-        "tasks:\n"
-        "  - id: spartan-pac\n"
-        "    title: 'compute: PAC SLE multi-lane'\n"
-        "    status: in_progress\n"
-        "    kind: compute\n"
-        "    job_id: '25754194'\n"
-        "    host: spartan\n"
-        "    command: srun -p h100 -t 12:00:00 python pac/sle.py\n"
-        "    started_at: '2026-06-06T03:14:00Z'\n",
-    )
+_KIND_COMPUTE_FULL_YAML = (
+    "tasks:\n"
+    "  - id: spartan-pac\n"
+    "    title: 'compute: PAC SLE multi-lane'\n"
+    "    status: in_progress\n"
+    "    kind: compute\n"
+    "    job_id: '25754194'\n"
+    "    host: spartan\n"
+    "    command: srun -p h100 -t 12:00:00 python pac/sle.py\n"
+    "    started_at: '2026-06-06T03:14:00Z'\n"
+)
+
+
+def test_load_tasks_kind_compute_persists_kind(tmp_path):
+    # Arrange
+    store = _write(tmp_path, _KIND_COMPUTE_FULL_YAML)
+    # Act
     tasks = load_tasks(store)
+    # Assert
     assert tasks[0]["kind"] == "compute"
+
+
+def test_load_tasks_kind_compute_persists_job_id(tmp_path):
+    # Arrange
+    store = _write(tmp_path, _KIND_COMPUTE_FULL_YAML)
+    # Act
+    tasks = load_tasks(store)
+    # Assert
     assert tasks[0]["job_id"] == "25754194"
+
+
+def test_load_tasks_kind_compute_persists_host(tmp_path):
+    # Arrange
+    store = _write(tmp_path, _KIND_COMPUTE_FULL_YAML)
+    # Act
+    tasks = load_tasks(store)
+    # Assert
     assert tasks[0]["host"] == "spartan"
+
+
+def test_load_tasks_kind_compute_persists_started_at(tmp_path):
+    # Arrange
+    store = _write(tmp_path, _KIND_COMPUTE_FULL_YAML)
+    # Act
+    tasks = load_tasks(store)
+    # Assert
     assert tasks[0]["started_at"] == "2026-06-06T03:14:00Z"
 
 
 def test_load_tasks_raises_on_unknown_kind(tmp_path):
     """`comput` typo (or any value not in VALID_KINDS) is fail-loud."""
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n  - {id: x, title: X, status: pending, kind: comput}\n",
     )
-    with pytest.raises(TaskValidationError) as exc_info:
+    # Act — match folds the raise + message-content check into one assertion.
+    ctx = pytest.raises(TaskValidationError, match=r"comput.*compute|compute.*comput")
+    # Assert
+    with ctx:
         load_tasks(store)
-    # Error must NAME the bad value + the valid set so the writer can fix it.
-    assert "comput" in str(exc_info.value)
-    assert "task" in str(exc_info.value) and "compute" in str(exc_info.value)
 
 
 def test_load_tasks_raises_on_compute_metadata_without_kind(tmp_path):
@@ -586,14 +621,16 @@ def test_load_tasks_raises_on_compute_metadata_without_kind(tmp_path):
     "this row is mine to update". Allowing compute metadata on a plain task
     would silently break that contract — fail-loud instead.
     """
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n  - {id: x, title: X, status: pending, job_id: '12345'}\n",
     )
-    with pytest.raises(TaskValidationError) as exc_info:
+    # Act
+    ctx = pytest.raises(TaskValidationError, match=r"job_id.*kind: compute")
+    # Assert
+    with ctx:
         load_tasks(store)
-    assert "job_id" in str(exc_info.value)
-    assert "kind: compute" in str(exc_info.value)
 
 
 def test_load_tasks_raises_on_compute_metadata_with_kind_task(tmp_path):
@@ -601,31 +638,35 @@ def test_load_tasks_raises_on_compute_metadata_with_kind_task(tmp_path):
 
     Note: pre-PR-#57, `host` was also in the compute-only fence and was
     used as the example here. Per operator co-design TG 9667, `host` is
-    now a generic field allowed on any row (it's the universal "where
-    does this live/run" handle). The compute-only fence still covers
-    job_id / command / started_at / finished_at — those four have a
-    compute-job-specific semantic that doesn't fit other kinds.
+    now a generic field allowed on any row.
     """
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n  - {id: x, title: X, status: pending, kind: task, job_id: '42'}\n",
     )
-    with pytest.raises(TaskValidationError) as exc_info:
+    # Act
+    ctx = pytest.raises(TaskValidationError, match="job_id")
+    # Assert
+    with ctx:
         load_tasks(store)
-    assert "job_id" in str(exc_info.value)
 
 
 def test_load_tasks_allows_host_on_kind_task_row(tmp_path):
     """`host` is GENERIC (operator TG 9667) — allowed on any row, not just compute."""
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n  - {id: x, title: X, status: pending, host: ywata-note-win}\n",
     )
-    # No kind set + host present → valid; host is generic.
-    assert load_tasks(store)[0]["host"] == "ywata-note-win"
+    # Act
+    tasks = load_tasks(store)
+    # Assert — no kind set + host present → valid; host is generic.
+    assert tasks[0]["host"] == "ywata-note-win"
 
 
 def test_load_tasks_raises_on_non_string_compute_field(tmp_path):
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n"
@@ -635,35 +676,65 @@ def test_load_tasks_raises_on_non_string_compute_field(tmp_path):
         "    kind: compute\n"
         "    job_id: 25754194\n",  # int, not string
     )
-    with pytest.raises(TaskValidationError) as exc_info:
+    # Act
+    ctx = pytest.raises(TaskValidationError, match=r"job_id.*non-string|non-string.*job_id")
+    # Assert
+    with ctx:
         load_tasks(store)
-    assert "job_id" in str(exc_info.value)
-    assert "non-string" in str(exc_info.value)
 
 
-def test_save_tasks_round_trips_kind_and_compute_metadata(tmp_path):
-    """ruamel round-trip preserves `kind:` + compute fields with comments."""
-    store = _write(
-        tmp_path,
-        "# preserved header\n"
-        "tasks:\n"
-        "  - id: c1\n"
-        "    title: 'compute: example'\n"
-        "    status: in_progress\n"
-        "    kind: compute\n"
-        "    job_id: '99'\n"
-        "    host: spartan\n"
-        "    command: echo hi\n",
-    )
+_COMPUTE_ROUND_TRIP_SETUP_YAML = (
+    "# preserved header\n"
+    "tasks:\n"
+    "  - id: c1\n"
+    "    title: 'compute: example'\n"
+    "    status: in_progress\n"
+    "    kind: compute\n"
+    "    job_id: '99'\n"
+    "    host: spartan\n"
+    "    command: echo hi\n"
+)
+
+
+def _seed_compute_round_trip(tmp_path):
+    """Helper: write + load + mutate; returns (store, reloaded-after-save)."""
+    store = _write(tmp_path, _COMPUTE_ROUND_TRIP_SETUP_YAML)
     tasks = load_tasks(store)
     tasks[0]["status"] = "done"
     tasks[0]["finished_at"] = "2026-06-06T13:30:00Z"
     save_tasks(tasks, store)
-    reloaded = load_tasks(store)[0]
+    return store, load_tasks(store)[0]
+
+
+def test_save_tasks_round_trip_preserves_kind_compute(tmp_path):
+    # Arrange
+    # Act
+    _, reloaded = _seed_compute_round_trip(tmp_path)
+    # Assert
     assert reloaded["kind"] == "compute"
+
+
+def test_save_tasks_round_trip_preserves_job_id(tmp_path):
+    # Arrange
+    # Act
+    _, reloaded = _seed_compute_round_trip(tmp_path)
+    # Assert
     assert reloaded["job_id"] == "99"
+
+
+def test_save_tasks_round_trip_writes_finished_at(tmp_path):
+    # Arrange
+    # Act
+    _, reloaded = _seed_compute_round_trip(tmp_path)
+    # Assert
     assert reloaded["finished_at"] == "2026-06-06T13:30:00Z"
-    # Comment must survive.
+
+
+def test_save_tasks_round_trip_preserves_header_comment(tmp_path):
+    # Arrange
+    # Act
+    store, _ = _seed_compute_round_trip(tmp_path)
+    # Assert
     assert "# preserved header" in store.read_text()
 
 
@@ -674,6 +745,7 @@ def test_save_tasks_round_trips_kind_and_compute_metadata(tmp_path):
 
 def test_load_tasks_accepts_kind_decision(tmp_path):
     """`kind: decision` is a valid kind alongside task / compute."""
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n"
@@ -682,18 +754,23 @@ def test_load_tasks_accepts_kind_decision(tmp_path):
         "    status: pending\n"
         "    kind: decision\n",
     )
+    # Act
     tasks = load_tasks(store)
+    # Assert
     assert tasks[0]["kind"] == "decision"
 
 
 def test_load_tasks_decision_kind_uses_existing_statuses(tmp_path):
     """A decision-node's lifecycle uses VALID_STATUSES (pending → done)."""
-    # Pending decision — awaiting resolution.
+    # Arrange — pending decision awaiting resolution.
     store = _write(
         tmp_path,
         "tasks:\n  - {id: d1, title: 'decide: a/b', status: pending, kind: decision}\n",
     )
-    assert load_tasks(store)[0]["status"] == "pending"
+    # Act
+    tasks = load_tasks(store)
+    # Assert
+    assert tasks[0]["status"] == "pending"
 
 
 # ---------------------------------------------------------------------------
@@ -704,16 +781,21 @@ def test_load_tasks_decision_kind_uses_existing_statuses(tmp_path):
 
 def test_load_tasks_accepts_blocker_operator_decision_on_blocked(tmp_path):
     """`blocker: operator-decision` valid on a status=blocked task."""
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n"
         "  - {id: x, title: X, status: blocked, blocker: operator-decision}\n",
     )
-    assert load_tasks(store)[0]["blocker"] == "operator-decision"
+    # Act
+    tasks = load_tasks(store)
+    # Assert
+    assert tasks[0]["blocker"] == "operator-decision"
 
 
 def test_load_tasks_accepts_all_four_blocker_variants(tmp_path):
     """The four operator-named blocker variants each load cleanly."""
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n"
@@ -722,90 +804,138 @@ def test_load_tasks_accepts_all_four_blocker_variants(tmp_path):
         "  - {id: c, title: C, status: blocked, blocker: operator-decision}\n"
         "  - {id: d, title: D, status: blocked, blocker: agent-wait}\n",
     )
+    # Act
     tasks = load_tasks(store)
-    blockers = [t["blocker"] for t in tasks]
-    assert blockers == ["compute", "dep", "operator-decision", "agent-wait"]
+    # Assert
+    assert [t["blocker"] for t in tasks] == [
+        "compute", "dep", "operator-decision", "agent-wait",
+    ]
 
 
 def test_load_tasks_raises_on_unknown_blocker(tmp_path):
     """A typo (or any value not in VALID_BLOCKERS) is fail-loud."""
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n  - {id: x, title: X, status: blocked, blocker: oprator}\n",
     )
-    with pytest.raises(TaskValidationError) as exc_info:
+    # Act
+    ctx = pytest.raises(
+        TaskValidationError, match=r"oprator.*operator-decision|operator-decision.*oprator"
+    )
+    # Assert
+    with ctx:
         load_tasks(store)
-    assert "oprator" in str(exc_info.value)
-    assert "operator-decision" in str(exc_info.value)
 
 
 def test_load_tasks_raises_on_blocker_with_non_blocked_status(tmp_path):
     """Naming a blocker on a non-blocked task is a config error."""
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n"
         "  - {id: x, title: X, status: in_progress, blocker: operator-decision}\n",
     )
-    with pytest.raises(TaskValidationError) as exc_info:
+    # Act
+    ctx = pytest.raises(TaskValidationError, match=r"blocker.*status: blocked|status: blocked.*blocker")
+    # Assert
+    with ctx:
         load_tasks(store)
-    assert "blocker" in str(exc_info.value)
-    assert "status: blocked" in str(exc_info.value)
 
 
 def test_load_tasks_blocker_absent_on_blocked_is_acceptable(tmp_path):
-    """A blocked task without a `blocker` field is still valid.
-
-    (Documented as a soft-degrade: "we know it's blocked but haven't named
-    the variant yet." The board can render a generic 🚧 with no badge.)
-    """
+    """A blocked task without a `blocker` field is still valid (soft-degrade)."""
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n  - {id: x, title: X, status: blocked}\n",
     )
+    # Act
     tasks = load_tasks(store)
+    # Assert
     assert "blocker" not in tasks[0]
 
 
-def test_load_tasks_blocker_and_kind_are_orthogonal(tmp_path):
-    """A kind=decision row can have ANY blocker variant — enums are independent.
+_ORTHOGONAL_KIND_BLOCKER_YAML = (
+    "tasks:\n"
+    "  - id: d1\n"
+    "    title: 'decide: model-picks-a-or-b'\n"
+    "    status: blocked\n"
+    "    kind: decision\n"
+    "    blocker: compute\n"  # decision blocked on a model run; unusual but legal
+)
 
-    The "decisions usually have blocker=operator-decision" relationship is
-    convention, not validator-enforced (ADR-0004 Notes).
-    """
-    store = _write(
-        tmp_path,
-        "tasks:\n"
-        "  - id: d1\n"
-        "    title: 'decide: model-picks-a-or-b'\n"
-        "    status: blocked\n"
-        "    kind: decision\n"
-        "    blocker: compute\n",  # ← decision blocked on a model run; unusual but legal
-    )
+
+def test_load_tasks_orthogonal_enums_persist_kind_decision(tmp_path):
+    """A kind=decision row can have ANY blocker (validator-orthogonal)."""
+    # Arrange
+    store = _write(tmp_path, _ORTHOGONAL_KIND_BLOCKER_YAML)
+    # Act
     t = load_tasks(store)[0]
+    # Assert
     assert t["kind"] == "decision"
+
+
+def test_load_tasks_orthogonal_enums_persist_blocker_compute(tmp_path):
+    """Companion to the kind-decision test — confirms blocker independently."""
+    # Arrange
+    store = _write(tmp_path, _ORTHOGONAL_KIND_BLOCKER_YAML)
+    # Act
+    t = load_tasks(store)[0]
+    # Assert
     assert t["blocker"] == "compute"
 
 
-def test_save_tasks_round_trips_decision_kind_and_blocker(tmp_path):
-    """ruamel preserves the new fields + a hand-written comment."""
-    store = _write(
-        tmp_path,
-        "# preserved\n"
-        "tasks:\n"
-        "  - id: decide-hub-cutover\n"
-        "    title: 'decide: hub prod-cutover final GO'\n"
-        "    status: blocked\n"
-        "    kind: decision\n"
-        "    blocker: operator-decision\n",
-    )
+_DECISION_ROUND_TRIP_YAML = (
+    "# preserved\n"
+    "tasks:\n"
+    "  - id: decide-hub-cutover\n"
+    "    title: 'decide: hub prod-cutover final GO'\n"
+    "    status: blocked\n"
+    "    kind: decision\n"
+    "    blocker: operator-decision\n"
+)
+
+
+def _seed_decision_round_trip(tmp_path):
+    """Helper: write + load + mutate; returns (store, reloaded-after-save)."""
+    store = _write(tmp_path, _DECISION_ROUND_TRIP_YAML)
     tasks = load_tasks(store)
     tasks[0]["status"] = "done"   # operator decided
     tasks[0].pop("blocker")        # no longer blocked
     save_tasks(tasks, store)
-    reloaded = load_tasks(store)[0]
+    return store, load_tasks(store)[0]
+
+
+def test_save_tasks_round_trip_decision_flips_status_to_done(tmp_path):
+    # Arrange
+    # Act
+    _, reloaded = _seed_decision_round_trip(tmp_path)
+    # Assert
     assert reloaded["status"] == "done"
+
+
+def test_save_tasks_round_trip_decision_drops_blocker(tmp_path):
+    # Arrange
+    # Act
+    _, reloaded = _seed_decision_round_trip(tmp_path)
+    # Assert
     assert "blocker" not in reloaded
+
+
+def test_save_tasks_round_trip_decision_preserves_kind(tmp_path):
+    # Arrange
+    # Act
+    _, reloaded = _seed_decision_round_trip(tmp_path)
+    # Assert
     assert reloaded["kind"] == "decision"
+
+
+def test_save_tasks_round_trip_decision_preserves_header_comment(tmp_path):
+    # Arrange
+    # Act
+    store, _ = _seed_decision_round_trip(tmp_path)
+    # Assert
     assert "# preserved" in store.read_text()
 
 
@@ -815,87 +945,215 @@ def test_save_tasks_round_trips_decision_kind_and_blocker(tmp_path):
 # ===========================================================================
 
 
-def test_task_dataclass_from_dict_constructs_minimum_shape():
-    from scitex_todo._model import Task
+_MIN_TASK_PAYLOAD = {"id": "x", "title": "X"}
 
-    t = Task.from_dict({"id": "x", "title": "X"})
+
+def test_task_dataclass_from_dict_carries_id():
+    # Arrange
+    from scitex_todo._model import Task
+    # Act
+    t = Task.from_dict(_MIN_TASK_PAYLOAD)
+    # Assert
     assert t.id == "x"
-    assert t.title == "X"
-    assert t.status == "pending"   # default
-    assert t.comments == []         # default factory
 
 
-def test_task_dataclass_from_dict_carries_all_operator_fields():
+def test_task_dataclass_from_dict_carries_title():
+    # Arrange
     from scitex_todo._model import Task
+    # Act
+    t = Task.from_dict(_MIN_TASK_PAYLOAD)
+    # Assert
+    assert t.title == "X"
 
-    t = Task.from_dict({
-        "id": "x", "title": "X",
-        "task": "the BIG line",
-        "project": "scitex-todo",
-        "host": "ywata-note-win",
-        "created_at": "2026-06-07T01:00:00Z",
-        "goal": "make the board the fleet's shared SSoT",
-        "agent": "proj-scitex-todo",
-        "last_activity": "12s ago",
-        "pr_url": "https://github.com/ywatanabe1989/scitex-todo/pull/54",
-        "issue_url": "https://github.com/ywatanabe1989/scitex-agent-container/issues/324",
-    })
+
+def test_task_dataclass_from_dict_defaults_status_to_pending():
+    # Arrange
+    from scitex_todo._model import Task
+    # Act
+    t = Task.from_dict(_MIN_TASK_PAYLOAD)
+    # Assert
+    assert t.status == "pending"
+
+
+def test_task_dataclass_from_dict_defaults_comments_to_empty_list():
+    # Arrange
+    from scitex_todo._model import Task
+    # Act
+    t = Task.from_dict(_MIN_TASK_PAYLOAD)
+    # Assert
+    assert t.comments == []
+
+
+_OPERATOR_FIELDS_PAYLOAD = {
+    "id": "x",
+    "title": "X",
+    "task": "the BIG line",
+    "project": "scitex-todo",
+    "host": "ywata-note-win",
+    "created_at": "2026-06-07T01:00:00Z",
+    "goal": "make the board the fleet's shared SSoT",
+    "agent": "proj-scitex-todo",
+    "last_activity": "12s ago",
+    "pr_url": "https://github.com/ywatanabe1989/scitex-todo/pull/54",
+    "issue_url": "https://github.com/ywatanabe1989/scitex-agent-container/issues/324",
+}
+
+
+def test_task_dataclass_from_dict_carries_task_field():
+    # Arrange
+    from scitex_todo._model import Task
+    # Act
+    t = Task.from_dict(_OPERATOR_FIELDS_PAYLOAD)
+    # Assert
     assert t.task == "the BIG line"
+
+
+def test_task_dataclass_from_dict_carries_project_field():
+    # Arrange
+    from scitex_todo._model import Task
+    # Act
+    t = Task.from_dict(_OPERATOR_FIELDS_PAYLOAD)
+    # Assert
     assert t.project == "scitex-todo"
+
+
+def test_task_dataclass_from_dict_carries_host_field():
+    # Arrange
+    from scitex_todo._model import Task
+    # Act
+    t = Task.from_dict(_OPERATOR_FIELDS_PAYLOAD)
+    # Assert
     assert t.host == "ywata-note-win"
+
+
+def test_task_dataclass_from_dict_carries_goal_field():
+    # Arrange
+    from scitex_todo._model import Task
+    # Act
+    t = Task.from_dict(_OPERATOR_FIELDS_PAYLOAD)
+    # Assert
     assert t.goal == "make the board the fleet's shared SSoT"
+
+
+def test_task_dataclass_from_dict_carries_pr_url_field():
+    # Arrange
+    from scitex_todo._model import Task
+    # Act
+    t = Task.from_dict(_OPERATOR_FIELDS_PAYLOAD)
+    # Assert
     assert t.pr_url.endswith("/pull/54")
 
 
 def test_task_dataclass_from_dict_ignores_unknown_keys():
+    # Arrange
     from scitex_todo._model import Task
-
+    # Act — unknown `future_field` must not raise (forward-compat).
     t = Task.from_dict({"id": "x", "title": "X", "future_field": "ok"})
+    # Assert
     assert t.id == "x"
-    # No error; unknown key dropped (forward-compat).
 
 
 def test_task_dataclass_from_dict_normalizes_legacy_dep_to_dependency():
     """Legacy `blocker: "dep"` → canonical `"dependency"` on dataclass read."""
+    # Arrange
     from scitex_todo._model import Task
-
+    # Act
     t = Task.from_dict({"id": "x", "title": "X", "status": "blocked", "blocker": "dep"})
+    # Assert
     assert t.blocker == "dependency"
 
 
 def test_task_dataclass_to_dict_omits_default_fields():
+    # Arrange
     from scitex_todo._model import Task
-
     t = Task(id="x", title="X")
+    # Act
     d = t.to_dict()
+    # Assert
     assert d == {"id": "x", "title": "X", "status": "pending"}
 
 
-def test_task_dataclass_to_dict_omits_empty_lists():
+def test_task_dataclass_to_dict_omits_empty_depends_on(tmp_path):
+    # Arrange
     from scitex_todo._model import Task
-
     t = Task(id="x", title="X", depends_on=[], blocks=[], comments=[])
+    # Act
     d = t.to_dict()
-    assert "depends_on" not in d and "blocks" not in d and "comments" not in d
+    # Assert
+    assert "depends_on" not in d
 
 
-def test_task_dataclass_round_trip_preserves_fields():
+def test_task_dataclass_to_dict_omits_empty_blocks(tmp_path):
+    # Arrange
     from scitex_todo._model import Task
-
-    payload = {
-        "id": "x", "title": "X", "task": "do the thing",
-        "project": "scitex-todo", "host": "ywata", "agent": "proj-scitex-todo",
-        "status": "blocked", "blocker": "operator-decision",
-        "goal": "ship the board", "depends_on": ["a", "b"],
-        "tags": ["P0", "infra"],   # ← unknown key, gets dropped
-    }
-    t = Task.from_dict(payload)
+    t = Task(id="x", title="X", depends_on=[], blocks=[], comments=[])
+    # Act
     d = t.to_dict()
-    # Round-trip preserves every known field; unknown `tags` is dropped.
+    # Assert
+    assert "blocks" not in d
+
+
+def test_task_dataclass_to_dict_omits_empty_comments(tmp_path):
+    # Arrange
+    from scitex_todo._model import Task
+    t = Task(id="x", title="X", depends_on=[], blocks=[], comments=[])
+    # Act
+    d = t.to_dict()
+    # Assert
+    assert "comments" not in d
+
+
+_ROUND_TRIP_PAYLOAD = {
+    "id": "x", "title": "X", "task": "do the thing",
+    "project": "scitex-todo", "host": "ywata", "agent": "proj-scitex-todo",
+    "status": "blocked", "blocker": "operator-decision",
+    "goal": "ship the board", "depends_on": ["a", "b"],
+    "tags": ["P0", "infra"],  # unknown key, gets dropped
+}
+
+
+def _round_trip_dataclass():
+    from scitex_todo._model import Task
+    return Task.from_dict(_ROUND_TRIP_PAYLOAD).to_dict()
+
+
+def test_task_dataclass_round_trip_preserves_task_field():
+    # Arrange
+    # Act
+    d = _round_trip_dataclass()
+    # Assert
     assert d["task"] == "do the thing"
+
+
+def test_task_dataclass_round_trip_preserves_status():
+    # Arrange
+    # Act
+    d = _round_trip_dataclass()
+    # Assert
     assert d["status"] == "blocked"
+
+
+def test_task_dataclass_round_trip_preserves_blocker():
+    # Arrange
+    # Act
+    d = _round_trip_dataclass()
+    # Assert
     assert d["blocker"] == "operator-decision"
+
+
+def test_task_dataclass_round_trip_preserves_depends_on():
+    # Arrange
+    # Act
+    d = _round_trip_dataclass()
+    # Assert
     assert d["depends_on"] == ["a", "b"]
+
+
+def test_task_dataclass_round_trip_drops_unknown_tags_field():
+    # Arrange
+    # Act
+    d = _round_trip_dataclass()
+    # Assert
     assert "tags" not in d
 
 
@@ -906,32 +1164,46 @@ def test_task_dataclass_round_trip_preserves_fields():
 
 def test_load_tasks_accepts_canonical_dependency_blocker(tmp_path):
     """`blocker: "dependency"` (the canonical spelling) loads cleanly."""
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n  - {id: x, title: X, status: blocked, blocker: dependency}\n",
     )
-    assert load_tasks(store)[0]["blocker"] == "dependency"
+    # Act
+    tasks = load_tasks(store)
+    # Assert
+    assert tasks[0]["blocker"] == "dependency"
 
 
 def test_load_tasks_still_accepts_legacy_dep_blocker(tmp_path):
-    """Legacy `blocker: "dep"` is still accepted during the deprecation window."""
+    """Legacy `blocker: "dep"` is still accepted during the deprecation window.
+
+    Validator passes; the dict still carries "dep". The Task dataclass
+    normalizes on read; legacy writers that go through save_tasks without
+    converting still produce "dep" until they migrate.
+    """
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n  - {id: x, title: X, status: blocked, blocker: dep}\n",
     )
-    # Validator passes; the dict still carries "dep". The Task dataclass
-    # normalizes on read; legacy writers that go through save_tasks
-    # without converting still produce "dep" until they migrate.
-    assert load_tasks(store)[0]["blocker"] == "dep"
+    # Act
+    tasks = load_tasks(store)
+    # Assert
+    assert tasks[0]["blocker"] == "dep"
 
 
 def test_load_tasks_accepts_none_blocker(tmp_path):
     """`blocker: "none"` explicitly says "we looked, no blocker named" — distinct from absent."""
+    # Arrange
     store = _write(
         tmp_path,
         "tasks:\n  - {id: x, title: X, status: blocked, blocker: none}\n",
     )
-    assert load_tasks(store)[0]["blocker"] == "none"
+    # Act
+    tasks = load_tasks(store)
+    # Assert
+    assert tasks[0]["blocker"] == "none"
 
 
 # ---------------------------------------------------------------------------

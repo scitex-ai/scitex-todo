@@ -12,12 +12,12 @@ from .crud import (
     handle_create,
     handle_delete,
     handle_edge,
-    handle_reopen,
     handle_restore,
     handle_update,
 )
 from .graph import handle_graph, handle_ping, handle_rev, handle_tasks
 from .priority import handle_priority
+from .reopen import handle_reopen
 from .resolve import handle_resolve
 
 # endpoint string -> handler function

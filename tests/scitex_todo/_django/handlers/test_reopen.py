@@ -237,7 +237,8 @@ def test_reopen_yaml_round_trips_clean(store):
 
 def test_resolve_reopen_cycle_final_status_is_blocked(store):
     """resolve -> reopen -> resolve -> reopen leaves status=blocked."""
-    # Arrange / Act
+    # Arrange
+    # Act
     final = _run_resolve_reopen_cycle_twice(store, "still-blocked")
     # Assert
     assert final["status"] == "blocked"
@@ -245,7 +246,8 @@ def test_resolve_reopen_cycle_final_status_is_blocked(store):
 
 def test_resolve_reopen_cycle_final_blocker_is_operator_decision(store):
     """After the cycle, the default blocker is restored on the final reopen."""
-    # Arrange / Act
+    # Arrange
+    # Act
     final = _run_resolve_reopen_cycle_twice(store, "still-blocked")
     # Assert
     assert final["blocker"] == "operator-decision"
@@ -253,7 +255,8 @@ def test_resolve_reopen_cycle_final_blocker_is_operator_decision(store):
 
 def test_resolve_reopen_cycle_appends_one_comment_per_call(store):
     """4 endpoint calls -> 4 comment entries (each one append-only)."""
-    # Arrange / Act
+    # Arrange
+    # Act
     final = _run_resolve_reopen_cycle_twice(store, "still-blocked")
     # Assert
     assert len(final["comments"]) == 4
