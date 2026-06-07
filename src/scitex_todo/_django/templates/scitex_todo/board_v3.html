@@ -300,6 +300,31 @@
   }
   .detail-resolve:hover { background: #5dbb60; box-shadow: 0 0 12px 2px rgba(76,175,80,0.7); }
   .detail-resolve:disabled { opacity: 0.55; cursor: wait; }
+  /* Armed (one-click-from-firing) state — orange warning so the user knows
+     the next click is destructive. Operator pain TG 9763: Resolve must not
+     feel like a trap; the 2-click confirm + visual warning is the safety
+     mechanic. */
+  .detail-resolve--armed {
+    background: var(--amber, #ffa726);
+    border-color: var(--amber, #ffa726);
+    color: #000;
+    box-shadow: 0 0 14px 3px rgba(255,167,38,0.7);
+    animation: pulse-amber 1.1s ease-in-out infinite;
+  }
+  @keyframes pulse-amber {
+    0%, 100% { box-shadow: 0 0 10px 2px rgba(255,167,38,0.6); }
+    50%      { box-shadow: 0 0 18px 5px rgba(255,167,38,0.9); }
+  }
+  /* Dedicated "Cancel" button shown only while Resolve is armed (lead
+     a2a a7e53184: "ideally a 'cancel' button next to Resolve in the drawer").
+     Distinct from "Close": Cancel disarms Resolve, Close shuts the drawer. */
+  .detail-cancel-resolve {
+    background: transparent; border: 1px solid var(--amber, #ffa726);
+    color: var(--amber, #ffa726);
+    padding: 7px 16px; border-radius: 6px; cursor: pointer; font: inherit;
+    font-weight: 600;
+  }
+  .detail-cancel-resolve:hover { background: rgba(255,167,38,0.12); }
 
   .foot {
     padding: 8px 14px;
@@ -328,10 +353,20 @@
     transform: translateY(80px); opacity: 0;
     transition: transform 220ms ease, opacity 220ms ease;
     z-index: 200;
-    max-width: 400px;
+    max-width: 420px;
+    display: flex; align-items: center; gap: 10px;
   }
   .toast.show { transform: translateY(0); opacity: 1; }
   .toast--err { background: var(--red); }
+  .toast-undo {
+    background: rgba(255,255,255,0.18);
+    color: #fff; border: 1px solid rgba(255,255,255,0.55);
+    padding: 4px 10px; border-radius: 5px; cursor: pointer;
+    font: inherit; font-weight: 700; font-size: 0.82rem;
+    margin-left: 4px;
+  }
+  .toast-undo:hover { background: rgba(255,255,255,0.32); }
+  .toast-undo:disabled { opacity: 0.5; cursor: wait; }
 
   .loading {
     text-align: center; color: var(--text-muted);
@@ -389,6 +424,8 @@
       <div id="d-rows"></div>
       <div class="detail-actions">
         <button class="detail-close" onclick="closeDetail()">Close</button>
+        <button class="detail-cancel-resolve" id="d-cancel-resolve" onclick="disarmResolve()"
+                style="display: none;">Cancel</button>
         <button class="detail-resolve" id="d-resolve" onclick="resolveTask()">Resolve → notify agent</button>
       </div>
     </div>
@@ -580,7 +617,15 @@
       if (e.key !== "Escape") return;
       const backdrop = document.getElementById("detail-backdrop");
       if (backdrop && backdrop.classList.contains("show")) {
-        closeDetail();
+        // If Resolve is armed (orange one-click-from-firing state) ESC
+        // disarms FIRST without closing — so the user can think + step
+        // back without losing the drawer they were reading. Second ESC
+        // (or one ESC when not armed) closes as before.
+        if (RESOLVE_ARMED) {
+          disarmResolve();
+        } else {
+          closeDetail();
+        }
         e.preventDefault();
         e.stopPropagation();
       }
@@ -614,20 +659,82 @@
       const rb = document.getElementById("d-resolve");
       rb.disabled = (t.status === "done");
       rb.textContent = (t.status === "done") ? "Already resolved" : "Resolve → notify agent";
+      // Every fresh drawer-open disarms Resolve so the 2-click confirm
+      // applies even if a previous open left it armed.
+      disarmResolve();
       document.getElementById("detail-backdrop").classList.add("show");
     }
     function closeDetail(e) {
       if (e && e.target.classList.contains("detail")) return;
       document.getElementById("detail-backdrop").classList.remove("show");
       STATE.openId = null;
+      // Closing the drawer should also disarm — never leave a destructive
+      // primed state behind when the user backs out.
+      disarmResolve();
+    }
+
+    // Resolve-confirm state — see the "2-click confirm" comment on resolveTask.
+    let RESOLVE_ARMED = false;
+    let RESOLVE_ARM_TIMER = null;
+
+    function disarmResolve() {
+      RESOLVE_ARMED = false;
+      if (RESOLVE_ARM_TIMER !== null) {
+        clearTimeout(RESOLVE_ARM_TIMER);
+        RESOLVE_ARM_TIMER = null;
+      }
+      const rb = document.getElementById("d-resolve");
+      const cb = document.getElementById("d-cancel-resolve");
+      if (rb && !rb.disabled) rb.textContent = "Resolve → notify agent";
+      if (rb) rb.classList.remove("detail-resolve--armed");
+      if (cb) cb.style.display = "none";
+    }
+    function armResolve() {
+      RESOLVE_ARMED = true;
+      const rb = document.getElementById("d-resolve");
+      const cb = document.getElementById("d-cancel-resolve");
+      rb.textContent = "⚠ Click again to confirm";
+      rb.classList.add("detail-resolve--armed");
+      cb.style.display = "";
+      // Auto-disarm after 6s of no follow-through so the orange button
+      // does not linger after the user has clearly walked away.
+      RESOLVE_ARM_TIMER = setTimeout(disarmResolve, 6000);
     }
 
     function toast(msg, err) {
       const el = document.getElementById("toast");
-      el.textContent = msg;
+      el.innerHTML = "";
+      const span = document.createElement("span");
+      span.textContent = msg;
+      el.appendChild(span);
       el.classList.toggle("toast--err", !!err);
       el.classList.add("show");
       setTimeout(() => el.classList.remove("show"), 3600);
+    }
+    /* Toast with an Undo button. The button stays clickable for ``window`` ms
+       (default 10000) — long enough that a startled operator can click it
+       even after blinking, short enough that the agent stops waiting on the
+       human and moves on. Pair with /reopen on the backend. */
+    function toastUndo(msg, undoFn, window) {
+      const el = document.getElementById("toast");
+      const ms = (typeof window === "number" && window > 0) ? window : 10000;
+      el.innerHTML = "";
+      const span = document.createElement("span");
+      span.textContent = msg;
+      el.appendChild(span);
+      const btn = document.createElement("button");
+      btn.className = "toast-undo";
+      btn.textContent = "↺ Undo";
+      btn.onclick = async () => {
+        btn.disabled = true;
+        try { await undoFn(); } finally { /* hide whether or not undo errored */
+          el.classList.remove("show");
+        }
+      };
+      el.appendChild(btn);
+      el.classList.remove("toast--err");
+      el.classList.add("show");
+      setTimeout(() => el.classList.remove("show"), ms);
     }
 
     async function postResolve(id) {
@@ -643,26 +750,78 @@
       return r.json();
     }
 
+    async function postReopen(id, priorStatus, priorBlocker) {
+      const r = await fetch("/reopen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id, actor: "operator",
+          prior_status: priorStatus || null,
+          prior_blocker: priorBlocker || null,
+        }),
+      });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${r.status}`);
+      }
+      return r.json();
+    }
+
+    /* Resolve flow with 2-click confirm + Undo affordance — operator pain
+       TG 9763. Click 1: arms (button turns orange + Cancel appears + auto-
+       disarms after 6s). Click 2 (within the window): fires. After success,
+       the toast carries an Undo button hot for ~10s wiring back to /reopen. */
     async function resolveTask() {
       if (!STATE.openId) return;
       const rb = document.getElementById("d-resolve");
+      if (!RESOLVE_ARMED) {
+        armResolve();
+        return;
+      }
+      // Second click — fire.
+      disarmResolve();
       rb.disabled = true; rb.textContent = "resolving…";
+      const tid = STATE.openId;
       try {
-        const result = await postResolve(STATE.openId);
-        toast(`✓ Resolved ${STATE.openId}`);
+        const result = await postResolve(tid);
+        const priorStatus = result.prior_status || null;
+        const priorBlocker = result.prior_blocker || null;
         closeDetail();
         await loadGraph();
+        toastUndo(`✓ Resolved ${tid}`, async () => {
+          try {
+            await postReopen(tid, priorStatus, priorBlocker);
+            toast(`↺ Re-opened ${tid}`);
+            await loadGraph();
+          } catch (err) {
+            toast(`✗ undo failed: ${err.message}`, true);
+          }
+        });
       } catch (e) {
         toast(`✗ ${e.message}`, true);
         rb.disabled = false; rb.textContent = "Resolve → notify agent";
       }
     }
+    /* BLOCKING-YOU panel button stays single-click for now (small target,
+       can't easily host the orange-arm UI) — but it inherits the Undo
+       toast so the safety net still applies. If the operator hits this
+       same trap from the panel, escalate to a confirm popup. */
     async function resolveById(id, btn) {
       if (btn) { btn.disabled = true; btn.textContent = "resolving…"; }
       try {
-        await postResolve(id);
-        toast(`✓ Resolved ${id}`);
+        const result = await postResolve(id);
+        const priorStatus = result.prior_status || null;
+        const priorBlocker = result.prior_blocker || null;
         await loadGraph();
+        toastUndo(`✓ Resolved ${id}`, async () => {
+          try {
+            await postReopen(id, priorStatus, priorBlocker);
+            toast(`↺ Re-opened ${id}`);
+            await loadGraph();
+          } catch (err) {
+            toast(`✗ undo failed: ${err.message}`, true);
+          }
+        });
       } catch (e) {
         toast(`✗ ${e.message}`, true);
         if (btn) { btn.disabled = false; }
