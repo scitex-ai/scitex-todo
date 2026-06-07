@@ -64,6 +64,81 @@ Any blocker that doesn't fit one of these four MUST be coerced into
 one (or surfaced as a fleet bug — the lead extends the enum, not the
 agent inventing a fifth category ad-hoc).
 
+### `task-dependency` cascades — the ROOT BLOCKER walk
+
+Operator's clarification (TG 2026-06-07 msg 327):
+
+> "ディペンズオンもブロッカーですよね。下のディペンディングデペン
+> デントなものが片付かないとそのカードは片付かない。ブロッカーは
+> カスケードのように下のほうに行く。1番下がブロッカーなんじゃない
+> ですか？目標に対して枝がどんどん退縮していくようにプレッシャー
+> をかけていきたい."
+
+`task-dependency` is **transitive**: if task A is blocked because it
+`depends_on: [B]`, and B is itself blocked because it `depends_on:
+[C]`, then escalating A — or even B — is wasted noise. The actual
+point where pressure can be applied is **C** (or whatever leaf C
+points at, recursively, until we reach an atomic blocker:
+`compute` / `quota` / `user-pending`, or a RUNNABLE node that's
+just waiting for someone to start it).
+
+Direction convention (so the routing is unambiguous):
+
+```
+                ┌─────────────────────┐
+                │  goal (top)         │  ← what we want done
+                └──────────┬──────────┘
+                           │ depends_on
+                ┌──────────▼──────────┐
+                │  feature task       │  ← blocked-on-B
+                └──────────┬──────────┘
+                           │ depends_on
+                ┌──────────▼──────────┐
+                │  enabler task (B)   │  ← blocked-on-C
+                └──────────┬──────────┘
+                           │ depends_on
+                ┌──────────▼──────────┐
+                │  ROOT BLOCKER (C)   │  ← compute / quota / user-pending / RUNNABLE
+                └─────────────────────┘   ← APPLY PRESSURE HERE
+```
+
+`A depends_on B` ⇒ B is the blocker of A. Goal at the top, branches
+extend downward, leaves are where work actually happens. As leaves
+resolve, the branches **退縮 (recede / contract)** toward the top
+goal — which is the operator's intended visual on the board.
+
+**Walking the chain** (the lead's algorithm during Phase 1):
+
+For every task X with `status: blocked` and `blocker: task-dependency`:
+
+1. Look at `X.depends_on` — find any dep that is NOT yet `done`.
+2. If that dep is itself `status: blocked` with `blocker:
+   task-dependency`, recurse into its `depends_on` (the unsatisfied
+   subset).
+3. Stop when either:
+   - All deps in the chain are `done` ⇒ unblock X, cascade up.
+   - You reach a node with an **atomic** blocker (`compute` /
+     `quota` / `user-pending`) ⇒ that's the **root blocker**. The
+     escalation/pressure goes THERE, not at X.
+   - You reach a RUNNABLE node ⇒ that's the root blocker (someone
+     just needs to start it). Escalate IT, not X.
+4. Cycle guard: keep a `visited` set so a buggy YAML with a circular
+   `depends_on` doesn't loop forever (raise a fleet-bug a2a if one
+   is found; the validator should reject it at write time but the
+   sweep should still survive a stale store).
+
+**Escalation target is always the leaf**, never an intermediate
+`task-dependency`-blocked node. This is the multiplier — one leaf
+unblock can cascade-clear an entire branch above it. ONE pressure
+point per branch, not N.
+
+**Why this matters for the board** (operator's "退縮" metaphor): a
+healthy board over time shows branches shortening as leaves resolve
+upward — visible progress at the goal level driven by leaf work.
+A board where the same intermediate node keeps getting re-escalated
+without its leaf clearing means we're pushing the wrong row, and
+the sweep needs to walk further down.
+
 ### Recording a blocker
 
 When a task transitions RUNNABLE → BLOCKED, the agent (or lead, during
@@ -112,7 +187,11 @@ For every task with `status: blocked`:
    board surfaces it.
 4. **`task-dependency`**: is every `depends_on` id now `done`? If yes,
    unblock. (The board already flags blocked-by-done chains visually,
-   but the sweep is what flips the `status` field.)
+   but the sweep is what flips the `status` field.) If NOT all `done`,
+   **walk the chain** (see "ROOT BLOCKER walk" above) so that the
+   escalation pressure lands on the leaf — the actual atomic
+   blocker or the RUNNABLE node holding up the branch — instead of
+   re-escalating intermediate nodes that just relay the block.
 
 The board's `AutoRefresh.tsx` picks up the flip within 5s — the
 operator sees the unblock live.
@@ -178,22 +257,108 @@ All escalation flows through the lead:
 | Lead  | the whole board             | every task during sweeps; a2a each owning agent with ESCALATE notices. |
 | Operator | the board UI + the lead's daily summary | resolves `user-pending` / `operator-decision` blockers via the "BLOCKING YOU" panel. |
 
-## Cadence
+## Cadence — register with `scitex-dev cron`
 
-The sweep is a **recurring** cycle, not a one-shot. Suggested cadences:
+The sweep is a **recurring** cycle, not a one-shot. Operator's
+directive (TG msg 325): **don't roll a custom scheduler — register
+with the ecosystem-wide `scitex-dev cron` plugin pattern** so the
+fleet has ONE source of scheduled-job truth (alongside `ci-watch`,
+`quota-keepalive`, etc.).
 
-- **q6h** (every 6 hours) is a sane default while consumption-rate is
-  in question. Run as a scheduled lead-side `/loop` or a cron-driven
-  routine that calls into this skill.
-- **on every new task creation** — a lightweight one-task sweep (just
-  Phase 2 for the new task) so the lead can dispatch it the moment it
-  lands, not waiting for the next q6h tick.
+### Where the cron mechanism lives
+
+The supervisor ships in `scitex-dev` (read by every agent container
+via `/opt/venv-sac/lib/python3.12/site-packages/scitex_dev/_cli/cron/`):
+
+| CLI verb                     | What it does                                                   |
+| ---------------------------- | -------------------------------------------------------------- |
+| `scitex-dev cron list`       | show the JobSpec registry + the currently-installed crontab lines |
+| `scitex-dev cron install <n>`| materialize JobSpec `<n>` into the user crontab (idempotent — marker `# scitex-dev cron: <n>` pins exactly one line) |
+| `scitex-dev cron remove <n>` | strip the named job from the crontab                           |
+| `scitex-dev cron exec <n>`   | execute the job body (this is what cron itself calls)          |
+| `scitex-dev cron status`     | last-run / next-run hints for each registered job              |
+
+Cadence format: **standard Unix cron** (5-field `minute hour
+day-of-month month day-of-week`). Log location:
+`~/.scitex/dev/logs/cron-<name>.log` (per-job, operator-facing).
+
+### The 4-step plugin pattern
+
+To add the burn-down sweep as a registered cron job:
+
+1. **Body** — implement `run_once(...)` in a new module:
+
+   ```
+   scitex_dev/_cli/cron/_burndown_sweep.py
+       def run_once() -> None:
+           # 1. load tasks.yaml (resolve via the standard scitex-todo
+           #    path resolver)
+           # 2. Phase 1 — re-check every blocked task, walking the
+           #    task-dependency chain to its root (see "ROOT BLOCKER
+           #    walk" above)
+           # 3. Phase 2 — for every RUNNABLE task, a2a-send an
+           #    ESCALATE to the owning agent
+           # 4. append the audit line to the lead's running log
+   ```
+
+2. **Register** in `scitex_dev/_cli/cron/_jobs.py` (`JOB_REGISTRY`):
+
+   ```python
+   "burndown-sweep": JobSpec(
+       name="burndown-sweep",
+       schedule="0 */6 * * *",   # q6h default — operator-tunable
+       command=(
+           "mkdir -p $HOME/.scitex/dev/logs; "
+           "scitex-dev cron exec burndown-sweep "
+           ">> $HOME/.scitex/dev/logs/cron-burndown-sweep.log 2>&1"
+       ),
+       description="scitex-todo backlog burn-down sweep (Phase 1 unblock + Phase 2 escalate).",
+   ),
+   ```
+
+3. **Wire the dispatch** in `scitex_dev/_cli/cron/run.py` — extend
+   the `exec_cmd` branch table so `scitex-dev cron exec
+   burndown-sweep` invokes `_burndown_sweep.run_once()`.
+
+4. **Pin with a test** in `tests/scitex_dev/_cli/cron/test__jobs.py`
+   — assert the `JOB_REGISTRY["burndown-sweep"]` entry exists with
+   the expected `schedule` + `command` so a future refactor can't
+   silently drop it.
+
+### Existing scitex-dev cron jobs to pattern-match against
+
+- **`ci-watch`** — polls each sac agent's repo for CI failures and
+  dispatches A2A fix-forward turns. (`*/10 * * * *`.)
+- **`quota-keepalive`** — fires every 30 min at the cron level, self-
+  gates to ~2.5h actual fires, pre-starts Claude's rolling quota
+  window so quota caps don't surprise the fleet.
+
+`burndown-sweep` slots into the same family: a fleet-wide
+scheduled job that mutates the shared state (here: the
+SSoT `tasks.yaml`) on a fixed cadence.
+
+### Auxiliary triggers (NOT in cron)
+
+Two extra triggers beyond the cron tick:
+
+- **on every new task creation** — lightweight one-task sweep (just
+  Phase 2 for the new task) so the lead dispatches it the moment it
+  lands. Wire via a hook on `save_tasks` (or the future Gitea
+  adapter's webhook), NOT via cron.
 - **on demand** — when the operator pings the lead with "what's
-  unblocked right now?", run the sweep immediately and reply.
+  unblocked right now?", the lead invokes `run_once()` directly
+  (same body, ad-hoc trigger).
 
-The cadence is a **lead-side concern**. This skill documents the
-SHAPE of the sweep; how often the lead fires it is an
-operator-tunable knob.
+The cron tick is the **default** drumbeat; the auxiliary triggers
+keep latency low for new arrivals + operator nudges.
+
+### Tunability
+
+`schedule` lives in ONE place (`JOB_REGISTRY`); changing it is one
+diff + one test. Operator may want q1h during a busy phase or q12h
+during a quiet phase. Re-install (`scitex-dev cron remove
+burndown-sweep && scitex-dev cron install burndown-sweep`) picks up
+the new schedule.
 
 ## What the lead a2a's to whom
 
