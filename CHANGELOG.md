@@ -4,6 +4,91 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-06-08 — Board v3 + scitex-ui shell + task-harvest skill
+
+The shared-fleet board matures into a real Django app: the live
+**board v3** (kanban + BLOCKING-YOU panel + Resolve → notify wire) is
+promoted to the package root and now extends the **scitex-ui shell**
+so it picks up the Alt+I element-inspector + shared chrome for free.
+The **Task dataclass** becomes the single schema source. The
+**task-harvest skill** documents the operator-commissioned backlog
+burn-down loop (2-state model, 4-value blocker enum, root-blocker
+walk, `scitex-dev cron` registration). Compute-state-deps + decision-
+nodes + ports skeleton land for the north-star roadmap.
+
+### Added (board)
+- **Board v3** — live Django board (kanban-style columns, status
+  filters, BLOCKING-YOU panel, Resolve → a2a notify wire). Promoted to
+  root URL (`/`); legacy GraphView demoted to `/legacy/`. (#57, #58.)
+- **scitex-ui shell integration** — board v3 extends
+  `scitex_ui/standalone_shell.html`, so Alt+I element-inspector +
+  shared chrome work the same way on board v3 as on the legacy
+  GraphView. Compatibility with scitex-hub register-as-module via
+  `scitex_app._django.ScitexAppConfig` preserved. (#69.)
+- **CRUD endpoints** on the Django backend (`/create`, `/update`,
+  `/delete`, `/comment`, `/edge`, `/restore`, `/priority`, `/resolve`)
+  — see `handlers/crud.py`; UI wiring on board v3 ships incrementally.
+- **Board v3 Resolve safety** — 2-click confirm + Undo toast + new
+  `/reopen` endpoint so an accidental Resolve is recoverable. (#61.)
+- **Board v3 comments + priority + hide** — Word-style comment thread
+  + per-card priority up/down + hide button. (#62.)
+- **ESC closes the detail modal** (operator TG 265). (#59.)
+- **Drill-down clarity** — empty-state explainer, Pool label, Back
+  button + region labels (Board / Drill / Canvas / Pool) + count
+  breakdown (Total·Showing·Nested·Pool). (#50, #51.)
+- **Hover affordance** — replace parent-node tilt with a "⊞ Drill in"
+  hover-hint pill (operator TG 245). (#53.)
+
+### Added (schema / Task dataclass)
+- **Task dataclass = single schema source** (#56). All schema
+  validation flows through one dataclass; `_validate_tasks` consumes
+  it; the Gitea adapter + the future README-frontmatter SSoT both
+  consume the same shape. 9 new operator fields (`task` /
+  `last_activity` / `host` / `pr_url` / `issue_url` / `agent` /
+  `project` / `goal` / `created_at`) land.
+- **D11 stamping** (#67) — `created_at` is auto-stamped on `add_task`;
+  `last_activity` is auto-stamped on `update_task`.
+- **Field-flag expansion for `add` / `update`** + closed-enum CLI
+  validation (#65). Every operator-facing field is now a `--flag` on
+  the CLI; closed enums (`status` / `kind` / `blocker`) reject typos
+  at write time.
+- **Compute-state-deps north-star pillar #1** (#52) — `kind` enum
+  (`task` / `compute`) + compute metadata (`job_id` / `host` /
+  `command` / `started_at` / `finished_at`) + ⚙ glyph + KV table.
+  Compute jobs (Spartan / SIF builds / CI) become first-class graph
+  nodes that external watchers can flip done.
+- **Decision-nodes + closed BlockerKind enum** (#54) — `kind: decision`
+  + ⚖️ glyph + LOUD operator-decision halo + "unblocks N" impact badge
+  + 👤 awaiting-you lens. North-star pillar #4.
+- **Core / Extension Ports / Fleet Adapters skeleton** (#55) — ADR-0006
+  backbone for the open-source / fleet-adapter split.
+
+### Added (skills)
+- **`11_adopting-from-a-project`** (#60) — 30-second adoption how-to
+  for project agents to write their tasks into the shared board.
+- **`40_task-harvest`** (#70, #72) — operator-commissioned backlog
+  burn-down protocol: 2-state model (BLOCKED + reason + dependency
+  from a 4-value enum vs RUNNABLE), 2-phase sweep cycle (Phase 1
+  re-check blockers + walk `task-dependency` chains to their LEAF
+  root-blocker; Phase 2 escalate every RUNNABLE task to its owning
+  agent via a2a), lead-centric funnel routing, and registration as a
+  `scitex-dev cron` JobSpec.
+
+### Fixed
+- **`scitex-todo board --tasks PATH`** now actually pins the server's
+  store (was previously a no-op for the Django subprocess — only the
+  browser URL query was set). (#46.)
+- **Audit pipeline unblocked** — TQ002 / TQ007 + PS-202 / PS-204
+  violations fixed. (#68.)
+
+### Notes for operators
+After upgrading: restart your `scitex-todo board` systemd unit so the
+board picks up the scitex-ui-shell extension. Alt+I + element-
+inspector work immediately after restart. CRUD UI on board v3 wires
+to the existing endpoints incrementally — Resolve + Priority +
+Comment + Hide already land in this release; full Create / Update /
+Delete UI ships in a follow-up patch.
+
 ## [0.3.0] - 2026-06-04 — Phase 1 MVP: shared-fleet TODO
 
 The universal-task-layer FLOOR for the agent fleet. Every agent can
