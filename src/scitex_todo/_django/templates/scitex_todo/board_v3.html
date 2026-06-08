@@ -153,12 +153,25 @@
   .main {
     flex: 1; display: flex; min-height: 0;
   }
+  /* Operator UX (TG 370): columns were wrapping vertically because
+   * the auto-fit grid runs out of horizontal room with many projects.
+   * Switch to a single-row HORIZONTAL flex strip with horizontal
+   * scroll (kanban/trello convention) so every project column stays
+   * side-by-side and the operator scrolls horizontally to reach the
+   * trailing ones. Each column gets a fixed width; per-column body
+   * keeps its own vertical scroll. */
   .columns {
-    flex: 1; display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    flex: 1; display: flex; flex-direction: row;
     gap: 10px; padding: 12px;
-    overflow-x: auto; overflow-y: auto;
-    align-content: start;
+    overflow-x: auto; overflow-y: hidden;
+    align-items: stretch;
+    /* Tighter scrollbar styling so the strip doesn't look stuck under
+     * a thick OS scrollbar. */
+    scrollbar-width: thin;
+  }
+  .columns::-webkit-scrollbar { height: 10px; }
+  .columns::-webkit-scrollbar-thumb {
+    background: var(--border); border-radius: 5px;
   }
   .col {
     background: var(--col-bg);
@@ -166,8 +179,46 @@
     border-radius: 10px;
     display: flex; flex-direction: column;
     overflow: hidden;
-    min-height: 200px;
+    /* Fixed column width — kanban convention. min-height removed; the
+     * column stretches to the full strip height via align-items:stretch
+     * on the parent. */
+    flex: 0 0 280px;
+    width: 280px;
+    max-height: 100%;
+    /* Drag affordance: hint the operator they can grab the header to
+     * reorder. JS adds .col--dragging during the drag for visuals. */
+    transition: transform 100ms ease, box-shadow 100ms ease, opacity 100ms ease;
   }
+  .col--dragging {
+    opacity: 0.55;
+    transform: rotate(-1deg);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    z-index: 10;
+  }
+  .col--drop-target {
+    box-shadow: -3px 0 0 0 var(--gold) inset;
+  }
+  /* Pinned columns get a gold accent and stay at the LEFT of the strip
+   * (JS reorders them to the front of the render output before the
+   * drag-order is applied). */
+  .col--pinned {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 1px var(--gold);
+  }
+  .col-head {
+    cursor: grab;  /* the header is the drag handle */
+    user-select: none;
+  }
+  .col-head:active { cursor: grabbing; }
+  .col-pin-btn {
+    background: transparent; border: none;
+    color: var(--text-muted); cursor: pointer;
+    font-size: 0.9rem; line-height: 1;
+    padding: 0 4px;
+    transition: color 100ms ease;
+  }
+  .col-pin-btn:hover { color: var(--gold); }
+  .col--pinned .col-pin-btn { color: var(--gold); }
   .col-head {
     background: rgba(109,76,173,0.08);
     border-bottom: 1px solid var(--border);
@@ -1108,14 +1159,42 @@
         projects.add(p);
         (byProj[p] = byProj[p] || []).push(t);
       }
-      const projList = [...projects].sort();
+      // Column ordering — operator UX TG 370:
+      //   (1) pinned columns first (in their saved pin-order)
+      //   (2) then the custom drag-saved order
+      //   (3) any new project (not yet ranked) trails alphabetically
+      const pinned = pinnedSet();
+      const order = colOrder();  // localStorage-backed; array of project names
+      const projList = [...projects];
+      projList.sort((a, b) => {
+        const pa = pinned.has(a), pb = pinned.has(b);
+        if (pa !== pb) return pa ? -1 : 1;  // pinned first
+        const ia = order.indexOf(a), ib = order.indexOf(b);
+        if (ia !== -1 && ib !== -1) return ia - ib;
+        if (ia !== -1) return -1;
+        if (ib !== -1) return 1;
+        return a.localeCompare(b);  // alphabetical fallback
+      });
       document.getElementById("columns").innerHTML = projList.length
         ? projList.map(p => {
             const items = byProj[p].map(cardHtml).join("");
-            return `<section class="col">
-              <header class="col-head">
+            const isPinned = pinned.has(p);
+            return `<section class="col${isPinned ? " col--pinned" : ""}"
+              data-project="${escapeHtml(p)}" draggable="true"
+              ondragstart="onColDragStart(event,'${escapeHtml(p)}')"
+              ondragend="onColDragEnd(event)"
+              ondragover="onColDragOver(event,'${escapeHtml(p)}')"
+              ondragleave="onColDragLeave(event)"
+              ondrop="onColDrop(event,'${escapeHtml(p)}')">
+              <header class="col-head" title="Drag to reorder">
                 <span class="col-name">${escapeHtml(p)}</span>
-                <span class="col-count">${byProj[p].length}</span>
+                <span style="display:flex;align-items:center;gap:4px;">
+                  <button class="col-pin-btn"
+                    title="${isPinned ? "Unpin column" : "Pin column to the left"}"
+                    onclick="event.stopPropagation(); toggleColPin('${escapeHtml(p)}')"
+                    aria-label="${isPinned ? "Unpin" : "Pin"} ${escapeHtml(p)}">${isPinned ? "📌" : "📍"}</button>
+                  <span class="col-count">${byProj[p].length}</span>
+                </span>
               </header>
               <div class="col-body">${items}</div>
             </section>`;
@@ -1148,6 +1227,88 @@
       // operator sees how many cards are currently being filtered out.
       const hc = document.getElementById("hidden-count");
       if (hc) hc.textContent = String(hiddenSet().size);
+    }
+
+    // === Column pin + drag-reorder (operator UX TG 370) ====================
+    // Two persistent client-side state slots in localStorage:
+    //   COL_PIN_KEY   → Set<projectName>   pinned columns (always at left)
+    //   COL_ORDER_KEY → string[]            custom drag-order; new projects
+    //                                       trail alphabetically
+    // No backend change — order/pin are per-browser preferences (same
+    // pattern as the per-card hide from PR #62 + the project-hide from
+    // PR #74).
+    const COL_PIN_KEY = "scitex-todo:col-pinned";
+    const COL_ORDER_KEY = "scitex-todo:col-order";
+    function pinnedSet() {
+      try { return new Set(JSON.parse(localStorage.getItem(COL_PIN_KEY) || "[]")); }
+      catch { return new Set(); }
+    }
+    function savePinned(s) {
+      localStorage.setItem(COL_PIN_KEY, JSON.stringify([...s]));
+    }
+    function colOrder() {
+      try { return JSON.parse(localStorage.getItem(COL_ORDER_KEY) || "[]"); }
+      catch { return []; }
+    }
+    function saveColOrder(arr) {
+      localStorage.setItem(COL_ORDER_KEY, JSON.stringify(arr));
+    }
+    function toggleColPin(project) {
+      const s = pinnedSet();
+      if (s.has(project)) s.delete(project); else s.add(project);
+      savePinned(s);
+      render();
+    }
+
+    // -- Drag-reorder via HTML5 drag API. The full section.col is
+    //    draggable; the col-head has the grab cursor as the affordance.
+    //    On drop, we splice the source out of the column order and
+    //    insert it before the drop target. Pinned columns can be
+    //    reordered AMONG themselves but never below an unpinned one
+    //    (handled by the sort comparator at render time).
+    let _draggedCol = null;
+    function onColDragStart(e, project) {
+      _draggedCol = project;
+      try { e.dataTransfer.setData("text/plain", project); } catch {}
+      e.dataTransfer.effectAllowed = "move";
+      const el = e.currentTarget;
+      el.classList.add("col--dragging");
+    }
+    function onColDragEnd(e) {
+      e.currentTarget.classList.remove("col--dragging");
+      document.querySelectorAll(".col--drop-target")
+        .forEach(el => el.classList.remove("col--drop-target"));
+      _draggedCol = null;
+    }
+    function onColDragOver(e, project) {
+      if (!_draggedCol || _draggedCol === project) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      e.currentTarget.classList.add("col--drop-target");
+    }
+    function onColDragLeave(e) {
+      e.currentTarget.classList.remove("col--drop-target");
+    }
+    function onColDrop(e, targetProject) {
+      e.preventDefault();
+      e.currentTarget.classList.remove("col--drop-target");
+      const source = _draggedCol;
+      _draggedCol = null;
+      if (!source || source === targetProject) return;
+      // Rebuild the current visible column order from the DOM, then
+      // splice source before target.
+      const cols = [...document.querySelectorAll(".col[data-project]")]
+        .map(el => el.dataset.project);
+      const srcIdx = cols.indexOf(source);
+      const tgtIdx = cols.indexOf(targetProject);
+      if (srcIdx < 0 || tgtIdx < 0) return;
+      cols.splice(srcIdx, 1);
+      cols.splice(tgtIdx < srcIdx ? tgtIdx : tgtIdx - 1 + 1, 0, source);
+      // Persist as the new col-order — render() consumes this directly.
+      // The render-time sort will still float pinned columns to the
+      // left regardless of position in this list.
+      saveColOrder(cols);
+      render();
     }
 
     function attachFilters() {

@@ -4,6 +4,33 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - 2026-06-08 — Board v3 horizontal layout + column pin + drag-reorder + fleet-liveness
+
+Patch release on top of 0.4.0 to unblock operator UX (TG 370) the
+moment they saw 0.4.0 live: project columns stacked vertically with
+many projects + no way to reorder / prioritize them.
+
+### Fixed (board v3)
+- **Columns now lay out side-by-side with horizontal scroll.** The
+  previous CSS grid `repeat(auto-fit, minmax(220px, 1fr))` wrapped
+  many-column boards into a 40,000px tall stack (operator's element-
+  inspector dump confirmed 39929px height). Switched to a single-row
+  flex strip with `overflow-x: auto`; each column is a fixed 280px
+  wide. Kanban / Trello / Linear convention.
+
+### Added (board v3)
+- **Column drag-to-reorder.** Each column section is `draggable`;
+  drop on another column inserts BEFORE that target. Order persists
+  in `localStorage` under `scitex-todo:col-order` (per-browser
+  preference, no backend change).
+- **Column pin (📍 / 📌).** Per-column pin button in the header.
+  Pinned columns float to the LEFT of the strip regardless of drag
+  order. Persists in `localStorage` under `scitex-todo:col-pinned`.
+- **Fleet-liveness dot-strip** (PR #75) — one colored dot per agent
+  in the filter bar, gold/green/blue/grey by status, click toggles
+  the agent filter. Powered by a new `fleet` summary on `/graph`
+  (additive — no schema change).
+
 ## [0.4.0] - 2026-06-08 — Board v3 + scitex-ui shell + task-harvest skill
 
 The shared-fleet board matures into a real Django app: the live
