@@ -102,7 +102,140 @@ def _build_graph(board) -> dict:
         "mermaid": build_mermaid(board.tasks),
         "store_path": str(board.store_path),
         "task_count": len(board.tasks),
+        # Fleet liveness — per-agent at-a-glance summary the operator can
+        # scan from the board header to answer "who is alive + working on
+        # what + blocked on me" without leaving the board (ADR-0008 design,
+        # ticket `proj-scitex-todo-fleet-liveness`, operator TG 9576 acute
+        # pain: 返事が来ない＝私にとって死んだのと同じ). FIRST SLICE — derived
+        # from already-loaded tasks.yaml; the sidecar daemon + cross-host
+        # roll-up land in follow-up PRs (no schema change today).
+        "fleet": _build_fleet(board.tasks),
     }
+
+
+# Statuses that exclude a task from the "runnable" count for liveness.
+# Mirrors the task-harvest skill's non-runnable set (40_task-harvest.md):
+# blocked / done / deferred / failed are not "could be progressed now";
+# `goal` rows are umbrella nodes the harvest doesn't escalate either.
+_LIVENESS_NONRUNNABLE: frozenset[str] = frozenset(
+    {"blocked", "done", "deferred", "failed", "goal"}
+)
+
+
+def _priority_key(t: dict) -> tuple[int, str]:
+    """Sort key: priority (lower = earlier; None sinks to the end), then id.
+
+    Tasks without an explicit `priority` should rank LAST so the
+    "current_task" derivation prefers explicitly-prioritized rows.
+    """
+    p = t.get("priority")
+    return (10_000_000 if p is None else int(p), str(t.get("id") or ""))
+
+
+def _last_activity_key(t: dict) -> str:
+    """Sort key for "most recent activity": ISO-8601 strings sort lexically.
+
+    Tasks without `last_activity` rank LAST (empty string sorts before any
+    real ISO timestamp, so we negate by returning empty when present; the
+    consumer reverses ordering). Returns the timestamp str verbatim — the
+    `max()` caller uses it as a comparison key, not a parsed datetime.
+    """
+    return str(t.get("last_activity") or "")
+
+
+def _build_fleet(tasks: list[dict]) -> list[dict]:
+    """Return a list of {agent, status, current_task, ...} summaries.
+
+    Grouping field: `agent` (fall back to `assignee` for older rows that
+    pre-date the operator-co-designed field rename — both are forwarded
+    to the FE on every node payload too). Tasks WITHOUT an agent are
+    excluded so the dot-strip stays small + readable.
+
+    Status precedence (most attention-demanding first), per the
+    task-harvest skill's 4-value blocker enum + the operator's
+    "blocking-me" lens:
+      1. ``blocking-operator``  any task is blocker=operator-decision
+      2. ``working``            any task is status=in_progress
+      3. ``active``             any task touched within ACTIVE_WINDOW_S
+      4. ``idle``               otherwise
+
+    Per-agent fields:
+      name                    the agent's id (e.g. proj-paper-scitex-clew)
+      status                  one of the four above
+      current_task            title of the agent's most-urgent task
+      current_task_id         id of the same
+      last_activity           max(last_activity) across the agent's tasks
+      task_count              total tasks owned
+      runnable_count          tasks NOT in the non-runnable set (a proxy
+                              for "what's queued waiting to be picked up";
+                              feeds the task-harvest sweep's ESCALATE list)
+      blocked_count           tasks with status=blocked
+      blocking_operator_count tasks with blocker=operator-decision (the
+                              "stuck on YOU" subset the operator needs to
+                              see jump out)
+    """
+    by_agent: dict[str, list[dict]] = {}
+    for t in tasks:
+        a = t.get("agent") or t.get("assignee")
+        if not a:
+            continue
+        by_agent.setdefault(str(a), []).append(t)
+
+    out: list[dict] = []
+    for agent, items in sorted(by_agent.items()):
+        # Status precedence.
+        has_blocking_operator = any(
+            t.get("blocker") == "operator-decision" for t in items
+        )
+        has_in_progress = any(t.get("status") == "in_progress" for t in items)
+        last_activity = max(
+            (str(t.get("last_activity") or "") for t in items),
+            default="",
+        )
+        if has_blocking_operator:
+            status = "blocking-operator"
+        elif has_in_progress:
+            status = "working"
+        elif last_activity:
+            status = "active"
+        else:
+            status = "idle"
+
+        # current_task — prefer in_progress, then most-recent activity, then
+        # highest-priority pending. Lets the dot-strip's tooltip answer
+        # "what are they on right now" with the most-relevant single row.
+        in_progress = [t for t in items if t.get("status") == "in_progress"]
+        if in_progress:
+            current = sorted(in_progress, key=_priority_key)[0]
+        else:
+            with_activity = [t for t in items if t.get("last_activity")]
+            if with_activity:
+                current = max(with_activity, key=_last_activity_key)
+            else:
+                pending = [t for t in items if t.get("status") == "pending"]
+                pool = pending or items
+                current = sorted(pool, key=_priority_key)[0]
+
+        out.append(
+            {
+                "name": agent,
+                "status": status,
+                "current_task": current.get("task") or current.get("title"),
+                "current_task_id": current.get("id"),
+                "last_activity": last_activity or None,
+                "task_count": len(items),
+                "runnable_count": sum(
+                    1
+                    for t in items
+                    if str(t.get("status") or "") not in _LIVENESS_NONRUNNABLE
+                ),
+                "blocked_count": sum(1 for t in items if t.get("status") == "blocked"),
+                "blocking_operator_count": sum(
+                    1 for t in items if t.get("blocker") == "operator-decision"
+                ),
+            }
+        )
+    return out
 
 
 def handle_graph(request, board):
