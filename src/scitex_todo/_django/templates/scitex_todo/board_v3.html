@@ -153,12 +153,25 @@
   .main {
     flex: 1; display: flex; min-height: 0;
   }
+  /* Operator UX (TG 370): columns were wrapping vertically because
+   * the auto-fit grid runs out of horizontal room with many projects.
+   * Switch to a single-row HORIZONTAL flex strip with horizontal
+   * scroll (kanban/trello convention) so every project column stays
+   * side-by-side and the operator scrolls horizontally to reach the
+   * trailing ones. Each column gets a fixed width; per-column body
+   * keeps its own vertical scroll. */
   .columns {
-    flex: 1; display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    flex: 1; display: flex; flex-direction: row;
     gap: 10px; padding: 12px;
-    overflow-x: auto; overflow-y: auto;
-    align-content: start;
+    overflow-x: auto; overflow-y: hidden;
+    align-items: stretch;
+    /* Tighter scrollbar styling so the strip doesn't look stuck under
+     * a thick OS scrollbar. */
+    scrollbar-width: thin;
+  }
+  .columns::-webkit-scrollbar { height: 10px; }
+  .columns::-webkit-scrollbar-thumb {
+    background: var(--border); border-radius: 5px;
   }
   .col {
     background: var(--col-bg);
@@ -166,8 +179,58 @@
     border-radius: 10px;
     display: flex; flex-direction: column;
     overflow: hidden;
-    min-height: 200px;
+    /* Fixed column width — kanban convention. min-height removed; the
+     * column stretches to the full strip height via align-items:stretch
+     * on the parent. */
+    flex: 0 0 280px;
+    width: 280px;
+    max-height: 100%;
+    /* Drag affordance: hint the operator they can grab the header to
+     * reorder. JS adds .col--dragging during the drag for visuals. */
+    transition: transform 100ms ease, box-shadow 100ms ease, opacity 100ms ease;
   }
+  .col--dragging {
+    opacity: 0.55;
+    transform: rotate(-1deg);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    z-index: 10;
+  }
+  .col--drop-target {
+    box-shadow: -3px 0 0 0 var(--gold) inset;
+  }
+  /* Card drag-to-move (operator TG 385) — visual cues. */
+  .card--dragging {
+    opacity: 0.55;
+    transform: rotate(-1deg);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+  }
+  .col--card-drop-target {
+    background: rgba(76,175,80,0.10);
+    box-shadow: 0 0 0 2px var(--green) inset;
+  }
+  .card { cursor: grab; }
+  .card:active { cursor: grabbing; }
+  /* Pinned columns get a gold accent and stay at the LEFT of the strip
+   * (JS reorders them to the front of the render output before the
+   * drag-order is applied). */
+  .col--pinned {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 1px var(--gold);
+  }
+  .col-head {
+    cursor: grab;  /* the header is the drag handle */
+    user-select: none;
+  }
+  .col-head:active { cursor: grabbing; }
+  .col-pin-btn {
+    background: transparent; border: none;
+    color: var(--text-muted); cursor: pointer;
+    font-size: 0.9rem; line-height: 1;
+    padding: 0 4px;
+    transition: color 100ms ease;
+  }
+  .col-pin-btn:hover { color: var(--gold); }
+  .col--pinned .col-pin-btn { color: var(--gold); }
   .col-head {
     background: rgba(109,76,173,0.08);
     border-bottom: 1px solid var(--border);
@@ -258,6 +321,20 @@
     padding: 0 6px; border-radius: 3px;
     font-size: 0.68rem; font-family: ui-monospace, monospace;
     text-decoration: none; border: 1px solid var(--green);
+  }
+  /* Copy button — operator TG 375 share/copy. Minimal chrome so it
+   * doesn't crowd the other footer pills; emoji icon carries the
+   * affordance. */
+  .card-copy-btn {
+    appearance: none; background: transparent;
+    color: var(--text-muted); border: 1px solid var(--border);
+    border-radius: 3px; padding: 0 4px;
+    font: inherit; font-size: 0.76rem; cursor: pointer;
+    line-height: 1.1;
+  }
+  .card-copy-btn:hover {
+    color: var(--text); border-color: var(--purple);
+    background: rgba(109,76,173,0.12);
   }
 
   /* === RIGHT-SIDE BLOCKING YOU panel (prominent — operator's #1) =========== */
@@ -567,6 +644,94 @@
   }
   .card--hidden { opacity: 0.55; filter: grayscale(0.3); }
 
+  /* Hidden-cards dropdown (operator TG 381) — replace the simple
+     "show hidden" toggle with a `<details>` list that names every
+     hidden card + offers one-click un-hide. The single show-hidden
+     toggle still lives inside the dropdown for "reveal them in
+     place" UX. */
+  .hidden-list {
+    position: relative;
+    font-size: 0.78rem;
+  }
+  .hidden-list > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 5px 11px;
+    background: rgba(255,255,255,0.04);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .hidden-list > summary::-webkit-details-marker { display: none; }
+  .hidden-list > summary:hover { color: var(--text); border-color: #4a90e2; }
+  .hidden-list[open] > summary {
+    background: #4a90e2; color: #fff; border-color: #4a90e2;
+  }
+  .hidden-list-panel {
+    position: absolute; top: calc(100% + 4px); right: 0;
+    z-index: 25;
+    min-width: 280px; max-width: 360px;
+    max-height: 320px; overflow-y: auto;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px; display: flex; flex-direction: column; gap: 2px;
+    box-shadow: 0 6px 22px rgba(0,0,0,0.45);
+  }
+  .hidden-list-row {
+    display: flex; align-items: center; gap: 7px;
+    padding: 6px 8px; border-radius: 5px;
+    color: var(--text); cursor: default;
+  }
+  .hidden-list-row:hover { background: rgba(255,255,255,0.06); }
+  .hidden-list-title {
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .hidden-list-meta {
+    color: var(--text-muted); font-size: 0.7rem;
+    margin-top: 2px;
+    font-family: ui-monospace, monospace;
+  }
+  .hidden-list-unhide {
+    appearance: none; background: transparent;
+    color: #4a90e2; border: 1px solid #4a90e2;
+    border-radius: 4px; padding: 2px 8px;
+    font: inherit; font-size: 0.72rem; cursor: pointer;
+    flex: 0 0 auto;
+  }
+  .hidden-list-unhide:hover { background: #4a90e2; color: #fff; }
+  .hidden-list-empty {
+    color: var(--text-muted); font-style: italic;
+    padding: 8px; text-align: center;
+  }
+  .hidden-list-reveal {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+    font-size: 0.74rem;
+  }
+
+  /* Empty column placeholder (operator TG 381): hide-all-cards keeps
+     the column visible so the operator can still Add Task into it.
+     Click the placeholder = open Add Task with the project pre-filled. */
+  .col-empty {
+    margin: 12px;
+    padding: 14px 12px;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    text-align: center;
+    cursor: pointer;
+    font-size: 0.82rem;
+    transition: border-color 100ms ease, color 100ms ease, background 100ms ease;
+  }
+  .col-empty:hover {
+    border-color: var(--green); color: var(--green);
+    background: rgba(76,175,80,0.05);
+  }
+
   /* ── CRUD wiring — Add Task button + Add Task modal + project-hide ──
      Operator TG 344 — operator could not create/update/delete/hide
      projects from the browser. All four ops wire to the existing
@@ -758,10 +923,19 @@
     <button id="t-block" class="toggle-block" onclick="toggleBlockingMe(event)">
       🚧 blocking me
     </button>
-    <button id="t-hidden" class="toggle-show-hidden" onclick="toggleShowHidden(event)"
-            title="Toggle visibility of cards you've hidden">
-      👁 show hidden (<span id="hidden-count">0</span>)
-    </button>
+    <!-- Hidden-cards dropdown (operator TG 381): replaces the simple
+         "show hidden" toggle. Lists every hidden card by title +
+         project with a one-click un-hide button. Last row is the
+         "show hidden in place" toggle (the legacy behavior) for users
+         who'd rather reveal everything than un-hide one by one. -->
+    <details id="hidden-wrap" class="hidden-list">
+      <summary id="hidden-summary" title="Hidden cards — click to expand">
+        👁 hidden (<span id="hidden-count">0</span>)
+      </summary>
+      <div id="hidden-list-panel" class="hidden-list-panel">
+        <div class="hidden-list-empty">No hidden cards.</div>
+      </div>
+    </details>
   </div>
 
   <div class="main">
@@ -990,7 +1164,7 @@
 
     function passes(t) {
       const f = STATE.filters;
-      if (f.project && (t.project || "—") !== f.project) return false;
+      if (f.project && (t.project || "Ungrouped") !== f.project) return false;
       if (f.host && (t.host || "") !== f.host) return false;
       if (f.status && bucket(t.status) !== f.status) return false;
       if (f.blocker) {
@@ -1023,7 +1197,12 @@
           items.map(i => `<option value="${i}">${i}</option>`).join("");
         if (items.includes(cur)) el.value = cur;
       };
-      set("f-project", uniq("project"), "All projects");
+      // f-project includes an explicit "Ungrouped" entry when any
+      // task in the store lacks a `project` field (operator TG 383 —
+      // makes the empty-project column filterable).
+      const projects = uniq("project");
+      if (nodes.some(n => !n.project)) projects.push("Ungrouped");
+      set("f-project", projects, "All projects");
       set("f-host", uniq("host"), "All hosts");
       set("f-agent", uniq("agent"), "All agents");
       // Status / blocker = closed enums; statuses bucketed to 4.
@@ -1080,8 +1259,20 @@
              onclick="event.stopPropagation(); unhideTask('${id}')">Un-hide</button>`
         : `<button class="card-hide-btn" title="Hide this card from view (per-user local)"
              onclick="event.stopPropagation(); hideTask('${id}')">Hide</button>`;
+      // Copy button — operator TG 375 "share/copy" feature. One click =
+      // a Markdown-friendly one-liner is copied to the clipboard so the
+      // operator (or any agent) can paste a card reference into chat,
+      // GitHub, docs, etc. without typing out title/id/project/status.
+      const copyBtn = `<button class="card-copy-btn"
+        title="Copy this card as a one-line reference (title · id · project · status)"
+        aria-label="Copy reference to clipboard"
+        onclick="event.stopPropagation(); copyCardText('${id}')">📋</button>`;
       const hiddenCls = isHidden ? " card--hidden" : "";
-      return `<article class="card card--${b}${hiddenCls}" onclick="openDetail('${id}')">
+      return `<article class="card card--${b}${hiddenCls}"
+        data-card-id="${id}" draggable="true"
+        ondragstart="onCardDragStart(event,'${id}')"
+        ondragend="onCardDragEnd(event)"
+        onclick="openDetail('${id}')">
         <div class="card-pad">
           <div class="card-top">
             <span class="card-status">${b}</span>
@@ -1091,36 +1282,164 @@
           </div>
           ${goal}
           <div class="card-task">${taskLine}</div>
-          <div class="card-bot">${host}<span style="display:flex;gap:4px;align-items:center;">${pr}${issue}${hideBtn}</span></div>
+          <div class="card-bot">${host}<span style="display:flex;gap:4px;align-items:center;">${pr}${issue}${copyBtn}${hideBtn}</span></div>
           ${blocker}
         </div>
       </article>`;
     }
 
+    // === Card drag-to-move between projects (operator TG 385) ============
+    // Pick up a card by holding & dragging; drop on another column's body
+    // → POST /update with the new project so the card moves. Used by the
+    // operator's "this was Ungrouped but actually belongs to project X"
+    // flow. Independent from the column drag-reorder (TG 370) — the
+    // column-level handlers ignore drops when a CARD is the source.
+    let _draggedCard = null;
+    function onCardDragStart(e, cardId) {
+      _draggedCard = cardId;
+      try { e.dataTransfer.setData("text/plain", cardId); } catch {}
+      e.dataTransfer.effectAllowed = "move";
+      e.currentTarget.classList.add("card--dragging");
+      // Stop the dragstart from bubbling into the section.col handler.
+      e.stopPropagation();
+    }
+    function onCardDragEnd(e) {
+      e.currentTarget.classList.remove("card--dragging");
+      document.querySelectorAll(".col--card-drop-target")
+        .forEach(el => el.classList.remove("col--card-drop-target"));
+      _draggedCard = null;
+      e.stopPropagation();
+    }
+    async function moveCardToProject(cardId, newProject) {
+      // newProject="Ungrouped" → clear the field via null (the /update
+      // handler accepts null patches to remove a field).
+      const patch = {
+        id: cardId,
+        project: newProject === "Ungrouped" ? null : newProject,
+      };
+      try {
+        const r = await fetch("/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${r.status}`);
+        }
+        toast(`✓ Moved ${cardId} → ${newProject}`);
+        await loadGraph();
+      } catch (e) {
+        toast(`✗ Move failed: ${e.message}`, true);
+      }
+    }
+
+    // Copy a card as a Markdown-friendly one-liner — operator TG 375.
+    // Format: "TITLE · id:ID · project:PROJ · status:STATUS [· blocker:BLK]"
+    // Falls back to a manual textarea-+-execCommand if the clipboard API
+    // is not available (older browsers / non-HTTPS without permission).
+    async function copyCardText(id) {
+      const t = (STATE.graph?.nodes || []).find(x => x.id === id);
+      if (!t) { toast("card not found", true); return; }
+      const parts = [
+        t.title || t.task || id,
+        `id:${id}`,
+      ];
+      if (t.project) parts.push(`project:${t.project}`);
+      parts.push(`status:${t.status || "?"}`);
+      if (t.blocker) parts.push(`blocker:${t.blocker}`);
+      const text = parts.join(" · ");
+      try {
+        if (navigator.clipboard && window.isSecureContext !== false) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          // Fallback for older / non-HTTPS browsers.
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+        }
+        toast(`✓ copied: ${text}`);
+      } catch (e) {
+        toast(`✗ copy failed: ${e.message}`, true);
+      }
+    }
+
     function render() {
       if (!STATE.graph) return;
       const visible = STATE.graph.nodes.filter(passes);
-      // Group by project; auto-discover columns from distinct `project` values.
+      // Group VISIBLE tasks by project for card rendering.
+      // Operator UX TG 383: tasks without a `project` field
+      // previously rendered under an em-dash "—" column header that
+      // read as "missing value" rather than "ungrouped". Switch the
+      // fallback label to the explicit "Ungrouped" string so any
+      // user can read the column at a glance.
+      const NO_PROJECT_LABEL = "Ungrouped";
       const byProj = {};
-      const projects = new Set();
       for (const t of visible) {
-        const p = t.project || "—";
-        projects.add(p);
+        const p = t.project || NO_PROJECT_LABEL;
         (byProj[p] = byProj[p] || []).push(t);
       }
-      const projList = [...projects].sort();
+      // Operator UX TG 381: empty columns must persist so the
+      // "+ Add Task" + CRUD path stays reachable even when every
+      // card in a project is hidden or filtered out. Discover the
+      // FULL project list from STATE.graph.nodes (the unfiltered
+      // store) and merge against the per-project task lists above.
+      const projects = new Set();
+      for (const t of STATE.graph.nodes) {
+        projects.add(t.project || NO_PROJECT_LABEL);
+      }
+      // Column ordering — operator UX TG 370:
+      //   (1) pinned columns first (in their saved pin-order)
+      //   (2) then the custom drag-saved order
+      //   (3) any new project (not yet ranked) trails alphabetically
+      const pinned = pinnedSet();
+      const order = colOrder();  // localStorage-backed; array of project names
+      const projList = [...projects];
+      projList.sort((a, b) => {
+        const pa = pinned.has(a), pb = pinned.has(b);
+        if (pa !== pb) return pa ? -1 : 1;  // pinned first
+        const ia = order.indexOf(a), ib = order.indexOf(b);
+        if (ia !== -1 && ib !== -1) return ia - ib;
+        if (ia !== -1) return -1;
+        if (ib !== -1) return 1;
+        return a.localeCompare(b);  // alphabetical fallback
+      });
       document.getElementById("columns").innerHTML = projList.length
         ? projList.map(p => {
-            const items = byProj[p].map(cardHtml).join("");
-            return `<section class="col">
-              <header class="col-head">
+            const visibleCards = byProj[p] || [];
+            const items = visibleCards.length
+              ? visibleCards.map(cardHtml).join("")
+              : `<div class="col-empty" onclick="openAddTaskModal('${escapeHtml(p)}')"
+                   title="No visible cards in this project. Click to add one.">
+                   + Add task to ${escapeHtml(p)}
+                 </div>`;
+            const isPinned = pinned.has(p);
+            return `<section class="col${isPinned ? " col--pinned" : ""}"
+              data-project="${escapeHtml(p)}" draggable="true"
+              ondragstart="onColDragStart(event,'${escapeHtml(p)}')"
+              ondragend="onColDragEnd(event)"
+              ondragover="onColDragOver(event,'${escapeHtml(p)}')"
+              ondragleave="onColDragLeave(event)"
+              ondrop="onColDrop(event,'${escapeHtml(p)}')">
+              <header class="col-head" title="Drag to reorder">
                 <span class="col-name">${escapeHtml(p)}</span>
-                <span class="col-count">${byProj[p].length}</span>
+                <span style="display:flex;align-items:center;gap:4px;">
+                  <button class="col-pin-btn"
+                    title="${isPinned ? "Unpin column" : "Pin column to the left"}"
+                    onclick="event.stopPropagation(); toggleColPin('${escapeHtml(p)}')"
+                    aria-label="${isPinned ? "Unpin" : "Pin"} ${escapeHtml(p)}">${isPinned ? "📌" : "📍"}</button>
+                  <span class="col-count">${visibleCards.length}</span>
+                </span>
               </header>
               <div class="col-body">${items}</div>
             </section>`;
           }).join("")
-        : `<div class="loading">no matching tasks</div>`;
+        : `<div class="loading">no projects yet — click "+ Add Task" to start one</div>`;
 
       // BLOCKING YOU panel — strict predicate (ADR-0004 + ADR-0006).
       const by = STATE.graph.nodes.filter(t =>
@@ -1148,6 +1467,110 @@
       // operator sees how many cards are currently being filtered out.
       const hc = document.getElementById("hidden-count");
       if (hc) hc.textContent = String(hiddenSet().size);
+    }
+
+    // === Column pin + drag-reorder (operator UX TG 370) ====================
+    // Two persistent client-side state slots in localStorage:
+    //   COL_PIN_KEY   → Set<projectName>   pinned columns (always at left)
+    //   COL_ORDER_KEY → string[]            custom drag-order; new projects
+    //                                       trail alphabetically
+    // No backend change — order/pin are per-browser preferences (same
+    // pattern as the per-card hide from PR #62 + the project-hide from
+    // PR #74).
+    const COL_PIN_KEY = "scitex-todo:col-pinned";
+    const COL_ORDER_KEY = "scitex-todo:col-order";
+    function pinnedSet() {
+      try { return new Set(JSON.parse(localStorage.getItem(COL_PIN_KEY) || "[]")); }
+      catch { return new Set(); }
+    }
+    function savePinned(s) {
+      localStorage.setItem(COL_PIN_KEY, JSON.stringify([...s]));
+    }
+    function colOrder() {
+      try { return JSON.parse(localStorage.getItem(COL_ORDER_KEY) || "[]"); }
+      catch { return []; }
+    }
+    function saveColOrder(arr) {
+      localStorage.setItem(COL_ORDER_KEY, JSON.stringify(arr));
+    }
+    function toggleColPin(project) {
+      const s = pinnedSet();
+      if (s.has(project)) s.delete(project); else s.add(project);
+      savePinned(s);
+      render();
+    }
+
+    // -- Drag-reorder via HTML5 drag API. The full section.col is
+    //    draggable; the col-head has the grab cursor as the affordance.
+    //    On drop, we splice the source out of the column order and
+    //    insert it before the drop target. Pinned columns can be
+    //    reordered AMONG themselves but never below an unpinned one
+    //    (handled by the sort comparator at render time).
+    let _draggedCol = null;
+    function onColDragStart(e, project) {
+      _draggedCol = project;
+      try { e.dataTransfer.setData("text/plain", project); } catch {}
+      e.dataTransfer.effectAllowed = "move";
+      const el = e.currentTarget;
+      el.classList.add("col--dragging");
+    }
+    function onColDragEnd(e) {
+      e.currentTarget.classList.remove("col--dragging");
+      document.querySelectorAll(".col--drop-target")
+        .forEach(el => el.classList.remove("col--drop-target"));
+      _draggedCol = null;
+    }
+    function onColDragOver(e, project) {
+      // Two flows funnel through this handler:
+      //   (A) column drag-reorder (TG 370) — accept when _draggedCol set
+      //   (B) card drag-to-move    (TG 385) — accept when _draggedCard set
+      if (_draggedCard) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        e.currentTarget.classList.add("col--card-drop-target");
+        return;
+      }
+      if (!_draggedCol || _draggedCol === project) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      e.currentTarget.classList.add("col--drop-target");
+    }
+    function onColDragLeave(e) {
+      e.currentTarget.classList.remove("col--drop-target");
+      e.currentTarget.classList.remove("col--card-drop-target");
+    }
+    function onColDrop(e, targetProject) {
+      e.preventDefault();
+      e.currentTarget.classList.remove("col--drop-target");
+      e.currentTarget.classList.remove("col--card-drop-target");
+      // Card drag-to-move takes precedence (operator TG 385).
+      if (_draggedCard) {
+        const cardId = _draggedCard;
+        _draggedCard = null;
+        // Find the card's CURRENT project; skip if already there.
+        const card = (STATE.graph?.nodes || []).find(n => n.id === cardId);
+        const currentProj = card?.project || "Ungrouped";
+        if (currentProj === targetProject) return;
+        void moveCardToProject(cardId, targetProject);
+        return;
+      }
+      const source = _draggedCol;
+      _draggedCol = null;
+      if (!source || source === targetProject) return;
+      // Rebuild the current visible column order from the DOM, then
+      // splice source before target.
+      const cols = [...document.querySelectorAll(".col[data-project]")]
+        .map(el => el.dataset.project);
+      const srcIdx = cols.indexOf(source);
+      const tgtIdx = cols.indexOf(targetProject);
+      if (srcIdx < 0 || tgtIdx < 0) return;
+      cols.splice(srcIdx, 1);
+      cols.splice(tgtIdx < srcIdx ? tgtIdx : tgtIdx - 1 + 1, 0, source);
+      // Persist as the new col-order — render() consumes this directly.
+      // The render-time sort will still float pinned columns to the
+      // left regardless of position in this list.
+      saveColOrder(cols);
+      render();
     }
 
     function attachFilters() {
@@ -1573,7 +1996,7 @@
     }
 
     // -- Add Task modal -----------------------------------------------------
-    function openAddTaskModal() {
+    function openAddTaskModal(presetProject) {
       // Pre-populate the project datalist with auto-discovered projects.
       if (STATE.graph) {
         const projects = [...new Set(
@@ -1583,7 +2006,11 @@
           projects.map(p => `<option value="${escapeHtml(p)}">`).join("");
       }
       document.getElementById("at-title").value = "";
-      document.getElementById("at-project").value = "";
+      // If invoked from an empty column's placeholder (operator TG 381),
+      // pre-fill the project so the new task goes straight to that
+      // column without retyping the name.
+      const projInput = document.getElementById("at-project");
+      projInput.value = presetProject && presetProject !== "—" ? presetProject : "";
       document.getElementById("at-status").value = "pending";
       document.getElementById("at-task").value = "";
       document.getElementById("add-task-backdrop").classList.add("show");
@@ -1759,7 +2186,63 @@
       // every render (cheap; the list is small + the 5s AutoRefresh
       // keeps it fresh).
       renderFleetStrip();
+      // Hidden-cards dropdown (operator TG 381) — repaint the list +
+      // the headerlabel count on every render so a new hide / un-hide
+      // shows up immediately.
+      rebuildHiddenList();
     };
+
+    // ── Hidden-cards dropdown (operator TG 381) ────────────────────────
+    // Walks STATE.graph.nodes for everything in hiddenSet() and paints
+    // a row per hidden card (title + project + un-hide button). Also
+    // updates the "👁 hidden (N)" count in the dropdown summary.
+    function rebuildHiddenList() {
+      const hidden = hiddenSet();
+      const panel = document.getElementById("hidden-list-panel");
+      const countEl = document.getElementById("hidden-count");
+      if (countEl) countEl.textContent = String(hidden.size);
+      if (!panel) return;
+      if (hidden.size === 0) {
+        panel.innerHTML = `<div class="hidden-list-empty">No hidden cards.</div>`;
+        return;
+      }
+      const byId = new Map((STATE.graph?.nodes || []).map(n => [n.id, n]));
+      const rows = [...hidden].map(id => {
+        const t = byId.get(id);
+        if (!t) {
+          // Hidden card no longer exists in the store (deleted by
+          // someone). Offer un-hide to clear the localStorage entry.
+          return `<div class="hidden-list-row">
+            <div style="flex:1">
+              <div class="hidden-list-title">${escapeHtml(id)}</div>
+              <div class="hidden-list-meta">(missing from store)</div>
+            </div>
+            <button class="hidden-list-unhide"
+              onclick="unhideTask('${escapeHtml(id)}')">Un-hide</button>
+          </div>`;
+        }
+        const title = t.title || t.task || id;
+        const proj = t.project || "—";
+        const status = t.status || "?";
+        return `<div class="hidden-list-row">
+          <div style="flex:1; min-width:0;">
+            <div class="hidden-list-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+            <div class="hidden-list-meta">${escapeHtml(proj)} · ${escapeHtml(status)} · id:${escapeHtml(id)}</div>
+          </div>
+          <button class="hidden-list-unhide"
+            onclick="unhideTask('${escapeHtml(id)}')">Un-hide</button>
+        </div>`;
+      }).join("");
+      const revealOn = STATE.filters.showHidden ? "checked" : "";
+      panel.innerHTML = rows + `
+        <div class="hidden-list-reveal">
+          <input type="checkbox" id="reveal-hidden" ${revealOn}
+                 onchange="toggleShowHidden({ currentTarget: this })">
+          <label for="reveal-hidden" style="cursor:pointer;">
+            Show hidden cards in place (don't filter)
+          </label>
+        </div>`;
+    }
 
     // ── Fleet-liveness rendering (ticket proj-scitex-todo-fleet-liveness) ──
     // Read STATE.graph.fleet (a list of agent summaries served by
