@@ -1941,6 +1941,21 @@
     // an input field, the body) and ESC still closes.
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
+      // Operator TG 454 きもすぎ: the filterbar <details> dropdowns
+      // (hide-project list + hidden-cards list) didn't close on ESC.
+      // Native <details> doesn't ship that handler — add it here so
+      // every floating dropdown follows the same dismiss convention
+      // as the modals (matches the operator's universal "ESC closes
+      // open thing" expectation, TG 265).
+      const openDetails = document.querySelectorAll(
+        ".filterbar details[open], details.proj-hide[open], details.hidden-list[open]"
+      );
+      if (openDetails.length) {
+        openDetails.forEach(d => d.open = false);
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       const backdrop = document.getElementById("detail-backdrop");
       if (backdrop && backdrop.classList.contains("show")) {
         // If Resolve is armed (orange one-click-from-firing state) ESC
