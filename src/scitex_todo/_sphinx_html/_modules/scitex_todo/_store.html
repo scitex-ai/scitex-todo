@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>scitex_todo._store &mdash; scitex-todo v0.4.5</title>
+  <title>scitex_todo._store &mdash; scitex-todo v0.5.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -13,7 +13,7 @@
   
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../_static/documentation_options.js?v=340bb9e5"></script>
+      <script src="../../_static/documentation_options.js?v=1dd76d02"></script>
       <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -563,15 +563,289 @@
 
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">get_task</span><span class="p">(</span>
+    <span class="n">store</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">task_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a single task by id, or raise ``TaskNotFoundError``.</span>
+
+<span class="sd">    Companion to ``add_task`` / ``update_task`` / ``list_tasks`` — the</span>
+<span class="sd">    natural &quot;read one&quot; verb every CRUD surface expects but the Python</span>
+<span class="sd">    API was missing (PR #56 audit gap). The MCP wrapper exposes this as</span>
+<span class="sd">    ``get_task`` per Convention A.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">_model</span>
+
+    <span class="n">tasks_path</span> <span class="o">=</span> <span class="n">_resolved_store</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">task_id</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;get_task: &#39;task_id&#39; is required&quot;</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">_model</span><span class="o">.</span><span class="n">_store_lock</span><span class="p">(</span><span class="n">tasks_path</span><span class="p">):</span>
+        <span class="n">tasks</span> <span class="o">=</span> <span class="n">_model</span><span class="o">.</span><span class="n">load_tasks</span><span class="p">(</span><span class="n">tasks_path</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tasks</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="n">task_id</span><span class="p">:</span>
+                <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="n">TaskNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;task id </span><span class="si">{</span><span class="n">task_id</span><span class="si">!r}</span><span class="s2"> not found in </span><span class="si">{</span><span class="n">tasks_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">delete_task</span><span class="p">(</span>
+    <span class="n">store</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">task_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Remove a task + scrub references to it. Returns the lossless</span>
+<span class="sd">    payload the client can pass to ``restore_task`` for Undo.</span>
+
+<span class="sd">    The board v3 Delete-with-Undo flow uses this via ``handlers/crud.py``;</span>
+<span class="sd">    exposing the same operation here lets MCP agents do the same delete +</span>
+<span class="sd">    later undo without round-tripping HTTP.</span>
+
+<span class="sd">    Returns ``{&quot;removed&quot;: &lt;full task dict&gt;, &quot;refs&quot;: [&lt;refs scrubbed&gt;]}``</span>
+<span class="sd">    where each ref is the id of another task whose depends_on / blocks /</span>
+<span class="sd">    parent pointed at the deleted task (the client passes this back to</span>
+<span class="sd">    restore_task to lossless-revert).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">_model</span>
+
+    <span class="n">tasks_path</span> <span class="o">=</span> <span class="n">_resolved_store</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">task_id</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;delete_task: &#39;task_id&#39; is required&quot;</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">_model</span><span class="o">.</span><span class="n">_store_lock</span><span class="p">(</span><span class="n">tasks_path</span><span class="p">):</span>
+        <span class="n">tasks</span> <span class="o">=</span> <span class="n">_model</span><span class="o">.</span><span class="n">load_tasks</span><span class="p">(</span><span class="n">tasks_path</span><span class="p">)</span>
+        <span class="n">target</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">keep</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tasks</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="n">task_id</span><span class="p">:</span>
+                <span class="n">target</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">keep</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">target</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TaskNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;task id </span><span class="si">{</span><span class="n">task_id</span><span class="si">!r}</span><span class="s2"> not found in </span><span class="si">{</span><span class="n">tasks_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">refs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">keep</span><span class="p">:</span>
+            <span class="n">mutated</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;depends_on&quot;</span><span class="p">),</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span> <span class="n">task_id</span> <span class="ow">in</span> <span class="n">t</span><span class="p">[</span><span class="s2">&quot;depends_on&quot;</span><span class="p">]:</span>
+                <span class="n">t</span><span class="p">[</span><span class="s2">&quot;depends_on&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">d</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">t</span><span class="p">[</span><span class="s2">&quot;depends_on&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="n">d</span> <span class="o">!=</span> <span class="n">task_id</span><span class="p">]</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">t</span><span class="p">[</span><span class="s2">&quot;depends_on&quot;</span><span class="p">]:</span>
+                    <span class="n">t</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;depends_on&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                <span class="n">mutated</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;blocks&quot;</span><span class="p">),</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span> <span class="n">task_id</span> <span class="ow">in</span> <span class="n">t</span><span class="p">[</span><span class="s2">&quot;blocks&quot;</span><span class="p">]:</span>
+                <span class="n">t</span><span class="p">[</span><span class="s2">&quot;blocks&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">b</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">t</span><span class="p">[</span><span class="s2">&quot;blocks&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="n">b</span> <span class="o">!=</span> <span class="n">task_id</span><span class="p">]</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">t</span><span class="p">[</span><span class="s2">&quot;blocks&quot;</span><span class="p">]:</span>
+                    <span class="n">t</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;blocks&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                <span class="n">mutated</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;parent&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="n">task_id</span><span class="p">:</span>
+                <span class="n">t</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;parent&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                <span class="n">mutated</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="k">if</span> <span class="n">mutated</span><span class="p">:</span>
+                <span class="n">refs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">))</span>
+        <span class="n">_model</span><span class="o">.</span><span class="n">_save_tasks_unlocked</span><span class="p">(</span><span class="n">keep</span><span class="p">,</span> <span class="n">tasks_path</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;removed&quot;</span><span class="p">:</span> <span class="n">target</span><span class="p">,</span> <span class="s2">&quot;refs&quot;</span><span class="p">:</span> <span class="n">refs</span><span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">restore_task</span><span class="p">(</span>
+    <span class="n">store</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">task</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">refs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Undo a ``delete_task``: re-insert the task at its original id.</span>
+
+<span class="sd">    Idempotent on duplicate id — raises ``ValueError`` if the id is</span>
+<span class="sd">    already present (use ``update_task`` to mutate; this verb is the</span>
+<span class="sd">    Delete-Undo partner only).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">_model</span>
+
+    <span class="n">tasks_path</span> <span class="o">=</span> <span class="n">_resolved_store</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;restore_task: &#39;task&#39; must be a dict with &#39;id&#39;&quot;</span><span class="p">)</span>
+    <span class="n">tid</span> <span class="o">=</span> <span class="n">task</span><span class="p">[</span><span class="s2">&quot;id&quot;</span><span class="p">]</span>
+    <span class="k">with</span> <span class="n">_model</span><span class="o">.</span><span class="n">_store_lock</span><span class="p">(</span><span class="n">tasks_path</span><span class="p">):</span>
+        <span class="n">tasks</span> <span class="o">=</span> <span class="n">_model</span><span class="o">.</span><span class="n">load_tasks</span><span class="p">(</span><span class="n">tasks_path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="n">tid</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tasks</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;restore_task: id </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> already present&quot;</span><span class="p">)</span>
+        <span class="n">tasks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="n">task</span><span class="p">))</span>
+        <span class="n">_model</span><span class="o">.</span><span class="n">_save_tasks_unlocked</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">tasks_path</span><span class="p">)</span>
+    <span class="c1"># refs are descriptive (the client passes them through so callers can</span>
+    <span class="c1"># see which tasks had been mutated; we don&#39;t reverse-apply them since</span>
+    <span class="c1"># the depends_on / blocks values were just stripped, not stored).</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="n">task</span><span class="p">,</span> <span class="s2">&quot;refs&quot;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">refs</span> <span class="ow">or</span> <span class="p">[])}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">comment_task</span><span class="p">(</span>
+    <span class="n">store</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">task_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">text</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">by</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Append an entry to ``task.comments[]`` (the established Issue-</span>
+<span class="sd">    activity-log shape from skill 30, Gitea-compatible field).</span>
+
+<span class="sd">    `by` overrides the $SCITEX_TODO_AGENT → $USER precedence used by</span>
+<span class="sd">    add_task / complete_task.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">_model</span>
+
+    <span class="n">tasks_path</span> <span class="o">=</span> <span class="n">_resolved_store</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">task_id</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;comment_task: &#39;task_id&#39; is required&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">text</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">str</span><span class="p">(</span><span class="n">text</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;comment_task: &#39;text&#39; is required&quot;</span><span class="p">)</span>
+    <span class="n">author</span> <span class="o">=</span> <span class="n">_default_agent</span><span class="p">(</span><span class="n">by</span><span class="p">)</span>
+    <span class="n">entry</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;author&quot;</span><span class="p">:</span> <span class="n">author</span><span class="p">,</span>
+        <span class="s2">&quot;ts&quot;</span><span class="p">:</span> <span class="n">_utc_now_iso</span><span class="p">(),</span>
+        <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">text</span><span class="p">),</span>
+    <span class="p">}</span>
+    <span class="k">with</span> <span class="n">_model</span><span class="o">.</span><span class="n">_store_lock</span><span class="p">(</span><span class="n">tasks_path</span><span class="p">):</span>
+        <span class="n">tasks</span> <span class="o">=</span> <span class="n">_model</span><span class="o">.</span><span class="n">load_tasks</span><span class="p">(</span><span class="n">tasks_path</span><span class="p">)</span>
+        <span class="n">target</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tasks</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="n">task_id</span><span class="p">:</span>
+                <span class="n">target</span> <span class="o">=</span> <span class="n">t</span>
+                <span class="k">break</span>
+        <span class="k">if</span> <span class="n">target</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TaskNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;task id </span><span class="si">{</span><span class="n">task_id</span><span class="si">!r}</span><span class="s2"> not found in </span><span class="si">{</span><span class="n">tasks_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">comments</span> <span class="o">=</span> <span class="n">target</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;comments&quot;</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="n">comments</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+        <span class="n">_model</span><span class="o">.</span><span class="n">_save_tasks_unlocked</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">tasks_path</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;task_id&quot;</span><span class="p">:</span> <span class="n">task_id</span><span class="p">,</span> <span class="s2">&quot;comment&quot;</span><span class="p">:</span> <span class="n">entry</span><span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">set_edge</span><span class="p">(</span>
+    <span class="n">store</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">action</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">kind</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">source</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">target</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Add or remove a depends_on / blocks edge.</span>
+
+<span class="sd">    ``action`` in {&quot;add&quot;, &quot;remove&quot;}. ``kind`` in {&quot;depends_on&quot;, &quot;blocks&quot;}.</span>
+<span class="sd">    Mutates ``tasks[source][kind]`` (adding/removing ``target``).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">_model</span>
+
+    <span class="k">if</span> <span class="n">action</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;add&quot;</span><span class="p">,</span> <span class="s2">&quot;remove&quot;</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;set_edge: action must be &#39;add&#39; or &#39;remove&#39;&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">kind</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;depends_on&quot;</span><span class="p">,</span> <span class="s2">&quot;blocks&quot;</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;set_edge: kind must be &#39;depends_on&#39; or &#39;blocks&#39;&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">source</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">target</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;set_edge: &#39;source&#39; and &#39;target&#39; are required&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">source</span> <span class="o">==</span> <span class="n">target</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;set_edge: self-edge is forbidden&quot;</span><span class="p">)</span>
+    <span class="n">tasks_path</span> <span class="o">=</span> <span class="n">_resolved_store</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">_model</span><span class="o">.</span><span class="n">_store_lock</span><span class="p">(</span><span class="n">tasks_path</span><span class="p">):</span>
+        <span class="n">tasks</span> <span class="o">=</span> <span class="n">_model</span><span class="o">.</span><span class="n">load_tasks</span><span class="p">(</span><span class="n">tasks_path</span><span class="p">)</span>
+        <span class="n">src_task</span> <span class="o">=</span> <span class="nb">next</span><span class="p">((</span><span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tasks</span> <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="n">source</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">tgt_task</span> <span class="o">=</span> <span class="nb">next</span><span class="p">((</span><span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tasks</span> <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="n">target</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">src_task</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TaskNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;set_edge: unknown source id </span><span class="si">{</span><span class="n">source</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">tgt_task</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TaskNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;set_edge: unknown target id </span><span class="si">{</span><span class="n">target</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">edges</span> <span class="o">=</span> <span class="n">src_task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">kind</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">action</span> <span class="o">==</span> <span class="s2">&quot;add&quot;</span> <span class="ow">and</span> <span class="n">target</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">edges</span><span class="p">:</span>
+            <span class="n">edges</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">edges</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="n">target</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="n">action</span> <span class="o">==</span> <span class="s2">&quot;remove&quot;</span><span class="p">:</span>
+            <span class="n">edges</span> <span class="o">=</span> <span class="p">[</span><span class="n">e</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">edges</span> <span class="k">if</span> <span class="n">e</span> <span class="o">!=</span> <span class="n">target</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">edges</span><span class="p">:</span>
+            <span class="n">src_task</span><span class="p">[</span><span class="n">kind</span><span class="p">]</span> <span class="o">=</span> <span class="n">edges</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">src_task</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">kind</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">_model</span><span class="o">.</span><span class="n">_save_tasks_unlocked</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">tasks_path</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="n">action</span><span class="p">,</span> <span class="s2">&quot;kind&quot;</span><span class="p">:</span> <span class="n">kind</span><span class="p">,</span> <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="n">source</span><span class="p">,</span> <span class="s2">&quot;target&quot;</span><span class="p">:</span> <span class="n">target</span><span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">resolve_task</span><span class="p">(</span>
+    <span class="n">store</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">task_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">actor</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Flip a task from ``status=blocked`` (typically ``blocker=operator-</span>
+<span class="sd">    decision``) to ``done`` and clear the blocker. Appends an audit</span>
+<span class="sd">    comment naming the actor.</span>
+
+<span class="sd">    Idempotent on already-resolved tasks (re-resolves are no-ops, just</span>
+<span class="sd">    log a &quot;noop&quot; comment).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">_model</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">task_id</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;resolve_task: &#39;task_id&#39; is required&quot;</span><span class="p">)</span>
+    <span class="n">who</span> <span class="o">=</span> <span class="n">_default_agent</span><span class="p">(</span><span class="n">actor</span><span class="p">)</span>
+    <span class="n">tasks_path</span> <span class="o">=</span> <span class="n">_resolved_store</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">_model</span><span class="o">.</span><span class="n">_store_lock</span><span class="p">(</span><span class="n">tasks_path</span><span class="p">):</span>
+        <span class="n">tasks</span> <span class="o">=</span> <span class="n">_model</span><span class="o">.</span><span class="n">load_tasks</span><span class="p">(</span><span class="n">tasks_path</span><span class="p">)</span>
+        <span class="n">target</span> <span class="o">=</span> <span class="nb">next</span><span class="p">((</span><span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tasks</span> <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="n">task_id</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">target</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TaskNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;resolve_task: unknown id </span><span class="si">{</span><span class="n">task_id</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">was_done</span> <span class="o">=</span> <span class="n">target</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;done&quot;</span>
+        <span class="n">target</span><span class="p">[</span><span class="s2">&quot;status&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;done&quot;</span>
+        <span class="n">target</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;blocker&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">comments</span> <span class="o">=</span> <span class="n">target</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;comments&quot;</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="n">comments</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;author&quot;</span><span class="p">:</span> <span class="n">who</span><span class="p">,</span>
+                <span class="s2">&quot;ts&quot;</span><span class="p">:</span> <span class="n">_utc_now_iso</span><span class="p">(),</span>
+                <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="p">(</span>
+                    <span class="s2">&quot;[resolve (noop — already done)]&quot;</span>
+                    <span class="k">if</span> <span class="n">was_done</span>
+                    <span class="k">else</span> <span class="s2">&quot;[RESOLVED via mcp.resolve_task] flipped status=&#39;blocked&#39;-&gt;done, blocker cleared.&quot;</span>
+                <span class="p">),</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+        <span class="n">_model</span><span class="o">.</span><span class="n">_save_tasks_unlocked</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">tasks_path</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;task_id&quot;</span><span class="p">:</span> <span class="n">task_id</span><span class="p">,</span> <span class="s2">&quot;actor&quot;</span><span class="p">:</span> <span class="n">who</span><span class="p">,</span> <span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="n">target</span><span class="p">)}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">reopen_task</span><span class="p">(</span>
+    <span class="n">store</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">task_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">by</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Un-resolve a task — flip ``status=done`` back to ``blocked`` with</span>
+<span class="sd">    ``blocker=operator-decision`` (the original LOUD halo state). Used</span>
+<span class="sd">    by the board v3 Resolve→Undo loop.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">_model</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">task_id</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;reopen_task: &#39;task_id&#39; is required&quot;</span><span class="p">)</span>
+    <span class="n">who</span> <span class="o">=</span> <span class="n">_default_agent</span><span class="p">(</span><span class="n">by</span><span class="p">)</span>
+    <span class="n">tasks_path</span> <span class="o">=</span> <span class="n">_resolved_store</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">_model</span><span class="o">.</span><span class="n">_store_lock</span><span class="p">(</span><span class="n">tasks_path</span><span class="p">):</span>
+        <span class="n">tasks</span> <span class="o">=</span> <span class="n">_model</span><span class="o">.</span><span class="n">load_tasks</span><span class="p">(</span><span class="n">tasks_path</span><span class="p">)</span>
+        <span class="n">target</span> <span class="o">=</span> <span class="nb">next</span><span class="p">((</span><span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tasks</span> <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="n">task_id</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">target</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TaskNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;reopen_task: unknown id </span><span class="si">{</span><span class="n">task_id</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">target</span><span class="p">[</span><span class="s2">&quot;status&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;blocked&quot;</span>
+        <span class="n">target</span><span class="p">[</span><span class="s2">&quot;blocker&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;operator-decision&quot;</span>
+        <span class="n">comments</span> <span class="o">=</span> <span class="n">target</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;comments&quot;</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="n">comments</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;author&quot;</span><span class="p">:</span> <span class="n">who</span><span class="p">,</span>
+                <span class="s2">&quot;ts&quot;</span><span class="p">:</span> <span class="n">_utc_now_iso</span><span class="p">(),</span>
+                <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="s2">&quot;[REOPENED via mcp.reopen_task] flipped status=&#39;done&#39;-&gt;blocked, blocker=operator-decision restored.&quot;</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+        <span class="n">_model</span><span class="o">.</span><span class="n">_save_tasks_unlocked</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">tasks_path</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;task_id&quot;</span><span class="p">:</span> <span class="n">task_id</span><span class="p">,</span> <span class="s2">&quot;by&quot;</span><span class="p">:</span> <span class="n">who</span><span class="p">,</span> <span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="n">target</span><span class="p">)}</span>
+
+
 <span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span>
     <span class="s2">&quot;ENV_AGENT&quot;</span><span class="p">,</span>
     <span class="s2">&quot;ENV_SCOPE&quot;</span><span class="p">,</span>
     <span class="s2">&quot;TaskNotFoundError&quot;</span><span class="p">,</span>
     <span class="s2">&quot;TaskValidationError&quot;</span><span class="p">,</span>
     <span class="s2">&quot;add_task&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;comment_task&quot;</span><span class="p">,</span>
     <span class="s2">&quot;complete_task&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;delete_task&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;get_task&quot;</span><span class="p">,</span>
     <span class="s2">&quot;list_tasks&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;reopen_task&quot;</span><span class="p">,</span>
     <span class="s2">&quot;resolve_store&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;resolve_task&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;restore_task&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;set_edge&quot;</span><span class="p">,</span>
     <span class="s2">&quot;summarize_tasks&quot;</span><span class="p">,</span>
     <span class="s2">&quot;update_task&quot;</span><span class="p">,</span>
 <span class="p">]</span>
