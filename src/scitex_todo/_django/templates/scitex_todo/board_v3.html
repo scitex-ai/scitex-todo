@@ -310,6 +310,20 @@
     font-size: 0.68rem; font-family: ui-monospace, monospace;
     text-decoration: none; border: 1px solid var(--green);
   }
+  /* Copy button — operator TG 375 share/copy. Minimal chrome so it
+   * doesn't crowd the other footer pills; emoji icon carries the
+   * affordance. */
+  .card-copy-btn {
+    appearance: none; background: transparent;
+    color: var(--text-muted); border: 1px solid var(--border);
+    border-radius: 3px; padding: 0 4px;
+    font: inherit; font-size: 0.76rem; cursor: pointer;
+    line-height: 1.1;
+  }
+  .card-copy-btn:hover {
+    color: var(--text); border-color: var(--purple);
+    background: rgba(109,76,173,0.12);
+  }
 
   /* === RIGHT-SIDE BLOCKING YOU panel (prominent — operator's #1) =========== */
   .right {
@@ -1131,6 +1145,14 @@
              onclick="event.stopPropagation(); unhideTask('${id}')">Un-hide</button>`
         : `<button class="card-hide-btn" title="Hide this card from view (per-user local)"
              onclick="event.stopPropagation(); hideTask('${id}')">Hide</button>`;
+      // Copy button — operator TG 375 "share/copy" feature. One click =
+      // a Markdown-friendly one-liner is copied to the clipboard so the
+      // operator (or any agent) can paste a card reference into chat,
+      // GitHub, docs, etc. without typing out title/id/project/status.
+      const copyBtn = `<button class="card-copy-btn"
+        title="Copy this card as a one-line reference (title · id · project · status)"
+        aria-label="Copy reference to clipboard"
+        onclick="event.stopPropagation(); copyCardText('${id}')">📋</button>`;
       const hiddenCls = isHidden ? " card--hidden" : "";
       return `<article class="card card--${b}${hiddenCls}" onclick="openDetail('${id}')">
         <div class="card-pad">
@@ -1142,10 +1164,45 @@
           </div>
           ${goal}
           <div class="card-task">${taskLine}</div>
-          <div class="card-bot">${host}<span style="display:flex;gap:4px;align-items:center;">${pr}${issue}${hideBtn}</span></div>
+          <div class="card-bot">${host}<span style="display:flex;gap:4px;align-items:center;">${pr}${issue}${copyBtn}${hideBtn}</span></div>
           ${blocker}
         </div>
       </article>`;
+    }
+
+    // Copy a card as a Markdown-friendly one-liner — operator TG 375.
+    // Format: "TITLE · id:ID · project:PROJ · status:STATUS [· blocker:BLK]"
+    // Falls back to a manual textarea-+-execCommand if the clipboard API
+    // is not available (older browsers / non-HTTPS without permission).
+    async function copyCardText(id) {
+      const t = (STATE.graph?.nodes || []).find(x => x.id === id);
+      if (!t) { toast("card not found", true); return; }
+      const parts = [
+        t.title || t.task || id,
+        `id:${id}`,
+      ];
+      if (t.project) parts.push(`project:${t.project}`);
+      parts.push(`status:${t.status || "?"}`);
+      if (t.blocker) parts.push(`blocker:${t.blocker}`);
+      const text = parts.join(" · ");
+      try {
+        if (navigator.clipboard && window.isSecureContext !== false) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          // Fallback for older / non-HTTPS browsers.
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+        }
+        toast(`✓ copied: ${text}`);
+      } catch (e) {
+        toast(`✗ copy failed: ${e.message}`, true);
+      }
     }
 
     function render() {
