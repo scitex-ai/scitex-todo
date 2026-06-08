@@ -198,6 +198,18 @@
   .col--drop-target {
     box-shadow: -3px 0 0 0 var(--gold) inset;
   }
+  /* Card drag-to-move (operator TG 385) — visual cues. */
+  .card--dragging {
+    opacity: 0.55;
+    transform: rotate(-1deg);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+  }
+  .col--card-drop-target {
+    background: rgba(76,175,80,0.10);
+    box-shadow: 0 0 0 2px var(--green) inset;
+  }
+  .card { cursor: grab; }
+  .card:active { cursor: grabbing; }
   /* Pinned columns get a gold accent and stay at the LEFT of the strip
    * (JS reorders them to the front of the render output before the
    * drag-order is applied). */
@@ -1256,7 +1268,11 @@
         aria-label="Copy reference to clipboard"
         onclick="event.stopPropagation(); copyCardText('${id}')">📋</button>`;
       const hiddenCls = isHidden ? " card--hidden" : "";
-      return `<article class="card card--${b}${hiddenCls}" onclick="openDetail('${id}')">
+      return `<article class="card card--${b}${hiddenCls}"
+        data-card-id="${id}" draggable="true"
+        ondragstart="onCardDragStart(event,'${id}')"
+        ondragend="onCardDragEnd(event)"
+        onclick="openDetail('${id}')">
         <div class="card-pad">
           <div class="card-top">
             <span class="card-status">${b}</span>
@@ -1270,6 +1286,52 @@
           ${blocker}
         </div>
       </article>`;
+    }
+
+    // === Card drag-to-move between projects (operator TG 385) ============
+    // Pick up a card by holding & dragging; drop on another column's body
+    // → POST /update with the new project so the card moves. Used by the
+    // operator's "this was Ungrouped but actually belongs to project X"
+    // flow. Independent from the column drag-reorder (TG 370) — the
+    // column-level handlers ignore drops when a CARD is the source.
+    let _draggedCard = null;
+    function onCardDragStart(e, cardId) {
+      _draggedCard = cardId;
+      try { e.dataTransfer.setData("text/plain", cardId); } catch {}
+      e.dataTransfer.effectAllowed = "move";
+      e.currentTarget.classList.add("card--dragging");
+      // Stop the dragstart from bubbling into the section.col handler.
+      e.stopPropagation();
+    }
+    function onCardDragEnd(e) {
+      e.currentTarget.classList.remove("card--dragging");
+      document.querySelectorAll(".col--card-drop-target")
+        .forEach(el => el.classList.remove("col--card-drop-target"));
+      _draggedCard = null;
+      e.stopPropagation();
+    }
+    async function moveCardToProject(cardId, newProject) {
+      // newProject="Ungrouped" → clear the field via null (the /update
+      // handler accepts null patches to remove a field).
+      const patch = {
+        id: cardId,
+        project: newProject === "Ungrouped" ? null : newProject,
+      };
+      try {
+        const r = await fetch("/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${r.status}`);
+        }
+        toast(`✓ Moved ${cardId} → ${newProject}`);
+        await loadGraph();
+      } catch (e) {
+        toast(`✗ Move failed: ${e.message}`, true);
+      }
     }
 
     // Copy a card as a Markdown-friendly one-liner — operator TG 375.
@@ -1459,6 +1521,15 @@
       _draggedCol = null;
     }
     function onColDragOver(e, project) {
+      // Two flows funnel through this handler:
+      //   (A) column drag-reorder (TG 370) — accept when _draggedCol set
+      //   (B) card drag-to-move    (TG 385) — accept when _draggedCard set
+      if (_draggedCard) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        e.currentTarget.classList.add("col--card-drop-target");
+        return;
+      }
       if (!_draggedCol || _draggedCol === project) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
@@ -1466,10 +1537,23 @@
     }
     function onColDragLeave(e) {
       e.currentTarget.classList.remove("col--drop-target");
+      e.currentTarget.classList.remove("col--card-drop-target");
     }
     function onColDrop(e, targetProject) {
       e.preventDefault();
       e.currentTarget.classList.remove("col--drop-target");
+      e.currentTarget.classList.remove("col--card-drop-target");
+      // Card drag-to-move takes precedence (operator TG 385).
+      if (_draggedCard) {
+        const cardId = _draggedCard;
+        _draggedCard = null;
+        // Find the card's CURRENT project; skip if already there.
+        const card = (STATE.graph?.nodes || []).find(n => n.id === cardId);
+        const currentProj = card?.project || "Ungrouped";
+        if (currentProj === targetProject) return;
+        void moveCardToProject(cardId, targetProject);
+        return;
+      }
       const source = _draggedCol;
       _draggedCol = null;
       if (!source || source === targetProject) return;
