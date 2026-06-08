@@ -83,6 +83,16 @@ _CONVENTION_A_NAMES = {
     "list_tasks",
     "summarize_tasks",
     "resolve_store",
+    # MCP completeness wave (lead a2a `fe723080`, 2026-06-08) — 7 new
+    # task-store tools, each mapping 1:1 to a Python API function in
+    # ``scitex_todo._store`` per Convention A.
+    "get_task",
+    "delete_task",
+    "restore_task",
+    "comment_task",
+    "set_edge",
+    "resolve_task",
+    "reopen_task",
 }
 # Convention B — `todo_<verb>_<noun>` for the audit §5 required skills
 # tools. These don't map 1:1 to a Python API; they introspect the bundled

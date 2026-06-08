@@ -436,15 +436,289 @@ def resolve_store(store: str | Path | None = None) -> dict:
     }
 
 
+def get_task(
+    store: str | Path | None = None,
+    task_id: str | None = None,
+) -> dict:
+    """Return a single task by id, or raise ``TaskNotFoundError``.
+
+    Companion to ``add_task`` / ``update_task`` / ``list_tasks`` — the
+    natural "read one" verb every CRUD surface expects but the Python
+    API was missing (PR #56 audit gap). The MCP wrapper exposes this as
+    ``get_task`` per Convention A.
+    """
+    from . import _model
+
+    tasks_path = _resolved_store(store)
+    if not task_id:
+        raise ValueError("get_task: 'task_id' is required")
+    with _model._store_lock(tasks_path):
+        tasks = _model.load_tasks(tasks_path)
+        for t in tasks:
+            if t.get("id") == task_id:
+                return dict(t)
+    raise TaskNotFoundError(f"task id {task_id!r} not found in {tasks_path}")
+
+
+def delete_task(
+    store: str | Path | None = None,
+    task_id: str | None = None,
+) -> dict:
+    """Remove a task + scrub references to it. Returns the lossless
+    payload the client can pass to ``restore_task`` for Undo.
+
+    The board v3 Delete-with-Undo flow uses this via ``handlers/crud.py``;
+    exposing the same operation here lets MCP agents do the same delete +
+    later undo without round-tripping HTTP.
+
+    Returns ``{"removed": <full task dict>, "refs": [<refs scrubbed>]}``
+    where each ref is the id of another task whose depends_on / blocks /
+    parent pointed at the deleted task (the client passes this back to
+    restore_task to lossless-revert).
+    """
+    from . import _model
+
+    tasks_path = _resolved_store(store)
+    if not task_id:
+        raise ValueError("delete_task: 'task_id' is required")
+    with _model._store_lock(tasks_path):
+        tasks = _model.load_tasks(tasks_path)
+        target = None
+        keep: list = []
+        for t in tasks:
+            if t.get("id") == task_id:
+                target = dict(t)
+            else:
+                keep.append(t)
+        if target is None:
+            raise TaskNotFoundError(f"task id {task_id!r} not found in {tasks_path}")
+        refs: list[str] = []
+        for t in keep:
+            mutated = False
+            if isinstance(t.get("depends_on"), list) and task_id in t["depends_on"]:
+                t["depends_on"] = [d for d in t["depends_on"] if d != task_id]
+                if not t["depends_on"]:
+                    t.pop("depends_on", None)
+                mutated = True
+            if isinstance(t.get("blocks"), list) and task_id in t["blocks"]:
+                t["blocks"] = [b for b in t["blocks"] if b != task_id]
+                if not t["blocks"]:
+                    t.pop("blocks", None)
+                mutated = True
+            if t.get("parent") == task_id:
+                t.pop("parent", None)
+                mutated = True
+            if mutated:
+                refs.append(t.get("id"))
+        _model._save_tasks_unlocked(keep, tasks_path)
+    return {"removed": target, "refs": refs}
+
+
+def restore_task(
+    store: str | Path | None = None,
+    task: dict | None = None,
+    refs: list[str] | None = None,
+) -> dict:
+    """Undo a ``delete_task``: re-insert the task at its original id.
+
+    Idempotent on duplicate id — raises ``ValueError`` if the id is
+    already present (use ``update_task`` to mutate; this verb is the
+    Delete-Undo partner only).
+    """
+    from . import _model
+
+    tasks_path = _resolved_store(store)
+    if not isinstance(task, dict) or not task.get("id"):
+        raise ValueError("restore_task: 'task' must be a dict with 'id'")
+    tid = task["id"]
+    with _model._store_lock(tasks_path):
+        tasks = _model.load_tasks(tasks_path)
+        if any(t.get("id") == tid for t in tasks):
+            raise ValueError(f"restore_task: id {tid!r} already present")
+        tasks.append(dict(task))
+        _model._save_tasks_unlocked(tasks, tasks_path)
+    # refs are descriptive (the client passes them through so callers can
+    # see which tasks had been mutated; we don't reverse-apply them since
+    # the depends_on / blocks values were just stripped, not stored).
+    return {"task": task, "refs": list(refs or [])}
+
+
+def comment_task(
+    store: str | Path | None = None,
+    task_id: str | None = None,
+    text: str | None = None,
+    by: str | None = None,
+) -> dict:
+    """Append an entry to ``task.comments[]`` (the established Issue-
+    activity-log shape from skill 30, Gitea-compatible field).
+
+    `by` overrides the $SCITEX_TODO_AGENT → $USER precedence used by
+    add_task / complete_task.
+    """
+    from . import _model
+
+    tasks_path = _resolved_store(store)
+    if not task_id:
+        raise ValueError("comment_task: 'task_id' is required")
+    if not text or not str(text).strip():
+        raise ValueError("comment_task: 'text' is required")
+    author = _default_agent(by)
+    entry = {
+        "author": author,
+        "ts": _utc_now_iso(),
+        "text": str(text),
+    }
+    with _model._store_lock(tasks_path):
+        tasks = _model.load_tasks(tasks_path)
+        target = None
+        for t in tasks:
+            if t.get("id") == task_id:
+                target = t
+                break
+        if target is None:
+            raise TaskNotFoundError(f"task id {task_id!r} not found in {tasks_path}")
+        comments = target.setdefault("comments", [])
+        comments.append(entry)
+        _model._save_tasks_unlocked(tasks, tasks_path)
+    return {"task_id": task_id, "comment": entry}
+
+
+def set_edge(
+    store: str | Path | None = None,
+    action: str | None = None,
+    kind: str | None = None,
+    source: str | None = None,
+    target: str | None = None,
+) -> dict:
+    """Add or remove a depends_on / blocks edge.
+
+    ``action`` in {"add", "remove"}. ``kind`` in {"depends_on", "blocks"}.
+    Mutates ``tasks[source][kind]`` (adding/removing ``target``).
+    """
+    from . import _model
+
+    if action not in ("add", "remove"):
+        raise ValueError("set_edge: action must be 'add' or 'remove'")
+    if kind not in ("depends_on", "blocks"):
+        raise ValueError("set_edge: kind must be 'depends_on' or 'blocks'")
+    if not source or not target:
+        raise ValueError("set_edge: 'source' and 'target' are required")
+    if source == target:
+        raise ValueError("set_edge: self-edge is forbidden")
+    tasks_path = _resolved_store(store)
+    with _model._store_lock(tasks_path):
+        tasks = _model.load_tasks(tasks_path)
+        src_task = next((t for t in tasks if t.get("id") == source), None)
+        tgt_task = next((t for t in tasks if t.get("id") == target), None)
+        if src_task is None:
+            raise TaskNotFoundError(f"set_edge: unknown source id {source!r}")
+        if tgt_task is None:
+            raise TaskNotFoundError(f"set_edge: unknown target id {target!r}")
+        edges = src_task.get(kind) or []
+        if action == "add" and target not in edges:
+            edges = list(edges) + [target]
+        elif action == "remove":
+            edges = [e for e in edges if e != target]
+        if edges:
+            src_task[kind] = edges
+        else:
+            src_task.pop(kind, None)
+        _model._save_tasks_unlocked(tasks, tasks_path)
+    return {"action": action, "kind": kind, "source": source, "target": target}
+
+
+def resolve_task(
+    store: str | Path | None = None,
+    task_id: str | None = None,
+    actor: str | None = None,
+) -> dict:
+    """Flip a task from ``status=blocked`` (typically ``blocker=operator-
+    decision``) to ``done`` and clear the blocker. Appends an audit
+    comment naming the actor.
+
+    Idempotent on already-resolved tasks (re-resolves are no-ops, just
+    log a "noop" comment).
+    """
+    from . import _model
+
+    if not task_id:
+        raise ValueError("resolve_task: 'task_id' is required")
+    who = _default_agent(actor)
+    tasks_path = _resolved_store(store)
+    with _model._store_lock(tasks_path):
+        tasks = _model.load_tasks(tasks_path)
+        target = next((t for t in tasks if t.get("id") == task_id), None)
+        if target is None:
+            raise TaskNotFoundError(f"resolve_task: unknown id {task_id!r}")
+        was_done = target.get("status") == "done"
+        target["status"] = "done"
+        target.pop("blocker", None)
+        comments = target.setdefault("comments", [])
+        comments.append(
+            {
+                "author": who,
+                "ts": _utc_now_iso(),
+                "text": (
+                    "[resolve (noop — already done)]"
+                    if was_done
+                    else "[RESOLVED via mcp.resolve_task] flipped status='blocked'->done, blocker cleared."
+                ),
+            }
+        )
+        _model._save_tasks_unlocked(tasks, tasks_path)
+    return {"task_id": task_id, "actor": who, "task": dict(target)}
+
+
+def reopen_task(
+    store: str | Path | None = None,
+    task_id: str | None = None,
+    by: str | None = None,
+) -> dict:
+    """Un-resolve a task — flip ``status=done`` back to ``blocked`` with
+    ``blocker=operator-decision`` (the original LOUD halo state). Used
+    by the board v3 Resolve→Undo loop.
+    """
+    from . import _model
+
+    if not task_id:
+        raise ValueError("reopen_task: 'task_id' is required")
+    who = _default_agent(by)
+    tasks_path = _resolved_store(store)
+    with _model._store_lock(tasks_path):
+        tasks = _model.load_tasks(tasks_path)
+        target = next((t for t in tasks if t.get("id") == task_id), None)
+        if target is None:
+            raise TaskNotFoundError(f"reopen_task: unknown id {task_id!r}")
+        target["status"] = "blocked"
+        target["blocker"] = "operator-decision"
+        comments = target.setdefault("comments", [])
+        comments.append(
+            {
+                "author": who,
+                "ts": _utc_now_iso(),
+                "text": "[REOPENED via mcp.reopen_task] flipped status='done'->blocked, blocker=operator-decision restored.",
+            }
+        )
+        _model._save_tasks_unlocked(tasks, tasks_path)
+    return {"task_id": task_id, "by": who, "task": dict(target)}
+
+
 __all__ = [
     "ENV_AGENT",
     "ENV_SCOPE",
     "TaskNotFoundError",
     "TaskValidationError",
     "add_task",
+    "comment_task",
     "complete_task",
+    "delete_task",
+    "get_task",
     "list_tasks",
+    "reopen_task",
     "resolve_store",
+    "resolve_task",
+    "restore_task",
+    "set_edge",
     "summarize_tasks",
     "update_task",
 ]
