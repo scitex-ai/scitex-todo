@@ -296,6 +296,107 @@ async def todo_skills_get(name: str) -> str:
     return json.dumps({"name": name, "content": target.read_text(encoding="utf-8")})
 
 
+@mcp.tool()
+async def get_task(
+    task_id: str,
+    tasks_path: str | None = None,
+) -> str:
+    """Return one task by id as JSON. Raises if the id is unknown.
+
+    Companion read-one verb for the CRUD surface (lead a2a `fe723080`).
+    Mirrors the equivalent ``handle_get`` shape on the Django board, so
+    MCP agents can use it without going through HTTP.
+    """
+    return json.dumps(_store.get_task(tasks_path, task_id))
+
+
+@mcp.tool()
+async def delete_task(
+    task_id: str,
+    tasks_path: str | None = None,
+) -> str:
+    """Delete a task + scrub references; returns the lossless payload
+    a follow-up ``restore_task`` can consume to undo.
+
+    Returns ``{"removed": <task>, "refs": [<scrubbed-ref-ids>]}``.
+    Wraps the board v3 Delete-with-Undo flow for MCP agents.
+    """
+    return json.dumps(_store.delete_task(tasks_path, task_id))
+
+
+@mcp.tool()
+async def restore_task(
+    task: dict,
+    refs: list[str] | None = None,
+    tasks_path: str | None = None,
+) -> str:
+    """Undo a ``delete_task`` — re-insert at the original id. ``task``
+    must be the exact dict ``delete_task`` returned in ``"removed"``.
+    """
+    return json.dumps(_store.restore_task(tasks_path, task=task, refs=refs))
+
+
+@mcp.tool()
+async def comment_task(
+    task_id: str,
+    text: str,
+    by: str | None = None,
+    tasks_path: str | None = None,
+) -> str:
+    """Append an entry to a task's ``comments[]`` thread (the
+    Gitea-compatible Issue-activity log). ``by`` overrides the default
+    author resolution ($SCITEX_TODO_AGENT → $USER).
+    """
+    return json.dumps(_store.comment_task(tasks_path, task_id, text, by=by))
+
+
+@mcp.tool()
+async def set_edge(
+    action: str,
+    kind: str,
+    source: str,
+    target: str,
+    tasks_path: str | None = None,
+) -> str:
+    """Add or remove a depends_on / blocks edge between two tasks.
+
+    Args:
+      action: ``"add"`` or ``"remove"``.
+      kind: ``"depends_on"`` or ``"blocks"``.
+      source / target: task ids on the edge.
+    """
+    return json.dumps(
+        _store.set_edge(tasks_path, action=action, kind=kind, source=source, target=target)
+    )
+
+
+@mcp.tool()
+async def resolve_task(
+    task_id: str,
+    actor: str | None = None,
+    tasks_path: str | None = None,
+) -> str:
+    """Flip a blocked task to done + clear the blocker. Appends an audit
+    comment naming the actor. Idempotent on already-resolved tasks.
+
+    This is the MCP equivalent of the board v3 "Resolve → notify agent"
+    button (ADR-0006/0007).
+    """
+    return json.dumps(_store.resolve_task(tasks_path, task_id, actor=actor))
+
+
+@mcp.tool()
+async def reopen_task(
+    task_id: str,
+    by: str | None = None,
+    tasks_path: str | None = None,
+) -> str:
+    """Un-resolve: flip ``status=done`` back to ``blocked`` /
+    ``blocker=operator-decision``. The Resolve→Undo partner.
+    """
+    return json.dumps(_store.reopen_task(tasks_path, task_id, by=by))
+
+
 #: Canonical list of registered tool names — kept here as a constant so the
 #: `mcp doctor` / `mcp list-tools` CLI verbs don't have to introspect
 #: FastMCP's internal registry (which drifts between 2.x and 3.x). Update
@@ -307,6 +408,14 @@ TOOL_NAMES: tuple[str, ...] = (
     "list_tasks",
     "summarize_tasks",
     "resolve_store",
+    # MCP completeness wave (lead a2a `fe723080`, 2026-06-08).
+    "get_task",
+    "delete_task",
+    "restore_task",
+    "comment_task",
+    "set_edge",
+    "resolve_task",
+    "reopen_task",
     "todo_skills_list",
     "todo_skills_get",
 )
