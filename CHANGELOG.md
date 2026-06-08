@@ -4,6 +4,42 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.2] - 2026-06-08 — Crash-safe store + version label + Uncategorized column
+
+Patch release in response to the 2026-06-08 autoassign-parallel-run
+data-loss incident: roughly 130 operator-added tasks lost when two
+concurrent autoassign scripts were SIGTERM'd mid-`save_tasks` dump
+and the store was left half-written. This release closes the bug at
+the store layer + makes the live release visible on the board.
+
+### Fixed (crash-safety, lead a2a `3b0df14a`)
+- **Atomic write in `save_tasks`** — dump now goes to a sibling `.tmp`
+  file, fsync, then `os.replace(tmp, tasks.yaml)`. POSIX-atomic; a
+  SIGTERM/SIGKILL mid-dump can no longer leave the canonical file
+  half-written. The pre-existing `fcntl.flock` on the sidecar lockfile
+  is unchanged.
+- **Git auto-commit on every save** — lazy-initializes a `.git` inside
+  the store directory on first save_tasks call, then commits each
+  successful write. Operator gets time-travel: `git -C ~/.scitex/todo
+  log` + `git show <sha>:tasks.yaml` to restore any prior state.
+  Best-effort: a git failure never blocks the actual save.
+
+### Added (board v3)
+- **`scitex-todo vX.Y.Z` page title + header** (operator TG 407). The
+  live `__version__` is read off the package import and rendered in
+  both the `<title>` tag (browser tab) and the in-page H1. No second
+  source of truth to drift on release.
+- **"Uncategorized" replaces "Ungrouped"** (operator TG 405). The
+  no-project column label aligns with the legacy "Uncategorized pool"
+  convention from PR #4 and reads as plain English. Internal grouping
+  key + filter dropdown both updated.
+
+### Notes for operators
+After upgrading: restart your `scitex-todo board` systemd unit.
+`~/.scitex/todo` becomes a git repo on the first board write — the
+operator can `git -C ~/.scitex/todo log` immediately, no extra setup.
+Any future corruption is recoverable via standard git commands.
+
 ## [0.4.1] - 2026-06-08 — Board v3 horizontal layout + column pin + drag-reorder + fleet-liveness
 
 Patch release on top of 0.4.0 to unblock operator UX (TG 370) the

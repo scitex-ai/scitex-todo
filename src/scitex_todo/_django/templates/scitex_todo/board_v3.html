@@ -885,7 +885,8 @@
 
 {% block app_content %}
   <div class="filterbar">
-    <h1>SciTeX Todo <span class="small">— Board v3</span></h1>
+    <h1>scitex-todo
+      <span class="small">v{{ scitex_todo_version|default:"?" }}</span></h1>
     <span class="small"><span class="live-dot"></span>LIVE</span>
     <!-- Fleet-liveness dot-strip (ticket proj-scitex-todo-fleet-liveness,
          operator TG 9576). One dot per agent, colored by status
@@ -1164,7 +1165,7 @@
 
     function passes(t) {
       const f = STATE.filters;
-      if (f.project && (t.project || "Ungrouped") !== f.project) return false;
+      if (f.project && (t.project || "Uncategorized") !== f.project) return false;
       if (f.host && (t.host || "") !== f.host) return false;
       if (f.status && bucket(t.status) !== f.status) return false;
       if (f.blocker) {
@@ -1197,11 +1198,11 @@
           items.map(i => `<option value="${i}">${i}</option>`).join("");
         if (items.includes(cur)) el.value = cur;
       };
-      // f-project includes an explicit "Ungrouped" entry when any
+      // f-project includes an explicit "Uncategorized" entry when any
       // task in the store lacks a `project` field (operator TG 383 —
       // makes the empty-project column filterable).
       const projects = uniq("project");
-      if (nodes.some(n => !n.project)) projects.push("Ungrouped");
+      if (nodes.some(n => !n.project)) projects.push("Uncategorized");
       set("f-project", projects, "All projects");
       set("f-host", uniq("host"), "All hosts");
       set("f-agent", uniq("agent"), "All agents");
@@ -1311,11 +1312,11 @@
       e.stopPropagation();
     }
     async function moveCardToProject(cardId, newProject) {
-      // newProject="Ungrouped" → clear the field via null (the /update
+      // newProject="Uncategorized" → clear the field via null (the /update
       // handler accepts null patches to remove a field).
       const patch = {
         id: cardId,
-        project: newProject === "Ungrouped" ? null : newProject,
+        project: newProject === "Uncategorized" ? null : newProject,
       };
       try {
         const r = await fetch("/update", {
@@ -1376,9 +1377,9 @@
       // Operator UX TG 383: tasks without a `project` field
       // previously rendered under an em-dash "—" column header that
       // read as "missing value" rather than "ungrouped". Switch the
-      // fallback label to the explicit "Ungrouped" string so any
+      // fallback label to the explicit "Uncategorized" string so any
       // user can read the column at a glance.
-      const NO_PROJECT_LABEL = "Ungrouped";
+      const NO_PROJECT_LABEL = "Uncategorized";
       const byProj = {};
       for (const t of visible) {
         const p = t.project || NO_PROJECT_LABEL;
@@ -1549,7 +1550,7 @@
         _draggedCard = null;
         // Find the card's CURRENT project; skip if already there.
         const card = (STATE.graph?.nodes || []).find(n => n.id === cardId);
-        const currentProj = card?.project || "Ungrouped";
+        const currentProj = card?.project || "Uncategorized";
         if (currentProj === targetProject) return;
         void moveCardToProject(cardId, targetProject);
         return;
