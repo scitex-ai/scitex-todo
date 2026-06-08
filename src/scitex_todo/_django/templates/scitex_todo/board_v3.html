@@ -1727,6 +1727,70 @@
     }
     let _ctxMenuEl = null;
     function _ctxEscHandler(e) { if (e.key === "Escape") closeCardCtx(); }
+
+    // === Column right-click context menu (lead operator-active task) =========
+    // Right-click any project column header / body → floating menu with:
+    //   - + Add task to <project>  (opens Add Task modal pre-filled)
+    //   - 📌 Pin / Unpin column
+    //   - 🙈 Hide column (project-hide localStorage)
+    //   - 🔎 Filter to this project (sets f-project + render)
+    //   - Reset column order (clears localStorage drag-order)
+    // Right-click on a CARD bubbles to its card handler (openCardCtx), so a
+    // right-click inside a card never accidentally triggers the column menu;
+    // event.target.closest(".card") short-circuits the column branch.
+    function openColCtx(e, project) {
+      // If the click landed inside a card, defer to the card handler.
+      if (e.target && e.target.closest && e.target.closest(".card")) return;
+      e.preventDefault();
+      const pinned = pinnedSet().has(project);
+      const projHidden = projHiddenSet().has(project);
+      const menu = document.createElement("div");
+      menu.className = "card-ctx-menu";
+      const item = (label, fn, danger) =>
+        `<button class="card-ctx-item${danger ? " card-ctx-item--danger" : ""}"
+          onclick="${fn}">${label}</button>`;
+      menu.innerHTML = `
+        <div class="card-ctx-title">${escapeHtml(project)}</div>
+        ${item("+ Add task to " + escapeHtml(project),
+              "closeColCtx(); openAddTaskModal('" + escapeHtml(project) + "')")}
+        <div class="card-ctx-sep"></div>
+        ${item(pinned ? "📌 Unpin column" : "📍 Pin column to left",
+              "closeColCtx(); toggleColPin('" + escapeHtml(project) + "')")}
+        ${item("🔎 Filter to this project only",
+              "closeColCtx(); filterToProject('" + escapeHtml(project) + "')")}
+        ${item("↺ Reset column order",
+              "closeColCtx(); resetColOrder()")}
+        <div class="card-ctx-sep"></div>
+        ${item(projHidden ? "👁 Show this column" : "🙈 Hide this column",
+              "closeColCtx(); toggleProjHidden('" + escapeHtml(project) + "', " + (!projHidden) + ")", projHidden ? false : true)}
+      `;
+      document.body.appendChild(menu);
+      const mw = menu.offsetWidth, mh = menu.offsetHeight;
+      const vw = window.innerWidth, vh = window.innerHeight;
+      menu.style.left = `${Math.min(e.clientX, vw - mw - 6)}px`;
+      menu.style.top = `${Math.min(e.clientY, vh - mh - 6)}px`;
+      _colCtxMenuEl = menu;
+      setTimeout(() => {
+        document.addEventListener("click", closeColCtx, { once: true });
+        document.addEventListener("keydown", _colCtxEsc, { once: true });
+      }, 0);
+    }
+    let _colCtxMenuEl = null;
+    function _colCtxEsc(e) { if (e.key === "Escape") closeColCtx(); }
+    function closeColCtx() {
+      if (_colCtxMenuEl) { _colCtxMenuEl.remove(); _colCtxMenuEl = null; }
+    }
+    function filterToProject(project) {
+      STATE.filters.project = project;
+      const sel = document.getElementById("f-project");
+      if (sel) sel.value = project;
+      render();
+    }
+    function resetColOrder() {
+      localStorage.removeItem(COL_ORDER_KEY);
+      render();
+      toast("✓ column order reset to alphabetical");
+    }
     function closeCardCtx() {
       if (_ctxMenuEl) { _ctxMenuEl.remove(); _ctxMenuEl = null; }
     }
@@ -1935,7 +1999,8 @@
               ondragend="onColDragEnd(event)"
               ondragover="onColDragOver(event,'${escapeHtml(p)}')"
               ondragleave="onColDragLeave(event)"
-              ondrop="onColDrop(event,'${escapeHtml(p)}')">
+              ondrop="onColDrop(event,'${escapeHtml(p)}')"
+              oncontextmenu="openColCtx(event,'${escapeHtml(p)}')">
               <header class="col-head" title="Drag to reorder">
                 <span class="col-name">${escapeHtml(p)}</span>
                 <span style="display:flex;align-items:center;gap:4px;">
