@@ -1152,7 +1152,7 @@
 
     function passes(t) {
       const f = STATE.filters;
-      if (f.project && (t.project || "—") !== f.project) return false;
+      if (f.project && (t.project || "Ungrouped") !== f.project) return false;
       if (f.host && (t.host || "") !== f.host) return false;
       if (f.status && bucket(t.status) !== f.status) return false;
       if (f.blocker) {
@@ -1185,7 +1185,12 @@
           items.map(i => `<option value="${i}">${i}</option>`).join("");
         if (items.includes(cur)) el.value = cur;
       };
-      set("f-project", uniq("project"), "All projects");
+      // f-project includes an explicit "Ungrouped" entry when any
+      // task in the store lacks a `project` field (operator TG 383 —
+      // makes the empty-project column filterable).
+      const projects = uniq("project");
+      if (nodes.some(n => !n.project)) projects.push("Ungrouped");
+      set("f-project", projects, "All projects");
       set("f-host", uniq("host"), "All hosts");
       set("f-agent", uniq("agent"), "All agents");
       // Status / blocker = closed enums; statuses bucketed to 4.
@@ -1306,9 +1311,15 @@
       if (!STATE.graph) return;
       const visible = STATE.graph.nodes.filter(passes);
       // Group VISIBLE tasks by project for card rendering.
+      // Operator UX TG 383: tasks without a `project` field
+      // previously rendered under an em-dash "—" column header that
+      // read as "missing value" rather than "ungrouped". Switch the
+      // fallback label to the explicit "Ungrouped" string so any
+      // user can read the column at a glance.
+      const NO_PROJECT_LABEL = "Ungrouped";
       const byProj = {};
       for (const t of visible) {
-        const p = t.project || "—";
+        const p = t.project || NO_PROJECT_LABEL;
         (byProj[p] = byProj[p] || []).push(t);
       }
       // Operator UX TG 381: empty columns must persist so the
@@ -1318,7 +1329,7 @@
       // store) and merge against the per-project task lists above.
       const projects = new Set();
       for (const t of STATE.graph.nodes) {
-        projects.add(t.project || "—");
+        projects.add(t.project || NO_PROJECT_LABEL);
       }
       // Column ordering — operator UX TG 370:
       //   (1) pinned columns first (in their saved pin-order)
