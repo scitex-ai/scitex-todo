@@ -984,6 +984,132 @@
   }
   .toast-undo:hover { background: #fff; color: #333; }
 
+  /* ============================================================
+   * MOBILE / TOUCH RESPONSIVE (operator TG 459/460/463) — phone
+   * iOS Simulator on MBA is the target. Safe-area-inset for
+   * notched iPhones, 44px+ tap targets per Apple HIG, drawer-
+   * style BLOCKING YOU panel + horizontal filterbar that fits
+   * a 375pt-wide iPhone viewport.
+   * ============================================================ */
+  @media (max-width: 768px) {
+    /* Filter bar — wrap to multiple rows; smaller controls. */
+    .filterbar {
+      gap: 6px; padding: 8px 10px;
+      overflow-x: auto;
+    }
+    .filterbar h1 {
+      font-size: 0.95rem; margin-right: 6px;
+      flex: 0 0 auto;
+    }
+    .filt {
+      padding: 7px 10px;  /* 44px row target via flex baseline */
+      font-size: 0.84rem;
+      min-height: 38px;
+    }
+    .filt-search { min-width: 140px; }
+    .add-task-btn {
+      min-height: 38px; padding: 7px 12px;
+    }
+    /* Hide the fleet dot-strip on phones — too small to read; the
+     * filter dropdowns + the BLOCKING YOU drawer carry the same
+     * info on demand. */
+    .fleetstrip { display: none; }
+
+    /* Main layout: stack vertically so the BLOCKING YOU panel
+     * doesn't eat 360px of phone width. The panel becomes a
+     * collapsible drawer behind a floating button. */
+    .main {
+      flex-direction: column;
+    }
+    .right {
+      width: 100%; flex: 0 0 auto;
+      border-left: none;
+      border-top: 1px solid var(--border);
+      max-height: 40vh;
+      /* Drawer: closed by default on mobile, toggled by the FAB. */
+      display: none;
+    }
+    .right.mobile-open { display: block; }
+
+    /* Kanban columns: fit the phone viewport. Each column is
+     * roughly one viewport wide so swipe-snap is natural. */
+    .col {
+      flex: 0 0 88vw;
+      width: 88vw;
+      max-width: 320px;
+    }
+    .columns {
+      scroll-snap-type: x mandatory;
+      padding: 8px;
+    }
+    .col {
+      scroll-snap-align: start;
+    }
+
+    /* Detail modal full-screen on phone for readability. */
+    .detail {
+      width: 95vw; max-width: none;
+      max-height: 90vh; padding: 14px;
+    }
+    .at-modal {
+      width: 92vw; max-width: 480px; padding: 14px;
+    }
+
+    /* Card tweaks: tighter padding for phone, but tap targets
+     * stay ≥ 30px tall via line-height. */
+    .card { padding: 8px 10px; }
+    .card-task { font-size: 0.95rem; line-height: 1.35; }
+
+    /* Safe-area-inset (iPhone X+ notch). */
+    body {
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+    }
+    .filterbar { padding-top: max(8px, env(safe-area-inset-top, 8px)); }
+    .foot { padding-bottom: max(8px, env(safe-area-inset-bottom, 8px)); }
+  }
+
+  /* BLOCKING YOU mobile drawer toggle — a floating action button
+   * pinned to bottom-right. Shows the count of operator-decision
+   * blockers as a badge. Visible only on mobile. */
+  .by-fab {
+    display: none;
+    position: fixed;
+    bottom: max(14px, env(safe-area-inset-bottom, 14px));
+    right: max(14px, env(safe-area-inset-right, 14px));
+    z-index: 90;
+    width: 56px; height: 56px;
+    border-radius: 28px;
+    background: var(--gold); color: #000;
+    border: 2px solid var(--gold);
+    font-size: 1.4rem; font-weight: 700;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.5),
+                0 0 12px 2px rgba(255,193,7,0.45);
+    cursor: pointer;
+  }
+  .by-fab:hover { transform: scale(1.05); }
+  .by-fab-count {
+    position: absolute;
+    top: -4px; right: -4px;
+    min-width: 22px; height: 22px;
+    border-radius: 11px;
+    background: var(--red); color: #fff;
+    font-size: 0.74rem; font-weight: 700;
+    line-height: 22px; padding: 0 5px;
+    border: 2px solid var(--bg);
+  }
+  @media (max-width: 768px) {
+    .by-fab { display: flex; align-items: center; justify-content: center; }
+  }
+
+  /* Touch long-press visual cue: when finger is held on a card,
+   * brighten the border so the user knows the context menu is
+   * about to open. */
+  .card.touch-pressing {
+    box-shadow: 0 0 0 2px var(--purple) inset;
+    background: rgba(109,76,173,0.10);
+  }
+
   .loading {
     text-align: center; color: var(--text-muted);
     padding: 30px; font-style: italic;
@@ -1059,11 +1185,20 @@
     </details>
   </div>
 
+  <!-- Mobile BLOCKING-YOU drawer toggle (operator TG 459/460) — tap
+       opens / closes the right-side aside. Hidden on desktop (CSS
+       @media). Badge shows the count of operator-decision blockers. -->
+  <button id="by-fab" class="by-fab" type="button"
+          onclick="toggleByDrawer()"
+          aria-label="Toggle BLOCKING YOU panel">
+    🚧<span id="by-fab-count" class="by-fab-count" style="display:none">0</span>
+  </button>
+
   <div class="main">
     <div class="columns" id="columns">
       <div class="loading">loading…</div>
     </div>
-    <aside class="right">
+    <aside class="right" id="right-panel">
       <div class="block-you">
         <h3>🚧 BLOCKING YOU</h3>
         <div id="block-rows">
@@ -2554,7 +2689,58 @@
       // the headerlabel count on every render so a new hide / un-hide
       // shows up immediately.
       rebuildHiddenList();
+      // Mobile FAB badge (operator TG 459/460) — count of
+      // operator-decision blockers (the "blocking YOU" set).
+      updateByFabBadge();
     };
+
+    // ── Mobile responsive helpers (operator TG 459/460/463) ───────────
+    function toggleByDrawer() {
+      const r = document.getElementById("right-panel");
+      if (r) r.classList.toggle("mobile-open");
+    }
+    function updateByFabBadge() {
+      if (!STATE.graph) return;
+      const n = STATE.graph.nodes.filter(t =>
+        t.status === "blocked" && t.blocker === "operator-decision"
+      ).length;
+      const el = document.getElementById("by-fab-count");
+      if (!el) return;
+      if (n > 0) { el.textContent = String(n); el.style.display = ""; }
+      else { el.style.display = "none"; }
+    }
+
+    // Touch long-press → context menu (operator TG 459/460). Native
+    // contextmenu isn't reliably fired on iOS, so we open it via a
+    // 600ms timer started on touchstart, cancelled on touchmove /
+    // touchend / touchcancel before the timer fires. Pointer events
+    // (Apple Pencil etc.) feed through the same path.
+    const _LONG_PRESS_MS = 600;
+    let _lpTimer = null, _lpEl = null;
+    document.addEventListener("touchstart", (e) => {
+      const card = e.target && e.target.closest && e.target.closest(".card[data-card-id]");
+      if (!card) return;
+      _lpEl = card;
+      card.classList.add("touch-pressing");
+      const t = e.touches[0];
+      const cx = t.clientX, cy = t.clientY;
+      _lpTimer = setTimeout(() => {
+        card.classList.remove("touch-pressing");
+        const id = card.getAttribute("data-card-id");
+        openCardCtx({
+          preventDefault: () => {},
+          clientX: cx, clientY: cy,
+        }, id);
+        _lpTimer = null;
+      }, _LONG_PRESS_MS);
+    }, { passive: true });
+    function _cancelLongPress() {
+      if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; }
+      if (_lpEl) { _lpEl.classList.remove("touch-pressing"); _lpEl = null; }
+    }
+    document.addEventListener("touchmove", _cancelLongPress, { passive: true });
+    document.addEventListener("touchend", _cancelLongPress, { passive: true });
+    document.addEventListener("touchcancel", _cancelLongPress, { passive: true });
 
     // ── Hidden-cards dropdown (operator TG 381) ────────────────────────
     // Walks STATE.graph.nodes for everything in hiddenSet() and paints
