@@ -337,6 +337,64 @@
     background: rgba(109,76,173,0.12);
   }
 
+  /* Right-click CRUD context menu (operator TG 432/433) — fixed-position
+   * floating menu anchored to the click point. Single-column item list
+   * with section headers + dividers. ESC / click-outside dismisses. */
+  .card-ctx-menu {
+    position: fixed; z-index: 130;
+    min-width: 220px; max-width: 280px;
+    max-height: 460px; overflow-y: auto;
+    padding: 6px;
+    background: var(--card-bg);
+    border: 1px solid var(--purple);
+    border-radius: 8px;
+    box-shadow: 0 6px 22px rgba(0,0,0,0.5);
+    font-size: 0.84rem;
+  }
+  .card-ctx-title {
+    padding: 5px 8px 7px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+    color: var(--text);
+    font-weight: 700; font-size: 0.85rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .card-ctx-header {
+    padding: 6px 8px 2px;
+    color: var(--text-muted);
+    font-size: 0.7rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .card-ctx-empty {
+    padding: 4px 12px 6px;
+    color: var(--text-muted); font-style: italic; font-size: 0.78rem;
+  }
+  .card-ctx-sep {
+    height: 1px; margin: 4px 2px;
+    background: var(--border);
+  }
+  .card-ctx-item {
+    display: block; width: 100%;
+    appearance: none; background: transparent;
+    color: var(--text); border: none; cursor: pointer;
+    text-align: left; padding: 6px 10px;
+    border-radius: 5px; font: inherit; font-size: 0.85rem;
+  }
+  .card-ctx-item:hover {
+    background: rgba(109,76,173,0.18);
+    color: #fff;
+  }
+  .card-ctx-item--sub {
+    padding: 5px 10px 5px 18px;
+    font-size: 0.8rem;
+  }
+  .card-ctx-item--danger {
+    color: var(--red);
+  }
+  .card-ctx-item--danger:hover {
+    background: var(--red); color: #fff;
+  }
+
   /* === RIGHT-SIDE BLOCKING YOU panel (prominent — operator's #1) =========== */
   .right {
     width: 360px; flex: 0 0 360px;
@@ -1273,7 +1331,8 @@
         data-card-id="${id}" draggable="true"
         ondragstart="onCardDragStart(event,'${id}')"
         ondragend="onCardDragEnd(event)"
-        onclick="openDetail('${id}')">
+        onclick="openDetail('${id}')"
+        oncontextmenu="openCardCtx(event,'${id}')">
         <div class="card-pad">
           <div class="card-top">
             <span class="card-status">${b}</span>
@@ -1287,6 +1346,128 @@
           ${blocker}
         </div>
       </article>`;
+    }
+
+    // === Right-click context menu — CRUD on a card (operator TG 432/433) =====
+    // Replaces the heavyweight "open detail drawer + Edit/Delete buttons" with
+    // a one-right-click menu so common ops are reachable without leaving the
+    // board. Wired to existing /update + /delete + /restore + hide /
+    // copy / move-project handlers — no new backend.
+    function openCardCtx(e, cardId) {
+      e.preventDefault();
+      const t = (STATE.graph?.nodes || []).find(x => x.id === cardId);
+      if (!t) return;
+      const projects = STATE.graph
+        ? [...new Set(STATE.graph.nodes.map(n => n.project).filter(Boolean))].sort()
+        : [];
+      const statuses = ["pending", "in_progress", "blocked", "done", "deferred", "failed", "goal"];
+      const isHidden = hiddenSet().has(cardId);
+      const menu = document.createElement("div");
+      menu.className = "card-ctx-menu";
+      const sectionHeader = (txt) =>
+        `<div class="card-ctx-header">${escapeHtml(txt)}</div>`;
+      const item = (label, fn, danger) =>
+        `<button class="card-ctx-item${danger ? " card-ctx-item--danger" : ""}"
+          onclick="${fn}">${label}</button>`;
+      const projectItems = projects
+        .filter(p => p !== (t.project || ""))
+        .slice(0, 12)
+        .map(p =>
+          `<button class="card-ctx-item card-ctx-item--sub"
+            onclick="closeCardCtx(); moveCardToProject('${escapeHtml(cardId)}', '${escapeHtml(p)}')">→ ${escapeHtml(p)}</button>`
+        )
+        .join("");
+      const statusItems = statuses
+        .filter(s => s !== t.status)
+        .map(s =>
+          `<button class="card-ctx-item card-ctx-item--sub"
+            onclick="closeCardCtx(); setCardStatus('${escapeHtml(cardId)}', '${s}')">${s}</button>`
+        )
+        .join("");
+      menu.innerHTML = `
+        <div class="card-ctx-title">${escapeHtml(t.title || cardId)}</div>
+        ${item("✎ Edit details (drawer)", `closeCardCtx(); openDetail('${escapeHtml(cardId)}'); setTimeout(enterDetailEdit, 50);`)}
+        ${item("📋 Copy reference", `closeCardCtx(); copyCardText('${escapeHtml(cardId)}')`)}
+        ${item(isHidden ? "👁 Un-hide" : "🙈 Hide", `closeCardCtx(); ${isHidden ? `unhideTask('${escapeHtml(cardId)}'); render();` : `hideTask('${escapeHtml(cardId)}'); render();`}`)}
+        <div class="card-ctx-sep"></div>
+        ${sectionHeader("Change status")}
+        ${statusItems || `<div class="card-ctx-empty">(only "${t.status}" available)</div>`}
+        ${projects.length > 1 ? `<div class="card-ctx-sep"></div>${sectionHeader("Move to project")}${projectItems || `<div class="card-ctx-empty">(no other projects)</div>`}` : ""}
+        <div class="card-ctx-sep"></div>
+        ${item("🗑 Delete (with Undo)", `closeCardCtx(); deleteCardById('${escapeHtml(cardId)}')`, true)}
+      `;
+      // Position the menu, clamping to viewport.
+      document.body.appendChild(menu);
+      const mw = menu.offsetWidth, mh = menu.offsetHeight;
+      const vw = window.innerWidth, vh = window.innerHeight;
+      menu.style.left = `${Math.min(e.clientX, vw - mw - 6)}px`;
+      menu.style.top = `${Math.min(e.clientY, vh - mh - 6)}px`;
+      _ctxMenuEl = menu;
+      // Click-outside / Esc to dismiss.
+      setTimeout(() => {
+        document.addEventListener("click", closeCardCtx, { once: true });
+        document.addEventListener("keydown", _ctxEscHandler, { once: true });
+      }, 0);
+    }
+    let _ctxMenuEl = null;
+    function _ctxEscHandler(e) { if (e.key === "Escape") closeCardCtx(); }
+    function closeCardCtx() {
+      if (_ctxMenuEl) { _ctxMenuEl.remove(); _ctxMenuEl = null; }
+    }
+
+    // Status-set helper (closed enum from validator).
+    async function setCardStatus(cardId, newStatus) {
+      try {
+        const r = await fetch("/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: cardId, status: newStatus }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${r.status}`);
+        }
+        toast(`✓ ${cardId} → ${newStatus}`);
+        await loadGraph();
+      } catch (e) {
+        toast(`✗ ${e.message}`, true);
+      }
+    }
+    // Delete-from-context-menu (mirrors deleteCurrentTask but takes an id).
+    async function deleteCardById(cardId) {
+      const t = (STATE.graph?.nodes || []).find(x => x.id === cardId);
+      const label = t ? `"${t.title}" (${cardId})` : cardId;
+      if (!window.confirm(`Delete ${label}?\n\nThis will scrub depends_on / blocks / parent references too. Undo is available for ~10s after delete.`)) return;
+      try {
+        const r = await fetch("/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: cardId }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${r.status}`);
+        }
+        const result = await r.json();
+        const undo = async () => {
+          try {
+            const rr = await fetch("/restore", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ task: result.removed, refs: result.refs || [] }),
+            });
+            if (!rr.ok) throw new Error(`HTTP ${rr.status}`);
+            await loadGraph();
+            toast(`↶ Restored ${cardId}`);
+          } catch (e) {
+            toast(`✗ Undo failed: ${e.message}`, true);
+          }
+        };
+        showUndoToast(`✓ Deleted ${cardId}`, undo);
+        await loadGraph();
+      } catch (e) {
+        toast(`✗ ${e.message}`, true);
+      }
     }
 
     // === Card drag-to-move between projects (operator TG 385) ============
