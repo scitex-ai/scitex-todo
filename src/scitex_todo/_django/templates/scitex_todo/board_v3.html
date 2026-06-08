@@ -632,6 +632,94 @@
   }
   .card--hidden { opacity: 0.55; filter: grayscale(0.3); }
 
+  /* Hidden-cards dropdown (operator TG 381) — replace the simple
+     "show hidden" toggle with a `<details>` list that names every
+     hidden card + offers one-click un-hide. The single show-hidden
+     toggle still lives inside the dropdown for "reveal them in
+     place" UX. */
+  .hidden-list {
+    position: relative;
+    font-size: 0.78rem;
+  }
+  .hidden-list > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 5px 11px;
+    background: rgba(255,255,255,0.04);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .hidden-list > summary::-webkit-details-marker { display: none; }
+  .hidden-list > summary:hover { color: var(--text); border-color: #4a90e2; }
+  .hidden-list[open] > summary {
+    background: #4a90e2; color: #fff; border-color: #4a90e2;
+  }
+  .hidden-list-panel {
+    position: absolute; top: calc(100% + 4px); right: 0;
+    z-index: 25;
+    min-width: 280px; max-width: 360px;
+    max-height: 320px; overflow-y: auto;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px; display: flex; flex-direction: column; gap: 2px;
+    box-shadow: 0 6px 22px rgba(0,0,0,0.45);
+  }
+  .hidden-list-row {
+    display: flex; align-items: center; gap: 7px;
+    padding: 6px 8px; border-radius: 5px;
+    color: var(--text); cursor: default;
+  }
+  .hidden-list-row:hover { background: rgba(255,255,255,0.06); }
+  .hidden-list-title {
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .hidden-list-meta {
+    color: var(--text-muted); font-size: 0.7rem;
+    margin-top: 2px;
+    font-family: ui-monospace, monospace;
+  }
+  .hidden-list-unhide {
+    appearance: none; background: transparent;
+    color: #4a90e2; border: 1px solid #4a90e2;
+    border-radius: 4px; padding: 2px 8px;
+    font: inherit; font-size: 0.72rem; cursor: pointer;
+    flex: 0 0 auto;
+  }
+  .hidden-list-unhide:hover { background: #4a90e2; color: #fff; }
+  .hidden-list-empty {
+    color: var(--text-muted); font-style: italic;
+    padding: 8px; text-align: center;
+  }
+  .hidden-list-reveal {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+    font-size: 0.74rem;
+  }
+
+  /* Empty column placeholder (operator TG 381): hide-all-cards keeps
+     the column visible so the operator can still Add Task into it.
+     Click the placeholder = open Add Task with the project pre-filled. */
+  .col-empty {
+    margin: 12px;
+    padding: 14px 12px;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    text-align: center;
+    cursor: pointer;
+    font-size: 0.82rem;
+    transition: border-color 100ms ease, color 100ms ease, background 100ms ease;
+  }
+  .col-empty:hover {
+    border-color: var(--green); color: var(--green);
+    background: rgba(76,175,80,0.05);
+  }
+
   /* ── CRUD wiring — Add Task button + Add Task modal + project-hide ──
      Operator TG 344 — operator could not create/update/delete/hide
      projects from the browser. All four ops wire to the existing
@@ -823,10 +911,19 @@
     <button id="t-block" class="toggle-block" onclick="toggleBlockingMe(event)">
       🚧 blocking me
     </button>
-    <button id="t-hidden" class="toggle-show-hidden" onclick="toggleShowHidden(event)"
-            title="Toggle visibility of cards you've hidden">
-      👁 show hidden (<span id="hidden-count">0</span>)
-    </button>
+    <!-- Hidden-cards dropdown (operator TG 381): replaces the simple
+         "show hidden" toggle. Lists every hidden card by title +
+         project with a one-click un-hide button. Last row is the
+         "show hidden in place" toggle (the legacy behavior) for users
+         who'd rather reveal everything than un-hide one by one. -->
+    <details id="hidden-wrap" class="hidden-list">
+      <summary id="hidden-summary" title="Hidden cards — click to expand">
+        👁 hidden (<span id="hidden-count">0</span>)
+      </summary>
+      <div id="hidden-list-panel" class="hidden-list-panel">
+        <div class="hidden-list-empty">No hidden cards.</div>
+      </div>
+    </details>
   </div>
 
   <div class="main">
@@ -1208,13 +1305,20 @@
     function render() {
       if (!STATE.graph) return;
       const visible = STATE.graph.nodes.filter(passes);
-      // Group by project; auto-discover columns from distinct `project` values.
+      // Group VISIBLE tasks by project for card rendering.
       const byProj = {};
-      const projects = new Set();
       for (const t of visible) {
         const p = t.project || "—";
-        projects.add(p);
         (byProj[p] = byProj[p] || []).push(t);
+      }
+      // Operator UX TG 381: empty columns must persist so the
+      // "+ Add Task" + CRUD path stays reachable even when every
+      // card in a project is hidden or filtered out. Discover the
+      // FULL project list from STATE.graph.nodes (the unfiltered
+      // store) and merge against the per-project task lists above.
+      const projects = new Set();
+      for (const t of STATE.graph.nodes) {
+        projects.add(t.project || "—");
       }
       // Column ordering — operator UX TG 370:
       //   (1) pinned columns first (in their saved pin-order)
@@ -1234,7 +1338,13 @@
       });
       document.getElementById("columns").innerHTML = projList.length
         ? projList.map(p => {
-            const items = byProj[p].map(cardHtml).join("");
+            const visibleCards = byProj[p] || [];
+            const items = visibleCards.length
+              ? visibleCards.map(cardHtml).join("")
+              : `<div class="col-empty" onclick="openAddTaskModal('${escapeHtml(p)}')"
+                   title="No visible cards in this project. Click to add one.">
+                   + Add task to ${escapeHtml(p)}
+                 </div>`;
             const isPinned = pinned.has(p);
             return `<section class="col${isPinned ? " col--pinned" : ""}"
               data-project="${escapeHtml(p)}" draggable="true"
@@ -1250,13 +1360,13 @@
                     title="${isPinned ? "Unpin column" : "Pin column to the left"}"
                     onclick="event.stopPropagation(); toggleColPin('${escapeHtml(p)}')"
                     aria-label="${isPinned ? "Unpin" : "Pin"} ${escapeHtml(p)}">${isPinned ? "📌" : "📍"}</button>
-                  <span class="col-count">${byProj[p].length}</span>
+                  <span class="col-count">${visibleCards.length}</span>
                 </span>
               </header>
               <div class="col-body">${items}</div>
             </section>`;
           }).join("")
-        : `<div class="loading">no matching tasks</div>`;
+        : `<div class="loading">no projects yet — click "+ Add Task" to start one</div>`;
 
       // BLOCKING YOU panel — strict predicate (ADR-0004 + ADR-0006).
       const by = STATE.graph.nodes.filter(t =>
@@ -1791,7 +1901,7 @@
     }
 
     // -- Add Task modal -----------------------------------------------------
-    function openAddTaskModal() {
+    function openAddTaskModal(presetProject) {
       // Pre-populate the project datalist with auto-discovered projects.
       if (STATE.graph) {
         const projects = [...new Set(
@@ -1801,7 +1911,11 @@
           projects.map(p => `<option value="${escapeHtml(p)}">`).join("");
       }
       document.getElementById("at-title").value = "";
-      document.getElementById("at-project").value = "";
+      // If invoked from an empty column's placeholder (operator TG 381),
+      // pre-fill the project so the new task goes straight to that
+      // column without retyping the name.
+      const projInput = document.getElementById("at-project");
+      projInput.value = presetProject && presetProject !== "—" ? presetProject : "";
       document.getElementById("at-status").value = "pending";
       document.getElementById("at-task").value = "";
       document.getElementById("add-task-backdrop").classList.add("show");
@@ -1977,7 +2091,63 @@
       // every render (cheap; the list is small + the 5s AutoRefresh
       // keeps it fresh).
       renderFleetStrip();
+      // Hidden-cards dropdown (operator TG 381) — repaint the list +
+      // the headerlabel count on every render so a new hide / un-hide
+      // shows up immediately.
+      rebuildHiddenList();
     };
+
+    // ── Hidden-cards dropdown (operator TG 381) ────────────────────────
+    // Walks STATE.graph.nodes for everything in hiddenSet() and paints
+    // a row per hidden card (title + project + un-hide button). Also
+    // updates the "👁 hidden (N)" count in the dropdown summary.
+    function rebuildHiddenList() {
+      const hidden = hiddenSet();
+      const panel = document.getElementById("hidden-list-panel");
+      const countEl = document.getElementById("hidden-count");
+      if (countEl) countEl.textContent = String(hidden.size);
+      if (!panel) return;
+      if (hidden.size === 0) {
+        panel.innerHTML = `<div class="hidden-list-empty">No hidden cards.</div>`;
+        return;
+      }
+      const byId = new Map((STATE.graph?.nodes || []).map(n => [n.id, n]));
+      const rows = [...hidden].map(id => {
+        const t = byId.get(id);
+        if (!t) {
+          // Hidden card no longer exists in the store (deleted by
+          // someone). Offer un-hide to clear the localStorage entry.
+          return `<div class="hidden-list-row">
+            <div style="flex:1">
+              <div class="hidden-list-title">${escapeHtml(id)}</div>
+              <div class="hidden-list-meta">(missing from store)</div>
+            </div>
+            <button class="hidden-list-unhide"
+              onclick="unhideTask('${escapeHtml(id)}')">Un-hide</button>
+          </div>`;
+        }
+        const title = t.title || t.task || id;
+        const proj = t.project || "—";
+        const status = t.status || "?";
+        return `<div class="hidden-list-row">
+          <div style="flex:1; min-width:0;">
+            <div class="hidden-list-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+            <div class="hidden-list-meta">${escapeHtml(proj)} · ${escapeHtml(status)} · id:${escapeHtml(id)}</div>
+          </div>
+          <button class="hidden-list-unhide"
+            onclick="unhideTask('${escapeHtml(id)}')">Un-hide</button>
+        </div>`;
+      }).join("");
+      const revealOn = STATE.filters.showHidden ? "checked" : "";
+      panel.innerHTML = rows + `
+        <div class="hidden-list-reveal">
+          <input type="checkbox" id="reveal-hidden" ${revealOn}
+                 onchange="toggleShowHidden({ currentTarget: this })">
+          <label for="reveal-hidden" style="cursor:pointer;">
+            Show hidden cards in place (don't filter)
+          </label>
+        </div>`;
+    }
 
     // ── Fleet-liveness rendering (ticket proj-scitex-todo-fleet-liveness) ──
     // Read STATE.graph.fleet (a list of agent summaries served by
