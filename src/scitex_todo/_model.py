@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import contextlib
 import fcntl
+import os
 from pathlib import Path
 
 import yaml
@@ -665,8 +666,104 @@ def _save_tasks_unlocked(tasks: list[dict], path: Path) -> None:
         doc = {"tasks": tasks}
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        yaml_rt.dump(doc, handle)
+    # CRASH-SAFE WRITE (lead a2a `3b0df14a`, post-2026-06-08 autoassign-
+    # parallel-run data loss): dump to a sibling .tmp file, fsync it, then
+    # os.replace into the canonical path. os.replace is POSIX-atomic — a
+    # SIGTERM/SIGKILL mid-dump leaves either the OLD file intact (if the
+    # crash hits before replace) or the NEW file in place (if after).
+    # Never a half-written file like the one we recovered from today.
+    tmp_path = path.parent / f".{path.name}.tmp"
+    try:
+        with tmp_path.open("w", encoding="utf-8") as handle:
+            yaml_rt.dump(doc, handle)
+            handle.flush()
+            try:
+                os.fsync(handle.fileno())
+            except OSError:
+                # fsync can fail on some FS (overlay / fuse). Best-effort —
+                # the os.replace below is what gives the atomic guarantee.
+                pass
+        os.replace(tmp_path, path)
+    except Exception:
+        # Best-effort tmp cleanup so a crashed dump doesn't leave a
+        # stale sidecar.
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+    # Best-effort git auto-commit on the store dir (lead a2a `3b0df14a`).
+    # Lazy-init a small `.git` inside the store dir on first call; commit
+    # each save so the operator gets time-travel via `git show <sha>:<file>`.
+    # NEVER raises — a git failure must not block the actual save (the
+    # YAML is already on disk; the commit is an audit-trail bonus).
+    try:
+        _git_autocommit_store(path)
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
+
+
+def _git_autocommit_store(path: Path) -> None:
+    """Initialize a per-store .git on first call, then commit on each save.
+
+    Operator-visible recovery handle: with this in place, even a future
+    SIGKILL-mid-write or bad mutation is recoverable via standard git
+    commands (`git -C <store-dir> log` + `git show <sha>:<file>`). The
+    fcntl lock + atomic write are the LIVE crash-safety; this is the
+    POST-MORTEM recovery layer.
+
+    Best-effort: never raises. Skips entirely if git isn't installed.
+    """
+    import subprocess
+
+    store_dir = path.parent
+    git_dir = store_dir / ".git"
+    if not git_dir.exists():
+        # Lazy-init. Disable auto-gc + auto-pack so every snapshot stays
+        # reachable; the store is small enough that aggressive gc would
+        # waste cycles + risk reachable-but-old snapshots being pruned.
+        subprocess.run(
+            ["git", "init", "-q", "-b", "main", str(store_dir)],
+            check=False,
+            stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+        )
+        for cfg in (
+            ("gc.auto", "0"),
+            ("gc.pruneExpire", "never"),
+            ("user.name", "scitex-todo"),
+            ("user.email", "scitex-todo@localhost"),
+        ):
+            subprocess.run(
+                ["git", "-C", str(store_dir), "config", *cfg],
+                check=False,
+                stderr=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+            )
+    # Stage + commit just this one file. Use --quiet so a clean tree
+    # (no actual change) doesn't print to stderr.
+    subprocess.run(
+        ["git", "-C", str(store_dir), "add", "--", path.name],
+        check=False,
+        stderr=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(store_dir),
+            "commit",
+            "-q",
+            "--allow-empty-message",
+            "-m",
+            "",
+        ],
+        check=False,
+        stderr=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+    )
 
 
 def _merge_tasks_into_seq(tasks: list[dict], old_by_id: dict) -> list:

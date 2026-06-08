@@ -78,10 +78,23 @@ def board_v3_page(request):
     """
     from django.template.loader import render_to_string
 
+    # Operator UX (TG 407): show the actual scitex-todo package version
+    # in the page title AND the in-page header so the operator can verify
+    # at a glance which release the board is running. Read __version__
+    # straight off the package import — no second source of truth to drift.
+    try:
+        from scitex_todo import __version__ as _version
+    except Exception:  # noqa: BLE001
+        _version = "?"
+    label = f"scitex-todo v{_version}"
     try:
         html = render_to_string(
             "scitex_todo/board_v3.html",
-            {"app_name": "scitex-todo", "app_label": "SciTeX Todo — Board v3"},
+            {
+                "app_name": "scitex-todo",
+                "app_label": label,
+                "scitex_todo_version": _version,
+            },
             request=request,
         )
         return HttpResponse(html)
