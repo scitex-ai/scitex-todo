@@ -43,6 +43,30 @@ _EDITABLE_FIELDS = (
     "parent",
     "depends_on",
     "blocks",
+    # Operator-co-designed fields (Task dataclass, PR #56). Operator was
+    # losing edits silently — `project` (and the rest) were not in this
+    # tuple, so handle_update returned 200 with the field untouched, and
+    # the card-drag (PR #77, TG 385) became a visual no-op (operator TG
+    # 453 reproducer: dragged 学会 GTM card business → calendar, toast
+    # said success, card stayed put). Whitelist now mirrors every
+    # writable field on the Task dataclass.
+    "project",
+    "agent",
+    "task",
+    "host",
+    "goal",
+    "pr_url",
+    "issue_url",
+    "last_activity",
+    "created_at",
+    "scope",
+    "assignee",
+    "blocker",
+    "kind",
+    "job_id",
+    "command",
+    "started_at",
+    "finished_at",
 )
 
 

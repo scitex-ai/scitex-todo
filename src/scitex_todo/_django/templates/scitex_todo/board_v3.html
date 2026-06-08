@@ -337,6 +337,56 @@
     background: rgba(109,76,173,0.12);
   }
 
+  /* Fuzzy-search input (operator TG 437/438) — narrow, lives in the
+   * filter bar next to the dropdowns; minimal chrome so it blends in. */
+  .filt-search {
+    min-width: 180px;
+    padding: 4px 10px !important;
+  }
+  .filt-search:focus {
+    outline: none;
+    border-color: var(--purple);
+    background: rgba(109,76,173,0.06);
+  }
+
+  /* Date-proximity pill (operator TG 440/442) — inline below the task
+   * title. Color by proximity bucket: overdue red, today amber-bright,
+   * within-3d red-warning, within-7d amber, within-30d blue, far plain. */
+  .date-pill {
+    display: inline-block;
+    margin: 4px 0 0 0;
+    padding: 1px 8px;
+    font-size: 0.72rem; font-weight: 600;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.04);
+    color: var(--text-muted);
+  }
+  .date-pill--overdue {
+    color: #fff; background: var(--red); border-color: var(--red);
+    box-shadow: 0 0 8px 1px rgba(244,67,54,0.55);
+    animation: pulse-red 2s ease-in-out infinite;
+  }
+  .date-pill--today {
+    color: #000; background: var(--gold); border-color: var(--gold);
+    box-shadow: 0 0 8px 1px rgba(255,193,7,0.55);
+  }
+  .date-pill--soon {
+    color: var(--red); border-color: var(--red);
+    background: rgba(244,67,54,0.12);
+  }
+  .date-pill--week {
+    color: var(--amber); border-color: var(--amber);
+    background: rgba(255,179,0,0.12);
+  }
+  .date-pill--month {
+    color: #4a90e2; border-color: #4a90e2;
+    background: rgba(74,144,226,0.12);
+  }
+  .date-pill--far {
+    color: var(--text-muted);
+  }
+
   /* Right-click CRUD context menu (operator TG 432/433) — fixed-position
    * floating menu anchored to the click point. Single-column item list
    * with section headers + dividers. ESC / click-outside dismisses. */
@@ -956,11 +1006,23 @@
          roll-up land in follow-up PRs. -->
     <div class="fleetstrip" id="fleetstrip"
          aria-label="Fleet liveness — one dot per agent"></div>
+    <input class="filt filt-search" id="f-search" type="search"
+           placeholder="🔎 search (fuzzy)"
+           title="Fuzzy match on title / project / agent / note (operator TG 437/438)"
+           oninput="onSearchInput(event)" autocomplete="off">
     <select class="filt" id="f-project"><option value="">All projects</option></select>
     <select class="filt" id="f-host"><option value="">All hosts</option></select>
     <select class="filt" id="f-status"><option value="">All statuses</option></select>
     <select class="filt" id="f-blocker"><option value="">All blockers</option></select>
     <select class="filt" id="f-agent"><option value="">All agents</option></select>
+    <select class="filt" id="f-date" title="Filter by date proximity (operator TG 440/442)">
+      <option value="">All dates</option>
+      <option value="overdue">📅 overdue</option>
+      <option value="today">📅 today</option>
+      <option value="7d">📅 within 7 days</option>
+      <option value="30d">📅 within 30 days</option>
+      <option value="undated">no date in title</option>
+    </select>
     <button id="reload" class="reload-btn" onclick="loadGraph()">Reload</button>
     <!-- Add Task — operator-CRUD wiring (TG 344): one-click new-task
          entry from the filterbar. Opens the #add-task-backdrop modal
@@ -1177,7 +1239,8 @@
 
     let STATE = { graph: null, openId: null, lastMtime: null,
       filters: { project: "", host: "", status: "", blocker: "", agent: "",
-                 blockingMe: false, showHidden: false } };
+                 blockingMe: false, showHidden: false,
+                 search: "", date: "" } };
 
     // === Hide (per-user soft-hide, localStorage-backed) ====================
     // Stored as an array of task ids under "scitex-todo:hidden". Per-user/per-
@@ -1235,7 +1298,95 @@
       // Hide filter: by default hidden cards are dropped; the filter-bar
       // toggle flips f.showHidden and brings them back (greyed via CSS).
       if (!f.showHidden && hiddenSet().has(t.id)) return false;
+      // Fuzzy search (operator TG 437 / 438): subsequence char match
+      // across title + project + agent + note. Case-insensitive.
+      if (f.search && !fuzzyMatch(f.search, t)) return false;
+      // Date filter (operator TG 440 / 442): proximity buckets derived
+      // from the next future date parsed out of the title.
+      if (f.date) {
+        const di = dateInfo(t);
+        if (f.date === "undated" && di) return false;
+        if (f.date === "overdue" && !(di && di.daysFromNow < 0)) return false;
+        if (f.date === "today" && !(di && di.daysFromNow === 0)) return false;
+        if (f.date === "7d" && !(di && di.daysFromNow >= 0 && di.daysFromNow <= 7)) return false;
+        if (f.date === "30d" && !(di && di.daysFromNow >= 0 && di.daysFromNow <= 30)) return false;
+      }
       return true;
+    }
+
+    // === Fuzzy search (operator TG 437/438) ===========================
+    // fzf-style: every character of the query must appear in the haystack
+    // IN ORDER, not necessarily consecutively. Case-insensitive. The
+    // haystack is `${title} ${project} ${agent} ${note}` so a project
+    // name or a note keyword surfaces a card without leaving search.
+    function fuzzyMatch(query, t) {
+      const q = String(query || "").toLowerCase().trim();
+      if (!q) return true;
+      const hay = (
+        (t.title || "") + " " +
+        (t.task || "") + " " +
+        (t.project || "") + " " +
+        (t.agent || "") + " " +
+        (t.note || "") + " " +
+        (t.id || "")
+      ).toLowerCase();
+      let i = 0;
+      for (const c of q) {
+        if (c === " ") continue;  // whitespace tolerant
+        const found = hay.indexOf(c, i);
+        if (found < 0) return false;
+        i = found + 1;
+      }
+      return true;
+    }
+
+    function onSearchInput(e) {
+      STATE.filters.search = e.currentTarget.value;
+      render();
+    }
+
+    // === Date extraction + proximity color (operator TG 440/442) =====
+    // Pulls every YYYY-MM-DD pattern out of the title (also YYYY/MM/DD)
+    // and picks the NEXT future date (or, if all dates are past, the
+    // most recent past one). Renders an inline 📅 pill colored by
+    // proximity: red ≤3d, amber ≤7d, blue ≤30d, plain otherwise.
+    const _DATE_RX = /(20\d{2})[-\/](\d{1,2})[-\/](\d{1,2})/g;
+    function _parseAllDates(title) {
+      const out = [];
+      let m;
+      _DATE_RX.lastIndex = 0;
+      while ((m = _DATE_RX.exec(title)) !== null) {
+        const y = +m[1], mo = +m[2], d = +m[3];
+        const dt = new Date(y, mo - 1, d);
+        if (!isNaN(dt) && dt.getMonth() === mo - 1) out.push(dt);
+      }
+      return out;
+    }
+    function dateInfo(t) {
+      const title = (t.title || "") + " " + (t.task || "");
+      const dates = _parseAllDates(title);
+      if (dates.length === 0) return null;
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      // Prefer the next future date, else fall back to the latest past one.
+      const future = dates.filter(d => d >= now).sort((a, b) => a - b);
+      const pick = future.length ? future[0] : dates.sort((a, b) => b - a)[0];
+      const days = Math.round((pick - now) / 86400000);
+      return { date: pick, daysFromNow: days, all: dates };
+    }
+    function datePillHtml(t) {
+      const di = dateInfo(t);
+      if (!di) return "";
+      const d = di.daysFromNow;
+      let cls = "date-pill", label;
+      if (d < 0) { cls += " date-pill--overdue"; label = `📅 overdue ${-d}d`; }
+      else if (d === 0) { cls += " date-pill--today"; label = "📅 today"; }
+      else if (d <= 3) { cls += " date-pill--soon"; label = `📅 in ${d}d`; }
+      else if (d <= 7) { cls += " date-pill--week"; label = `📅 in ${d}d`; }
+      else if (d <= 30) { cls += " date-pill--month"; label = `📅 in ${d}d`; }
+      else { cls += " date-pill--far"; label = `📅 ${di.date.toISOString().slice(0,10)}`; }
+      const iso = di.date.toISOString().slice(0, 10);
+      return `<span class="${cls}" title="next date: ${iso} (${d>=0?'+':''}${d}d)">${label}</span>`;
     }
 
     function populateFilters() {
@@ -1342,6 +1493,7 @@
           </div>
           ${goal}
           <div class="card-task">${taskLine}</div>
+          ${datePillHtml(t)}
           <div class="card-bot">${host}<span style="display:flex;gap:4px;align-items:center;">${pr}${issue}${copyBtn}${hideBtn}</span></div>
           ${blocker}
         </div>
@@ -1594,6 +1746,18 @@
       document.getElementById("columns").innerHTML = projList.length
         ? projList.map(p => {
             const visibleCards = byProj[p] || [];
+            // Date-aware sort: cards with a parsed date sort first (soonest
+            // future → oldest past). Cards without a date keep their
+            // original order. Especially useful in the calendar column
+            // (operator TG 440/442) but applied to every column so date-
+            // bearing items always surface in time order.
+            visibleCards.sort((a, b) => {
+              const da = dateInfo(a), db = dateInfo(b);
+              if (da && db) return da.date - db.date;
+              if (da && !db) return -1;
+              if (!da && db) return 1;
+              return 0;
+            });
             const items = visibleCards.length
               ? visibleCards.map(cardHtml).join("")
               : `<div class="col-empty" onclick="openAddTaskModal('${escapeHtml(p)}')"
@@ -1757,9 +1921,12 @@
 
     function attachFilters() {
       const map = { "f-project": "project", "f-host": "host", "f-status": "status",
-                    "f-blocker": "blocker", "f-agent": "agent" };
+                    "f-blocker": "blocker", "f-agent": "agent",
+                    "f-date": "date" };
       Object.entries(map).forEach(([id, key]) => {
-        document.getElementById(id).addEventListener("change", e => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener("change", e => {
           STATE.filters[key] = e.target.value;
           render();
         });
@@ -1774,6 +1941,21 @@
     // an input field, the body) and ESC still closes.
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
+      // Operator TG 454 きもすぎ: the filterbar <details> dropdowns
+      // (hide-project list + hidden-cards list) didn't close on ESC.
+      // Native <details> doesn't ship that handler — add it here so
+      // every floating dropdown follows the same dismiss convention
+      // as the modals (matches the operator's universal "ESC closes
+      // open thing" expectation, TG 265).
+      const openDetails = document.querySelectorAll(
+        ".filterbar details[open], details.proj-hide[open], details.hidden-list[open]"
+      );
+      if (openDetails.length) {
+        openDetails.forEach(d => d.open = false);
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       const backdrop = document.getElementById("detail-backdrop");
       if (backdrop && backdrop.classList.contains("show")) {
         // If Resolve is armed (orange one-click-from-firing state) ESC
