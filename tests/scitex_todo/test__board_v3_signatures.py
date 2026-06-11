@@ -172,6 +172,22 @@ class TestP4DeadlineFE:
         assert "t.deadline" in board_text
 
 
+class TestP4MultiRecurringFE:
+    """Pins for the P4 PR3 multi/recurring FE consumer."""
+
+    def test_date_info_reads_deadline_next(self, board_text):
+        # The server expands recurring + multi to a single
+        # `deadline_next` ISO; the FE must prefer it over `deadline`
+        # when present.
+        assert "t.deadline_next" in board_text
+
+    def test_extract_repeater_suffix_helper_defined(self, board_text):
+        assert "function _extractRepeaterSuffix" in board_text
+
+    def test_first_recurring_deadline_helper_defined(self, board_text):
+        assert "function _firstRecurringDeadline" in board_text
+
+
 # -----------------------------------------------------------------------------
 # P11b — Combobox consumer (PR #94)
 # -----------------------------------------------------------------------------

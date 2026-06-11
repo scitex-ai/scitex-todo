@@ -119,10 +119,22 @@ def _render_task(task: dict) -> list[str]:
     # dates and ISO datetimes (we strip the time component for the
     # agenda; the YAML keeps the full precision).
     timestamps: list[str] = []
-    deadline = _as_org_date(task.get("deadline"))
-    if deadline:
-        timestamps.append(f"DEADLINE: <{deadline}>")
-    scheduled = _as_org_date(task.get("scheduled"))
+    # P4 PR3: prefer the new `deadlines` list when present (each entry
+    # becomes its own DEADLINE: token — org agenda treats each
+    # independently when emitted on the same heading-stamp line).
+    # The repeater suffix (` +1w` / ` ++2m`) passes through verbatim
+    # so the wire stays 1:1 with org-mode.
+    raw_deadlines = task.get("deadlines")
+    if isinstance(raw_deadlines, list) and raw_deadlines:
+        for entry in raw_deadlines:
+            stamp = _as_org_deadline_stamp(entry)
+            if stamp:
+                timestamps.append(f"DEADLINE: <{stamp}>")
+    else:
+        single = _as_org_deadline_stamp(task.get("deadline"))
+        if single:
+            timestamps.append(f"DEADLINE: <{single}>")
+    scheduled = _as_org_deadline_stamp(task.get("scheduled"))
     if scheduled:
         timestamps.append(f"SCHEDULED: <{scheduled}>")
     if timestamps:
@@ -149,6 +161,28 @@ def _render_task(task: dict) -> list[str]:
         for raw in note.rstrip("\n").splitlines():
             lines.append(f"  {raw}" if raw else "")
     return lines
+
+
+def _as_org_deadline_stamp(value: object) -> str | None:
+    """Convert a deadline/scheduled string to the org timestamp form.
+
+    P4 PR3 — accepts ISO-8601 ± optional ` +Nu` / ` ++Nu` org repeater
+    suffix. The bare-date portion is sliced to ``YYYY-MM-DD`` (org
+    agenda treats DEADLINE on bare dates uniformly); the repeater
+    passes through verbatim so a recurring deadline emits as
+    ``<YYYY-MM-DD +1w>`` — 1:1 with org-mode's native shape.
+    """
+    import re as _re
+
+    if not isinstance(value, str) or not value.strip():
+        return None
+    m = _re.search(r"\s+(\+\+?\d+[dwmy])$", value)
+    base = value[: m.start()].rstrip() if m else value
+    repeater = m.group(1) if m else ""
+    if len(base) < 10:
+        return None
+    base_date = base[:10]
+    return f"{base_date} {repeater}".rstrip() if repeater else base_date
 
 
 def _as_org_date(value: object) -> str | None:
