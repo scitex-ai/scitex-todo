@@ -67,6 +67,60 @@ what attribution) lives in
 Read that one before designing any new fleet workflow that would touch
 task state.
 
+### Using scitex-todo (CLI + MCP) — concrete how-to
+
+Every fleet agent uses the same surface. The CLI works without the
+`[mcp]` extra; the MCP surface (`add_task` / `update_task` /
+`comment_task` / `list_tasks`) ships as `pip install
+'scitex-todo[mcp]>=0.5.2'` per the P3a dotfiles wave. Pick whichever
+is more ergonomic — the wire is identical.
+
+```bash
+# Register a new task (operator drop / agent self-add).
+scitex-todo add --title "fix CI red on develop" \
+  --project scitex-todo --agent proj-scitex-todo --priority 2
+
+# Flip status as you work. --add-comment stamps an activity row.
+scitex-todo update todo-pXX --status in_progress \
+  --add-comment "starting; PR draft soon"
+
+scitex-todo update todo-pXX --status done \
+  --pr-url https://github.com/.../pull/123 \
+  --add-comment "merged; tests green"
+
+# List the tasks for a project / agent.
+scitex-todo list-tasks --agent proj-scitex-todo
+scitex-todo list-tasks --status pending --project scitex-todo
+
+# Set / clear an edge (depends_on).
+scitex-todo update todo-pYY --depends-on todo-pXX
+
+# Pick the next runnable task FOR THIS AGENT (single canonical rule).
+SCITEX_TODO_AGENT=proj-scitex-todo \
+  scitex-todo next --mine --auto-claim --json
+
+# Push side — wake the owning agent on new/commented/changed tasks.
+scitex-todo watch --push --interval 2
+```
+
+Equivalent MCP tools (Claude-Code container with the P3a stanza
+landed): `add_task`, `update_task`, `comment_task`, `list_tasks`,
+plus the upcoming `next` (P3d). Schema in
+[05_mcp-tools.md](05_mcp-tools.md).
+
+Attribution: every write tags the agent via `SCITEX_TODO_AGENT`
+(P3a env). A missing tag is a config bug — fix the agent's
+`to_home/.mcp.json` rather than committing under a wrong name.
+
+### The board is your work queue
+
+[32_agent-self-consumption-loop.md](32_agent-self-consumption-loop.md)
+documents the 7-step loop every fleet agent runs on wake. The
+operator drops a request → it lands as a task → `scitex-todo watch
+--push` wakes the owning agent → the agent runs `scitex-todo next
+--mine --auto-claim` → works → comments + flips status → the lead
+monitors. Read 32 before wiring up a new agent's harness.
+
 ## Sub-skills
 
 ### Core (01–09)
@@ -99,6 +153,12 @@ task state.
   live), task referencing scheme, push-notification model, Core vs
   Extension Ports vs Fleet Adapters architectural backbone. Reference
   spec; for the short how-to, use 11.
+- [32_agent-self-consumption-loop.md](32_agent-self-consumption-loop.md)
+  — the **7-step agent loop**. Every fleet agent reads this. Pairs
+  with the `scitex-todo next` (pull side) + `scitex-todo watch --push`
+  (push side) CLI verbs to realize the operator's TG 12038
+  central-command vision: the board IS the work queue, agents drain
+  the backlog autonomously, the lead coordinates and escalates.
 
 ### Operations (40+)
 - [40_task-harvest.md](40_task-harvest.md) — task harvest:
