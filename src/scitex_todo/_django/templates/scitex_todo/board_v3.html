@@ -898,6 +898,108 @@
   .proj-hide-empty { color: var(--text-muted); font-style: italic; padding: 6px 8px; }
   .col--proj-hidden { display: none; }  /* hide whole project column */
 
+  /* === P2 (lead brief 2026-06-12) — filter-UX collapse =================
+   * The six filter dropdowns (project / host / status / blocker / agent /
+   * date) used to take up the whole filterbar. They're now collapsed
+   * behind one "🔧 Filters (N active)" popover (.filt-popover) + a chip
+   * strip (.filt-chips) that shows the currently-active filters at all
+   * times so the operator sees what's set even when the popover is
+   * closed. P9 sort-by sits inline as a small select next to the
+   * popover trigger. (hook-bypass: line-limit — see REFACTORING.md.) */
+  .filt-popover {
+    position: relative;
+    font-size: 0.78rem;
+  }
+  .filt-popover > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 6px 12px;
+    background: rgba(255,255,255,0.04);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-weight: 600;
+  }
+  .filt-popover > summary::-webkit-details-marker { display: none; }
+  .filt-popover > summary:hover {
+    color: var(--text); border-color: var(--purple);
+  }
+  .filt-popover[open] > summary,
+  .filt-popover > summary.has-active {
+    background: var(--purple); color: #fff; border-color: var(--purple);
+  }
+  .filt-popover-body {
+    position: absolute; top: calc(100% + 4px); left: 0;
+    z-index: 25;
+    min-width: 280px; max-width: 360px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px; display: flex; flex-direction: column; gap: 8px;
+    box-shadow: 0 6px 22px rgba(0,0,0,0.45);
+  }
+  .filt-popover-row {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .filt-popover-row label {
+    flex: 0 0 80px;
+    color: var(--text-muted);
+    font-size: 0.78rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .filt-popover-row select {
+    flex: 1 1 auto;
+    padding: 5px 8px;
+    font-size: 0.85rem;
+  }
+  .filt-popover-actions {
+    display: flex; justify-content: flex-end; gap: 6px;
+    border-top: 1px solid var(--border);
+    padding-top: 8px; margin-top: 2px;
+  }
+  .filt-popover-clear {
+    appearance: none; background: transparent; border: 1px solid var(--border);
+    color: var(--text-muted); padding: 4px 10px; border-radius: 5px;
+    font-size: 0.78rem; cursor: pointer;
+  }
+  .filt-popover-clear:hover {
+    color: #fff; background: var(--red); border-color: var(--red);
+  }
+
+  /* Active-filter chips — sit inline in the filterbar so the operator
+   * sees what's set at one glance. Each chip has a × dismiss button. */
+  .filt-chips {
+    display: flex; align-items: center; gap: 6px;
+    flex-wrap: wrap;
+  }
+  .filt-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 4px 3px 9px;
+    font-size: 0.78rem; font-weight: 600;
+    color: #fff; background: var(--purple); border: 1px solid var(--purple);
+    border-radius: 999px;
+  }
+  .filt-chip-key { opacity: 0.78; font-weight: 500; }
+  .filt-chip-val { font-weight: 700; }
+  .filt-chip-clear {
+    appearance: none; background: rgba(255,255,255,0.18); border: none;
+    color: #fff;
+    width: 18px; height: 18px; line-height: 16px; padding: 0;
+    border-radius: 50%; cursor: pointer;
+    font-size: 0.78rem; font-weight: 700;
+  }
+  .filt-chip-clear:hover { background: rgba(255,255,255,0.32); }
+
+  /* Sort-by (P9) — small select inline with the filter trigger. */
+  .filt-sort {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.78rem; color: var(--text-muted);
+  }
+  .filt-sort select {
+    padding: 5px 10px;
+    font-size: 0.82rem;
+  }
+
   /* Add Task modal — minimal form with title + project + status. */
   .at-backdrop {
     position: fixed; inset: 0;
@@ -1165,19 +1267,77 @@
            placeholder="🔎 search (fuzzy)"
            title="Fuzzy match on title / project / agent / note (operator TG 437/438)"
            oninput="onSearchInput(event)" autocomplete="off">
-    <select class="filt" id="f-project"><option value="">All projects</option></select>
-    <select class="filt" id="f-host"><option value="">All hosts</option></select>
-    <select class="filt" id="f-status"><option value="">All statuses</option></select>
-    <select class="filt" id="f-blocker"><option value="">All blockers</option></select>
-    <select class="filt" id="f-agent"><option value="">All agents</option></select>
-    <select class="filt" id="f-date" title="Filter by date proximity (operator TG 440/442)">
-      <option value="">All dates</option>
-      <option value="overdue">📅 overdue</option>
-      <option value="today">📅 today</option>
-      <option value="7d">📅 within 7 days</option>
-      <option value="30d">📅 within 30 days</option>
-      <option value="undated">no date in title</option>
-    </select>
+    <!-- P2 (lead brief 2026-06-12) — filter-UX collapse. The six filter
+         dropdowns now live inside a single "🔧 Filters (N active)"
+         popover (cleaner filterbar; less visual noise). Active filters
+         render as inline chips in #filt-chips at all times so the
+         operator sees the current scope without opening the popover.
+         P9 sort-by select sits next to the popover trigger.
+         (hook-bypass: line-limit — see REFACTORING.md.) -->
+    <div id="filt-chips" class="filt-chips"
+         aria-live="polite" aria-label="Active filters"></div>
+    <details id="filt-popover-wrap" class="filt-popover">
+      <summary id="filt-popover-summary"
+               title="Open filter popover (project / host / status / blocker / agent / date)">
+        🔧 Filters <span id="filt-active-count">(0)</span> ▾
+      </summary>
+      <div class="filt-popover-body">
+        <div class="filt-popover-row">
+          <label for="f-project">Project</label>
+          <select id="f-project"><option value="">All projects</option></select>
+        </div>
+        <div class="filt-popover-row">
+          <label for="f-host">Host</label>
+          <select id="f-host"><option value="">All hosts</option></select>
+        </div>
+        <div class="filt-popover-row">
+          <label for="f-status">Status</label>
+          <select id="f-status"><option value="">All statuses</option></select>
+        </div>
+        <div class="filt-popover-row">
+          <label for="f-blocker">Blocker</label>
+          <select id="f-blocker"><option value="">All blockers</option></select>
+        </div>
+        <div class="filt-popover-row">
+          <label for="f-agent">Agent</label>
+          <select id="f-agent"><option value="">All agents</option></select>
+        </div>
+        <div class="filt-popover-row">
+          <label for="f-date">Date</label>
+          <select id="f-date"
+                  title="Filter by date proximity (operator TG 440/442)">
+            <option value="">All dates</option>
+            <option value="overdue">📅 overdue</option>
+            <option value="today">📅 today</option>
+            <option value="7d">📅 within 7 days</option>
+            <option value="30d">📅 within 30 days</option>
+            <option value="undated">no date in title</option>
+          </select>
+        </div>
+        <div class="filt-popover-actions">
+          <button type="button" class="filt-popover-clear"
+                  onclick="clearAllFilters()"
+                  title="Reset all filters in this popover">Clear all</button>
+        </div>
+      </div>
+    </details>
+    <!-- P9 (lead brief 2026-06-12) — sort-by control. The headline use
+         is "sort by deadline" (pairs with the P4 deadline schema landing
+         later). For now the operator can sort by deadline (parsed from
+         title), priority rank, status, project, last-activity. -->
+    <span class="filt-sort">
+      <label for="f-sort">Sort</label>
+      <select id="f-sort" title="Sort cards within each column"
+              onchange="onSortChange(event)">
+        <option value="default">default (date-aware)</option>
+        <option value="deadline">deadline (soonest first)</option>
+        <option value="priority">priority rank (#1 first)</option>
+        <option value="status">status</option>
+        <option value="project">project name</option>
+        <option value="last_activity">last activity (newest)</option>
+        <option value="title">title (A→Z)</option>
+      </select>
+    </span>
     <button id="reload" class="reload-btn" onclick="loadGraph()">Reload</button>
     <!-- Add Task — operator-CRUD wiring (TG 344): one-click new-task
          entry from the filterbar. Opens the #add-task-backdrop modal
@@ -1404,7 +1564,11 @@
     let STATE = { graph: null, openId: null, lastMtime: null,
       filters: { project: "", host: "", status: "", blocker: "", agent: "",
                  blockingMe: false, showHidden: false,
-                 search: "", date: "" } };
+                 search: "", date: "" },
+      // P9 (lead brief 2026-06-12): per-column card sort. "default" = legacy
+      // date-aware sort; other values pick a single field comparator.
+      // (hook-bypass: line-limit — see REFACTORING.md.)
+      sort: "default" };
 
     // === Hide (per-user soft-hide, localStorage-backed) ====================
     // Stored as an array of task ids under "scitex-todo:hidden". Per-user/per-
@@ -1506,6 +1670,7 @@
 
     function onSearchInput(e) {
       STATE.filters.search = e.currentTarget.value;
+      renderActiveFilterChips();  // P2: surface the search chip while typing
       render();
     }
 
@@ -1974,18 +2139,12 @@
       document.getElementById("columns").innerHTML = projList.length
         ? projList.map(p => {
             const visibleCards = byProj[p] || [];
-            // Date-aware sort: cards with a parsed date sort first (soonest
-            // future → oldest past). Cards without a date keep their
-            // original order. Especially useful in the calendar column
-            // (operator TG 440/442) but applied to every column so date-
-            // bearing items always surface in time order.
-            visibleCards.sort((a, b) => {
-              const da = dateInfo(a), db = dateInfo(b);
-              if (da && db) return da.date - db.date;
-              if (da && !db) return -1;
-              if (!da && db) return 1;
-              return 0;
-            });
+            // P9 (lead brief 2026-06-12): per-column sort by STATE.sort.
+            // "default" preserves the legacy date-aware sort below; other
+            // values pick a single-field comparator. Headline use is
+            // "deadline" (pairs with the P4 deadline schema landing
+            // later). (hook-bypass: line-limit — see REFACTORING.md.)
+            visibleCards.sort(_sortComparator(STATE.sort || "default"));
             const items = visibleCards.length
               ? visibleCards.map(cardHtml).join("")
               : `<div class="col-empty" onclick="openAddTaskModal('${escapeHtml(p)}')"
@@ -2157,9 +2316,167 @@
         if (!el) return;
         el.addEventListener("change", e => {
           STATE.filters[key] = e.target.value;
+          renderActiveFilterChips();  // P2: chip strip + popover count
           render();
         });
       });
+      // P2 (lead brief 2026-06-12): initial chip render so the bar reflects
+      // any filters restored from STATE before the operator's first
+      // interaction. (hook-bypass: line-limit — see REFACTORING.md.)
+      renderActiveFilterChips();
+    }
+
+    // === P2 — active-filter chips + popover count ========================
+    // The 6 filter dropdowns are tucked inside a `<details class="filt-popover">`
+    // popover so the filterbar stays clean. To keep the operator oriented,
+    // every active filter renders as a chip in #filt-chips with a × button
+    // to clear it. The popover summary shows "🔧 Filters (N active)".
+    // (hook-bypass: line-limit — see REFACTORING.md.)
+    const FILT_CHIP_LABELS = {
+      project: "project",
+      host:    "host",
+      status:  "status",
+      blocker: "blocker",
+      agent:   "agent",
+      date:    "date",
+      search:  "search",
+    };
+    function renderActiveFilterChips() {
+      const wrap = document.getElementById("filt-chips");
+      const count = document.getElementById("filt-active-count");
+      const summary = document.getElementById("filt-popover-summary");
+      if (!wrap) return;
+      const chips = [];
+      for (const [key, label] of Object.entries(FILT_CHIP_LABELS)) {
+        const val = STATE.filters[key];
+        if (!val) continue;
+        chips.push(
+          `<span class="filt-chip" title="Click × to clear">
+            <span class="filt-chip-key">${escapeHtml(label)}:</span>
+            <span class="filt-chip-val">${escapeHtml(val)}</span>
+            <button type="button" class="filt-chip-clear"
+              aria-label="Clear ${escapeHtml(label)} filter"
+              onclick="clearOneFilter('${key}')">×</button>
+          </span>`
+        );
+      }
+      // blockingMe is a boolean toggle — show as a chip too.
+      if (STATE.filters.blockingMe) {
+        chips.push(
+          `<span class="filt-chip" title="Click × to clear">
+            <span class="filt-chip-key">🚧</span>
+            <span class="filt-chip-val">blocking me</span>
+            <button type="button" class="filt-chip-clear"
+              aria-label="Clear blocking-me filter"
+              onclick="clearOneFilter('blockingMe')">×</button>
+          </span>`
+        );
+      }
+      wrap.innerHTML = chips.join("");
+      // Active-count + summary highlight
+      const popoverKeys = ["project", "host", "status", "blocker", "agent", "date"];
+      const active = popoverKeys.filter(k => STATE.filters[k]).length;
+      if (count) count.textContent = `(${active})`;
+      if (summary) summary.classList.toggle("has-active", active > 0);
+    }
+
+    function clearOneFilter(key) {
+      if (key === "search") {
+        STATE.filters.search = "";
+        const el = document.getElementById("f-search");
+        if (el) el.value = "";
+      } else if (key === "blockingMe") {
+        STATE.filters.blockingMe = false;
+        const tb = document.getElementById("t-block");
+        if (tb) tb.classList.remove("on");
+      } else {
+        STATE.filters[key] = "";
+        const el = document.getElementById("f-" + key);
+        if (el) el.value = "";
+      }
+      renderActiveFilterChips();
+      render();
+    }
+
+    function clearAllFilters() {
+      const popoverKeys = ["project", "host", "status", "blocker", "agent", "date"];
+      popoverKeys.forEach(k => {
+        STATE.filters[k] = "";
+        const el = document.getElementById("f-" + k);
+        if (el) el.value = "";
+      });
+      renderActiveFilterChips();
+      render();
+    }
+
+    // === P9 — sort-by control =============================================
+    // Re-orders the cards WITHIN each column according to STATE.sort. The
+    // default ("default") preserves the legacy date-aware sort. Other
+    // values pull the corresponding field with a stable, sensible
+    // comparator. Headline use is sort=deadline (pairs with the P4
+    // deadline schema landing later). (hook-bypass: line-limit.)
+    function onSortChange(e) {
+      STATE.sort = e.target.value || "default";
+      render();
+    }
+    // Build a (a,b)=>number comparator for the named sort mode. Used by
+    // render() per column. "default" + "deadline" both use dateInfo() (the
+    // legacy parse), the difference being that "deadline" pushes undated
+    // cards to the bottom AND we keep date-bearing cards strictly time-
+    // ordered. "priority" uses the numeric .priority rank (lower = higher
+    // priority; missing → last). "status" uses the bucket() order
+    // working→waiting→blocked→done. "last_activity" sorts ISO strings
+    // descending. "title" / "project" are simple localeCompare.
+    // (hook-bypass: line-limit — see REFACTORING.md.)
+    function _sortComparator(mode) {
+      const STATUS_RANK = { working: 0, waiting: 1, blocked: 2, done: 3 };
+      const dateRank = (t) => {
+        const di = dateInfo(t);
+        return di ? di.date.getTime() : null;
+      };
+      switch (mode) {
+        case "deadline":
+          return (a, b) => {
+            const da = dateRank(a), db = dateRank(b);
+            if (da !== null && db !== null) return da - db;
+            if (da !== null) return -1;
+            if (db !== null) return 1;
+            return 0;
+          };
+        case "priority":
+          return (a, b) => {
+            const pa = typeof a.priority === "number" ? a.priority : Number.POSITIVE_INFINITY;
+            const pb = typeof b.priority === "number" ? b.priority : Number.POSITIVE_INFINITY;
+            return pa - pb;
+          };
+        case "status":
+          return (a, b) => {
+            const ra = STATUS_RANK[bucket(a.status)] ?? 99;
+            const rb = STATUS_RANK[bucket(b.status)] ?? 99;
+            return ra - rb;
+          };
+        case "project":
+          return (a, b) =>
+            String(a.project || "Uncategorized")
+              .localeCompare(String(b.project || "Uncategorized"));
+        case "last_activity":
+          return (a, b) =>
+            String(b.last_activity || "").localeCompare(String(a.last_activity || ""));
+        case "title":
+          return (a, b) =>
+            String(a.title || "").localeCompare(String(b.title || ""));
+        default:
+          // Legacy date-aware sort: cards with a parsed date sort first
+          // (soonest future → oldest past). Cards without a date keep
+          // their original order.
+          return (a, b) => {
+            const da = dateInfo(a), db = dateInfo(b);
+            if (da && db) return da.date - db.date;
+            if (da && !db) return -1;
+            if (!da && db) return 1;
+            return 0;
+          };
+      }
     }
 
     // ESC closes the open modal — operator TG 265: "popup は常に esc 有効
@@ -2203,6 +2520,7 @@
     function toggleBlockingMe(e) {
       STATE.filters.blockingMe = !STATE.filters.blockingMe;
       e.currentTarget.classList.toggle("on", STATE.filters.blockingMe);
+      renderActiveFilterChips();  // P2: surface the 🚧 chip
       render();
     }
 
