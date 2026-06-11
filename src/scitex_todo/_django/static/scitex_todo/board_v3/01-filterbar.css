@@ -1,0 +1,327 @@
+/* board_v3 — filterbar + fleet-strip + main layout
+ *
+ * Extracted from src/scitex_todo/_django/templates/scitex_todo/board_v3.html
+ * (root-cause fix for squash-merge regressions — see GITIGNORED/REFACTORING.md).
+ * Owns: :root vars, base reset, .filterbar, .fleetstrip, .main / .columns / .col.
+ */
+
+:root {
+  --bg: #0f1419;
+  --card-bg: #1a1f29;
+  --col-bg: #131820;
+  --text: #e0e6f0;
+  --text-muted: #8a96a8;
+  --border: #2a3140;
+  --green: #4caf50;
+  --amber: #ffb300;
+  --red: #f44336;
+  --grey: #6e7686;
+  --purple: #6d4cad;
+  --gold: #ffc107;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  font:
+    14px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+a {
+  color: var(--green);
+}
+
+/* === FILTER BAR (top) =================================================== */
+.filterbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--col-bg);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.filterbar h1 {
+  margin: 0 12px 0 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fff;
+}
+.filterbar .small {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.filt {
+  background: #232a36;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 10px;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+.filt:hover {
+  border-color: var(--purple);
+}
+.filt option {
+  background: #232a36;
+  color: var(--text);
+}
+.toggle-block {
+  margin-left: auto;
+  padding: 6px 14px;
+  background: rgba(255, 193, 7, 0.16);
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 0.88rem;
+}
+.toggle-block.on {
+  background: var(--gold);
+  color: #000;
+  box-shadow: 0 0 12px 2px rgba(255, 193, 7, 0.45);
+}
+.reload-btn {
+  padding: 5px 10px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+}
+.reload-btn:hover {
+  color: var(--text);
+  border-color: var(--purple);
+}
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  display: inline-block;
+  margin-right: 5px;
+  animation: pulse-green 2s ease-in-out infinite;
+}
+
+/* === Fleet-liveness dot-strip (ticket proj-scitex-todo-fleet-liveness) ===
+   One colored dot per agent. Lives in the filter bar so the operator
+   sees fleet state at a glance. Click a dot = filter to that agent. */
+.fleetstrip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  min-height: 22px;
+}
+.flt-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  cursor: pointer;
+  flex: 0 0 auto;
+  border: 2px solid transparent;
+  transition:
+    transform 100ms ease,
+    border-color 100ms ease;
+}
+.flt-dot:hover {
+  transform: scale(1.25);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.flt-dot--blocking-operator {
+  background: var(--gold);
+  box-shadow: 0 0 6px 1px rgba(255, 193, 7, 0.65);
+  animation: pulse-gold 1.8s ease-in-out infinite;
+}
+.flt-dot--working {
+  background: var(--green);
+  box-shadow: 0 0 4px 1px rgba(76, 175, 80, 0.55);
+}
+.flt-dot--active {
+  background: #4a90e2;
+  box-shadow: 0 0 4px 1px rgba(74, 144, 226, 0.45);
+}
+.flt-dot--idle {
+  background: var(--grey);
+  opacity: 0.55;
+}
+.flt-dot--selected {
+  border-color: #fff;
+  box-shadow: 0 0 8px 2px rgba(255, 255, 255, 0.55);
+}
+.fleetstrip-empty {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-style: italic;
+  padding: 0 4px;
+}
+@keyframes pulse-gold {
+  0%,
+  100% {
+    box-shadow: 0 0 6px 1px rgba(255, 193, 7, 0.65);
+  }
+  50% {
+    box-shadow: 0 0 14px 4px rgba(255, 193, 7, 0.95);
+  }
+}
+
+/* === MAIN LAYOUT ======================================================== */
+.main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+/* Operator UX (TG 370): columns were wrapping vertically because
+ * the auto-fit grid runs out of horizontal room with many projects.
+ * Switch to a single-row HORIZONTAL flex strip with horizontal
+ * scroll (kanban/trello convention) so every project column stays
+ * side-by-side and the operator scrolls horizontally to reach the
+ * trailing ones. Each column gets a fixed width; per-column body
+ * keeps its own vertical scroll. */
+.columns {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  padding: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  align-items: stretch;
+  /* Tighter scrollbar styling so the strip doesn't look stuck under
+   * a thick OS scrollbar. */
+  scrollbar-width: thin;
+}
+.columns::-webkit-scrollbar {
+  height: 10px;
+}
+.columns::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}
+.col {
+  background: var(--col-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Fixed column width — kanban convention. min-height removed; the
+   * column stretches to the full strip height via align-items:stretch
+   * on the parent. */
+  flex: 0 0 280px;
+  width: 280px;
+  max-height: 100%;
+  /* Drag affordance: hint the operator they can grab the header to
+   * reorder. JS adds .col--dragging during the drag for visuals. */
+  transition:
+    transform 100ms ease,
+    box-shadow 100ms ease,
+    opacity 100ms ease;
+}
+.col--dragging {
+  opacity: 0.55;
+  transform: rotate(-1deg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+}
+.col--drop-target {
+  box-shadow: -3px 0 0 0 var(--gold) inset;
+}
+/* Card drag-to-move (operator TG 385) — visual cues. */
+.card--dragging {
+  opacity: 0.55;
+  transform: rotate(-1deg);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.col--card-drop-target {
+  background: rgba(76, 175, 80, 0.1);
+  box-shadow: 0 0 0 2px var(--green) inset;
+}
+.card {
+  cursor: grab;
+}
+.card:active {
+  cursor: grabbing;
+}
+/* Pinned columns get a gold accent and stay at the LEFT of the strip
+ * (JS reorders them to the front of the render output before the
+ * drag-order is applied). */
+.col--pinned {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold);
+}
+.col-head {
+  cursor: grab; /* the header is the drag handle */
+  user-select: none;
+}
+.col-head:active {
+  cursor: grabbing;
+}
+.col-pin-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 4px;
+  transition: color 100ms ease;
+}
+.col-pin-btn:hover {
+  color: var(--gold);
+}
+.col--pinned .col-pin-btn {
+  color: var(--gold);
+}
+.col-head {
+  background: rgba(109, 76, 173, 0.08);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.col-name {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: #fff;
+}
+.col-count {
+  background: rgba(109, 76, 173, 0.25);
+  color: var(--purple);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--purple);
+}
+.col-body {
+  flex: 1;
+  padding: 8px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+}
