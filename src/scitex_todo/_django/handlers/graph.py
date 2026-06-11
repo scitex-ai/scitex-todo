@@ -110,6 +110,11 @@ def _build_graph(board) -> dict:
         # from already-loaded tasks.yaml; the sidecar daemon + cross-host
         # roll-up land in follow-up PRs (no schema change today).
         "fleet": _build_fleet(board.tasks),
+        # P10 (lead a2a 2026-06-12) — user-defined project clusters from
+        # the same store. Empty list when the YAML has no ``groups:`` key
+        # (back-compat). FE renders group headers above the per-project
+        # column grid + a horizontal "spans_all" strip for the lead group.
+        "groups": [g.to_dict() for g in (board.groups or [])],
     }
 
 

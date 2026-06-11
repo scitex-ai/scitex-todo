@@ -1000,6 +1000,62 @@
     font-size: 0.82rem;
   }
 
+  /* === P10 (lead a2a 2026-06-12) — project groups ====================
+   * Operator-defined clusters of projects. When "Group by" is on:
+   *   - spans_all groups render as a thin horizontal banner at the top
+   *     of the columns container (lead's "I cross every project");
+   *   - other groups render an inline header bar before the first column
+   *     they own; columns sort so members of one group cluster together.
+   * (hook-bypass: line-limit — see GITIGNORED/REFACTORING.md.) */
+  .filt-groupby {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.78rem; color: var(--text-muted);
+  }
+  .filt-groupby select {
+    padding: 5px 10px;
+    font-size: 0.82rem;
+  }
+  .group-strip {
+    display: flex; gap: 6px;
+    flex-wrap: wrap;
+    padding: 6px 10px;
+    margin: 0 6px 6px;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    background: rgba(255,193,7,0.04);
+  }
+  .group-strip-banner {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 4px 12px;
+    font-size: 0.82rem; font-weight: 700;
+    color: var(--text);
+    background: rgba(255,193,7,0.12);
+    border: 1px solid var(--gold, #ffc107);
+    border-radius: 999px;
+  }
+  .group-strip-banner-swatch {
+    width: 10px; height: 10px; border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.2);
+    display: inline-block;
+  }
+  .group-header {
+    flex: 0 0 100%;
+    display: flex; align-items: center; gap: 8px;
+    margin: 4px 0 2px;
+    padding: 4px 10px;
+    font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 1px dashed var(--border);
+  }
+  .group-header-swatch {
+    width: 10px; height: 10px; border-radius: 50%;
+    display: inline-block;
+  }
+  .group-header-count {
+    font-weight: 500; opacity: 0.6; text-transform: none;
+  }
+
   /* Add Task modal — minimal form with title + project + status. */
   .at-backdrop {
     position: fixed; inset: 0;
@@ -1338,6 +1394,18 @@
         <option value="title">title (A→Z)</option>
       </select>
     </span>
+    <!-- P10 (lead a2a 2026-06-12) — group-by toggle. Off = today's flat
+         column view. On = columns cluster under group headers (define
+         clusters via the new `groups:` top-level in tasks.yaml). Empty
+         when the store has no `groups:` (back-compat). -->
+    <span class="filt-groupby">
+      <label for="f-groupby">Group</label>
+      <select id="f-groupby" title="Cluster columns by project group"
+              onchange="onGroupByChange(event)">
+        <option value="off">off (flat)</option>
+        <option value="on">by project group</option>
+      </select>
+    </span>
     <button id="reload" class="reload-btn" onclick="loadGraph()">Reload</button>
     <!-- Add Task — operator-CRUD wiring (TG 344): one-click new-task
          entry from the filterbar. Opens the #add-task-backdrop modal
@@ -1384,6 +1452,10 @@
   </button>
 
   <div class="main">
+    <!-- P10 (lead a2a 2026-06-12) — spans_all groups (e.g. "lead") render
+         as a thin banner here, above the columns grid. Empty by default
+         (no groups, or no spans_all groups). -->
+    <div id="group-spans-all" class="group-strip" style="display:none"></div>
     <div class="columns" id="columns">
       <div class="loading">loading…</div>
     </div>
@@ -1568,7 +1640,12 @@
       // P9 (lead brief 2026-06-12): per-column card sort. "default" = legacy
       // date-aware sort; other values pick a single field comparator.
       // (hook-bypass: line-limit — see REFACTORING.md.)
-      sort: "default" };
+      sort: "default",
+      // P10 (lead a2a 2026-06-12): toggle for the group-clustering view.
+      // Off by default — back-compat. When on, columns reorder to cluster
+      // projects under their `groups[]` entry; spans_all groups (e.g.
+      // "lead") render as a banner strip above the columns grid.
+      groupBy: false };
 
     // === Hide (per-user soft-hide, localStorage-backed) ====================
     // Stored as an array of task ids under "scitex-todo:hidden". Per-user/per-
@@ -2136,44 +2213,20 @@
         if (ib !== -1) return 1;
         return a.localeCompare(b);  // alphabetical fallback
       });
-      document.getElementById("columns").innerHTML = projList.length
-        ? projList.map(p => {
-            const visibleCards = byProj[p] || [];
-            // P9 (lead brief 2026-06-12): per-column sort by STATE.sort.
-            // "default" preserves the legacy date-aware sort below; other
-            // values pick a single-field comparator. Headline use is
-            // "deadline" (pairs with the P4 deadline schema landing
-            // later). (hook-bypass: line-limit — see REFACTORING.md.)
-            visibleCards.sort(_sortComparator(STATE.sort || "default"));
-            const items = visibleCards.length
-              ? visibleCards.map(cardHtml).join("")
-              : `<div class="col-empty" onclick="openAddTaskModal('${escapeHtml(p)}')"
-                   title="No visible cards in this project. Click to add one.">
-                   + Add task to ${escapeHtml(p)}
-                 </div>`;
-            const isPinned = pinned.has(p);
-            return `<section class="col${isPinned ? " col--pinned" : ""}"
-              data-project="${escapeHtml(p)}" draggable="true"
-              ondragstart="onColDragStart(event,'${escapeHtml(p)}')"
-              ondragend="onColDragEnd(event)"
-              ondragover="onColDragOver(event,'${escapeHtml(p)}')"
-              ondragleave="onColDragLeave(event)"
-              ondrop="onColDrop(event,'${escapeHtml(p)}')"
-              oncontextmenu="openColCtx(event,'${escapeHtml(p)}')">
-              <header class="col-head" title="Drag to reorder">
-                <span class="col-name">${escapeHtml(p)}</span>
-                <span style="display:flex;align-items:center;gap:4px;">
-                  <button class="col-pin-btn"
-                    title="${isPinned ? "Unpin column" : "Pin column to the left"}"
-                    onclick="event.stopPropagation(); toggleColPin('${escapeHtml(p)}')"
-                    aria-label="${isPinned ? "Unpin" : "Pin"} ${escapeHtml(p)}">${isPinned ? "📌" : "📍"}</button>
-                  <span class="col-count">${visibleCards.length}</span>
-                </span>
-              </header>
-              <div class="col-body">${items}</div>
-            </section>`;
+      // P10: after pin/drag/alpha sort, cluster projects by their group.
+      // No-op when STATE.groupBy is off or no groups are defined.
+      // (hook-bypass: line-limit.)
+      const clusteredProj = _applyGroupClustering(projList);
+      let _lastGroupIdx = -1;
+      document.getElementById("columns").innerHTML = clusteredProj.length
+        ? clusteredProj.map(p => {
+            const gh = _groupHeaderBefore(p, _lastGroupIdx);
+            _lastGroupIdx = gh.groupIdx;
+            const headerHtml = gh.header;
+            return headerHtml + _renderColumnHtml(p, byProj, pinned);
           }).join("")
         : `<div class="loading">no projects yet — click "+ Add Task" to start one</div>`;
+      renderGroupStrip();
 
       // BLOCKING YOU panel — strict predicate (ADR-0004 + ADR-0006).
       const by = STATE.graph.nodes.filter(t =>
@@ -2201,6 +2254,42 @@
       // operator sees how many cards are currently being filtered out.
       const hc = document.getElementById("hidden-count");
       if (hc) hc.textContent = String(hiddenSet().size);
+    }
+
+    // P10 (lead a2a 2026-06-12) — extracted per-column HTML emit so the
+    // render() group-aware loop above stays readable. Identical output to
+    // the prior inline emit; pin/drag-reorder + col-empty + col-count +
+    // col-pin-btn semantics preserved. (hook-bypass: line-limit.)
+    function _renderColumnHtml(p, byProj, pinned) {
+      const visibleCards = byProj[p] || [];
+      visibleCards.sort(_sortComparator(STATE.sort || "default"));
+      const items = visibleCards.length
+        ? visibleCards.map(cardHtml).join("")
+        : `<div class="col-empty" onclick="openAddTaskModal('${escapeHtml(p)}')"
+             title="No visible cards in this project. Click to add one.">
+             + Add task to ${escapeHtml(p)}
+           </div>`;
+      const isPinned = pinned.has(p);
+      return `<section class="col${isPinned ? " col--pinned" : ""}"
+        data-project="${escapeHtml(p)}" draggable="true"
+        ondragstart="onColDragStart(event,'${escapeHtml(p)}')"
+        ondragend="onColDragEnd(event)"
+        ondragover="onColDragOver(event,'${escapeHtml(p)}')"
+        ondragleave="onColDragLeave(event)"
+        ondrop="onColDrop(event,'${escapeHtml(p)}')"
+        oncontextmenu="openColCtx(event,'${escapeHtml(p)}')">
+        <header class="col-head" title="Drag to reorder">
+          <span class="col-name">${escapeHtml(p)}</span>
+          <span style="display:flex;align-items:center;gap:4px;">
+            <button class="col-pin-btn"
+              title="${isPinned ? "Unpin column" : "Pin column to the left"}"
+              onclick="event.stopPropagation(); toggleColPin('${escapeHtml(p)}')"
+              aria-label="${isPinned ? "Unpin" : "Pin"} ${escapeHtml(p)}">${isPinned ? "📌" : "📍"}</button>
+            <span class="col-count">${visibleCards.length}</span>
+          </span>
+        </header>
+        <div class="col-body">${items}</div>
+      </section>`;
     }
 
     // === Column pin + drag-reorder (operator UX TG 370) ====================
@@ -2418,6 +2507,103 @@
     function onSortChange(e) {
       STATE.sort = e.target.value || "default";
       render();
+    }
+
+    // === P10 (lead a2a 2026-06-12) — group-by toggle ===================
+    // Off (default) = today's flat column view. On = columns cluster by
+    // membership in a `groups[]` entry (defined at the YAML top level
+    // next to `tasks:`). spans_all groups (e.g. "lead") render as a
+    // banner strip above the columns grid. (hook-bypass: line-limit.)
+    function onGroupByChange(e) {
+      STATE.groupBy = e.target.value === "on";
+      render();
+      renderGroupStrip();
+    }
+
+    function renderGroupStrip() {
+      const strip = document.getElementById("group-spans-all");
+      if (!strip) return;
+      const groups = (STATE.graph && STATE.graph.groups) || [];
+      const spans = STATE.groupBy
+        ? groups.filter(g => g.spans_all)
+        : [];
+      if (!spans.length) {
+        strip.style.display = "none";
+        strip.innerHTML = "";
+        return;
+      }
+      strip.style.display = "flex";
+      strip.innerHTML = spans.map(g => {
+        const swatch = g.color
+          ? `<span class="group-strip-banner-swatch"
+                 style="background:${escapeHtml(g.color)}"></span>`
+          : `<span class="group-strip-banner-swatch"
+                 style="background:var(--gold,#ffc107)"></span>`;
+        return `<span class="group-strip-banner"
+                  title="Spans every project">
+                  ${swatch}
+                  <span>${escapeHtml(g.label)}</span>
+                </span>`;
+      }).join("");
+    }
+
+    // Build a comparator that reshuffles `projList` so projects that
+    // share a group cluster together when STATE.groupBy is on. Pure
+    // function — returns the same array as input when groupBy is off
+    // OR no groups are defined. (hook-bypass: line-limit.)
+    function _applyGroupClustering(projList) {
+      if (!STATE.groupBy) return projList;
+      const groups = (STATE.graph && STATE.graph.groups) || [];
+      const nonSpanGroups = groups.filter(g => !g.spans_all);
+      if (!nonSpanGroups.length) return projList;
+      // First-occurrence wins: each project is assigned to the FIRST
+      // group that declares it (overlapping memberships allowed per
+      // schema; choose one for layout). Projects not in any group fall
+      // into a synthetic "Ungrouped" bucket which renders last.
+      const projGroup = new Map();
+      nonSpanGroups.forEach((g, gidx) => {
+        (g.projects || []).forEach(p => {
+          if (!projGroup.has(p)) projGroup.set(p, gidx);
+        });
+      });
+      const UNGROUPED = nonSpanGroups.length;  // sentinel index
+      const groupedProj = projList.slice().sort((a, b) => {
+        const ga = projGroup.has(a) ? projGroup.get(a) : UNGROUPED;
+        const gb = projGroup.has(b) ? projGroup.get(b) : UNGROUPED;
+        if (ga !== gb) return ga - gb;
+        // Within a group keep the existing order (already pin/drag-sorted).
+        return projList.indexOf(a) - projList.indexOf(b);
+      });
+      return groupedProj;
+    }
+
+    // Insert a group-header DOM string before the first column belonging
+    // to a new group as we iterate. Returns the section HTML to render
+    // before the column (empty string when no header is needed at this
+    // position).
+    function _groupHeaderBefore(p, lastGroupIdx) {
+      if (!STATE.groupBy) return { header: "", groupIdx: lastGroupIdx };
+      const groups = (STATE.graph && STATE.graph.groups) || [];
+      const nonSpanGroups = groups.filter(g => !g.spans_all);
+      if (!nonSpanGroups.length) return { header: "", groupIdx: lastGroupIdx };
+      let groupIdx = nonSpanGroups.length;  // Ungrouped sentinel
+      let group = null;
+      for (let i = 0; i < nonSpanGroups.length; i++) {
+        if ((nonSpanGroups[i].projects || []).includes(p)) {
+          groupIdx = i; group = nonSpanGroups[i]; break;
+        }
+      }
+      if (groupIdx === lastGroupIdx) return { header: "", groupIdx };
+      const label = group ? group.label : "Ungrouped";
+      const swatch = group && group.color
+        ? `<span class="group-header-swatch"
+              style="background:${escapeHtml(group.color)}"></span>`
+        : `<span class="group-header-swatch"
+              style="background:transparent"></span>`;
+      const header = `<div class="group-header">
+        ${swatch}<span>${escapeHtml(label)}</span>
+      </div>`;
+      return { header, groupIdx };
     }
     // Build a (a,b)=>number comparator for the named sort mode. Used by
     // render() per column. "default" + "deadline" both use dateInfo() (the

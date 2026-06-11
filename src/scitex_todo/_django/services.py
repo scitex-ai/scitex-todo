@@ -29,6 +29,10 @@ class BoardState:
     tasks: list
     store_path: Path
     mtime: float
+    # P10 (lead a2a 2026-06-12) — user-defined project clusters loaded
+    # from the same YAML store. Empty list when the store has no
+    # ``groups:`` key (back-compat). See :mod:`scitex_todo._groups`.
+    groups: list = None  # type: ignore[assignment]
 
 
 def get_board(tasks_path: Optional[str] = None) -> BoardState:
@@ -45,6 +49,7 @@ def get_board(tasks_path: Optional[str] = None) -> BoardState:
     BoardState
         The validated task list plus the resolved path and its mtime.
     """
+    from scitex_todo._groups import load_groups
     from scitex_todo._model import load_tasks
     from scitex_todo._paths import resolve_tasks_path
 
@@ -62,9 +67,21 @@ def get_board(tasks_path: Optional[str] = None) -> BoardState:
             return board
 
     tasks = load_tasks(resolved)
-    board = BoardState(tasks=tasks, store_path=resolved, mtime=mtime)
+    # P10: load + validate groups against the same store. The id-collision
+    # check uses the freshly-loaded task ids so a group cannot share a
+    # name with a task.
+    task_ids = {t["id"] for t in tasks if isinstance(t, dict) and t.get("id")}
+    groups = load_groups(resolved, task_ids=task_ids)
+    board = BoardState(
+        tasks=tasks, store_path=resolved, mtime=mtime, groups=groups
+    )
     _board_cache[key] = (board, time.time())
-    logger.info("[scitex-todo] Loaded board from %s (%d tasks)", resolved, len(tasks))
+    logger.info(
+        "[scitex-todo] Loaded board from %s (%d tasks, %d groups)",
+        resolved,
+        len(tasks),
+        len(groups),
+    )
     return board
 
 
