@@ -337,16 +337,71 @@
     background: rgba(109,76,173,0.12);
   }
 
-  /* Fuzzy-search input (operator TG 437/438) — narrow, lives in the
-   * filter bar next to the dropdowns; minimal chrome so it blends in. */
+  /* Search-as-launcher (lead brief P1, 2026-06-12) — the search input is
+   * now the PRIMARY go-to of the filterbar, not a tucked-away sidekick.
+   * Wider, taller, purple halo by default, brighter halo on focus, and a
+   * keyboard hint chip ("/ to focus") rendered as ::after to advertise the
+   * affordance even when the input is empty. Global "/" focuses it; Esc
+   * blurs. Pairs with the P2 filter-UX collapse landing next. */
   .filt-search {
-    min-width: 180px;
-    padding: 4px 10px !important;
+    min-width: 320px;
+    flex: 1 1 320px;
+    padding: 10px 14px !important;
+    font-size: 1rem;
+    font-weight: 500;
+    border: 2px solid var(--purple) !important;
+    border-radius: 10px !important;
+    background: rgba(109,76,173,0.04);
+    box-shadow: 0 0 0 3px rgba(109,76,173,0.10);
+    transition: box-shadow 120ms ease, background 120ms ease,
+                border-color 120ms ease;
+  }
+  .filt-search::placeholder {
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+  .filt-search:hover {
+    background: rgba(109,76,173,0.08);
+    box-shadow: 0 0 0 4px rgba(109,76,173,0.18);
   }
   .filt-search:focus {
     outline: none;
     border-color: var(--purple);
-    background: rgba(109,76,173,0.06);
+    background: rgba(109,76,173,0.12);
+    box-shadow: 0 0 0 4px rgba(109,76,173,0.35);
+  }
+  /* "/ to focus" keyboard-hint chip — rendered next to the search input
+   * via a wrapper span. Sits to the RIGHT of the input but visually
+   * coupled, so the operator sees the affordance at one glance. Hidden
+   * on small screens where the chip would clutter the row. */
+  .filt-search-kbd {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-left: -4px;  /* tuck against the input */
+    padding: 2px 8px;
+    font-size: 0.72rem; font-weight: 600;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: rgba(255,255,255,0.04);
+    user-select: none;
+    pointer-events: none;
+  }
+  .filt-search-kbd kbd {
+    display: inline-block; min-width: 14px;
+    padding: 0 5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.7rem; line-height: 1.4;
+    color: var(--text);
+    background: rgba(109,76,173,0.18);
+    border: 1px solid var(--purple);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+  }
+  /* Hide the kbd hint while the input is focused (don't compete with
+   * the active state) and when the input has text (it's clearly active). */
+  .filt-search:focus + .filt-search-kbd,
+  .filt-search:not(:placeholder-shown) + .filt-search-kbd {
+    opacity: 0;
   }
 
   /* Date-proximity pill (operator TG 440/442) — inline below the task
@@ -1035,7 +1090,16 @@
       font-size: 0.84rem;
       min-height: 38px;
     }
-    .filt-search { min-width: 140px; }
+    /* On mobile, keep the search input prominent but allow it to wrap
+     * onto its own row — drop the "/ to focus" chip (no physical kbd on
+     * phones; the chip clutters the row). */
+    .filt-search {
+      min-width: 200px;
+      flex: 1 1 100%;
+      font-size: 0.95rem;
+      padding: 9px 12px !important;
+    }
+    .filt-search-kbd { display: none; }
     .add-task-btn {
       min-height: 38px; padding: 7px 12px;
     }
@@ -1161,10 +1225,19 @@
          roll-up land in follow-up PRs. -->
     <div class="fleetstrip" id="fleetstrip"
          aria-label="Fleet liveness — one dot per agent"></div>
+    <!-- Search-as-launcher (lead brief P1, 2026-06-12) — the PRIMARY
+         filterbar entry point. Wider, purple-haloed, with a "/ to focus"
+         keyboard-hint chip rendered as the next sibling so the affordance
+         is discoverable at one glance. Global "/" focuses; Esc blurs.
+         See attachSearchKeyboardLauncher() below for the wiring. -->
     <input class="filt filt-search" id="f-search" type="search"
-           placeholder="🔎 search (fuzzy)"
-           title="Fuzzy match on title / project / agent / note (operator TG 437/438)"
+           placeholder="🔎 search (fuzzy) — press / to focus"
+           title="Fuzzy match on title / project / agent / note. Press / to focus, Esc to blur. (operator TG 437/438; lead P1 2026-06-12)"
            oninput="onSearchInput(event)" autocomplete="off">
+    <span class="filt-search-kbd" aria-hidden="true"
+          title="Press / to focus the search">
+      press <kbd>/</kbd> to focus
+    </span>
     <select class="filt" id="f-project"><option value="">All projects</option></select>
     <select class="filt" id="f-host"><option value="">All hosts</option></select>
     <select class="filt" id="f-status"><option value="">All statuses</option></select>
@@ -2958,6 +3031,43 @@
         }
       }
     });
+
+    // -- Search-as-launcher keyboard wiring (lead brief P1, 2026-06-12) ---
+    // "/" anywhere focuses #f-search; Esc inside the input blurs it.
+    // Skip "/" if the operator is already typing in another input /
+    // textarea / contenteditable (so it doesn't steal a literal "/" key).
+    // Skip if a modifier is held (Cmd/Ctrl/Alt+/ stays available for the
+    // browser's find-in-page etc.). Mirrors the same pattern Gmail / Jira
+    // / Linear all use, so the muscle memory is familiar.
+    function attachSearchKeyboardLauncher() {
+      const search = document.getElementById("f-search");
+      if (!search) return;
+      document.addEventListener("keydown", (e) => {
+        // Focus on "/"
+        if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+          const t = e.target;
+          const tag = (t && t.tagName) ? t.tagName.toLowerCase() : "";
+          const editable =
+            tag === "input" || tag === "textarea" || tag === "select" ||
+            (t && t.isContentEditable);
+          if (editable) return;
+          e.preventDefault();
+          search.focus();
+          // Move caret to end so a follow-up keystroke appends instead
+          // of overwriting any pre-existing query.
+          const v = search.value;
+          search.setSelectionRange(v.length, v.length);
+          return;
+        }
+        // Blur on Esc when the search input has focus. Don't preventDefault
+        // — other Esc handlers (modals, drawers) still need to fire if the
+        // operator presses Esc twice.
+        if (e.key === "Escape" && document.activeElement === search) {
+          search.blur();
+        }
+      });
+    }
+    attachSearchKeyboardLauncher();
 
     attachFilters();
     loadGraph();
