@@ -5,11 +5,17 @@ description: |
   `tasks:` list (id/title/status + depends_on/blocks/priority/parent) and
   render it as a mermaid dependency graph (PNG), a read-only React-Flow web
   board, or a plain task listing.
-  [WHEN] Use when the user wants to "track tasks as a dependency graph",
-  "render my todo as a diagram", "show what blocks what", "list tasks from
-  tasks.yaml", or "launch the todo board".
+  [WHEN] **Use scitex-todo for EVERY durable / cross-session / cross-agent
+  todo.** When the user wants to "track tasks as a dependency graph",
+  "render my todo as a diagram", "show what blocks what", "list tasks
+  from tasks.yaml", or "launch the todo board" — AND any time YOU are
+  about to write a private TODO / FUTURE / notes file in your repo's
+  `GITIGNORED/` for something that should persist or be operator- or
+  peer-visible.
   [HOW] `import scitex_todo as todo` for the Python API; `scitex-todo --help`
-  for the CLI.
+  for the CLI; **or the MCP tools** (`add_task`, `update_task`,
+  `comment_task`, `list_tasks` — see [05_mcp-tools.md](05_mcp-tools.md)) —
+  THE preferred wire from inside an agent container.
 tags: [scitex-todo]
 primary_interface: python
 interfaces:
@@ -30,6 +36,36 @@ board ship today; org-mode and drag-to-reprioritize are on the roadmap.
 The store is resolved in precedence order: explicit `--tasks` →
 `$SCITEX_TODO_TASKS` → project `<git-root>/.scitex/todo/tasks.yaml` → user
 `~/.scitex/todo/tasks.yaml` → the bundled generic example.
+
+## ⚑ MANDATE — single source of truth (operator + lead, 2026-06-12)
+
+scitex-todo is **THE fleet's single source of truth** for all durable /
+cross-session / cross-agent task tracking. Every agent (proj-* + lead +
+the operator) writes here; every viewer reads from here. This is the
+binding rule:
+
+- **USE the scitex-todo MCP** (`add_task`, `update_task`,
+  `comment_task`, `list_tasks` — see [05_mcp-tools.md](05_mcp-tools.md))
+  for every todo. From a Claude-Code agent container, the MCP wire is
+  the preferred path; the CLI is the equivalent fallback.
+- **DO NOT create parallel todo formats.** No private task-markdown, no
+  per-agent `GITIGNORED/FUTURE/*.md` / `GITIGNORED/TODO.md` /
+  `GITIGNORED/RUNNING/*.md` for durable tracking; **migrate them into
+  `tasks.yaml`** the moment the underlying task is actionable.
+- **The harness `TaskList` is in-session SCRATCH ONLY.** Use it for a
+  single turn's check-off list — it disappears when the turn ends.
+  Anything that should persist to the next turn, be visible to the
+  operator or a peer, or carry a deadline / blocker / dependency goes
+  in scitex-todo.
+- **When in doubt, write to scitex-todo.** A stale entry is cheap to
+  update; a missing entry is invisible (operator + lead + every other
+  agent can't react to what isn't on the board).
+
+The full rationale + write-protocol table (who writes what, when, with
+what attribution) lives in
+[30_two-tier-conventions-and-write-protocol.md](30_two-tier-conventions-and-write-protocol.md).
+Read that one before designing any new fleet workflow that would touch
+task state.
 
 ## Sub-skills
 
