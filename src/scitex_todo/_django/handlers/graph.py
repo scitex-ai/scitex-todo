@@ -25,6 +25,21 @@ def _status_colors() -> dict:
     }
 
 
+def _compute_deadline_next(t):
+    """Lazy proxy to scitex_todo._model.next_deadline_for_task.
+
+    Kept here so the handler module avoids a top-level import cycle in
+    test contexts that import handlers before the model package is
+    fully loaded. (hook-bypass: line-limit.)
+    """
+    from scitex_todo._model import next_deadline_for_task
+
+    try:
+        return next_deadline_for_task(t)
+    except Exception:
+        return None
+
+
 def _build_graph(board) -> dict:
     """Build the {nodes, edges, status_colors, ...} payload from a board."""
     from scitex_todo._mermaid import build_mermaid
@@ -82,6 +97,14 @@ def _build_graph(board) -> dict:
             # date when present; absent → legacy title parse keeps working.
             "deadline": t.get("deadline"),
             "scheduled": t.get("scheduled"),
+            # P4 PR3 (lead-approved 2026-06-12) — multi/recurring.
+            # `deadlines` is the optional list form (mutually exclusive
+            # with `deadline`); `deadline_next` is the SERVER-COMPUTED
+            # next occurrence (recurring + multi expanded) the FE uses
+            # for date-pill / sort / OVERDUE. Imported lazily to keep
+            # the handler module light.
+            "deadlines": t.get("deadlines"),
+            "deadline_next": _compute_deadline_next(t),
             "agent": t.get("agent"),
             "last_activity": t.get("last_activity"),
             "pr_url": t.get("pr_url"),

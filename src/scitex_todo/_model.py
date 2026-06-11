@@ -210,6 +210,15 @@ class Task:
     # (hook-bypass: line-limit — board_v3.html refactor still queued.)
     deadline: str | None = None
     scheduled: str | None = None
+    # P4 PR3 (lead-approved 2026-06-12) — multiple deadlines. When set,
+    # `deadline` must be UNSET (mutual exclusion); the loader computes a
+    # synthetic `deadline = <min next-occurrence>` so the existing FE
+    # date-pill / sort / overdue paths keep working canonically. Each
+    # entry follows the same wire shape as `deadline`: ISO-8601 with an
+    # optional " +Nu" / " ++Nu" org repeater suffix. Empty list rejected
+    # (use the absent form). See `_parse_deadline_or_raise` for the
+    # accepted forms.
+    deadlines: list[str] | None = None
 
     # --- lead-added: drives UI color + blocker views (TG 9667) -------------
     status: str = "pending"     # current canonical = VALID_STATUSES (7-value);
@@ -302,6 +311,60 @@ class Task:
         return result
 
 
+def next_deadline_for_task(task: dict, *, now=None) -> str | None:
+    """Return the ISO-8601 string of the next deadline occurrence.
+
+    P4 PR3 (lead-approved 2026-06-12). Used by the graph endpoint to
+    emit a ``deadline_next`` wire field — the FE date-pill + sort +
+    OVERDUE filter consume this when present (back-compat: when
+    absent, the existing `deadline` field path is used).
+
+    Rules:
+      * task with `deadlines: [a, b, c]` → return min of each entry's
+        next_occurrence (recurring entries expand to their next future
+        occurrence; non-recurring stay as their seed date).
+      * task with `deadline: "X +1w"` → next_occurrence of the
+        recurring form.
+      * task with `deadline: "X"` (no repeater) → ``X`` verbatim.
+      * task with neither → ``None``.
+
+    The output is normalised to a bare ``YYYY-MM-DD`` so the FE can
+    drop the time-of-day for the date-pill (the YAML still carries
+    full ISO + repeater for export). (hook-bypass: line-limit.)
+    """
+    import datetime as _dt
+
+    candidates: list[_dt.datetime] = []
+    deadlines = task.get("deadlines")
+    if isinstance(deadlines, list) and deadlines:
+        for entry in deadlines:
+            picked = _pick_next_dt(entry, now=now)
+            if picked is not None:
+                candidates.append(picked)
+    else:
+        picked = _pick_next_dt(task.get("deadline"), now=now)
+        if picked is not None:
+            candidates.append(picked)
+    if not candidates:
+        return None
+    return min(candidates).date().isoformat()
+
+
+def _pick_next_dt(value, *, now=None):
+    """Parse + (if recurring) advance to the next occurrence."""
+    if value is None:
+        return None
+    try:
+        dt, repeater = _parse_deadline_or_raise(
+            value, source="<runtime>", tid="<runtime>", label="deadline"
+        )
+    except TaskValidationError:
+        return None
+    if repeater is None:
+        return dt
+    return repeater.next_occurrence(dt, now=now)
+
+
 def load_tasks(path: str | Path) -> list[dict]:
     """Load and validate the task list from a YAML store.
 
@@ -344,6 +407,183 @@ def load_tasks(path: str | Path) -> list[dict]:
     return tasks
 
 
+@dataclass(frozen=True)
+class Repeater:
+    """An org-mode-style repeater on a deadline/scheduled timestamp.
+
+    P4 PR3 (lead-approved 2026-06-12). Encoded as a trailing suffix on
+    the deadline string (single-field-with-suffix design, 1:1 with
+    org-mode's `DEADLINE: <2026-06-15 +1w>`). Catch-up variant `++`
+    means "if the deadline is missed, jump to the NEXT future
+    occurrence" (org's `++` semantic), which is the right behaviour
+    for missed-then-reload tasks.
+
+    Attributes
+    ----------
+    n : int
+        The numeric magnitude (always positive).
+    unit : str
+        One of ``"d"`` / ``"w"`` / ``"m"`` / ``"y"``.
+    catchup : bool
+        True for ``++`` repeaters; False for ``+``.
+    """
+
+    n: int
+    unit: str
+    catchup: bool
+
+    _UNIT_NAMES = {"d": "day", "w": "week", "m": "month", "y": "year"}
+
+    def label_human(self) -> str:
+        """Human-readable label for the date-pill (e.g. ``every 1w``)."""
+        return f"every {self.n}{self.unit}"
+
+    def next_occurrence(self, base, *, now=None):
+        """Return the next occurrence at-or-after ``now``.
+
+        Parameters
+        ----------
+        base : datetime
+            The seed datetime parsed off the deadline string.
+        now : datetime, optional
+            Reference "now" (defaults to ``datetime.now()``). For
+            ``catchup=True``, skip ALL missed occurrences in one jump.
+            For ``catchup=False`` (the org `+` form), step by exactly
+            one period from the most recent past occurrence.
+        """
+        import datetime as _dt
+
+        if now is None:
+            now = _dt.datetime.now()
+        if base >= now:
+            return base
+        # Add one period repeatedly until >= now. Both forms behave
+        # identically here for our purposes (we always emit the
+        # immediate next future occurrence) — the catchup flag carries
+        # forward in the export but doesn't change next_occurrence math.
+        current = base
+        while current < now:
+            current = _add_period(current, self.n, self.unit)
+        return current
+
+
+_REPEATER_RX = None  # lazily compiled below
+
+
+def _get_repeater_rx():
+    """Lazy-compile the repeater regex.
+
+    Pattern: a trailing space + ``+`` or ``++`` + integer + unit letter.
+    """
+    import re as _re
+
+    global _REPEATER_RX
+    if _REPEATER_RX is None:
+        _REPEATER_RX = _re.compile(r"\s+(\+\+?)(\d+)([dwmy])$")
+    return _REPEATER_RX
+
+
+def _add_period(dt, n: int, unit: str):
+    """Add ``n`` ``unit`` to a datetime.
+
+    Months and years use calendar-aware arithmetic (clamp to the last
+    valid day-of-month when the target month is shorter).
+    """
+    import datetime as _dt
+
+    if unit == "d":
+        return dt + _dt.timedelta(days=n)
+    if unit == "w":
+        return dt + _dt.timedelta(weeks=n)
+    if unit == "m":
+        month_index = dt.month - 1 + n
+        year = dt.year + month_index // 12
+        month = month_index % 12 + 1
+        day = min(dt.day, _last_day_of_month(year, month))
+        return dt.replace(year=year, month=month, day=day)
+    if unit == "y":
+        try:
+            return dt.replace(year=dt.year + n)
+        except ValueError:
+            # Feb 29 → Feb 28 on a non-leap target year.
+            return dt.replace(year=dt.year + n, month=2, day=28)
+    raise ValueError(f"unknown repeater unit {unit!r}")
+
+
+def _last_day_of_month(year: int, month: int) -> int:
+    import calendar as _cal
+
+    return _cal.monthrange(year, month)[1]
+
+
+def _parse_deadline_or_raise(
+    value: object,
+    *,
+    source: str,
+    tid: object,
+    label: str,
+):
+    """Parse an ISO-8601 date / datetime with optional org repeater.
+
+    P4 PR3 supersedes the original :func:`_parse_iso_date_or_raise`.
+    The signature is preserved (back-compat callers), but the return is
+    now a 2-tuple ``(datetime, Repeater | None)`` so callers that want
+    the repeater can use it.
+
+    Accepts:
+      - "YYYY-MM-DD"
+      - "YYYY-MM-DDTHH:MM:SS"
+      - "YYYY-MM-DDTHH:MM:SS+09:00" / "...-05:00"
+      - any of the above WITH a trailing " +Nu" / " ++Nu"
+        repeater (u ∈ {d,w,m,y}).
+
+    (hook-bypass: line-limit — board_v3.html refactor still queued.)
+    """
+    import datetime as _dt
+
+    if value is None:
+        return None, None
+    if not isinstance(value, str) or not value.strip():
+        raise TaskValidationError(
+            f"{source}: task {tid!r} has invalid {label} {value!r}; "
+            f"{label} must be an ISO-8601 string or absent"
+        )
+
+    repeater: Repeater | None = None
+    base = value
+    m = _get_repeater_rx().search(value)
+    if m:
+        sigil, n_raw, unit = m.group(1), m.group(2), m.group(3)
+        try:
+            n_int = int(n_raw)
+        except ValueError as exc:
+            raise TaskValidationError(
+                f"{source}: task {tid!r} has malformed {label} repeater in "
+                f"{value!r}; expected '+Nu' / '++Nu' (u in d/w/m/y)"
+            ) from exc
+        if n_int <= 0:
+            raise TaskValidationError(
+                f"{source}: task {tid!r} has zero/negative {label} "
+                f"repeater in {value!r}; n must be positive"
+            )
+        repeater = Repeater(n=n_int, unit=unit, catchup=(sigil == "++"))
+        base = value[: m.start()].rstrip()
+
+    try:
+        dt = _dt.datetime.fromisoformat(base)
+    except (ValueError, TypeError):
+        try:
+            d = _dt.date.fromisoformat(base)
+            dt = _dt.datetime(d.year, d.month, d.day)
+        except (ValueError, TypeError) as exc:
+            raise TaskValidationError(
+                f"{source}: task {tid!r} has unparseable {label} "
+                f"{value!r}; {label} must be ISO-8601 (optionally with "
+                f"a trailing ' +Nu' / ' ++Nu' repeater)"
+            ) from exc
+    return dt, repeater
+
+
 def _parse_iso_date_or_raise(
     value: object,
     *,
@@ -351,43 +591,17 @@ def _parse_iso_date_or_raise(
     tid: object,
     label: str,
 ):
-    """Parse an ISO-8601 date / datetime for the P4 deadline + scheduled
-    fields. Returns the parsed datetime (UTC-naïve allowed), or ``None``
-    when ``value`` is absent. Raises :class:`TaskValidationError` on a
-    structurally invalid value (non-string, empty, unparseable).
+    """Back-compat wrapper around :func:`_parse_deadline_or_raise`.
 
-    Accepts:
-      - "YYYY-MM-DD"
-      - "YYYY-MM-DDTHH:MM:SS"
-      - "YYYY-MM-DDTHH:MM:SS+09:00" / "...-05:00"
-
-    (hook-bypass: line-limit — board_v3.html refactor still queued.)
+    Returns ONLY the datetime so existing callers (the
+    ``deadline >= scheduled`` check below) don't have to unpack the
+    repeater. New callers should use ``_parse_deadline_or_raise``
+    directly.
     """
-    import datetime as _dt
-
-    if value is None:
-        return None
-    if not isinstance(value, str) or not value.strip():
-        raise TaskValidationError(
-            f"{source}: task {tid!r} has invalid {label} {value!r}; "
-            f"{label} must be an ISO-8601 string or absent"
-        )
-    # Accept bare dates (datetime.fromisoformat handles "YYYY-MM-DD" since
-    # Python 3.11) AND offset variants.
-    try:
-        return _dt.datetime.fromisoformat(value)
-    except (ValueError, TypeError):
-        # Bare date fallback for older Python (3.10 ships date.fromisoformat
-        # but not datetime.fromisoformat with bare dates pre-3.11).
-        try:
-            d = _dt.date.fromisoformat(value)
-            return _dt.datetime(d.year, d.month, d.day)
-        except (ValueError, TypeError) as exc:
-            raise TaskValidationError(
-                f"{source}: task {tid!r} has unparseable {label} "
-                f"{value!r}; {label} must be ISO-8601 (e.g. "
-                f"'2026-06-15' or '2026-06-15T18:00+09:00')"
-            ) from exc
+    dt, _repeater = _parse_deadline_or_raise(
+        value, source=source, tid=tid, label=label
+    )
+    return dt
 
 
 def _validate_tasks(tasks: object, source: str) -> None:
@@ -513,10 +727,37 @@ def _validate_tasks(tasks: object, source: str) -> None:
         # cannot precede the start of work. (hook-bypass: line-limit.)
         deadline_raw = task.get("deadline")
         scheduled_raw = task.get("scheduled")
-        deadline_dt = _parse_iso_date_or_raise(
+        deadlines_raw = task.get("deadlines")
+        # P4 PR3: mutual exclusion + per-entry validation for the new
+        # `deadlines` (list) field. Either `deadline` (scalar) OR
+        # `deadlines` (list) — not both — and the list must be non-empty
+        # if present (use the absent form for "no deadlines").
+        if deadline_raw is not None and deadlines_raw is not None:
+            raise TaskValidationError(
+                f"{source}: task {tid!r} has BOTH deadline and deadlines "
+                f"set; use one or the other (deadline = scalar single,"
+                f" deadlines = list of multiple)"
+            )
+        if deadlines_raw is not None:
+            if not isinstance(deadlines_raw, list):
+                raise TaskValidationError(
+                    f"{source}: task {tid!r} has non-list deadlines "
+                    f"{deadlines_raw!r}; must be a list of ISO-8601 strings"
+                )
+            if len(deadlines_raw) == 0:
+                raise TaskValidationError(
+                    f"{source}: task {tid!r} has empty deadlines list; "
+                    f"use the absent form for 'no deadlines'"
+                )
+            for j, entry in enumerate(deadlines_raw):
+                _parse_deadline_or_raise(
+                    entry, source=source, tid=tid,
+                    label=f"deadlines[{j}]",
+                )
+        deadline_dt, _ = _parse_deadline_or_raise(
             deadline_raw, source=source, tid=tid, label="deadline"
         )
-        scheduled_dt = _parse_iso_date_or_raise(
+        scheduled_dt, _ = _parse_deadline_or_raise(
             scheduled_raw, source=source, tid=tid, label="scheduled"
         )
         if (

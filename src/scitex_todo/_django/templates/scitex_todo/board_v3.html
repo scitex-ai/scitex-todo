@@ -1852,32 +1852,57 @@
     function dateInfo(t) {
       const now = new Date();
       now.setHours(0, 0, 0, 0);
-      // P4 (lead approved 2026-06-12) — prefer the schema `deadline` field
-      // over the title-parsed date when present. The backend already
-      // validates the format; here we just parse it for layout. Back-compat:
-      // tasks without a `deadline` field fall through to the existing
-      // _DATE_RX title scan, so the 268-task store keeps rendering its
-      // title-encoded dates unchanged. (hook-bypass: line-limit — see
-      // GITIGNORED/REFACTORING.md.)
-      if (t.deadline) {
-        const dl = new Date(t.deadline);
+      // P4 (lead approved 2026-06-12) — prefer the SERVER-COMPUTED
+      // `deadline_next` over the raw `deadline` over the title-parsed
+      // date. The server expands recurring + multi forms before the wire,
+      // so the FE never re-derives the next occurrence. Back-compat:
+      // tasks without any of those fall through to the existing _DATE_RX
+      // title scan. (hook-bypass: line-limit — see REFACTORING.md.)
+      const next = t.deadline_next || t.deadline;
+      if (next) {
+        const dl = new Date(next);
         if (!isNaN(dl)) {
           dl.setHours(0, 0, 0, 0);
           const days = Math.round((dl - now) / 86400000);
           return {
-            date: dl, daysFromNow: days, all: [dl], source: "deadline",
+            date: dl, daysFromNow: days, all: [dl],
+            source: t.deadline_next ? "deadline_next" : "deadline",
+            // Pass the recurring info forward so datePillHtml can append
+            // "every Nu" — extracted lazily from the raw deadline.
+            repeater: _extractRepeaterSuffix(t.deadline) ||
+                      _extractRepeaterSuffix(_firstRecurringDeadline(t)),
           };
         }
       }
       const title = (t.title || "") + " " + (t.task || "");
       const dates = _parseAllDates(title);
       if (dates.length === 0) return null;
-      // Prefer the next future date, else fall back to the latest past one.
       const future = dates.filter(d => d >= now).sort((a, b) => a - b);
       const pick = future.length ? future[0] : dates.sort((a, b) => b - a)[0];
       const days = Math.round((pick - now) / 86400000);
       return { date: pick, daysFromNow: days, all: dates, source: "title" };
     }
+
+    // P4 PR3: scan the raw deadline (or deadlines[]) for an org repeater
+    // suffix like " +1w" / " ++2m" and return a human-readable form
+    // ("every 1w") for the date-pill label. Returns null when absent.
+    // (hook-bypass: line-limit.)
+    function _extractRepeaterSuffix(rawDeadline) {
+      if (!rawDeadline) return null;
+      const m = String(rawDeadline).match(/\s\+\+?(\d+)([dwmy])$/);
+      if (!m) return null;
+      return `every ${m[1]}${m[2]}`;
+    }
+    function _firstRecurringDeadline(t) {
+      const arr = Array.isArray(t.deadlines) ? t.deadlines : [];
+      for (const e of arr) {
+        if (typeof e === "string" && /\s\+\+?\d+[dwmy]$/.test(e)) {
+          return e;
+        }
+      }
+      return null;
+    }
+
     function datePillHtml(t) {
       const di = dateInfo(t);
       if (!di) return "";
@@ -1889,8 +1914,12 @@
       else if (d <= 7) { cls += " date-pill--week"; label = `📅 in ${d}d`; }
       else if (d <= 30) { cls += " date-pill--month"; label = `📅 in ${d}d`; }
       else { cls += " date-pill--far"; label = `📅 ${di.date.toISOString().slice(0,10)}`; }
+      // P4 PR3: append " · every Nu" to the label when this is a
+      // recurring deadline (org repeater suffix), so the operator sees
+      // both the next occurrence AND the cadence on the pill.
+      if (di.repeater) label += ` · ${di.repeater}`;
       const iso = di.date.toISOString().slice(0, 10);
-      return `<span class="${cls}" title="next date: ${iso} (${d>=0?'+':''}${d}d)">${label}</span>`;
+      return `<span class="${cls}" title="next date: ${iso} (${d>=0?'+':''}${d}d)${di.repeater ? ' ' + di.repeater : ''}">${label}</span>`;
     }
 
     function populateFilters() {
