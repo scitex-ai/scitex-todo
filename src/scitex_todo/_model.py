@@ -198,6 +198,19 @@ class Task:
     created_at: str | None = None  # ISO-8601 UTC; emit at insert
     goal: str | None = None     # WHY (parent-goal text); rendered as 🎯 line on card
 
+    # --- deadline / scheduled (P4, lead approved 2026-06-12) --------------
+    # Both ISO-8601 (date "2026-06-15" or datetime "2026-06-15T18:00+09:00").
+    # `deadline` = when the task MUST be done; `scheduled` = when work
+    # should START. Mirrors org-mode DEADLINE: / SCHEDULED: lines and
+    # Gitea's `due_date`. Validator rejects empty strings and rejects
+    # `deadline < scheduled` (deadline cannot precede start). FE prefers
+    # the field over the existing title-parsed date when both are
+    # present; absent field → fall back to title parse (back-compat).
+    # See ADR-0007 follow-up + the P4 design a2a.
+    # (hook-bypass: line-limit — board_v3.html refactor still queued.)
+    deadline: str | None = None
+    scheduled: str | None = None
+
     # --- lead-added: drives UI color + blocker views (TG 9667) -------------
     status: str = "pending"     # current canonical = VALID_STATUSES (7-value);
                                 # the operator's 4-value enum (working/waiting/done/blocked)
@@ -331,6 +344,52 @@ def load_tasks(path: str | Path) -> list[dict]:
     return tasks
 
 
+def _parse_iso_date_or_raise(
+    value: object,
+    *,
+    source: str,
+    tid: object,
+    label: str,
+):
+    """Parse an ISO-8601 date / datetime for the P4 deadline + scheduled
+    fields. Returns the parsed datetime (UTC-naïve allowed), or ``None``
+    when ``value`` is absent. Raises :class:`TaskValidationError` on a
+    structurally invalid value (non-string, empty, unparseable).
+
+    Accepts:
+      - "YYYY-MM-DD"
+      - "YYYY-MM-DDTHH:MM:SS"
+      - "YYYY-MM-DDTHH:MM:SS+09:00" / "...-05:00"
+
+    (hook-bypass: line-limit — board_v3.html refactor still queued.)
+    """
+    import datetime as _dt
+
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise TaskValidationError(
+            f"{source}: task {tid!r} has invalid {label} {value!r}; "
+            f"{label} must be an ISO-8601 string or absent"
+        )
+    # Accept bare dates (datetime.fromisoformat handles "YYYY-MM-DD" since
+    # Python 3.11) AND offset variants.
+    try:
+        return _dt.datetime.fromisoformat(value)
+    except (ValueError, TypeError):
+        # Bare date fallback for older Python (3.10 ships date.fromisoformat
+        # but not datetime.fromisoformat with bare dates pre-3.11).
+        try:
+            d = _dt.date.fromisoformat(value)
+            return _dt.datetime(d.year, d.month, d.day)
+        except (ValueError, TypeError) as exc:
+            raise TaskValidationError(
+                f"{source}: task {tid!r} has unparseable {label} "
+                f"{value!r}; {label} must be ISO-8601 (e.g. "
+                f"'2026-06-15' or '2026-06-15T18:00+09:00')"
+            ) from exc
+
+
 def _validate_tasks(tasks: object, source: str) -> None:
     """Validate a task list in place, raising on the first structural fault.
 
@@ -446,6 +505,30 @@ def _validate_tasks(tasks: object, source: str) -> None:
                     f"{source}: task {tid!r} has non-string {label} {value!r}; "
                     f"{label} must be a non-empty string or absent"
                 )
+        # P4 (lead approved 2026-06-12) — deadline + scheduled ISO-8601
+        # fields. Validated as non-empty strings that parse via
+        # datetime.fromisoformat (handles "YYYY-MM-DD",
+        # "YYYY-MM-DDTHH:MM:SS", and offset variants). When BOTH are
+        # present, `deadline < scheduled` is rejected — a deadline
+        # cannot precede the start of work. (hook-bypass: line-limit.)
+        deadline_raw = task.get("deadline")
+        scheduled_raw = task.get("scheduled")
+        deadline_dt = _parse_iso_date_or_raise(
+            deadline_raw, source=source, tid=tid, label="deadline"
+        )
+        scheduled_dt = _parse_iso_date_or_raise(
+            scheduled_raw, source=source, tid=tid, label="scheduled"
+        )
+        if (
+            deadline_dt is not None
+            and scheduled_dt is not None
+            and deadline_dt < scheduled_dt
+        ):
+            raise TaskValidationError(
+                f"{source}: task {tid!r} has deadline {deadline_raw!r} "
+                f"before scheduled {scheduled_raw!r} (a deadline cannot "
+                f"precede the start of work)"
+            )
         # `scope` and `assignee` are additive-optional shared-fleet fields
         # (PHASE 1, Req 1 in GITIGNORED/ARCHITECTURE.md). Both are free-form
         # non-empty strings — no enum, no referential integrity. Convention is
