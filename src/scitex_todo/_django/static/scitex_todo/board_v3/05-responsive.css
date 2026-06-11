@@ -1,0 +1,215 @@
+/* board_v3 — mobile / tablet responsive overrides
+ *
+ * Extracted from src/scitex_todo/_django/templates/scitex_todo/board_v3.html
+ * Owns: @media (max-width: 768px) overrides, .by-fab mobile drawer toggle,
+ *       .card.touch-pressing, .loading.
+ */
+
+/* ============================================================
+ * MOBILE / TOUCH RESPONSIVE (operator TG 459/460/463) — phone
+ * iOS Simulator on MBA is the target. Safe-area-inset for
+ * notched iPhones, 44px+ tap targets per Apple HIG, drawer-
+ * style BLOCKING YOU panel + horizontal filterbar that fits
+ * a 375pt-wide iPhone viewport.
+ * ============================================================ */
+@media (max-width: 768px) {
+  /* OVERRIDE the scitex-ui shell's three-column grid (workspace-three-col
+   * sets a desktop layout with sidebars + fixed widths that swallow the
+   * board content on phone widths). On mobile collapse the shell to a
+   * single column so the board's filterbar + columns get the full
+   * viewport width. iOS Simulator post-0.5.0 verification showed only
+   * the .by-fab rendering. */
+  #workspace-three-col,
+  .workspace-three-col {
+    display: block !important;
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+  }
+  #main-content.ws-module-pane,
+  main.ws-module-pane {
+    width: 100% !important;
+    max-width: 100% !important;
+    grid-column: 1 / -1 !important;
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+  }
+  /* Hide the scitex-ui shell's left/right utility panes on mobile. */
+  .ws-ai-pane,
+  .ws-worktree-pane,
+  .ws-viewer-pane,
+  .stx-shell-sidebar,
+  aside.stx-shell-sidebar {
+    display: none !important;
+  }
+
+  /* Filter bar — wrap to multiple rows; smaller controls. */
+  .filterbar {
+    gap: 6px;
+    padding: 8px 10px;
+    overflow-x: auto;
+  }
+  .filterbar h1 {
+    font-size: 0.95rem;
+    margin-right: 6px;
+    flex: 0 0 auto;
+  }
+  .filt {
+    padding: 7px 10px; /* 44px row target via flex baseline */
+    font-size: 0.84rem;
+    min-height: 38px;
+  }
+  /* P1 mobile-responsive override — search wraps to its own row at
+   * ~100% width, font bumped, kbd-hint hidden (no physical kbd on
+   * phones). Restored 2026-06-12 with the rest of the P1 wave. */
+  .filt-search {
+    min-width: 200px;
+    flex: 1 1 100%;
+    font-size: 0.95rem;
+    padding: 9px 12px !important;
+  }
+  .filt-search-kbd {
+    display: none;
+  }
+  .add-task-btn {
+    min-height: 38px;
+    padding: 7px 12px;
+  }
+  /* Hide the fleet dot-strip on phones — too small to read; the
+   * filter dropdowns + the BLOCKING YOU drawer carry the same
+   * info on demand. */
+  .fleetstrip {
+    display: none;
+  }
+
+  /* Main layout: stack vertically so the BLOCKING YOU panel
+   * doesn't eat 360px of phone width. The panel becomes a
+   * collapsible drawer behind a floating button. */
+  .main {
+    flex-direction: column;
+  }
+  .right {
+    width: 100%;
+    flex: 0 0 auto;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    max-height: 40vh;
+    /* Drawer: closed by default on mobile, toggled by the FAB. */
+    display: none;
+  }
+  .right.mobile-open {
+    display: block;
+  }
+
+  /* Kanban columns: fit the phone viewport. Each column is
+   * roughly one viewport wide so swipe-snap is natural. */
+  .col {
+    flex: 0 0 88vw;
+    width: 88vw;
+    max-width: 320px;
+  }
+  .columns {
+    scroll-snap-type: x mandatory;
+    padding: 8px;
+  }
+  .col {
+    scroll-snap-align: start;
+  }
+
+  /* Detail modal full-screen on phone for readability. */
+  .detail {
+    width: 95vw;
+    max-width: none;
+    max-height: 90vh;
+    padding: 14px;
+  }
+  .at-modal {
+    width: 92vw;
+    max-width: 480px;
+    padding: 14px;
+  }
+
+  /* Card tweaks: tighter padding for phone, but tap targets
+   * stay ≥ 30px tall via line-height. */
+  .card {
+    padding: 8px 10px;
+  }
+  .card-task {
+    font-size: 0.95rem;
+    line-height: 1.35;
+  }
+
+  /* Safe-area-inset (iPhone X+ notch). */
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  .filterbar {
+    padding-top: max(8px, env(safe-area-inset-top, 8px));
+  }
+  .foot {
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 8px));
+  }
+}
+
+/* BLOCKING YOU mobile drawer toggle — a floating action button
+ * pinned to bottom-right. Shows the count of operator-decision
+ * blockers as a badge. Visible only on mobile. */
+.by-fab {
+  display: none;
+  position: fixed;
+  bottom: max(14px, env(safe-area-inset-bottom, 14px));
+  right: max(14px, env(safe-area-inset-right, 14px));
+  z-index: 90;
+  width: 56px;
+  height: 56px;
+  border-radius: 28px;
+  background: var(--gold);
+  color: #000;
+  border: 2px solid var(--gold);
+  font-size: 1.4rem;
+  font-weight: 700;
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.5),
+    0 0 12px 2px rgba(255, 193, 7, 0.45);
+  cursor: pointer;
+}
+.by-fab:hover {
+  transform: scale(1.05);
+}
+.by-fab-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--red);
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 22px;
+  padding: 0 5px;
+  border: 2px solid var(--bg);
+}
+@media (max-width: 768px) {
+  .by-fab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* Touch long-press visual cue: when finger is held on a card,
+ * brighten the border so the user knows the context menu is
+ * about to open. */
+.card.touch-pressing {
+  box-shadow: 0 0 0 2px var(--purple) inset;
+  background: rgba(109, 76, 173, 0.1);
+}
+
+.loading {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 30px;
+  font-style: italic;
+}

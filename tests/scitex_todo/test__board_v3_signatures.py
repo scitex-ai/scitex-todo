@@ -35,11 +35,37 @@ BOARD_TEMPLATE = (
     / "board_v3.html"
 )
 
+# CSS half of board_v3 was extracted from the inline <style> block on
+# 2026-06-12 (squash-regression root-cause fix; see GITIGNORED/
+# REFACTORING.md). CSS-specific signature pins now read from the
+# concatenated static files instead of from board_v3.html, while
+# JS / HTML pins keep reading the template directly.
+BOARD_CSS_DIR = (
+    Path(scitex_todo.__file__).parent
+    / "_django"
+    / "static"
+    / "scitex_todo"
+    / "board_v3"
+)
+
 
 @pytest.fixture(scope="module")
 def board_text() -> str:
     """Read the board template once per test module."""
     return BOARD_TEMPLATE.read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def css_text() -> str:
+    """Concatenate every extracted board_v3 CSS file.
+
+    Returns one big string so signature pins can ``assert x in css_text``
+    without caring which of the 5 (currently 6) files the rule landed in.
+    """
+    parts = []
+    for css_path in sorted(BOARD_CSS_DIR.glob("*.css")):
+        parts.append(css_path.read_text(encoding="utf-8"))
+    return "\n".join(parts)
 
 
 # -----------------------------------------------------------------------------
@@ -56,18 +82,21 @@ class TestP1SearchAsLauncher:
     def test_attach_search_keyboard_launcher_called(self, board_text):
         assert "attachSearchKeyboardLauncher()" in board_text
 
-    def test_kbd_hint_chip_css_class_defined(self, board_text):
-        assert ".filt-search-kbd" in board_text
+    def test_kbd_hint_chip_css_class_defined(self, css_text):
+        # CSS pin — lives in the extracted board_v3 static stylesheets
+        # (02-card.css) after the 2026-06-12 CSS extraction. Pre-extraction
+        # this string lived in the inline <style> block of board_v3.html.
+        assert ".filt-search-kbd" in css_text
 
     def test_kbd_hint_chip_text_present(self, board_text):
         # The visible affordance — "press / to focus" must be in the HTML.
         assert "press <kbd>/</kbd> to focus" in board_text
 
-    def test_search_input_min_width_bumped(self, board_text):
+    def test_search_input_min_width_bumped(self, css_text):
         # The P1 CSS bump to 320px is what makes the search the PRIMARY
         # go-to. A regression to 180px (the pre-P1 narrow form) reverts
-        # the affordance.
-        assert "min-width: 320px" in board_text
+        # the affordance. (CSS pin — extracted to 02-card.css 2026-06-12.)
+        assert "min-width: 320px" in css_text
 
 
 # -----------------------------------------------------------------------------
@@ -119,8 +148,9 @@ class TestP8MovePickerAllProjects:
 class TestP2P9FilterAndSort:
     """Pins for the PR #89 filter-UX collapse + sort-by control."""
 
-    def test_filter_popover_class_present(self, board_text):
-        assert "filt-popover" in board_text
+    def test_filter_popover_class_present(self, css_text):
+        # CSS pin — extracted to 04-collapse-and-groups.css 2026-06-12.
+        assert "filt-popover" in css_text
 
     def test_render_active_filter_chips_defined(self, board_text):
         assert "function renderActiveFilterChips" in board_text
