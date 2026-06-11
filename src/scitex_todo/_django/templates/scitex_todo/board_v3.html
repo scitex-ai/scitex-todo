@@ -350,14 +350,67 @@
 
   /* Fuzzy-search input (operator TG 437/438) — narrow, lives in the
    * filter bar next to the dropdowns; minimal chrome so it blends in. */
+  /* Search-as-launcher (lead brief P1, 2026-06-12) — RESTORED 2026-06-12
+   * after the P10/P11 squash wave silently dropped these blocks. The
+   * search input is the PRIMARY go-to of the filterbar, not a tucked-
+   * away sidekick. Wider, taller, purple halo by default, brighter halo
+   * on focus, and a keyboard hint chip ("/ to focus") rendered as a
+   * sibling span to advertise the affordance even when the input is
+   * empty. Global "/" focuses it; Esc blurs. Pinned by the regression
+   * test ``tests/scitex_todo/test__board_v3_signatures.py``. */
   .filt-search {
-    min-width: 180px;
-    padding: 4px 10px !important;
+    min-width: 320px;
+    flex: 1 1 320px;
+    padding: 10px 14px !important;
+    font-size: 1rem;
+    font-weight: 500;
+    border: 2px solid var(--purple) !important;
+    border-radius: 10px !important;
+    background: rgba(109,76,173,0.04);
+    box-shadow: 0 0 0 3px rgba(109,76,173,0.10);
+    transition: box-shadow 120ms ease, background 120ms ease,
+                border-color 120ms ease;
+  }
+  .filt-search::placeholder {
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+  .filt-search:hover {
+    background: rgba(109,76,173,0.08);
+    box-shadow: 0 0 0 4px rgba(109,76,173,0.18);
   }
   .filt-search:focus {
     outline: none;
     border-color: var(--purple);
-    background: rgba(109,76,173,0.06);
+    background: rgba(109,76,173,0.12);
+    box-shadow: 0 0 0 4px rgba(109,76,173,0.35);
+  }
+  .filt-search-kbd {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-left: -4px;
+    padding: 2px 8px;
+    font-size: 0.72rem; font-weight: 600;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: rgba(255,255,255,0.04);
+    user-select: none;
+    pointer-events: none;
+  }
+  .filt-search-kbd kbd {
+    display: inline-block; min-width: 14px;
+    padding: 0 5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.7rem; line-height: 1.4;
+    color: var(--text);
+    background: rgba(109,76,173,0.18);
+    border: 1px solid var(--purple);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+  }
+  .filt-search:focus + .filt-search-kbd,
+  .filt-search:not(:placeholder-shown) + .filt-search-kbd {
+    opacity: 0;
   }
 
   /* Date-proximity pill (operator TG 440/442) — inline below the task
@@ -1204,7 +1257,16 @@
       font-size: 0.84rem;
       min-height: 38px;
     }
-    .filt-search { min-width: 140px; }
+    /* P1 mobile-responsive override — search wraps to its own row at
+     * ~100% width, font bumped, kbd-hint hidden (no physical kbd on
+     * phones). Restored 2026-06-12 with the rest of the P1 wave. */
+    .filt-search {
+      min-width: 200px;
+      flex: 1 1 100%;
+      font-size: 0.95rem;
+      padding: 9px 12px !important;
+    }
+    .filt-search-kbd { display: none; }
     .add-task-btn {
       min-height: 38px; padding: 7px 12px;
     }
@@ -1330,10 +1392,18 @@
          roll-up land in follow-up PRs. -->
     <div class="fleetstrip" id="fleetstrip"
          aria-label="Fleet liveness — one dot per agent"></div>
+    <!-- Search-as-launcher (P1, lead brief 2026-06-12) — the PRIMARY
+         filterbar entry point. RESTORED 2026-06-12 after the P10/P11
+         squash wave silently dropped these blocks. Pinned by the
+         regression test in test__board_v3_signatures.py. -->
     <input class="filt filt-search" id="f-search" type="search"
-           placeholder="🔎 search (fuzzy)"
-           title="Fuzzy match on title / project / agent / note (operator TG 437/438)"
+           placeholder="🔎 search (fuzzy) — press / to focus"
+           title="Fuzzy match on title / project / agent / note. Press / to focus, Esc to blur."
            oninput="onSearchInput(event)" autocomplete="off">
+    <span class="filt-search-kbd" aria-hidden="true"
+          title="Press / to focus the search">
+      press <kbd>/</kbd> to focus
+    </span>
     <!-- P2 (lead brief 2026-06-12) — filter-UX collapse. The six filter
          dropdowns now live inside a single "🔧 Filters (N active)"
          popover (cleaner filterbar; less visual noise). Active filters
@@ -2294,6 +2364,23 @@
       }
     }
 
+    // === P7 (lead brief 2026-06-12) — self-named project-umbrella card ===
+    // RESTORED 2026-06-12 after the P10/P11 squash wave silently dropped
+    // this helper. The store has q-<proj> entries (e.g. q-figrecipe) whose
+    // `title` matches the column name — they represent the PROJECT
+    // itself, not a task within it, so rendering them as a card inside
+    // their own column shows "figrecipe column has a figrecipe card",
+    // which the operator flagged as confusing. Heuristic: title matches
+    // column name (case-insensitive, trimmed). Pinned by
+    // tests/scitex_todo/test__board_v3_signatures.py.
+    function isSelfNamedProjectCard(t, columnName) {
+      if (!t || !columnName) return false;
+      const title = String(t.title || "").trim().toLowerCase();
+      const col = String(columnName).trim().toLowerCase();
+      if (!title || !col) return false;
+      return title === col;
+    }
+
     function render() {
       if (!STATE.graph) return;
       const visible = STATE.graph.nodes.filter(passes);
@@ -2307,6 +2394,8 @@
       const byProj = {};
       for (const t of visible) {
         const p = t.project || NO_PROJECT_LABEL;
+        // P7: skip self-named project-umbrella cards (see helper above).
+        if (isSelfNamedProjectCard(t, p)) continue;
         (byProj[p] = byProj[p] || []).push(t);
       }
       // Operator UX TG 381: empty columns must persist so the
@@ -3672,6 +3761,37 @@
         }
       }
     });
+
+    // P1 Search-as-launcher (lead brief 2026-06-12) — RESTORED 2026-06-12.
+    // "/" anywhere focuses #f-search; Esc inside the search blurs it.
+    // Skip "/" when typing in another input/textarea/select/contenteditable
+    // OR when a modifier is held (so browser shortcuts like Cmd-/ stay
+    // available). Same muscle memory as Gmail / Jira / Linear. Pinned by
+    // tests/scitex_todo/test__board_v3_signatures.py so a future squash
+    // can't silently regress it again.
+    function attachSearchKeyboardLauncher() {
+      const search = document.getElementById("f-search");
+      if (!search) return;
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+          const t = e.target;
+          const tag = (t && t.tagName) ? t.tagName.toLowerCase() : "";
+          const editable =
+            tag === "input" || tag === "textarea" || tag === "select" ||
+            (t && t.isContentEditable);
+          if (editable) return;
+          e.preventDefault();
+          search.focus();
+          const v = search.value;
+          search.setSelectionRange(v.length, v.length);
+          return;
+        }
+        if (e.key === "Escape" && document.activeElement === search) {
+          search.blur();
+        }
+      });
+    }
+    attachSearchKeyboardLauncher();
 
     attachFilters();
     loadGraph();
