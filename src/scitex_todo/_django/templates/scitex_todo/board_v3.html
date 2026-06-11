@@ -2004,6 +2004,24 @@
       }
     }
 
+    // === P7 (lead brief 2026-06-12) — self-named project-umbrella card ===
+    // The store has q-<proj> entries (e.g. q-figrecipe) whose `title` is
+    // exactly the project name AND whose `project` field is that same
+    // project. They represent the PROJECT itself, not a task within it
+    // — so rendering them as a card inside the project's own column
+    // shows "figrecipe column has a figrecipe card", which the operator
+    // flagged as confusing. Heuristic: title matches column name (case-
+    // insensitive, trimmed). Keep the node in STATE.graph for search /
+    // detail-drawer / dependency-graph use; just skip emitting it as a
+    // card in its OWN column.
+    function isSelfNamedProjectCard(t, columnName) {
+      if (!t || !columnName) return false;
+      const title = String(t.title || "").trim().toLowerCase();
+      const col = String(columnName).trim().toLowerCase();
+      if (!title || !col) return false;
+      return title === col;
+    }
+
     function render() {
       if (!STATE.graph) return;
       const visible = STATE.graph.nodes.filter(passes);
@@ -2017,6 +2035,8 @@
       const byProj = {};
       for (const t of visible) {
         const p = t.project || NO_PROJECT_LABEL;
+        // P7: skip self-named project-umbrella cards (see helper above).
+        if (isSelfNamedProjectCard(t, p)) continue;
         (byProj[p] = byProj[p] || []).push(t);
       }
       // Operator UX TG 381: empty columns must persist so the
