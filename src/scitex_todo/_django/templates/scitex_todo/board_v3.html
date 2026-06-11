@@ -18,6 +18,17 @@
 {% endcomment %}
 {% block extra_css %}
 <link rel="icon" type="image/svg+xml" href="{% static 'scitex_todo/favicon.svg' %}">
+<!-- P11b (lead-approved, operator priority 2026-06-12). Load the scitex-ui
+     Combobox bundle (pre-built JS sibling of the TS class shipped in
+     scitex-ui#36/#37). The CSS uses the existing scitex-ui design tokens
+     so the popover blends with the board chrome. JS exposes
+     window.STX.Combobox; attachCombobox() below layers a Combobox over
+     every existing <select.filt> + the card-ctx move-picker as a
+     progressive enhancement — if window.STX.Combobox is unavailable
+     (older scitex-ui pin), the page falls back to the plain <select>s
+     and the move-picker's existing inline list. -->
+<link rel="stylesheet" href="{% static 'scitex_ui/css/app/combobox.css' %}">
+<script defer src="{% static 'scitex_ui/js/app/combobox.js' %}"></script>
 <style>
   :root {
     --bg: #0f1419;
@@ -1847,6 +1858,10 @@
         ["compute", "dependency", "dep", "operator-decision", "agent-wait", "none"]
           .map(b => `<option value="${b}">${b}</option>`).join("") +
         `<option value="__none">no blocker</option>`;
+      // P11b rebind — refresh the scitex-ui Combobox layered over each
+      // <select.filt> so its item list reflects the freshly-populated
+      // option lists. No-op when window.STX.Combobox is unavailable.
+      if (typeof attachCombobox === "function") attachCombobox();
     }
 
     function escapeHtml(s) {
@@ -1944,14 +1959,36 @@
       const item = (label, fn, danger) =>
         `<button class="card-ctx-item${danger ? " card-ctx-item--danger" : ""}"
           onclick="${fn}">${label}</button>`;
-      const projectItems = projects
-        .filter(p => p !== (t.project || ""))
-        .slice(0, 12)
-        .map(p =>
+      // P11b (operator priority 2026-06-12) — move-picker is now a
+      // scitex-ui Combobox: fuzzy typeahead over ALL projects +
+      // "+ Create '<query>'" for brand-new ones. Restores the P8
+      // capability ("list ALL projects, plus a + New project flow")
+      // that regressed in develop AND adds substring search.
+      // Progressive enhancement — when window.STX.Combobox is
+      // unavailable (older scitex-ui pin), the inline list rendered
+      // by the fallback branch below keeps the legacy click-to-pick
+      // behaviour. (hook-bypass: line-limit.)
+      const _hasCombobox = !!(window.STX && window.STX.Combobox);
+      const projectItems = _hasCombobox
+        ? `<button class="card-ctx-item card-ctx-item--sub"
+             id="move-cb-trigger-${escapeHtml(cardId)}"
+             onclick="event.stopPropagation(); _openMoveToCombobox('${escapeHtml(cardId)}', this)">
+             🔎 Pick / create a project ▾
+           </button>
+           <span class="cb-container"
+             id="move-cb-container-${escapeHtml(cardId)}"
+             style="display:none"></span>`
+        : projects
+            .filter(p => p !== (t.project || ""))
+            .map(p =>
+              `<button class="card-ctx-item card-ctx-item--sub"
+                onclick="closeCardCtx(); moveCardToProject('${escapeHtml(cardId)}', '${escapeHtml(p)}')">→ ${escapeHtml(p)}</button>`
+            )
+            .join("") +
           `<button class="card-ctx-item card-ctx-item--sub"
-            onclick="closeCardCtx(); moveCardToProject('${escapeHtml(cardId)}', '${escapeHtml(p)}')">→ ${escapeHtml(p)}</button>`
-        )
-        .join("");
+            style="color: var(--purple); font-weight: 600;"
+            onclick="closeCardCtx(); promptMoveToNewProject('${escapeHtml(cardId)}')">
+            + New project…</button>`;
       const statusItems = statuses
         .filter(s => s !== t.status)
         .map(s =>
@@ -2131,6 +2168,73 @@
       _draggedCard = null;
       e.stopPropagation();
     }
+    // P11b (operator priority 2026-06-12) — wire the scitex-ui Combobox
+    // popover for the right-click move-to-project flow. Opens a
+    // typeahead listing ALL projects + an inline "+ Create '<query>'"
+    // affordance for brand-new ones. (hook-bypass: line-limit.)
+    function _openMoveToCombobox(cardId, triggerEl) {
+      const container = document.getElementById(
+        "move-cb-container-" + cardId
+      );
+      if (!container) return;
+      container.style.display = "inline-block";
+      const allProjects = STATE.graph
+        ? [...new Set(STATE.graph.nodes.map(n => n.project).filter(Boolean))].sort()
+        : [];
+      const t = (STATE.graph?.nodes || []).find(x => x.id === cardId);
+      const currentProj = t ? (t.project || "") : "";
+      const items = allProjects
+        .filter(p => p !== currentProj)
+        .map(p => ({ value: p, label: p }));
+      try {
+        const cb = new window.STX.Combobox({
+          container,
+          trigger: triggerEl,
+          items,
+          placeholder: "Search projects…",
+          updateTriggerLabel: false,
+          createLabel: (q) => `+ Create new project “${q}”`,
+          onChange: (item) => {
+            closeCardCtx();
+            void moveCardToProject(cardId, item.value);
+          },
+          onCreate: (q) => {
+            closeCardCtx();
+            promptMoveToNewProject(cardId, q);
+          },
+        });
+        cb.show();
+      } catch (e) {
+        // Fallback: ask via the legacy prompt path.
+        promptMoveToNewProject(cardId);
+      }
+    }
+
+    // P11b — onCreate fallback for the move-picker. Accepts an
+    // optional `prefilled` name (the user already typed it in the
+    // Combobox query); validates + forwards to moveCardToProject.
+    // Lost during a P8 -> P10 squash regression; restored here.
+    function promptMoveToNewProject(cardId, prefilled) {
+      const raw = (prefilled !== undefined)
+        ? prefilled
+        : window.prompt(
+            "New project name (creates a column and moves this card into it):",
+            ""
+          );
+      if (raw === null) return;
+      const name = String(raw).trim();
+      if (!name) { toast("✗ Project name cannot be empty", true); return; }
+      if (name.length > 64) {
+        toast("✗ Project name too long (≤64 chars)", true);
+        return;
+      }
+      if (name.toLowerCase() === "uncategorized") {
+        toast("✗ Use the existing 'Uncategorized' option for that", true);
+        return;
+      }
+      void moveCardToProject(cardId, name);
+    }
+
     async function moveCardToProject(cardId, newProject) {
       // newProject="Uncategorized" → clear the field via null (the /update
       // handler accepts null patches to remove a field).
@@ -2430,7 +2534,96 @@
       // any filters restored from STATE before the operator's first
       // interaction. (hook-bypass: line-limit — see REFACTORING.md.)
       renderActiveFilterChips();
+      // P11b (operator priority 2026-06-12): layer the scitex-ui
+      // Combobox on top of every <select.filt> for fuzzy-typeahead.
+      // Progressive enhancement — when window.STX.Combobox is
+      // unavailable (older scitex-ui pin), the plain <select> stays
+      // functional (this just no-ops).
+      attachCombobox();
     }
+
+    // === P11b — Combobox layer over <select.filt> ========================
+    // For each filter <select>, attach a scitex-ui Combobox that mirrors
+    // the option list, opens with a button trigger, and on selection
+    // updates the underlying <select>.value + dispatches a "change"
+    // event so attachFilters()'s existing listeners fire unchanged.
+    // The <select> stays in the DOM as the source-of-truth + a
+    // keyboard / screen-reader fallback. (hook-bypass: line-limit.)
+    const _CB_INSTANCES = {};
+    function attachCombobox() {
+      if (!(window.STX && window.STX.Combobox)) return;  // graceful fallback
+      const FILTER_IDS = [
+        "f-project", "f-host", "f-status", "f-blocker", "f-agent", "f-date",
+      ];
+      FILTER_IDS.forEach(id => _wrapSelectAsCombobox(id));
+    }
+
+    function _wrapSelectAsCombobox(selectId) {
+      const sel = document.getElementById(selectId);
+      if (!sel) return;
+      // Tear down a prior instance + DOM scaffolding if we're re-binding
+      // after a /graph reload populates fresh <option>s.
+      if (_CB_INSTANCES[selectId]) {
+        try { _CB_INSTANCES[selectId].destroy(); } catch {}
+        delete _CB_INSTANCES[selectId];
+        const oldWrap = sel.parentElement &&
+          sel.parentElement.querySelector(".cb-wrap-" + selectId);
+        if (oldWrap) oldWrap.remove();
+      }
+      // Build trigger button + container next to the select.
+      const wrap = document.createElement("span");
+      wrap.className = "cb-wrap cb-wrap-" + selectId;
+      wrap.style.display = "inline-flex";
+      wrap.style.alignItems = "center";
+      const trigger = document.createElement("button");
+      trigger.type = "button";
+      trigger.className = "filt cb-trigger";
+      trigger.id = selectId + "-cb-trigger";
+      trigger.setAttribute("aria-haspopup", "listbox");
+      trigger.textContent = (sel.options[sel.selectedIndex] || {}).text || "—";
+      trigger.style.minWidth = "120px";
+      trigger.style.textAlign = "left";
+      const container = document.createElement("span");
+      container.className = "cb-container";
+      container.id = selectId + "-cb-container";
+      wrap.appendChild(trigger);
+      wrap.appendChild(container);
+      // Hide the plain <select> + insert the combobox in its place.
+      sel.style.display = "none";
+      sel.insertAdjacentElement("afterend", wrap);
+      const items = Array.from(sel.options).map(opt => ({
+        value: opt.value, label: opt.text || opt.value || "—",
+      }));
+      try {
+        const cb = new window.STX.Combobox({
+          container,
+          trigger,
+          items,
+          value: sel.value,
+          placeholder: "Search " + selectId.replace("f-", "") + "…",
+          onChange: (item) => {
+            sel.value = item.value;
+            // Dispatch a "change" event so the existing attachFilters()
+            // listeners + STATE.filters[key] update fire unchanged.
+            sel.dispatchEvent(new Event("change", { bubbles: true }));
+            // The trigger label is updated automatically by the
+            // Combobox; nothing else to do here.
+          },
+        });
+        _CB_INSTANCES[selectId] = cb;
+      } catch (e) {
+        // Combobox bootstrap failure → restore the plain <select>.
+        sel.style.display = "";
+        wrap.remove();
+      }
+    }
+
+    // Re-bind comboboxes whenever populateFilters() pushes fresh
+    // option lists into the <select>s — handled by the direct
+    // `attachCombobox()` call appended at the end of populateFilters
+    // (search for "P11b rebind" in this file). The Combobox bootstrap
+    // is idempotent (destroy + recreate), so calling on every
+    // /graph reload is safe + cheap.
 
     // === P2 — active-filter chips + popover count ========================
     // The 6 filter dropdowns are tucked inside a `<details class="filt-popover">`
