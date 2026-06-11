@@ -31,7 +31,10 @@ dependencies = ["pyyaml", "click", "ruamel.yaml"]
 dev = [
     "pytest",
     "pytest-cov",
-    "scitex-dev>=0.11.7",
+    # >=0.17.11 for the JobSpec service|timer|cron taxonomy + new
+    # restart_policy field used by _jobs_provider.provide_jobs(). Older
+    # versions don't have the kwarg and the leaf TypeErrors on import.
+    "scitex-dev>=0.17.11",
     # Web-extra deps are imported (guarded) by the Django board source and its
     # tests; include them so a fresh `pip install -e .[dev]` runs the full
     # suite rather than silently skipping the board tests (PS-210).
@@ -76,6 +79,13 @@ scitex-todo = "scitex_todo"
 
 [project.entry-points."scitex_dev.skills"]
 scitex-todo = "scitex_todo"
+
+# Federated scheduled-job aggregation. scitex-dev `ecosystem up`
+# discovers this entry point and brings the declared JobSpec(s) up
+# via `systemctl --user` (kind="service" / "timer") or the managed
+# crontab block (kind="cron"). See src/scitex_todo/_jobs_provider.py.
+[project.entry-points."scitex_dev.jobs"]
+scitex-todo = "scitex_todo._jobs_provider:provide_jobs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/scitex_todo"]
