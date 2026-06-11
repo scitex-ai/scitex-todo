@@ -4,6 +4,76 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.3] - 2026-06-12 — Board UX wave + self-consuming loop + deadline schema
+
+Captures every PR that landed between 0.5.2 and develop tip (operator
+TG 12028 / 12038 / 12081 wave).
+
+### Added — Board UX
+
+- **Search-as-launcher** (PR #86). `#f-search` becomes the primary
+  filterbar control; press `/` from anywhere to focus, `Esc` to blur.
+  Purple-haloed at rest, brighter on focus, kbd-hint chip advertises
+  the affordance.
+- **Filter UX collapse + active chips + sort-by** (PR #89). Six
+  filter dropdowns hide behind a single `🔧 Filters (N active)`
+  popover; active filters render as removable chips; new sort-by
+  selector (deadline / priority / status / project / last_activity /
+  title).
+- **Self-named project-umbrella cards hidden** (PR #87). A card
+  whose title matches its column name is suppressed inside that
+  column.
+- **Move-picker lists ALL projects + Create-new** (PR #88 + #94).
+  Right-click → Move picker is a Combobox over every project in the
+  store with `+ Create '<query>'`.
+- **Combobox primitive in scitex-ui** (scitex-ui #36 + #37, consumed
+  via PR #94). Fuzzy-typeahead select layered over the six filterbar
+  dropdowns + the move-picker; pure-JS bundle for Django-template
+  consumers.
+- **Project GROUPS** (PR #91). User-defined clusters of projects;
+  new top-level `groups:` key in `tasks.yaml`; `spans_all: true`
+  banner above the grid; group-header rows between clusters.
+
+### Added — Deadlines + org-mode bridge
+
+- **`deadline` + `scheduled` fields on `Task`** (PR #92). ISO-8601
+  strings; validator rejects empty / unparseable / `deadline <
+  scheduled`.
+- **Org-mode export adapter** (PR #93). `build_org(tasks) → str`
+  emits `DEADLINE:` / `SCHEDULED:` + properties drawer. 17 tests.
+- **Multi + recurring deadlines** (PR #97). Org-style repeater suffix
+  on the single field (`+1w` / `++2m` catch-up); optional `deadlines:
+  list[str]` mutually exclusive with the single field; server emits a
+  synthetic `deadline_next` for FE consumption.
+
+### Added — Self-consuming board loop (operator TG 12038)
+
+- **`scitex-todo next` CLI verb** (PR #95). Canonical "what to pick
+  up next" predicate. `--mine` reads `SCITEX_TODO_AGENT`;
+  `--auto-claim` atomic-flips to `in_progress` + stamps a starting
+  comment in one write.
+- **`scitex-todo watch --push` CLI verb** (PR #95). Polls tasks.yaml,
+  diffs, POSTs `/v1/turn` to the owning agent's a2a port on
+  new / commented / status-changed tasks. Watcher declared as a
+  second `kind=service` JobSpec.
+- **Agent self-consumption loop sub-skill (32)** + **MANDATE block in
+  `SKILL.md`** (PR #90 + #95).
+
+### Fixed
+
+- **P1 + P7 regressions restored** (PR #96). The P10/P11 squash wave
+  silently dropped P1 #86 + P7 #87 from develop; PR #96 restores both
+  and pins **24 substring signatures** in
+  `tests/scitex_todo/test__board_v3_signatures.py` so future squash
+  drops fail CI instead.
+
+### Notes for operators
+
+After upgrading: `systemctl --user restart scitex-todo.dashboard`.
+The new `scitex-todo.wake-watcher` unit needs
+`systemctl --user reset-failed scitex-todo.wake-watcher` followed by
+`systemctl --user enable --now scitex-todo.wake-watcher`.
+
 ## [0.4.2] - 2026-06-08 — Crash-safe store + version label + Uncategorized column
 
 Patch release in response to the 2026-06-08 autoassign-parallel-run
