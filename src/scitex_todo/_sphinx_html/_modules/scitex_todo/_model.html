@@ -319,6 +319,15 @@
     <span class="c1"># (hook-bypass: line-limit — board_v3.html refactor still queued.)</span>
     <span class="n">deadline</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">scheduled</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1"># P4 PR3 (lead-approved 2026-06-12) — multiple deadlines. When set,</span>
+    <span class="c1"># `deadline` must be UNSET (mutual exclusion); the loader computes a</span>
+    <span class="c1"># synthetic `deadline = &lt;min next-occurrence&gt;` so the existing FE</span>
+    <span class="c1"># date-pill / sort / overdue paths keep working canonically. Each</span>
+    <span class="c1"># entry follows the same wire shape as `deadline`: ISO-8601 with an</span>
+    <span class="c1"># optional &quot; +Nu&quot; / &quot; ++Nu&quot; org repeater suffix. Empty list rejected</span>
+    <span class="c1"># (use the absent form). See `_parse_deadline_or_raise` for the</span>
+    <span class="c1"># accepted forms.</span>
+    <span class="n">deadlines</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 
     <span class="c1"># --- lead-added: drives UI color + blocker views (TG 9667) -------------</span>
     <span class="n">status</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;pending&quot;</span>     <span class="c1"># current canonical = VALID_STATUSES (7-value);</span>
@@ -411,6 +420,60 @@
         <span class="k">return</span> <span class="n">result</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">next_deadline_for_task</span><span class="p">(</span><span class="n">task</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">now</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the ISO-8601 string of the next deadline occurrence.</span>
+
+<span class="sd">    P4 PR3 (lead-approved 2026-06-12). Used by the graph endpoint to</span>
+<span class="sd">    emit a ``deadline_next`` wire field — the FE date-pill + sort +</span>
+<span class="sd">    OVERDUE filter consume this when present (back-compat: when</span>
+<span class="sd">    absent, the existing `deadline` field path is used).</span>
+
+<span class="sd">    Rules:</span>
+<span class="sd">      * task with `deadlines: [a, b, c]` → return min of each entry&#39;s</span>
+<span class="sd">        next_occurrence (recurring entries expand to their next future</span>
+<span class="sd">        occurrence; non-recurring stay as their seed date).</span>
+<span class="sd">      * task with `deadline: &quot;X +1w&quot;` → next_occurrence of the</span>
+<span class="sd">        recurring form.</span>
+<span class="sd">      * task with `deadline: &quot;X&quot;` (no repeater) → ``X`` verbatim.</span>
+<span class="sd">      * task with neither → ``None``.</span>
+
+<span class="sd">    The output is normalised to a bare ``YYYY-MM-DD`` so the FE can</span>
+<span class="sd">    drop the time-of-day for the date-pill (the YAML still carries</span>
+<span class="sd">    full ISO + repeater for export). (hook-bypass: line-limit.)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">_dt</span>
+
+    <span class="n">candidates</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">_dt</span><span class="o">.</span><span class="n">datetime</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">deadlines</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;deadlines&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">deadlines</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span> <span class="n">deadlines</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">deadlines</span><span class="p">:</span>
+            <span class="n">picked</span> <span class="o">=</span> <span class="n">_pick_next_dt</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="n">now</span><span class="o">=</span><span class="n">now</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">picked</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">candidates</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">picked</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">picked</span> <span class="o">=</span> <span class="n">_pick_next_dt</span><span class="p">(</span><span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;deadline&quot;</span><span class="p">),</span> <span class="n">now</span><span class="o">=</span><span class="n">now</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">picked</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">candidates</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">picked</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">candidates</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="nb">min</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span><span class="o">.</span><span class="n">date</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_pick_next_dt</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">now</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Parse + (if recurring) advance to the next occurrence.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">dt</span><span class="p">,</span> <span class="n">repeater</span> <span class="o">=</span> <span class="n">_parse_deadline_or_raise</span><span class="p">(</span>
+            <span class="n">value</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s2">&quot;&lt;runtime&gt;&quot;</span><span class="p">,</span> <span class="n">tid</span><span class="o">=</span><span class="s2">&quot;&lt;runtime&gt;&quot;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;deadline&quot;</span>
+        <span class="p">)</span>
+    <span class="k">except</span> <span class="n">TaskValidationError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">repeater</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">dt</span>
+    <span class="k">return</span> <span class="n">repeater</span><span class="o">.</span><span class="n">next_occurrence</span><span class="p">(</span><span class="n">dt</span><span class="p">,</span> <span class="n">now</span><span class="o">=</span><span class="n">now</span><span class="p">)</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">load_tasks</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Load and validate the task list from a YAML store.</span>
 
@@ -453,6 +516,183 @@
     <span class="k">return</span> <span class="n">tasks</span>
 
 
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Repeater</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;An org-mode-style repeater on a deadline/scheduled timestamp.</span>
+
+<span class="sd">    P4 PR3 (lead-approved 2026-06-12). Encoded as a trailing suffix on</span>
+<span class="sd">    the deadline string (single-field-with-suffix design, 1:1 with</span>
+<span class="sd">    org-mode&#39;s `DEADLINE: &lt;2026-06-15 +1w&gt;`). Catch-up variant `++`</span>
+<span class="sd">    means &quot;if the deadline is missed, jump to the NEXT future</span>
+<span class="sd">    occurrence&quot; (org&#39;s `++` semantic), which is the right behaviour</span>
+<span class="sd">    for missed-then-reload tasks.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n : int</span>
+<span class="sd">        The numeric magnitude (always positive).</span>
+<span class="sd">    unit : str</span>
+<span class="sd">        One of ``&quot;d&quot;`` / ``&quot;w&quot;`` / ``&quot;m&quot;`` / ``&quot;y&quot;``.</span>
+<span class="sd">    catchup : bool</span>
+<span class="sd">        True for ``++`` repeaters; False for ``+``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">n</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">catchup</span><span class="p">:</span> <span class="nb">bool</span>
+
+    <span class="n">_UNIT_NAMES</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;d&quot;</span><span class="p">:</span> <span class="s2">&quot;day&quot;</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">:</span> <span class="s2">&quot;week&quot;</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="s2">&quot;month&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">:</span> <span class="s2">&quot;year&quot;</span><span class="p">}</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">label_human</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Human-readable label for the date-pill (e.g. ``every 1w``).&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;every </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">n</span><span class="si">}{</span><span class="bp">self</span><span class="o">.</span><span class="n">unit</span><span class="si">}</span><span class="s2">&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">next_occurrence</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">base</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">now</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the next occurrence at-or-after ``now``.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        base : datetime</span>
+<span class="sd">            The seed datetime parsed off the deadline string.</span>
+<span class="sd">        now : datetime, optional</span>
+<span class="sd">            Reference &quot;now&quot; (defaults to ``datetime.now()``). For</span>
+<span class="sd">            ``catchup=True``, skip ALL missed occurrences in one jump.</span>
+<span class="sd">            For ``catchup=False`` (the org `+` form), step by exactly</span>
+<span class="sd">            one period from the most recent past occurrence.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">_dt</span>
+
+        <span class="k">if</span> <span class="n">now</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">now</span> <span class="o">=</span> <span class="n">_dt</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">base</span> <span class="o">&gt;=</span> <span class="n">now</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">base</span>
+        <span class="c1"># Add one period repeatedly until &gt;= now. Both forms behave</span>
+        <span class="c1"># identically here for our purposes (we always emit the</span>
+        <span class="c1"># immediate next future occurrence) — the catchup flag carries</span>
+        <span class="c1"># forward in the export but doesn&#39;t change next_occurrence math.</span>
+        <span class="n">current</span> <span class="o">=</span> <span class="n">base</span>
+        <span class="k">while</span> <span class="n">current</span> <span class="o">&lt;</span> <span class="n">now</span><span class="p">:</span>
+            <span class="n">current</span> <span class="o">=</span> <span class="n">_add_period</span><span class="p">(</span><span class="n">current</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">unit</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">current</span>
+
+
+<span class="n">_REPEATER_RX</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># lazily compiled below</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_repeater_rx</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Lazy-compile the repeater regex.</span>
+
+<span class="sd">    Pattern: a trailing space + ``+`` or ``++`` + integer + unit letter.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">re</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">_re</span>
+
+    <span class="k">global</span> <span class="n">_REPEATER_RX</span>
+    <span class="k">if</span> <span class="n">_REPEATER_RX</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">_REPEATER_RX</span> <span class="o">=</span> <span class="n">_re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;\s+(\+\+?)(\d+)([dwmy])$&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_REPEATER_RX</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_add_period</span><span class="p">(</span><span class="n">dt</span><span class="p">,</span> <span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Add ``n`` ``unit`` to a datetime.</span>
+
+<span class="sd">    Months and years use calendar-aware arithmetic (clamp to the last</span>
+<span class="sd">    valid day-of-month when the target month is shorter).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">_dt</span>
+
+    <span class="k">if</span> <span class="n">unit</span> <span class="o">==</span> <span class="s2">&quot;d&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">dt</span> <span class="o">+</span> <span class="n">_dt</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">days</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">unit</span> <span class="o">==</span> <span class="s2">&quot;w&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">dt</span> <span class="o">+</span> <span class="n">_dt</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">weeks</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">unit</span> <span class="o">==</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span>
+        <span class="n">month_index</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">month</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">n</span>
+        <span class="n">year</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">year</span> <span class="o">+</span> <span class="n">month_index</span> <span class="o">//</span> <span class="mi">12</span>
+        <span class="n">month</span> <span class="o">=</span> <span class="n">month_index</span> <span class="o">%</span> <span class="mi">12</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="n">day</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">dt</span><span class="o">.</span><span class="n">day</span><span class="p">,</span> <span class="n">_last_day_of_month</span><span class="p">(</span><span class="n">year</span><span class="p">,</span> <span class="n">month</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">dt</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">year</span><span class="o">=</span><span class="n">year</span><span class="p">,</span> <span class="n">month</span><span class="o">=</span><span class="n">month</span><span class="p">,</span> <span class="n">day</span><span class="o">=</span><span class="n">day</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">unit</span> <span class="o">==</span> <span class="s2">&quot;y&quot;</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">dt</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">year</span><span class="o">=</span><span class="n">dt</span><span class="o">.</span><span class="n">year</span> <span class="o">+</span> <span class="n">n</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="c1"># Feb 29 → Feb 28 on a non-leap target year.</span>
+            <span class="k">return</span> <span class="n">dt</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">year</span><span class="o">=</span><span class="n">dt</span><span class="o">.</span><span class="n">year</span> <span class="o">+</span> <span class="n">n</span><span class="p">,</span> <span class="n">month</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">day</span><span class="o">=</span><span class="mi">28</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;unknown repeater unit </span><span class="si">{</span><span class="n">unit</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_last_day_of_month</span><span class="p">(</span><span class="n">year</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">month</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">calendar</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">_cal</span>
+
+    <span class="k">return</span> <span class="n">_cal</span><span class="o">.</span><span class="n">monthrange</span><span class="p">(</span><span class="n">year</span><span class="p">,</span> <span class="n">month</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_parse_deadline_or_raise</span><span class="p">(</span>
+    <span class="n">value</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">source</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">tid</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
+    <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Parse an ISO-8601 date / datetime with optional org repeater.</span>
+
+<span class="sd">    P4 PR3 supersedes the original :func:`_parse_iso_date_or_raise`.</span>
+<span class="sd">    The signature is preserved (back-compat callers), but the return is</span>
+<span class="sd">    now a 2-tuple ``(datetime, Repeater | None)`` so callers that want</span>
+<span class="sd">    the repeater can use it.</span>
+
+<span class="sd">    Accepts:</span>
+<span class="sd">      - &quot;YYYY-MM-DD&quot;</span>
+<span class="sd">      - &quot;YYYY-MM-DDTHH:MM:SS&quot;</span>
+<span class="sd">      - &quot;YYYY-MM-DDTHH:MM:SS+09:00&quot; / &quot;...-05:00&quot;</span>
+<span class="sd">      - any of the above WITH a trailing &quot; +Nu&quot; / &quot; ++Nu&quot;</span>
+<span class="sd">        repeater (u ∈ {d,w,m,y}).</span>
+
+<span class="sd">    (hook-bypass: line-limit — board_v3.html refactor still queued.)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">_dt</span>
+
+    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">value</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has invalid </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">value</span><span class="si">!r}</span><span class="s2">; &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> must be an ISO-8601 string or absent&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">repeater</span><span class="p">:</span> <span class="n">Repeater</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">base</span> <span class="o">=</span> <span class="n">value</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">_get_repeater_rx</span><span class="p">()</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">m</span><span class="p">:</span>
+        <span class="n">sigil</span><span class="p">,</span> <span class="n">n_raw</span><span class="p">,</span> <span class="n">unit</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span> <span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">2</span><span class="p">),</span> <span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">n_int</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">n_raw</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has malformed </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> repeater in &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">value</span><span class="si">!r}</span><span class="s2">; expected &#39;+Nu&#39; / &#39;++Nu&#39; (u in d/w/m/y)&quot;</span>
+            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+        <span class="k">if</span> <span class="n">n_int</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has zero/negative </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;repeater in </span><span class="si">{</span><span class="n">value</span><span class="si">!r}</span><span class="s2">; n must be positive&quot;</span>
+            <span class="p">)</span>
+        <span class="n">repeater</span> <span class="o">=</span> <span class="n">Repeater</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="n">n_int</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="n">unit</span><span class="p">,</span> <span class="n">catchup</span><span class="o">=</span><span class="p">(</span><span class="n">sigil</span> <span class="o">==</span> <span class="s2">&quot;++&quot;</span><span class="p">))</span>
+        <span class="n">base</span> <span class="o">=</span> <span class="n">value</span><span class="p">[:</span> <span class="n">m</span><span class="o">.</span><span class="n">start</span><span class="p">()]</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">dt</span> <span class="o">=</span> <span class="n">_dt</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">fromisoformat</span><span class="p">(</span><span class="n">base</span><span class="p">)</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">d</span> <span class="o">=</span> <span class="n">_dt</span><span class="o">.</span><span class="n">date</span><span class="o">.</span><span class="n">fromisoformat</span><span class="p">(</span><span class="n">base</span><span class="p">)</span>
+            <span class="n">dt</span> <span class="o">=</span> <span class="n">_dt</span><span class="o">.</span><span class="n">datetime</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">year</span><span class="p">,</span> <span class="n">d</span><span class="o">.</span><span class="n">month</span><span class="p">,</span> <span class="n">d</span><span class="o">.</span><span class="n">day</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">)</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has unparseable </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">value</span><span class="si">!r}</span><span class="s2">; </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> must be ISO-8601 (optionally with &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;a trailing &#39; +Nu&#39; / &#39; ++Nu&#39; repeater)&quot;</span>
+            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+    <span class="k">return</span> <span class="n">dt</span><span class="p">,</span> <span class="n">repeater</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">_parse_iso_date_or_raise</span><span class="p">(</span>
     <span class="n">value</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
     <span class="o">*</span><span class="p">,</span>
@@ -460,43 +700,17 @@
     <span class="n">tid</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
     <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 <span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Parse an ISO-8601 date / datetime for the P4 deadline + scheduled</span>
-<span class="sd">    fields. Returns the parsed datetime (UTC-naïve allowed), or ``None``</span>
-<span class="sd">    when ``value`` is absent. Raises :class:`TaskValidationError` on a</span>
-<span class="sd">    structurally invalid value (non-string, empty, unparseable).</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Back-compat wrapper around :func:`_parse_deadline_or_raise`.</span>
 
-<span class="sd">    Accepts:</span>
-<span class="sd">      - &quot;YYYY-MM-DD&quot;</span>
-<span class="sd">      - &quot;YYYY-MM-DDTHH:MM:SS&quot;</span>
-<span class="sd">      - &quot;YYYY-MM-DDTHH:MM:SS+09:00&quot; / &quot;...-05:00&quot;</span>
-
-<span class="sd">    (hook-bypass: line-limit — board_v3.html refactor still queued.)</span>
+<span class="sd">    Returns ONLY the datetime so existing callers (the</span>
+<span class="sd">    ``deadline &gt;= scheduled`` check below) don&#39;t have to unpack the</span>
+<span class="sd">    repeater. New callers should use ``_parse_deadline_or_raise``</span>
+<span class="sd">    directly.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">_dt</span>
-
-    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="k">return</span> <span class="kc">None</span>
-    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">value</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
-        <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has invalid </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">value</span><span class="si">!r}</span><span class="s2">; &quot;</span>
-            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> must be an ISO-8601 string or absent&quot;</span>
-        <span class="p">)</span>
-    <span class="c1"># Accept bare dates (datetime.fromisoformat handles &quot;YYYY-MM-DD&quot; since</span>
-    <span class="c1"># Python 3.11) AND offset variants.</span>
-    <span class="k">try</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">_dt</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">fromisoformat</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
-    <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
-        <span class="c1"># Bare date fallback for older Python (3.10 ships date.fromisoformat</span>
-        <span class="c1"># but not datetime.fromisoformat with bare dates pre-3.11).</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">d</span> <span class="o">=</span> <span class="n">_dt</span><span class="o">.</span><span class="n">date</span><span class="o">.</span><span class="n">fromisoformat</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
-            <span class="k">return</span> <span class="n">_dt</span><span class="o">.</span><span class="n">datetime</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">year</span><span class="p">,</span> <span class="n">d</span><span class="o">.</span><span class="n">month</span><span class="p">,</span> <span class="n">d</span><span class="o">.</span><span class="n">day</span><span class="p">)</span>
-        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">)</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has unparseable </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">value</span><span class="si">!r}</span><span class="s2">; </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> must be ISO-8601 (e.g. &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;&#39;2026-06-15&#39; or &#39;2026-06-15T18:00+09:00&#39;)&quot;</span>
-            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+    <span class="n">dt</span><span class="p">,</span> <span class="n">_repeater</span> <span class="o">=</span> <span class="n">_parse_deadline_or_raise</span><span class="p">(</span>
+        <span class="n">value</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="n">source</span><span class="p">,</span> <span class="n">tid</span><span class="o">=</span><span class="n">tid</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="n">label</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">dt</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_validate_tasks</span><span class="p">(</span><span class="n">tasks</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span> <span class="n">source</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
@@ -622,10 +836,37 @@
         <span class="c1"># cannot precede the start of work. (hook-bypass: line-limit.)</span>
         <span class="n">deadline_raw</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;deadline&quot;</span><span class="p">)</span>
         <span class="n">scheduled_raw</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;scheduled&quot;</span><span class="p">)</span>
-        <span class="n">deadline_dt</span> <span class="o">=</span> <span class="n">_parse_iso_date_or_raise</span><span class="p">(</span>
+        <span class="n">deadlines_raw</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;deadlines&quot;</span><span class="p">)</span>
+        <span class="c1"># P4 PR3: mutual exclusion + per-entry validation for the new</span>
+        <span class="c1"># `deadlines` (list) field. Either `deadline` (scalar) OR</span>
+        <span class="c1"># `deadlines` (list) — not both — and the list must be non-empty</span>
+        <span class="c1"># if present (use the absent form for &quot;no deadlines&quot;).</span>
+        <span class="k">if</span> <span class="n">deadline_raw</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">deadlines_raw</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has BOTH deadline and deadlines &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;set; use one or the other (deadline = scalar single,&quot;</span>
+                <span class="sa">f</span><span class="s2">&quot; deadlines = list of multiple)&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">deadlines_raw</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">deadlines_raw</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has non-list deadlines &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">deadlines_raw</span><span class="si">!r}</span><span class="s2">; must be a list of ISO-8601 strings&quot;</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">deadlines_raw</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="s2">: task </span><span class="si">{</span><span class="n">tid</span><span class="si">!r}</span><span class="s2"> has empty deadlines list; &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;use the absent form for &#39;no deadlines&#39;&quot;</span>
+                <span class="p">)</span>
+            <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">entry</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">deadlines_raw</span><span class="p">):</span>
+                <span class="n">_parse_deadline_or_raise</span><span class="p">(</span>
+                    <span class="n">entry</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="n">source</span><span class="p">,</span> <span class="n">tid</span><span class="o">=</span><span class="n">tid</span><span class="p">,</span>
+                    <span class="n">label</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;deadlines[</span><span class="si">{</span><span class="n">j</span><span class="si">}</span><span class="s2">]&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+        <span class="n">deadline_dt</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">_parse_deadline_or_raise</span><span class="p">(</span>
             <span class="n">deadline_raw</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="n">source</span><span class="p">,</span> <span class="n">tid</span><span class="o">=</span><span class="n">tid</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;deadline&quot;</span>
         <span class="p">)</span>
-        <span class="n">scheduled_dt</span> <span class="o">=</span> <span class="n">_parse_iso_date_or_raise</span><span class="p">(</span>
+        <span class="n">scheduled_dt</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">_parse_deadline_or_raise</span><span class="p">(</span>
             <span class="n">scheduled_raw</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="n">source</span><span class="p">,</span> <span class="n">tid</span><span class="o">=</span><span class="n">tid</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;scheduled&quot;</span>
         <span class="p">)</span>
         <span class="k">if</span> <span class="p">(</span>
