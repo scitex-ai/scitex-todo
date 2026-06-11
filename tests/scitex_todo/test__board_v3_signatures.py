@@ -188,6 +188,40 @@ class TestP4MultiRecurringFE:
         assert "function _firstRecurringDeadline" in board_text
 
 
+class TestUIUX1HideDoneByDefault:
+    """Pins for UIUX-1 (operator priority via clew elevation 2026-06-12)."""
+
+    def test_state_filters_hide_done_present(self, board_text):
+        # `hideDone: true` MUST be in the STATE.filters init so the
+        # default-on hide gate persists across loads.
+        assert "hideDone: true" in board_text
+
+    def test_passes_guards_on_hide_done(self, board_text):
+        # The `passes()` filter MUST early-return false when
+        # hideDone is on AND the task is done AND no explicit
+        # status filter overrides it.
+        assert 'f.hideDone && !f.status && t.status === "done"' in board_text
+
+    def test_toggle_show_done_button_present(self, board_text):
+        # The filterbar exposes a "👁 show done" toggle so the
+        # operator can flip the gate at will.
+        assert 'id="t-show-done"' in board_text
+        assert "toggleShowDone" in board_text
+
+    def test_toggle_show_done_handler_defined(self, board_text):
+        assert "function toggleShowDone" in board_text
+
+    def test_hiding_done_chip_emitted(self, board_text):
+        # When the gate is ON, render a chip "🙈 hiding done" so
+        # the operator sees it's active even though the toggle is in
+        # default-off state.
+        assert "hiding done" in board_text
+
+    def test_clear_hide_done_branch_present(self, board_text):
+        # × on the chip MUST clear the gate (= "show done").
+        assert 'key === "hideDone"' in board_text
+
+
 # -----------------------------------------------------------------------------
 # P11b — Combobox consumer (PR #94)
 # -----------------------------------------------------------------------------

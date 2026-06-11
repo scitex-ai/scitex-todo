@@ -1508,6 +1508,17 @@
     <button id="t-block" class="toggle-block" onclick="toggleBlockingMe(event)">
       🚧 blocking me
     </button>
+    <!-- UIUX-1 (operator priority via clew elevation 2026-06-12).
+         `done` cards are HIDDEN BY DEFAULT (the board is the fleet's
+         active work queue; closed cards just add noise). This toggle
+         reveals them. Off (default) = hide done. On = include done in
+         the rendered column. An explicit f-status='done' filter
+         overrides this gate (operator drilling into done history). -->
+    <button id="t-show-done" class="toggle-block"
+            onclick="toggleShowDone(event)"
+            title="Show 'done' cards in the columns (hidden by default)">
+      👁 show done
+    </button>
     <!-- Hidden-cards dropdown (operator TG 381): replaces the simple
          "show hidden" toggle. Lists every hidden card by title +
          project with a one-click un-hide button. Last row is the
@@ -1717,7 +1728,15 @@
     let STATE = { graph: null, openId: null, lastMtime: null,
       filters: { project: "", host: "", status: "", blocker: "", agent: "",
                  blockingMe: false, showHidden: false,
-                 search: "", date: "" },
+                 search: "", date: "",
+                 // UIUX-1 (operator priority via clew elevation,
+                 // 2026-06-12): HIDE `done` cards by default. The board
+                 // is the fleet's active work queue; closed cards just
+                 // add noise. Filterbar `👁 show done` toggle flips
+                 // this to false to reveal them. An explicit
+                 // f-status='done' filter overrides this (operator
+                 // searching done history). (hook-bypass: line-limit.)
+                 hideDone: true },
       // P9 (lead brief 2026-06-12): per-column card sort. "default" = legacy
       // date-aware sort; other values pick a single field comparator.
       // (hook-bypass: line-limit — see REFACTORING.md.)
@@ -1772,6 +1791,12 @@
 
     function passes(t) {
       const f = STATE.filters;
+      // UIUX-1 (operator priority 2026-06-12): hide `done` by default.
+      // An explicit f-status='done' filter overrides this gate (the
+      // operator is intentionally drilling into done history), so the
+      // hide is applied ONLY when no explicit status filter is set.
+      // (hook-bypass: line-limit — see GITIGNORED/REFACTORING.md.)
+      if (f.hideDone && !f.status && t.status === "done") return false;
       if (f.project && (t.project || "Uncategorized") !== f.project) return false;
       if (f.host && (t.host || "") !== f.host) return false;
       if (f.status && bucket(t.status) !== f.status) return false;
@@ -2789,6 +2814,21 @@
           </span>`
         );
       }
+      // UIUX-1: surface the hide-done-by-default gate as a chip so the
+      // operator sees it's ON even though the toggle is in default-off
+      // state. Click × → flips to "show done" (same as the
+      // 👁 show done button). (hook-bypass: line-limit.)
+      if (STATE.filters.hideDone) {
+        chips.push(
+          `<span class="filt-chip" title="Click × to show 'done' cards">
+            <span class="filt-chip-key">🙈</span>
+            <span class="filt-chip-val">hiding done</span>
+            <button type="button" class="filt-chip-clear"
+              aria-label="Show 'done' cards"
+              onclick="clearOneFilter('hideDone')">×</button>
+          </span>`
+        );
+      }
       wrap.innerHTML = chips.join("");
       // Active-count + summary highlight
       const popoverKeys = ["project", "host", "status", "blocker", "agent", "date"];
@@ -2806,6 +2846,11 @@
         STATE.filters.blockingMe = false;
         const tb = document.getElementById("t-block");
         if (tb) tb.classList.remove("on");
+      } else if (key === "hideDone") {
+        // UIUX-1: × on the "🙈 hiding done" chip flips to show done.
+        STATE.filters.hideDone = false;
+        const tsd = document.getElementById("t-show-done");
+        if (tsd) tsd.classList.add("on");  // ON = "we ARE showing done"
       } else {
         STATE.filters[key] = "";
         const el = document.getElementById("f-" + key);
@@ -3031,6 +3076,20 @@
         e.stopPropagation();
       }
     });
+    // UIUX-1 (operator priority via clew elevation 2026-06-12).
+    // Flips the hide-done-by-default gate. Default OFF (button NOT .on)
+    // means hideDone=true → done cards filtered out by passes(). When
+    // the operator clicks, button gains .on, hideDone=false, done cards
+    // re-appear. The "🙈 hiding done" chip in #filt-chips reminds the
+    // operator of the active gate while it's on. (hook-bypass: line-limit.)
+    function toggleShowDone(e) {
+      STATE.filters.hideDone = !STATE.filters.hideDone;
+      // Button .on = "we ARE showing done" (= hideDone is OFF).
+      e.currentTarget.classList.toggle("on", !STATE.filters.hideDone);
+      renderActiveFilterChips();
+      render();
+    }
+
     function toggleBlockingMe(e) {
       STATE.filters.blockingMe = !STATE.filters.blockingMe;
       e.currentTarget.classList.toggle("on", STATE.filters.blockingMe);
