@@ -80,6 +80,29 @@ def provide_jobs() -> list[JobSpec]:
             restart_policy="on-failure",
             timeout_sec=30,
         ),
+        # P3b + P3d (lead-approved 2026-06-12) — wake-watcher. The push
+        # side of the self-consuming board loop: polls tasks.yaml,
+        # detects new/commented/changed tasks, POSTs /v1/turn to the
+        # owning agent's a2a port. Pairs with `scitex-todo next --mine`
+        # (pull side) + the agent self-consumption loop sub-skill (32).
+        # kind=service + Restart=on-failure: an absent watcher means
+        # operator drops a request and nobody wakes up — that's exactly
+        # the failure mode the loop exists to prevent, so a crash MUST
+        # be restarted automatically.
+        JobSpec(
+            name="scitex-todo.wake-watcher",
+            kind="service",
+            schedule="",
+            command="scitex-todo watch --push --interval 2",
+            description=(
+                "scitex-todo wake-watcher — push side of the "
+                "self-consuming board loop. POSTs /v1/turn to the "
+                "owning agent on new/commented/changed tasks."
+            ),
+            on_boot_sec="20s",
+            restart_policy="on-failure",
+            timeout_sec=30,
+        ),
     ]
 
 

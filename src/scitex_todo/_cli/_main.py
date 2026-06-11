@@ -257,7 +257,7 @@ def board_cmd(tasks_path: str | None, port: int, no_browser: bool) -> None:
 # --------------------------------------------------------------------------- #
 # Attach the §1a sub-groups (defined in sibling modules).                     #
 # --------------------------------------------------------------------------- #
-from . import _completion, _introspect, _mcp, _skills, _write  # noqa: E402
+from . import _completion, _introspect, _loop, _mcp, _skills, _write  # noqa: E402
 
 _introspect.register(main)
 _completion.register(main)
@@ -269,6 +269,12 @@ _write.register(main)
 # install). The module itself loads cleanly without fastmcp installed;
 # individual verbs print a clear install hint when fastmcp is missing.
 _mcp.register(main)
+# P3b + P3d (lead-approved 2026-06-12) — self-consuming board loop.
+# `scitex-todo next` returns the top runnable task for an agent;
+# `scitex-todo watch --push` is the push side that wakes agents on
+# new/commented/changed tasks. See _skills/scitex-todo/32_*.md for the
+# 7-step agent self-consumption pattern.
+_loop.register(main)
 
 
 if __name__ == "__main__":
