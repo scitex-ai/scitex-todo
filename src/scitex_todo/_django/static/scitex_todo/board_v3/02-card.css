@@ -1,0 +1,354 @@
+/* board_v3 — card visuals + status colors + search input + date pill + ctx menu
+ *
+ * Extracted from src/scitex_todo/_django/templates/scitex_todo/board_v3.html
+ * Owns: .card variants, .filt-search, .date-pill, .card-ctx-menu.
+ */
+
+/* === CARD ============================================================== */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 100ms ease;
+}
+.card:hover {
+  border-color: var(--purple);
+}
+.card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 4px;
+}
+/* Map the existing 7-status enum to the operator-co-designed 4 colors
+ * (working/waiting/done/blocked) until the schema migration lands —
+ * FE-side mapping per ADR-0007. */
+.card--working::before {
+  background: var(--green);
+}
+.card--waiting::before {
+  background: var(--amber);
+}
+.card--done::before {
+  background: var(--grey);
+}
+.card--blocked::before {
+  background: var(--red);
+  animation: pulse-red 1.8s ease-in-out infinite;
+}
+.card-pad {
+  margin-left: 6px;
+}
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.card-status {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  font-size: 0.65rem;
+}
+.card--working .card-status {
+  color: var(--green);
+}
+.card--waiting .card-status {
+  color: var(--amber);
+}
+.card--done .card-status {
+  color: var(--grey);
+}
+.card--blocked .card-status {
+  color: var(--red);
+}
+.card-last {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+.card-goal {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-style: italic;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-goal::before {
+  content: "🎯 ";
+  opacity: 0.7;
+}
+.card-task {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1.3;
+  word-wrap: break-word;
+}
+.card-bot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+.card-host {
+  background: rgba(110, 118, 134, 0.2);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: ui-monospace, monospace;
+}
+.card-blocker {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 0 7px;
+  background: rgba(244, 67, 54, 0.18);
+  color: var(--red);
+  border: 1px solid var(--red);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+.card-blocker--operator-decision {
+  background: rgba(255, 193, 7, 0.18);
+  color: var(--gold);
+  border-color: var(--gold);
+}
+.card-link {
+  background: rgba(76, 175, 80, 0.18);
+  color: var(--green);
+  padding: 0 6px;
+  border-radius: 3px;
+  font-size: 0.68rem;
+  font-family: ui-monospace, monospace;
+  text-decoration: none;
+  border: 1px solid var(--green);
+}
+/* Copy button — operator TG 375 share/copy. Minimal chrome so it
+ * doesn't crowd the other footer pills; emoji icon carries the
+ * affordance. */
+.card-copy-btn {
+  appearance: none;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+  line-height: 1.1;
+}
+.card-copy-btn:hover {
+  color: var(--text);
+  border-color: var(--purple);
+  background: rgba(109, 76, 173, 0.12);
+}
+
+/* Fuzzy-search input (operator TG 437/438) — narrow, lives in the
+ * filter bar next to the dropdowns; minimal chrome so it blends in. */
+/* Search-as-launcher (lead brief P1, 2026-06-12) — RESTORED 2026-06-12
+ * after the P10/P11 squash wave silently dropped these blocks. The
+ * search input is the PRIMARY go-to of the filterbar, not a tucked-
+ * away sidekick. Wider, taller, purple halo by default, brighter halo
+ * on focus, and a keyboard hint chip ("/ to focus") rendered as a
+ * sibling span to advertise the affordance even when the input is
+ * empty. Global "/" focuses it; Esc blurs. Pinned by the regression
+ * test ``tests/scitex_todo/test__board_v3_signatures.py``. */
+.filt-search {
+  min-width: 320px;
+  flex: 1 1 320px;
+  padding: 10px 14px !important;
+  font-size: 1rem;
+  font-weight: 500;
+  border: 2px solid var(--purple) !important;
+  border-radius: 10px !important;
+  background: rgba(109, 76, 173, 0.04);
+  box-shadow: 0 0 0 3px rgba(109, 76, 173, 0.1);
+  transition:
+    box-shadow 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
+}
+.filt-search::placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.filt-search:hover {
+  background: rgba(109, 76, 173, 0.08);
+  box-shadow: 0 0 0 4px rgba(109, 76, 173, 0.18);
+}
+.filt-search:focus {
+  outline: none;
+  border-color: var(--purple);
+  background: rgba(109, 76, 173, 0.12);
+  box-shadow: 0 0 0 4px rgba(109, 76, 173, 0.35);
+}
+.filt-search-kbd {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: -4px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  user-select: none;
+  pointer-events: none;
+}
+.filt-search-kbd kbd {
+  display: inline-block;
+  min-width: 14px;
+  padding: 0 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: var(--text);
+  background: rgba(109, 76, 173, 0.18);
+  border: 1px solid var(--purple);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+}
+.filt-search:focus + .filt-search-kbd,
+.filt-search:not(:placeholder-shown) + .filt-search-kbd {
+  opacity: 0;
+}
+
+/* Date-proximity pill (operator TG 440/442) — inline below the task
+ * title. Color by proximity bucket: overdue red, today amber-bright,
+ * within-3d red-warning, within-7d amber, within-30d blue, far plain. */
+.date-pill {
+  display: inline-block;
+  margin: 4px 0 0 0;
+  padding: 1px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+}
+.date-pill--overdue {
+  color: #fff;
+  background: var(--red);
+  border-color: var(--red);
+  box-shadow: 0 0 8px 1px rgba(244, 67, 54, 0.55);
+  animation: pulse-red 2s ease-in-out infinite;
+}
+.date-pill--today {
+  color: #000;
+  background: var(--gold);
+  border-color: var(--gold);
+  box-shadow: 0 0 8px 1px rgba(255, 193, 7, 0.55);
+}
+.date-pill--soon {
+  color: var(--red);
+  border-color: var(--red);
+  background: rgba(244, 67, 54, 0.12);
+}
+.date-pill--week {
+  color: var(--amber);
+  border-color: var(--amber);
+  background: rgba(255, 179, 0, 0.12);
+}
+.date-pill--month {
+  color: #4a90e2;
+  border-color: #4a90e2;
+  background: rgba(74, 144, 226, 0.12);
+}
+.date-pill--far {
+  color: var(--text-muted);
+}
+
+/* Right-click CRUD context menu (operator TG 432/433) — fixed-position
+ * floating menu anchored to the click point. Single-column item list
+ * with section headers + dividers. ESC / click-outside dismisses. */
+.card-ctx-menu {
+  position: fixed;
+  z-index: 130;
+  min-width: 220px;
+  max-width: 280px;
+  max-height: 460px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--purple);
+  border-radius: 8px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.5);
+  font-size: 0.84rem;
+}
+.card-ctx-title {
+  padding: 5px 8px 7px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-ctx-header {
+  padding: 6px 8px 2px;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.card-ctx-empty {
+  padding: 4px 12px 6px;
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.78rem;
+}
+.card-ctx-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+.card-ctx-item {
+  display: block;
+  width: 100%;
+  appearance: none;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 0.85rem;
+}
+.card-ctx-item:hover {
+  background: rgba(109, 76, 173, 0.18);
+  color: #fff;
+}
+.card-ctx-item--sub {
+  padding: 5px 10px 5px 18px;
+  font-size: 0.8rem;
+}
+.card-ctx-item--danger {
+  color: var(--red);
+}
+.card-ctx-item--danger:hover {
+  background: var(--red);
+  color: #fff;
+}
