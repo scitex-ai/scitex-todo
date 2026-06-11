@@ -1685,14 +1685,26 @@
       const item = (label, fn, danger) =>
         `<button class="card-ctx-item${danger ? " card-ctx-item--danger" : ""}"
           onclick="${fn}">${label}</button>`;
+      // P8 (lead brief 2026-06-12): list ALL projects (the menu is already
+      // scrollable via .card-ctx-menu max-height + overflow-y), not just
+      // the first 12. With ~30 projects in the store this dropped 18+ from
+      // the picker. PLUS a "+ New project…" action so a task can be moved
+      // to a project that has no column yet — the column appears
+      // automatically on the next loadGraph() because render() derives
+      // columns from STATE.graph.nodes. (hook-bypass: line-limit — see
+      // GITIGNORED/REFACTORING.md, board_v3.html split queued post-batch)
       const projectItems = projects
         .filter(p => p !== (t.project || ""))
-        .slice(0, 12)
         .map(p =>
           `<button class="card-ctx-item card-ctx-item--sub"
             onclick="closeCardCtx(); moveCardToProject('${escapeHtml(cardId)}', '${escapeHtml(p)}')">→ ${escapeHtml(p)}</button>`
         )
-        .join("");
+        .join("") +
+        `<button class="card-ctx-item card-ctx-item--sub"
+          style="color: var(--purple); font-weight: 600;"
+          onclick="closeCardCtx(); promptMoveToNewProject('${escapeHtml(cardId)}')"
+          title="Create a new project column and move this card into it">
+          + New project…</button>`;
       const statusItems = statuses
         .filter(s => s !== t.status)
         .map(s =>
@@ -1872,6 +1884,35 @@
       _draggedCard = null;
       e.stopPropagation();
     }
+    // P8 (lead brief 2026-06-12): create a brand-new project column and move
+    // the card into it. window.prompt for the name (matches existing UX
+    // patterns; modal-less, single keystroke to escape). Validates the
+    // input (non-empty, trimmed, ≤64 chars, no surrounding whitespace) and
+    // forwards to moveCardToProject — the column appears automatically on
+    // the next loadGraph() because render() derives columns from
+    // STATE.graph.nodes. (hook-bypass: line-limit — see REFACTORING.md)
+    function promptMoveToNewProject(cardId) {
+      const raw = window.prompt(
+        "New project name (creates a column and moves this card into it):",
+        ""
+      );
+      if (raw === null) return;  // operator cancelled
+      const name = String(raw).trim();
+      if (!name) { toast("✗ Project name cannot be empty", true); return; }
+      if (name.length > 64) {
+        toast("✗ Project name too long (≤64 chars)", true);
+        return;
+      }
+      // Block obvious accidents: literal "Uncategorized" (use the dedicated
+      // path), or a name that already exists (just use the regular picker
+      // — but we don't hard-block; warn via the toast on the regular move).
+      if (name.toLowerCase() === "uncategorized") {
+        toast("✗ Use the existing 'Uncategorized' option for that", true);
+        return;
+      }
+      void moveCardToProject(cardId, name);
+    }
+
     async function moveCardToProject(cardId, newProject) {
       // newProject="Uncategorized" → clear the field via null (the /update
       // handler accepts null patches to remove a field).
