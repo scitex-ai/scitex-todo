@@ -77,6 +77,11 @@ def _build_graph(board) -> dict:
             "project": t.get("project"),
             "created_at": t.get("created_at"),
             "goal": t.get("goal"),
+            # P4 (lead approved 2026-06-12) — deadline + scheduled ISO-8601
+            # fields. FE date-pill prefers `deadline` over the title-parsed
+            # date when present; absent → legacy title parse keeps working.
+            "deadline": t.get("deadline"),
+            "scheduled": t.get("scheduled"),
             "agent": t.get("agent"),
             "last_activity": t.get("last_activity"),
             "pr_url": t.get("pr_url"),

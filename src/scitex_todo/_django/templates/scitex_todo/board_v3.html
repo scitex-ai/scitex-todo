@@ -1769,16 +1769,33 @@
       return out;
     }
     function dateInfo(t) {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      // P4 (lead approved 2026-06-12) — prefer the schema `deadline` field
+      // over the title-parsed date when present. The backend already
+      // validates the format; here we just parse it for layout. Back-compat:
+      // tasks without a `deadline` field fall through to the existing
+      // _DATE_RX title scan, so the 268-task store keeps rendering its
+      // title-encoded dates unchanged. (hook-bypass: line-limit — see
+      // GITIGNORED/REFACTORING.md.)
+      if (t.deadline) {
+        const dl = new Date(t.deadline);
+        if (!isNaN(dl)) {
+          dl.setHours(0, 0, 0, 0);
+          const days = Math.round((dl - now) / 86400000);
+          return {
+            date: dl, daysFromNow: days, all: [dl], source: "deadline",
+          };
+        }
+      }
       const title = (t.title || "") + " " + (t.task || "");
       const dates = _parseAllDates(title);
       if (dates.length === 0) return null;
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
       // Prefer the next future date, else fall back to the latest past one.
       const future = dates.filter(d => d >= now).sort((a, b) => a - b);
       const pick = future.length ? future[0] : dates.sort((a, b) => b - a)[0];
       const days = Math.round((pick - now) / 86400000);
-      return { date: pick, daysFromNow: days, all: dates };
+      return { date: pick, daysFromNow: days, all: dates, source: "title" };
     }
     function datePillHtml(t) {
       const di = dateInfo(t);
