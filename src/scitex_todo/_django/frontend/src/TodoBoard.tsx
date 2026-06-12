@@ -17,16 +17,9 @@ import {
   nodeChildCount,
   partitionNodes,
 } from "./layout";
-import {
-  taskMatchesFilter,
-  useBoardStore,
-} from "./store/useBoardStore";
-import {
-  downloadText,
-  toCsv,
-  toJson,
-  toMarkdown,
-} from "./exportBoard";
+import { taskMatchesFilter, useBoardStore } from "./store/useBoardStore";
+import { parseSearchQuery } from "./searchQuery";
+import { downloadText, toCsv, toJson, toMarkdown } from "./exportBoard";
 import type { GraphPayload, StatusColor } from "./types/board";
 
 /** Segmented toggle between the graph and the flat table view. */
@@ -191,6 +184,45 @@ function Progress({ graph }: { graph: GraphPayload }) {
   );
 }
 
+/** Inline hint pills rendered above the toolbar search input. Mirrors the
+ * board_v3 (vanilla-template) hint-pill UX shipped with the
+ * GitHub-style qualifier syntax (operator TG 12315 / 12316, lead a2a
+ * 7dde227a, 2026-06-12). Empty unless the query contains a `<key>:`. */
+function QualifierHints({ query }: { query: string }) {
+  const parsed = useMemo(() => parseSearchQuery(query), [query]);
+  if (!parsed.hasQualifiers) return null;
+  return (
+    <div
+      className="stx-todo-toolbar__qhints"
+      aria-live="polite"
+      aria-label="Recognized search qualifiers"
+    >
+      {parsed.hints.map((h, i) => {
+        const cls = [
+          "stx-todo-toolbar__qhint",
+          h.unknown ? "stx-todo-toolbar__qhint--unknown" : "",
+          h.unknownValue ? "stx-todo-toolbar__qhint--unknown-value" : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+        const tip = h.unknown
+          ? `unknown qualifier — did you mean: ${h.suggestion}`
+          : h.unknownValue
+            ? `unknown value — try one of: ${h.suggestion}`
+            : `filter on ${h.label}`;
+        return (
+          <span key={`${h.label}-${i}`} className={cls} title={tip}>
+            <span className="stx-todo-toolbar__qhint-key">{h.label}:</span>
+            <span className="stx-todo-toolbar__qhint-val">
+              {h.value || "(empty)"}
+            </span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Search box + status-filter chips. Filters the graph (dim non-matches) and
  * the pool (hide non-matches) via the shared store filter. */
 function Toolbar({ graph }: { graph: GraphPayload }) {
@@ -218,11 +250,13 @@ function Toolbar({ graph }: { graph: GraphPayload }) {
       <input
         className="stx-todo-toolbar__search"
         type="search"
-        placeholder="Search (title / id / repo / note / comments)…"
+        placeholder="Search — try project:foo, status:blocked, kind:compute, …"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         aria-label="Search tasks"
+        title="Fuzzy match + GitHub-style qualifiers (project: / agent: / status: / kind: / parent: / scope: / id: / priority: / host:)."
       />
+      <QualifierHints query={query} />
       <div className="stx-todo-toolbar__chips">
         {statuses.map((s) => {
           const on = activeStatuses.includes(s);
@@ -303,7 +337,11 @@ function ExportGroup({ graph }: { graph: GraphPayload }) {
         type="button"
         className="stx-todo-chip stx-todo-chip--export"
         onClick={() =>
-          downloadText(toMarkdown(graph, visible), `${base}.md`, "text/markdown")
+          downloadText(
+            toMarkdown(graph, visible),
+            `${base}.md`,
+            "text/markdown",
+          )
         }
       >
         MD
@@ -311,7 +349,9 @@ function ExportGroup({ graph }: { graph: GraphPayload }) {
       <button
         type="button"
         className="stx-todo-chip stx-todo-chip--export"
-        onClick={() => downloadText(toCsv(graph, visible), `${base}.csv`, "text/csv")}
+        onClick={() =>
+          downloadText(toCsv(graph, visible), `${base}.csv`, "text/csv")
+        }
       >
         CSV
       </button>
@@ -319,7 +359,11 @@ function ExportGroup({ graph }: { graph: GraphPayload }) {
         type="button"
         className="stx-todo-chip stx-todo-chip--export"
         onClick={() =>
-          downloadText(toJson(graph, visible), `${base}.json`, "application/json")
+          downloadText(
+            toJson(graph, visible),
+            `${base}.json`,
+            "application/json",
+          )
         }
       >
         JSON
@@ -372,29 +416,31 @@ function CountBreakdown({ graph }: { graph: GraphPayload }) {
     : `Total store size + breakdown of what is on the canvas vs hidden in parent cards vs in the Pool.`;
 
   return (
-    <span
-      className="stx-todo-counts"
-      aria-label="Task counts"
-      title={tooltip}
-    >
+    <span className="stx-todo-counts" aria-label="Task counts" title={tooltip}>
       <span className="stx-todo-counts__chip stx-todo-counts__chip--total">
         Total {counts.total}
       </span>
-      <span className="stx-todo-counts__sep" aria-hidden="true">·</span>
+      <span className="stx-todo-counts__sep" aria-hidden="true">
+        ·
+      </span>
       <span
         className="stx-todo-counts__chip"
         title="Tasks rendered on the Canvas right now (this drill scope)"
       >
         Showing {counts.showing}
       </span>
-      <span className="stx-todo-counts__sep" aria-hidden="true">·</span>
+      <span className="stx-todo-counts__sep" aria-hidden="true">
+        ·
+      </span>
       <span
         className="stx-todo-counts__chip"
         title="Tasks hidden inside parent cards on the canvas — drill in to see"
       >
         Nested {counts.nested}
       </span>
-      <span className="stx-todo-counts__sep" aria-hidden="true">·</span>
+      <span className="stx-todo-counts__sep" aria-hidden="true">
+        ·
+      </span>
       <span
         className="stx-todo-counts__chip"
         title="Uncategorized / disconnected tasks in the Pool sidebar"
@@ -429,11 +475,11 @@ export function TodoBoard() {
     <div className="stx-todo-board">
       <header className="stx-todo-board__header">
         {/* "Board" region hint — operator UX 2026-06-06: "canvas/drill/pool/
-          * table/board とか UI 上にヒント的に書いておいて" — pairs with the
-          * "Drill:" label on the breadcrumb, "Canvas" on the React Flow root,
-          * and the "Pool —" prefix in the UncategorizedPool. The original
-          * "SciTeX Todo — dependency graph" still sits next to it as the
-          * full title; the new chip is just the at-a-glance region name. */}
+         * table/board とか UI 上にヒント的に書いておいて" — pairs with the
+         * "Drill:" label on the breadcrumb, "Canvas" on the React Flow root,
+         * and the "Pool —" prefix in the UncategorizedPool. The original
+         * "SciTeX Todo — dependency graph" still sits next to it as the
+         * full title; the new chip is just the at-a-glance region name. */}
         <span
           className="stx-todo-board__region"
           aria-hidden="true"

@@ -362,7 +362,7 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   /* In-place hover lift: brightness + a wider purple halo. NO ROTATE —
    * neighbouring cards stay aligned; the graph "underneath" remains
    * visible because nothing tilts over it. */
-  filter: brightness(1.10);
+  filter: brightness(1.1);
   /* Stronger halo than the static `parentNodeStyle` purple ring;
    * additive so the existing stacked-card shadows survive. */
   box-shadow:
@@ -391,7 +391,8 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   vertical-align: middle;
   pointer-events: none;
 }
-.stx-todo-flow .react-flow__node.stx-todo-node--parent:hover
+.stx-todo-flow
+  .react-flow__node.stx-todo-node--parent:hover
   .stx-todo-node__hover-hint {
   opacity: 1;
 }
@@ -540,6 +541,58 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
 
 .stx-todo-toolbar__search::placeholder {
   color: var(--stx-text-faint);
+}
+
+/* === Qualifier hint pills (operator TG 12315/12316, 2026-06-12) ===========
+ * Inline pills above the toolbar search input — each recognized
+ * qualifier (project:, status:, kind:, …) becomes one purple-accented
+ * pill so the operator SEES the parser's understanding as they type.
+ * Unknown qualifier → grey dashed; unknown enum value → amber dashed
+ * — the same visual idiom as the board_v3 (vanilla) template. */
+.stx-todo-toolbar__qhints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.stx-todo-toolbar__qhint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border: 1px solid var(--stx-accent, #6d4cad);
+  background: rgba(109, 76, 173, 0.12);
+  color: var(--stx-text);
+  cursor: help;
+  line-height: 1.5;
+}
+.stx-todo-toolbar__qhint-key {
+  color: var(--stx-accent, #6d4cad);
+  font-weight: 700;
+  text-transform: lowercase;
+}
+.stx-todo-toolbar__qhint-val {
+  opacity: 0.92;
+}
+.stx-todo-toolbar__qhint--unknown {
+  border-color: var(--stx-text-faint);
+  border-style: dashed;
+  background: rgba(110, 118, 134, 0.08);
+  color: var(--stx-text-faint);
+}
+.stx-todo-toolbar__qhint--unknown .stx-todo-toolbar__qhint-key {
+  color: var(--stx-text-faint);
+}
+.stx-todo-toolbar__qhint--unknown-value {
+  border-color: #ffb300;
+  border-style: dashed;
+  background: rgba(255, 179, 0, 0.08);
+}
+.stx-todo-toolbar__qhint--unknown-value .stx-todo-toolbar__qhint-key {
+  color: #ffb300;
 }
 
 .stx-todo-toolbar__chips {
@@ -1452,8 +1505,8 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
     0 0 0 3px #ffc107,
     0 0 0 6px #6d4cad,
     0 0 24px 8px rgba(255, 193, 7, 0.65),
-    0 0 36px 14px rgba(155, 127, 214, 0.50);
-  filter: brightness(1.10);
+    0 0 36px 14px rgba(155, 127, 214, 0.5);
+  filter: brightness(1.1);
 }
 
 /* Inline "← <blocker-id>" chip rendered AFTER the title on a status=blocked
@@ -1559,7 +1612,9 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 100ms ease, color 100ms ease;
+  transition:
+    background 100ms ease,
+    color 100ms ease;
 }
 .stx-todo-breadcrumb__back:hover {
   background: #6d4cad;
