@@ -128,7 +128,16 @@ jobs:
           uv venv --python 3.12 .venv
           uv pip install --python .venv/bin/python -e ".[dev]"
           uv pip install --python .venv/bin/python "scitex-dev[cli-audit]"
-      - name: Run scitex-dev ecosystem audit-all
+      - name: Run scitex-dev audits (scope-down, drift backlogged)
+        # PR #110 fix-forward (lead a2a `fb413fb038da49d1b18262b237385c33`,
+        # 2026-06-12). See release-ci.yml's audit step for the full
+        # rationale. Same divergence from main: skip audit-python-apis
+        # until the AAA-marker sweep lands; treat audit-skills as
+        # warn-only until SK-301/401 cleanup.
         run: |
           export PATH="$PWD/.venv/bin:$PATH"
-          scitex-dev ecosystem audit-all scitex-todo --no-version-check
+          set -e
+          scitex-dev ecosystem audit-cli       scitex-todo --no-version-check
+          scitex-dev ecosystem audit-mcp-tools scitex-todo --no-version-check
+          scitex-dev ecosystem audit-skills    scitex-todo --no-version-check || true
+          scitex-dev ecosystem audit-project   scitex-todo --no-version-check

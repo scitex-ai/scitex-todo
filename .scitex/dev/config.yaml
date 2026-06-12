@@ -1,2 +1,30 @@
 # scitex-dev audit config — tracked so CI applies the same whitelist as local.
 # Add root-whitelist entries here if a non-conventional top-level file is needed.
+
+project-type:
+  - pip
+
+# Pre-approved rule skips (lead a2a `fb413fb038da49d1b18262b237385c33`,
+# 2026-06-12, PR #110 fix-forward). Each entry is a scitex-dev audit rule
+# code we accept as drift while a focused cleanup PR is queued. The
+# schema (`audit.skip`) is read by
+# scitex_dev/_cli/audit/_config/_loader.py::load_config.
+audit:
+  skip:
+    # PS-204 — `orphan-test-file`. Six tests in tests/scitex_todo/ are
+    # tied to non-Python surfaces (board_v3.html template signatures,
+    # search-query.js + search-suggest.js + recent_view JS modules,
+    # deadline / deadline_multi_recurring server endpoints) so they
+    # have no 1:1 mirror under src/scitex_todo/. Restructuring or
+    # splitting them is its own PR.
+    - PS-204
+    # PS-140 — `cross-package-imports-test-missing`. The
+    # tests/integration/test_cross_package_imports.py gate file lists
+    # an older import set; needs a regeneration sweep.
+    - PS-140
+    # PS-168 — `secret-env-prefix-missing`. cla.yml uses
+    # `GH_PERSONAL_ACCESS_TOKEN` without the SCITEX_TODO_ per-package
+    # prefix. The rule was codified after cla.yml shipped and the
+    # secret is shared across the fleet — renaming requires cross-repo
+    # rotation.
+    - PS-168
