@@ -29,6 +29,7 @@ from scitex_todo._throughput import (
     NOTIFY_OPEN_CAP,
     GateInfo,
     GroupStats,
+    _parse_iso,
     aggregate,
     build_notify_body,
     classify,
@@ -343,3 +344,41 @@ class TestNotifyBody:
         body = build_notify_body("a", tasks, now=now)
         # Assert
         assert "done 1d ago" in body
+
+    def test_naive_last_activity_does_not_crash(self):
+        # Regression guard: a tasks.yaml row whose `last_activity` was
+        # serialized WITHOUT a timezone suffix (e.g. "2026-06-08T00:42:30")
+        # must not raise `TypeError: can't subtract offset-naive and
+        # offset-aware datetimes` inside build_notify_body. Before the fix
+        # this single naive row killed the entire --notify / --nudge-quiet
+        # cron loop on the first hit, so no POSTs ever fired (proj-scitex-
+        # todo P3a(c) pilot, 2026-06-13).
+        # Arrange
+        now = _utc(2026, 6, 13, 0, 0, 0)
+        naive_ts = "2026-06-08T00:42:30"  # NO 'Z', NO offset — naive.
+        tasks = [
+            {"id": "naive", "title": "Naive last_activity",
+             "status": "in_progress", "last_activity": naive_ts,
+             "agent": "a"},
+        ]
+        # Act
+        body = build_notify_body("a", tasks, now=now)
+        # Assert — composition succeeded (header present); no crash.
+        assert body.startswith("a ·")
+
+
+# --------------------------------------------------------------------------- #
+# _parse_iso                                                                  #
+# --------------------------------------------------------------------------- #
+
+
+class TestParseIso:
+    """Naive-vs-aware coercion (regression for the P3a(c) cron crash)."""
+
+    def test_naive_string_coerces_to_utc_aware(self):
+        # Arrange
+        naive_ts = "2026-06-08T00:42:30"
+        # Act
+        parsed = _parse_iso(naive_ts)
+        # Assert
+        assert parsed.tzinfo is _dt.timezone.utc

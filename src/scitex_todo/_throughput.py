@@ -56,15 +56,29 @@ DEFAULT_STALE_HOURS = 24
 
 
 def _parse_iso(ts: str | None) -> _dt.datetime | None:
-    """Lenient ISO-8601 parser — returns None on missing / unparseable."""
+    """Lenient ISO-8601 parser — returns None on missing / unparseable.
+
+    Always returns a **UTC-aware** ``datetime``. Strings without an explicit
+    timezone (e.g. ``"2026-06-08T00:42:30"``) are treated as UTC — the
+    canonical assumption for ``tasks.yaml`` timestamps. Without this coercion
+    a single naive ``last_activity`` field anywhere in the store makes the
+    subsequent ``_now_utc() - parsed`` subtraction raise
+    ``TypeError: can't subtract offset-naive and offset-aware datetimes``
+    and kills the entire ``--notify`` / ``--nudge-quiet`` loop before any
+    POST happens (the cron then dies silently every tick — proj-scitex-todo
+    P3a(c) pilot, 2026-06-13).
+    """
     if not ts:
         return None
     try:
         # Accept both 'Z' suffix and explicit offset.
         s = ts.replace("Z", "+00:00")
-        return _dt.datetime.fromisoformat(s)
+        parsed = _dt.datetime.fromisoformat(s)
     except (TypeError, ValueError):
         return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=_dt.timezone.utc)
+    return parsed
 
 
 def _now_utc() -> _dt.datetime:
