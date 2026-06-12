@@ -43,6 +43,11 @@ docs/sphinx/_build/
 !.scitex/dev/
 .scitex/dev/*
 !.scitex/dev/config.yaml
+# PR #110 fix-forward (lead a2a `bbca090684ab4cb1a0fdc26008dec066`,
+# 2026-06-12): scitex-dev audit-cli reads per-package vocab additions
+# from `.scitex/dev/cli-audit-dict.yaml`. The file must be tracked so
+# CI sees the same whitelist as local — gitignore exception added.
+!.scitex/dev/cli-audit-dict.yaml
 # Track the todo runtime dir's seed files; ignore its actual contents.
 !.scitex/todo/
 .scitex/todo/*
