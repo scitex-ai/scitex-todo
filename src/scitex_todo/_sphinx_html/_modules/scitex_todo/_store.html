@@ -237,15 +237,75 @@
     <span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_match</span><span class="p">(</span><span class="n">task</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">scope</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">assignee</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
-           <span class="n">status</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Three-way string-equality filter. Any argument that is None is</span>
-<span class="sd">    treated as &quot;no constraint&quot;.&quot;&quot;&quot;</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_match</span><span class="p">(</span>
+    <span class="n">task</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">scope</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">assignee</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">status</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">statuses</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">agent</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">project</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">host</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">blocker</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">kind</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">id_prefix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">blocking_me</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;String-equality + predicate filter. ``None`` / empty = no constraint.</span>
+
+<span class="sd">    Filter semantics (per PR #66 / ADR-0008 D2 + D10):</span>
+<span class="sd">      - ``status`` (single) and ``statuses`` (multi) are OR-combined: a</span>
+<span class="sd">        row matches if its status is in ``set([status]) ∪ set(statuses)``</span>
+<span class="sd">        (after dropping ``None``).</span>
+<span class="sd">      - ``blocker=&quot;__none&quot;`` matches rows with no blocker field (the</span>
+<span class="sd">        explicit &quot;no blocker named&quot; filter the board&#39;s `/graph` uses).</span>
+<span class="sd">      - ``kind=None`` is NO filter; ``kind=&quot;task&quot;`` matches both</span>
+<span class="sd">        explicit ``&quot;task&quot;`` AND ``absent`` rows (since absent ≡ &quot;task&quot;</span>
+<span class="sd">        per ADR-0002).</span>
+<span class="sd">      - ``id_prefix`` is a substring match on the front of ``id`` —</span>
+<span class="sd">        the cheap &quot;find my project&#39;s rows&quot; without remembering exact</span>
+<span class="sd">        ids.</span>
+<span class="sd">      - ``blocking_me`` is the BLOCKING-YOU predicate (board-v3 panel):</span>
+<span class="sd">        ``status == &quot;blocked&quot; AND blocker == &quot;operator-decision&quot;``.</span>
+<span class="sd">        Composes with the other filters via AND.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">scope</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;scope&quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="n">scope</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">False</span>
     <span class="k">if</span> <span class="n">assignee</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;assignee&quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="n">assignee</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">False</span>
-    <span class="k">if</span> <span class="n">status</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="n">status</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">agent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;agent&quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="n">agent</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">project</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;project&quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="n">project</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">host</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;host&quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="n">host</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">blocker</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">blocker</span> <span class="o">==</span> <span class="s2">&quot;__none&quot;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;blocker&quot;</span><span class="p">):</span>
+                <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">elif</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;blocker&quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="n">blocker</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">kind</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">eff</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;kind&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;task&quot;</span>
+        <span class="k">if</span> <span class="n">eff</span> <span class="o">!=</span> <span class="n">kind</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">id_prefix</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">str</span><span class="p">(</span><span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">id_prefix</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="c1"># Union the single + multi status constraints. None and empty list</span>
+    <span class="c1"># collapse to &quot;no constraint.&quot; When BOTH are provided, the union is</span>
+    <span class="c1"># checked (so callers can extend an existing single-status default).</span>
+    <span class="n">allowed</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">status</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">allowed</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">status</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">statuses</span><span class="p">:</span>
+        <span class="n">allowed</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">statuses</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">allowed</span> <span class="ow">and</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">allowed</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">blocking_me</span> <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span>
+        <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;blocked&quot;</span>
+        <span class="ow">and</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;blocker&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;operator-decision&quot;</span>
+    <span class="p">):</span>
         <span class="k">return</span> <span class="kc">False</span>
     <span class="k">return</span> <span class="kc">True</span>
 
@@ -441,14 +501,34 @@
     <span class="n">scope</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">assignee</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">status</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="c1"># PR #66 additions per ADR-0008 D2 / D10:</span>
+    <span class="n">statuses</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">agent</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">project</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">host</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">blocker</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">kind</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">id_prefix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">blocking_me</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Snapshot the store, then filter by scope / assignee / status.</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Snapshot the store, then filter by any combination of fields.</span>
 
 <span class="sd">    Filter semantics:</span>
 <span class="sd">    - ``scope=None`` (default): use ``$SCITEX_TODO_SCOPE`` if set, else</span>
 <span class="sd">      no filter. ``scope=&quot;&quot;`` opts out of the env default explicitly.</span>
-<span class="sd">    - ``assignee`` / ``status``: ``None`` = no filter; any string = exact</span>
-<span class="sd">      match. (Generic Req 8 — no fuzzy / glob; callers compose.)</span>
+<span class="sd">    - ``assignee`` / ``agent`` / ``project`` / ``host`` / ``status``:</span>
+<span class="sd">      ``None`` = no filter; any string = exact match. (Generic Req 8 —</span>
+<span class="sd">      no fuzzy / glob; callers compose.)</span>
+<span class="sd">    - ``statuses`` (list) AND ``status`` (single) are OR-combined.</span>
+<span class="sd">    - ``blocker=&quot;__none&quot;`` matches rows with no blocker field; any other</span>
+<span class="sd">      value is an exact match (closed-enum gating at the CLI layer).</span>
+<span class="sd">    - ``kind=&quot;task&quot;`` matches both explicit ``&quot;task&quot;`` AND absent rows</span>
+<span class="sd">      (since absent ≡ ``&quot;task&quot;`` per ADR-0002).</span>
+<span class="sd">    - ``id_prefix`` matches the front of ``id`` (cheap project-rollup</span>
+<span class="sd">      lookup without exact id).</span>
+<span class="sd">    - ``blocking_me=True`` is the board&#39;s BLOCKING-YOU predicate</span>
+<span class="sd">      (``status == &quot;blocked&quot; AND blocker == &quot;operator-decision&quot;``);</span>
+<span class="sd">      composes with the other filters via AND.</span>
 
 <span class="sd">    The returned list contains fresh dicts, safe to mutate without</span>
 <span class="sd">    affecting the on-disk store (no save here).</span>
@@ -459,7 +539,20 @@
     <span class="k">return</span> <span class="p">[</span>
         <span class="nb">dict</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tasks</span>
-        <span class="k">if</span> <span class="n">_match</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="n">scope_eff</span><span class="p">,</span> <span class="n">assignee</span><span class="o">=</span><span class="n">assignee</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="n">status</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">_match</span><span class="p">(</span>
+            <span class="n">t</span><span class="p">,</span>
+            <span class="n">scope</span><span class="o">=</span><span class="n">scope_eff</span><span class="p">,</span>
+            <span class="n">assignee</span><span class="o">=</span><span class="n">assignee</span><span class="p">,</span>
+            <span class="n">status</span><span class="o">=</span><span class="n">status</span><span class="p">,</span>
+            <span class="n">statuses</span><span class="o">=</span><span class="n">statuses</span><span class="p">,</span>
+            <span class="n">agent</span><span class="o">=</span><span class="n">agent</span><span class="p">,</span>
+            <span class="n">project</span><span class="o">=</span><span class="n">project</span><span class="p">,</span>
+            <span class="n">host</span><span class="o">=</span><span class="n">host</span><span class="p">,</span>
+            <span class="n">blocker</span><span class="o">=</span><span class="n">blocker</span><span class="p">,</span>
+            <span class="n">kind</span><span class="o">=</span><span class="n">kind</span><span class="p">,</span>
+            <span class="n">id_prefix</span><span class="o">=</span><span class="n">id_prefix</span><span class="p">,</span>
+            <span class="n">blocking_me</span><span class="o">=</span><span class="n">blocking_me</span><span class="p">,</span>
+        <span class="p">)</span>
     <span class="p">]</span></div>
 
 
