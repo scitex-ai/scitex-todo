@@ -14,6 +14,21 @@
   overflow: hidden;
   cursor: pointer;
   transition: border-color 100ms ease;
+  /* CRITICAL: cards live inside `.col-body` which is `display: flex;
+   * flex-direction: column` bounded by `.main { height: 100% }` (added in
+   * 22b6a6f to keep the BLOCKING-YOU aside from stretching). Without
+   * `flex-shrink: 0` here, every card defaults to flex-shrink:1 and the
+   * column's bounded height compresses every card down to ~18-40 px —
+   * cards render as empty pills (operator-reported regression in v0.5.3
+   * and v0.5.4: the "business レーンの空ピル" / "全レーン card not rendered"
+   * symptom). Cards must keep their natural content height; `.col-body`
+   * already has `overflow-y: auto` so excess content scrolls inside the
+   * column instead of squashing.
+   *
+   * Diagnosis (PR #110, board v0.5.6 — fix verified live on :8051 by
+   * injecting this rule via DevTools: every lane's first card grew from
+   * 18-42 px back to 111-150 px). */
+  flex-shrink: 0;
 }
 .card:hover {
   border-color: var(--purple);

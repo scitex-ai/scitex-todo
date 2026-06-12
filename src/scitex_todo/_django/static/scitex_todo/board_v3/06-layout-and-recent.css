@@ -1,0 +1,244 @@
+/* board_v3 — Layout switcher + Recent sort visuals + Table/Graph
+ * layouts + NEW badge.
+ *
+ * Lead design ruling 2026-06-12 (operator TG 12461): the board has
+ * two orthogonal axes — LAYOUT (Graph | Column | Table, sit in the
+ * filterbar) and TIME (Recent sort mode in the Sort dropdown). This
+ * file owns the visuals for both: segment buttons, recent-count
+ * pill, NEW badge, the flat Table view, and the mermaid Graph wrap.
+ *
+ * Sibling files: 01-filterbar.css (filterbar grid), 02-card.css
+ * (per-card kanban visuals).
+ */
+
+/* === LAYOUT switcher (segmented control in the filterbar) =============== */
+.filt-layout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+}
+.filt-layout-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.filt-layout-seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--col-bg);
+}
+.filt-layout-btn {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition:
+    background 100ms ease,
+    color 100ms ease;
+  border-right: 1px solid var(--border);
+}
+.filt-layout-btn:last-child {
+  border-right: 0;
+}
+.filt-layout-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+.filt-layout-btn--on {
+  background: var(--purple);
+  color: #fff;
+  font-weight: 700;
+}
+.filt-layout-btn--on:hover {
+  background: var(--purple);
+  color: #fff;
+}
+
+/* === Recent-count pill (always visible when N > 0) ===================== */
+.filt-recent-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--gold);
+  background: rgba(255, 193, 7, 0.10);
+  color: var(--gold);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 100ms ease,
+    transform 100ms ease;
+}
+.filt-recent-count:hover {
+  background: rgba(255, 193, 7, 0.20);
+  transform: scale(1.03);
+}
+.filt-recent-count--on {
+  background: var(--gold);
+  color: #000;
+  box-shadow: 0 0 8px 1px rgba(255, 193, 7, 0.45);
+}
+
+/* === NEW badge on cards (sort=recent + <24h) =========================== */
+.card-new-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #000;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  margin-left: 6px;
+  text-transform: uppercase;
+  box-shadow: 0 0 6px 1px rgba(255, 193, 7, 0.45);
+}
+
+/* === TABLE layout (flat rows view) ===================================== */
+/* When `#columns` carries data-layout="table" we suppress the flex strip
+ * styling from 01-filterbar.css so the table can flow normally. */
+.columns[data-layout="table"] {
+  display: block;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding: 12px;
+}
+.tbl-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  background: var(--col-bg);
+}
+.tbl thead th {
+  position: sticky;
+  top: 0;
+  background: var(--col-bg);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 2px solid var(--border);
+  z-index: 1;
+}
+.tbl tbody td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.tbl tbody tr.tbl-row {
+  cursor: pointer;
+  transition: background 80ms ease;
+}
+.tbl tbody tr.tbl-row:hover {
+  background: rgba(109, 76, 173, 0.10);
+}
+.tbl-row--working td.tbl-status {
+  color: var(--green);
+}
+.tbl-row--waiting td.tbl-status {
+  color: var(--amber);
+}
+.tbl-row--blocked td.tbl-status {
+  color: var(--red);
+}
+.tbl-row--done td.tbl-status {
+  color: var(--grey);
+}
+.tbl td.tbl-title {
+  font-weight: 600;
+  color: #fff;
+  max-width: 640px;
+}
+.tbl td.tbl-project {
+  color: var(--text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+}
+.tbl td.tbl-prio {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.tbl td.tbl-last {
+  color: var(--text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.tbl-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+.tbl-status-dot--working {
+  background: var(--green);
+}
+.tbl-status-dot--waiting {
+  background: var(--amber);
+}
+.tbl-status-dot--blocked {
+  background: var(--red);
+}
+.tbl-status-dot--done {
+  background: var(--grey);
+}
+.tbl-blocker {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+}
+.tbl-blocker--operator-decision {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(255, 193, 7, 0.10);
+  font-weight: 700;
+}
+
+/* === GRAPH layout (mermaid canvas) ===================================== */
+.columns[data-layout="graph"] {
+  display: block;
+  overflow: auto;
+  padding: 12px;
+}
+.graph-wrap {
+  width: 100%;
+}
+.graph-hint {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-style: italic;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+.graph-wrap .mermaid {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px;
+  overflow: auto;
+}
