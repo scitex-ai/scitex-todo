@@ -90,7 +90,45 @@ DEFAULT_SAC_LISTEN = "http://127.0.0.1:7878"
 #: would stall the whole cron sweep.
 SAC_REGISTRY_TIMEOUT_S = 2.0
 
-DEFAULT_TIMEOUT_S = 5.0
+#: Default per-POST timeout in seconds. Env-overridable.
+#:
+#: Why 30 (not 5):
+#:
+#: SAC's ``/v1/turn`` runs the agent's turn SYNCHRONOUSLY before
+#: responding (up to its own ``timeout_s=120`` budget). With the prior
+#: 5 s client cap, the cron's POST timed out before the receiver had
+#: even queued the turn — proj-scitex-dev's ``session.jsonl`` had ZERO
+#: nudge entries after the wire-shape fix landed (lead a2a
+#: ``0b59485f`` 2026-06-13, P3a(c) pilot).
+#:
+#: There is no fast-ack path on ``/v1/turn`` (no ``wait=false`` /
+#: ``dispatch_only=true`` / ``async=true`` flag — probed); so until
+#: the receiver grows one, the pragmatic stopgap is a longer client
+#: budget AND treating "we waited a long time + the response stream
+#: never closed" as DISPATCHED rather than failure. 30 s lets typical
+#: short turns complete cleanly; longer turns flip to
+#: ``reason="dispatched"`` (still ok=True) so the cron doesn't fail
+#: the whole batch over one slow turn.
+#:
+#: Callers can override per-call with ``deliver(..., timeout=120.0)``
+#: when they need the receiver's full response payload.
+ENV_PUSH_TIMEOUT_S = "SCITEX_TODO_PUSH_TIMEOUT_S"
+DEFAULT_TIMEOUT_S = 30.0
+
+
+def _default_timeout_s() -> float:
+    """Lookup the per-POST timeout, honoring ``ENV_PUSH_TIMEOUT_S``.
+
+    Done at call-time (not module-import time) so tests can override
+    the env between cases without re-importing the module.
+    """
+    raw = os.environ.get(ENV_PUSH_TIMEOUT_S)
+    if raw is None:
+        return DEFAULT_TIMEOUT_S
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_TIMEOUT_S
 
 
 def _slug(agent: str) -> str:
@@ -237,9 +275,18 @@ def deliver(
     kind: str = "notify",
     task_id: str | None = None,
     store_path: str | None = None,
-    timeout: float = DEFAULT_TIMEOUT_S,
+    timeout: float | None = None,
 ) -> dict:
     """Deliver ``body`` to ``agent`` via the configured turn URL.
+
+    ``timeout`` defaults to :data:`DEFAULT_TIMEOUT_S` (env-overridable
+    via ``SCITEX_TODO_PUSH_TIMEOUT_S``). The receiver's ``/v1/turn``
+    runs the turn synchronously, so a client read-timeout does NOT
+    imply the request was lost — the receiver may still be processing
+    it. We treat the timeout case as DISPATCHED success (``ok=True,
+    reason="dispatched"``) so a single slow turn can't fail the whole
+    nudge batch. Callers that need the receiver's full response payload
+    can pass an explicit long ``timeout`` (e.g. 120.0).
 
     Returns a result dict suitable for inclusion in a JsonResponse:
 
@@ -250,11 +297,14 @@ def deliver(
         "kind": str,
         "url": "<url>" | None,
         "status": <http-status> or None,
-        "reason": <one of "delivered" | "no-turn-url-configured"
-                          | "http-error" | "transport-error"
-                          | "dry-run">,
+        "reason": <one of "delivered" | "dispatched" |
+                          "no-turn-url-configured" |
+                          "http-error" | "transport-error" |
+                          "dry-run">,
       }
     """
+    if timeout is None:
+        timeout = _default_timeout_s()
     # Dev / test escape hatch.
     if os.environ.get(ENV_DRY_RUN) == "1":
         print(
@@ -329,7 +379,41 @@ def deliver(
             "ok": False, "agent": agent, "wire": "http", "kind": kind,
             "url": url, "status": e.code, "reason": "http-error",
         }
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
+    except TimeoutError as e:
+        # Receiver's /v1/turn runs the turn synchronously up to ~120 s;
+        # we wait `timeout` (default 30 s, env-overridable). If we hit
+        # the cap, the request body was already fully sent in the first
+        # second or two of that budget — the receiver is mid-turn, NOT
+        # unreachable. Treat as DISPATCHED success so the cron doesn't
+        # fail the whole nudge batch over one slow turn (lead a2a
+        # `0b59485f`, 2026-06-13).
+        logger.warning(
+            "[scitex-todo._push] %s read-timeout after %.0fs for agent=%s "
+            "— request body was fully sent; treating as dispatched. %s",
+            url, timeout, agent, e,
+        )
+        return {
+            "ok": True, "agent": agent, "wire": "http", "kind": kind,
+            "url": url, "status": None, "reason": "dispatched",
+            "error": str(e),
+        }
+    except (urllib.error.URLError, OSError) as e:
+        # Distinguish a wrapped TimeoutError (the urlopen socket layer
+        # often raises a TimeoutError nested inside URLError) from a real
+        # transport failure (connection refused / DNS / SSL handshake).
+        nested = getattr(e, "reason", None)
+        if isinstance(nested, TimeoutError) or "timed out" in str(e):
+            logger.warning(
+                "[scitex-todo._push] %s read-timeout after %.0fs for "
+                "agent=%s — request body was fully sent; treating as "
+                "dispatched. %s",
+                url, timeout, agent, e,
+            )
+            return {
+                "ok": True, "agent": agent, "wire": "http", "kind": kind,
+                "url": url, "status": None, "reason": "dispatched",
+                "error": str(e),
+            }
         logger.error(
             "[scitex-todo._push] transport error to %s for agent=%s: %s",
             url, agent, e,
@@ -371,6 +455,7 @@ def announce_missing_at_boot(tasks: list[dict]) -> list[str]:
 __all__ = [
     "ENV_MAP",
     "ENV_DRY_RUN",
+    "ENV_PUSH_TIMEOUT_S",
     "PER_AGENT_PREFIX",
     "ENV_SAC_LISTEN",
     "ENV_SAC_BEARER",
