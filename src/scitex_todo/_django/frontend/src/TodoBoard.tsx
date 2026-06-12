@@ -20,6 +20,7 @@ import {
 } from "./layout";
 import { taskMatchesFilter, useBoardStore } from "./store/useBoardStore";
 import { parseSearchQuery } from "./searchQuery";
+import { SearchAutocomplete } from "./SearchAutocomplete";
 import { downloadText, toCsv, toJson, toMarkdown } from "./exportBoard";
 import type { GraphPayload, StatusColor } from "./types/board";
 
@@ -259,15 +260,17 @@ function Toolbar({ graph }: { graph: GraphPayload }) {
 
   return (
     <div className="stx-todo-toolbar">
-      <input
-        className="stx-todo-toolbar__search"
-        type="search"
-        placeholder="Search — try project:foo, status:blocked, kind:compute, …"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        aria-label="Search tasks"
-        title="Fuzzy match + GitHub-style qualifiers (project: / agent: / status: / kind: / parent: / scope: / id: / priority: / host:)."
-      />
+      <SearchAutocomplete query={query} setQuery={setQuery} nodes={graph.nodes}>
+        <input
+          className="stx-todo-toolbar__search"
+          type="search"
+          placeholder="Search — try project:foo, status:blocked, kind:compute, …"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="Search tasks"
+          title="Fuzzy match + GitHub-style qualifiers (project: / agent: / status: / kind: / parent: / scope: / id: / priority: / host:). Tab completes the qualifier or value under the cursor."
+        />
+      </SearchAutocomplete>
       <QualifierHints query={query} />
       <div className="stx-todo-toolbar__chips">
         {statuses.map((s) => {
