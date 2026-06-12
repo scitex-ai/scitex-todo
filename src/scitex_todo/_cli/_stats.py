@@ -108,7 +108,7 @@ def _push_notify(agent: str, body: str) -> str:
     return "stdout"
 
 
-@click.command(name="stats")
+@click.command(name="print-stats")
 @click.option(
     "--by",
     type=click.Choice(["agent", "project", "host"]),
@@ -154,6 +154,12 @@ def stats_cmd(
     completion rate so completion > creation discipline holds across
     the fleet. ``--notify`` pushes the per-agent summary so receivers
     self-correct hourly.
+
+    \b
+    Example:
+      $ scitex-todo print-stats --by agent --since 2026-06-01
+      $ scitex-todo print-stats --by agent --notify
+      $ scitex-todo print-stats --by project --format json
     """
     path = resolve_tasks_path(tasks_path)
     tasks = load_tasks(path)
@@ -228,12 +234,25 @@ def _is_ci_speedup(title: str) -> bool:
     help="Print the planned actions without executing.",
 )
 @click.option(
+    "-y",
+    "--yes",
+    "assume_yes",
+    is_flag=True,
+    help=(
+        "Skip the interactive confirmation. Required when the planned "
+        "actions would mutate the store and stdin is a TTY; harmless on "
+        "scripted / cron invocations (stdin not a TTY → auto-yes)."
+    ),
+)
+@click.option(
     "--tasks",
     "tasks_path",
     default=None,
     help="Path to tasks.yaml (default: project -> user -> bundled example).",
 )
-def sync_github_cmd(since: str | None, dry_run: bool, tasks_path: str | None) -> None:
+def sync_github_cmd(
+    since: str | None, dry_run: bool, assume_yes: bool, tasks_path: str | None
+) -> None:
     """Permanent GitHub→board sync.
 
     Pulls merged PRs across ``ywatanabe1989/*`` since the given date
@@ -246,12 +265,28 @@ def sync_github_cmd(since: str | None, dry_run: bool, tasks_path: str | None) ->
 
     The aggregation function is shared with ``stats`` and the WIP gate
     via :mod:`scitex_todo._throughput`.
+
+    \b
+    Example:
+      $ scitex-todo sync-github --dry-run
+      $ scitex-todo sync-github --since 2026-06-01 -y
+      $ scitex-todo sync-github -y                  # cron / scripted use
     """
     # Defer the imports to avoid pulling `_store` at module load (some
     # call paths import this module without needing the write side).
     from .._store import add_task, update_task
 
     target_since = since or datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+
+    # Refuse-without-yes gate per audit §2 (mutating verbs must NOT
+    # prompt interactively — they refuse and tell the operator what
+    # flag to pass). Both --yes and --dry-run are explicit opt-ins;
+    # bare invocation exits non-zero.
+    if not dry_run and not assume_yes:
+        raise click.ClickException(
+            "sync-github mutates the store. Pass --yes / -y to confirm, "
+            "or --dry-run to preview the planned actions."
+        )
     path = resolve_tasks_path(tasks_path)
     tasks = load_tasks(path)
     by_pr_url = {t["pr_url"]: t for t in tasks if t.get("pr_url")}

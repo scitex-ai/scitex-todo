@@ -13,7 +13,7 @@ completion rate, push the per-agent numbers hourly so receivers
 self-correct, hard-throttle add-task at 2× the agent's WIP limit, and
 absorb GitHub merges back into the canonical board automatically.
 
-### Added — `scitex-todo stats`
+### Added — `scitex-todo print-stats`
 
 - New CLI: `scitex-todo stats [--by agent|project|host] [--since
   YYYY-MM-DD] [--format text|json] [--notify]`.
