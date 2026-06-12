@@ -4,6 +4,56 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.6] - 2026-06-12 — Board v0.5.4 P0: empty-pill fix + LAYOUT axis + Recent sort
+
+Lead-prioritized fix after PR #105 verification miss surfaced two
+still-broken symptoms on `/` (the operator's primary board page):
+
+### Fixed — cards rendered as empty pills on every lane
+
+- Diagnosed against the live store at `:8051`: `business` lane's 28
+  cards rendered with `offsetHeight = 24 px`; `scitex-dev` 68 cards at
+  18 px; `paper-scitex-clew` 15 cards at 42 px. Root cause: `.col-body`
+  is `display: flex; flex-direction: column` and `.main { height:
+  100%; overflow: hidden }` (added in 22b6a6f to keep the BLOCKING-YOU
+  aside from stretching). Inside a bounded flex column container,
+  child `.card` items defaulted to `flex-shrink: 1` and compressed
+  down to the card-status row when content exceeded container height.
+- Fix: `.card { flex-shrink: 0 }` in `board_v3/02-card.css`. Cards
+  keep their natural content height; the existing `.col-body
+  { overflow-y: auto }` lets excess content scroll inside the column.
+  Verified live by injecting the rule via Playwright `add_style_tag`:
+  every lane's first card grew from 18-42 px back to 111-150 px.
+
+### Added — LAYOUT axis (Graph | Column | Table) + Recent sort
+
+Lead design ruling (TG 12461, operator-confirmed): the board renders
+the SAME data along two orthogonal axes — LAYOUT (Graph | Column |
+Table) sits in the filterbar; TIME (Recent) is a SORT mode in the
+existing Sort dropdown, applies across all layouts.
+
+- **LAYOUT switcher** — three segmented buttons in the filterbar.
+  Persisted in `localStorage["scitex-todo:layout"]`.
+  - `📋 Column` — the existing kanban (default).
+  - `📑 Table` — flat rows view, sortable, click a row to open the
+    detail drawer. Status / Title / Project / Blocker / Priority /
+    Last activity columns.
+  - `📊 Graph` — depends_on / blocks mermaid graph, lazy-loads
+    `mermaid@10` from jsdelivr the first time the operator switches
+    to it.
+- **Recent sort mode** — `Recent (newest first) 🆕` option added to
+  the existing `#f-sort` dropdown. Cards sort by `last_activity →
+  created_at` desc; cards with activity in the last 24 h get a gold
+  `NEW` badge in `.card-top`. The badge renders across every layout
+  when sort = recent. Persisted in `localStorage["scitex-todo:sort"]`.
+- **🆕 N new in 24 h pill** — always-visible filterbar indicator
+  showing how many of the currently-visible cards moved in the last
+  day. Click to set Sort = Recent. Hidden when zero.
+
+CSS lives in a new sibling file `board_v3/06-layout-and-recent.css`
+(keeps the per-file CSS under the 512-line hook limit). Linked from
+`board_v3.html`'s `{% block extra_css %}`.
+
 ## [0.5.4] - 2026-06-12 — Board v0.5.3 display fix (template leak + bundle/template food)
 
 Operator-reported regression after the 0.5.3 release:

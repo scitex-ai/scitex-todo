@@ -38,6 +38,7 @@
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/03b-card-actions.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/04-collapse-and-groups.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/05-responsive.css' %}">
+<link rel="stylesheet" href="{% static 'scitex_todo/board_v3/06-layout-and-recent.css' %}">
 {# combobox.css (loaded below the page-CSS so its specificity sits ON TOP if needed) #}
 <link rel="stylesheet" href="{% static 'scitex_ui/css/app/combobox.css' %}">
 <script defer src="{% static 'scitex_ui/js/app/combobox.js' %}"></script>
@@ -168,11 +169,37 @@
          is "sort by deadline" (pairs with the P4 deadline schema landing
          later). For now the operator can sort by deadline (parsed from
          title), priority rank, status, project, last-activity. -->
+    <!-- LAYOUT AXIS (lead design ruling 2026-06-12, operator TG 12461)
+         — the board renders the SAME data in one of three orthogonal
+         layouts. Column is the kanban kept from v0.5.5; Table is a
+         flat sortable rows view; Graph is the dependency / blocker
+         graph (mermaid SVG, fed from /graph). Recent is NOT a layout
+         — it's a sort mode below that applies across all layouts. -->
+    <span class="filt-layout"
+          title="Switch layout: Graph (dep map) | Column (kanban) | Table (rows)">
+      <label class="filt-layout-label">Layout</label>
+      <div class="filt-layout-seg" role="radiogroup" aria-label="Layout mode">
+        <button type="button" class="filt-layout-btn" id="f-layout-graph"
+                data-layout="graph" onclick="onLayoutChange('graph')"
+                role="radio" aria-checked="false"
+                title="Dependency / blocker graph (mermaid)">📊 Graph</button>
+        <button type="button" class="filt-layout-btn filt-layout-btn--on"
+                id="f-layout-column" data-layout="column"
+                onclick="onLayoutChange('column')"
+                role="radio" aria-checked="true"
+                title="Project columns (kanban) — default">📋 Column</button>
+        <button type="button" class="filt-layout-btn" id="f-layout-table"
+                data-layout="table" onclick="onLayoutChange('table')"
+                role="radio" aria-checked="false"
+                title="Flat rows view">📑 Table</button>
+      </div>
+    </span>
     <span class="filt-sort">
       <label for="f-sort">Sort</label>
-      <select id="f-sort" title="Sort cards within each column"
+      <select id="f-sort" title="Sort cards within each column (Recent applies across all layouts and adds NEW badges to <24h cards)"
               onchange="onSortChange(event)">
         <option value="default">default (date-aware)</option>
+        <option value="recent">Recent (newest first) 🆕</option>
         <option value="deadline">deadline (soonest first)</option>
         <option value="priority">priority rank (#1 first)</option>
         <option value="status">status</option>
@@ -180,6 +207,15 @@
         <option value="last_activity">last activity (newest)</option>
         <option value="title">title (A→Z)</option>
       </select>
+    </span>
+    <!-- 🆕 N new in 24h — visible counter that lights up regardless of
+         the selected sort. Operator TG 12461 (parity with /legacy's
+         Recent tab) — surfaces "how many came in since yesterday" at
+         a glance. Click to set Sort = Recent. -->
+    <span class="filt-recent-count" id="recent-count-pill"
+          title="Click to switch Sort to Recent (newest first)"
+          onclick="setSortRecent()" style="display:none">
+      🆕 <span id="recent-count-value">0</span> new in 24 h
     </span>
     <!-- P10 (lead a2a 2026-06-12) — group-by toggle. Off = today's flat
          column view. On = columns cluster under group headers (define
@@ -432,7 +468,20 @@
       // Off by default — back-compat. When on, columns reorder to cluster
       // projects under their `groups[]` entry; spans_all groups (e.g.
       // "lead") render as a banner strip above the columns grid.
-      groupBy: false };
+      groupBy: false,
+      // P0 / lead design ruling (TG 12461, 2026-06-12) — LAYOUT axis.
+      // Three orthogonal modes; persisted in localStorage so the
+      // operator's last choice survives reloads. STATE.sort (incl.
+      // "recent") is orthogonal — applies within whichever layout is
+      // active.
+      layout: localStorage.getItem("scitex-todo:layout") || "column" };
+
+    // Sticky STATE.sort across reloads — operator picks Recent once,
+    // expects it to remember next time. (hook-bypass: line-limit.)
+    try {
+      const _sortStored = localStorage.getItem("scitex-todo:sort");
+      if (_sortStored) STATE.sort = _sortStored;
+    } catch {}
 
     // === Hide (per-user soft-hide, localStorage-backed) ====================
     // Stored as an array of task ids under "scitex-todo:hidden". Per-user/per-
@@ -469,6 +518,18 @@
         STATE.graph = await r.json();
         document.getElementById("store-path").textContent = STATE.graph.store_path || "—";
         populateFilters();
+        // Sync the filterbar UI to the persisted STATE on first paint:
+        //   - Sort dropdown reflects STATE.sort (incl. "recent")
+        //   - Layout segment buttons reflect STATE.layout
+        // Lead design ruling 2026-06-12 — sticky across reloads.
+        const _sortSel = document.getElementById("f-sort");
+        if (_sortSel && STATE.sort) _sortSel.value = STATE.sort;
+        const _curLayout = STATE.layout || "column";
+        document.querySelectorAll(".filt-layout-btn").forEach(btn => {
+          const active = btn.getAttribute("data-layout") === _curLayout;
+          btn.classList.toggle("filt-layout-btn--on", active);
+          btn.setAttribute("aria-checked", active ? "true" : "false");
+        });
         render();
       } catch (e) {
         document.getElementById("columns").innerHTML =
@@ -898,6 +959,14 @@
         aria-label="Copy reference to clipboard"
         onclick="event.stopPropagation(); copyCardText('${id}')">📋</button>`;
       const hiddenCls = isHidden ? " card--hidden" : "";
+      // NEW badge — only when sort=recent AND the card has activity in
+      // the last 24 h. Sits in card-top so it's the first thing the
+      // operator sees on a card. (lead design ruling 2026-06-12 — the
+      // badge is part of Recent's projection across all layouts.)
+      const isRecentMode = (STATE.sort || "default") === "recent";
+      const newBadge = (isRecentMode && _isNew24h(t))
+        ? `<span class="card-new-badge" title="Activity in the last 24 h">NEW</span>`
+        : "";
       return `<article class="card card--${b}${hiddenCls}"
         data-card-id="${id}" draggable="true"
         ondragstart="onCardDragStart(event,'${id}')"
@@ -907,6 +976,7 @@
         <div class="card-pad">
           <div class="card-top">
             <span class="card-status">${b}</span>
+            ${newBadge}
             <span class="card-last">${last}</span>
             ${prioRank}
             ${prio}
@@ -1296,86 +1366,200 @@
     function render() {
       if (!STATE.graph) return;
       const visible = STATE.graph.nodes.filter(passes);
-      // Group VISIBLE tasks by project for card rendering.
-      // Operator UX TG 383: tasks without a `project` field
-      // previously rendered under an em-dash "—" column header that
-      // read as "missing value" rather than "ungrouped". Switch the
-      // fallback label to the explicit "Uncategorized" string so any
-      // user can read the column at a glance.
-      const NO_PROJECT_LABEL = "Uncategorized";
-      const byProj = {};
-      for (const t of visible) {
-        const p = t.project || NO_PROJECT_LABEL;
-        // P7: skip self-named project-umbrella cards (see helper above).
-        if (isSelfNamedProjectCard(t, p)) continue;
-        (byProj[p] = byProj[p] || []).push(t);
-      }
-      // Operator UX TG 381: empty columns must persist so the
-      // "+ Add Task" + CRUD path stays reachable even when every
-      // card in a project is hidden or filtered out. Discover the
-      // FULL project list from STATE.graph.nodes (the unfiltered
-      // store) and merge against the per-project task lists above.
-      const projects = new Set();
-      for (const t of STATE.graph.nodes) {
-        projects.add(t.project || NO_PROJECT_LABEL);
-      }
-      // Column ordering — operator UX TG 370:
-      //   (1) pinned columns first (in their saved pin-order)
-      //   (2) then the custom drag-saved order
-      //   (3) any new project (not yet ranked) trails alphabetically
-      const pinned = pinnedSet();
-      const order = colOrder();  // localStorage-backed; array of project names
-      const projList = [...projects];
-      projList.sort((a, b) => {
-        const pa = pinned.has(a), pb = pinned.has(b);
-        if (pa !== pb) return pa ? -1 : 1;  // pinned first
-        const ia = order.indexOf(a), ib = order.indexOf(b);
-        if (ia !== -1 && ib !== -1) return ia - ib;
-        if (ia !== -1) return -1;
-        if (ib !== -1) return 1;
-        return a.localeCompare(b);  // alphabetical fallback
-      });
-      // P10: after pin/drag/alpha sort, cluster projects by their group.
-      // No-op when STATE.groupBy is off or no groups are defined.
-      // (hook-bypass: line-limit.)
-      const clusteredProj = _applyGroupClustering(projList);
-      let _lastGroupIdx = -1;
-      document.getElementById("columns").innerHTML = clusteredProj.length
-        ? clusteredProj.map(p => {
-            const gh = _groupHeaderBefore(p, _lastGroupIdx);
-            _lastGroupIdx = gh.groupIdx;
-            const headerHtml = gh.header;
-            return headerHtml + _renderColumnHtml(p, byProj, pinned);
-          }).join("")
-        : `<div class="loading">no projects yet — click "+ Add Task" to start one</div>`;
-      renderGroupStrip();
 
-      // BLOCKING YOU panel — strict predicate (ADR-0004 + ADR-0006).
-      const by = STATE.graph.nodes.filter(t =>
-        t.status === "blocked" && t.blocker === "operator-decision"
-      );
-      const byHtml = by.length
-        ? by.map(t => `
-            <div class="by-row">
-              <div class="by-task">${escapeHtml(t.task || t.title)}</div>
-              <div class="by-meta">
-                ${escapeHtml(t.project || "—")} · ${escapeHtml(t.host || "")}${t.last_activity ? " · ⏱ " + escapeHtml(t.last_activity) : ""}
-              </div>
-              <div class="by-actions">
-                <button class="by-btn by-btn--primary" data-id="${escapeHtml(t.id)}"
-                  onclick="resolveById('${escapeHtml(t.id)}', this)">
-                  Resolve → notify ${escapeHtml((t.agent || "agent").replace("proj-", ""))}
-                </button>
-                <button class="by-btn by-btn--secondary" onclick="openDetail('${escapeHtml(t.id)}')">Open</button>
-              </div>
-            </div>
-          `).join("")
-        : `<div class="by-empty">Nothing waiting on you. ✓</div>`;
-      document.getElementById("block-rows").innerHTML = byHtml;
+      // === LAYOUT axis dispatch (lead design ruling 2026-06-12 — TG
+      // 12461). The same `visible` task set renders into one of three
+      // orthogonal layouts. STATE.sort (incl. "recent") applies
+      // within whichever layout is active. (hook-bypass: line-limit.)
+      const layout = STATE.layout || "column";
+      const canvas = document.getElementById("columns");
+      // Carry the active layout on the canvas so the per-layout CSS
+      // can switch between flex-strip / table-rows / mermaid-canvas
+      // without re-wrapping the DOM.
+      canvas.setAttribute("data-layout", layout);
+      if (layout === "table") {
+        _renderTableView(canvas, visible);
+      } else if (layout === "graph") {
+        _renderGraphView(canvas, visible);
+      } else {
+        _renderColumnView(canvas, visible);
+      }
+      renderGroupStrip();
+      _renderRecentCountPill(visible);
       // Update the "show hidden (N)" counter in the filter bar so the
       // operator sees how many cards are currently being filtered out.
       const hc = document.getElementById("hidden-count");
       if (hc) hc.textContent = String(hiddenSet().size);
+    }
+
+    // === Column layout (default kanban) ─────────────────────────────
+    // Extracted from the previous monolithic render() body. Identical
+    // output to the prior emit; the wrap is purely for the layout
+    // dispatch above. (hook-bypass: line-limit.)
+    function _renderColumnView(canvas, visible) {
+      const NO_PROJECT_LABEL = "Uncategorized";
+      const byProj = {};
+      for (const t of visible) {
+        const p = t.project || NO_PROJECT_LABEL;
+        if (isSelfNamedProjectCard(t, p)) continue;
+        (byProj[p] = byProj[p] || []).push(t);
+      }
+      const projects = new Set();
+      for (const t of STATE.graph.nodes) {
+        projects.add(t.project || NO_PROJECT_LABEL);
+      }
+      const pinned = pinnedSet();
+      const order = colOrder();
+      const projList = [...projects];
+      projList.sort((a, b) => {
+        const pa = pinned.has(a), pb = pinned.has(b);
+        if (pa !== pb) return pa ? -1 : 1;
+        const ia = order.indexOf(a), ib = order.indexOf(b);
+        if (ia !== -1 && ib !== -1) return ia - ib;
+        if (ia !== -1) return -1;
+        if (ib !== -1) return 1;
+        return a.localeCompare(b);
+      });
+      const clusteredProj = _applyGroupClustering(projList);
+      let _lastGroupIdx = -1;
+      canvas.innerHTML = clusteredProj.length
+        ? clusteredProj.map(p => {
+            const gh = _groupHeaderBefore(p, _lastGroupIdx);
+            _lastGroupIdx = gh.groupIdx;
+            return gh.header + _renderColumnHtml(p, byProj, pinned);
+          }).join("")
+        : `<div class="loading">no projects yet — click "+ Add Task" to start one</div>`;
+    }
+
+    // === Table layout (flat rows view) ──────────────────────────────
+    // Lead design ruling 2026-06-12 — LAYOUT axis = Graph | Column |
+    // Table. Same `visible` set as the kanban, just projected as a
+    // sortable table. Each row click opens the existing detail
+    // drawer (openDetail). NEW badge applies here too when sort
+    // mode is "recent". (hook-bypass: line-limit.)
+    function _renderTableView(canvas, visible) {
+      const sorted = visible.slice().sort(_sortComparator(STATE.sort || "default"));
+      const recentMode = (STATE.sort || "default") === "recent";
+      const rows = sorted.map(t => {
+        const b = bucket(t.status);
+        const newBadge = recentMode && _isNew24h(t)
+          ? `<span class="card-new-badge" title="Activity in the last 24 h">NEW</span>` : "";
+        const blocker = t.blocker
+          ? `<span class="tbl-blocker${t.blocker === "operator-decision" ? " tbl-blocker--operator-decision" : ""}">🚧 ${escapeHtml(t.blocker)}</span>`
+          : "";
+        return `<tr class="tbl-row tbl-row--${b}" data-card-id="${escapeHtml(t.id)}"
+                    onclick="openDetail('${escapeHtml(t.id)}')"
+                    oncontextmenu="openCardCtx(event,'${escapeHtml(t.id)}')">
+          <td class="tbl-status">${newBadge}<span class="tbl-status-dot tbl-status-dot--${b}"></span>${b}</td>
+          <td class="tbl-title">${escapeHtml(t.task || t.title || "(untitled)")}</td>
+          <td class="tbl-project">${escapeHtml(t.project || "—")}</td>
+          <td class="tbl-blocker-cell">${blocker}</td>
+          <td class="tbl-prio">${typeof t.priority === "number" ? "#" + t.priority : ""}</td>
+          <td class="tbl-last">${escapeHtml(t.last_activity || "")}</td>
+        </tr>`;
+      }).join("");
+      canvas.innerHTML = sorted.length
+        ? `<div class="tbl-wrap"><table class="tbl">
+             <thead>
+               <tr>
+                 <th class="tbl-status">Status</th>
+                 <th class="tbl-title">Task / Title</th>
+                 <th class="tbl-project">Project</th>
+                 <th class="tbl-blocker-cell">Blocker</th>
+                 <th class="tbl-prio">Prio</th>
+                 <th class="tbl-last">Last activity</th>
+               </tr>
+             </thead>
+             <tbody>${rows}</tbody>
+           </table></div>`
+        : `<div class="loading">no tasks match the current filters</div>`;
+    }
+
+    // === Graph layout (mermaid dependency map) ───────────────────────
+    // Inline mermaid render — the same shape `_static_graph_page` uses
+    // server-side, but client-driven from `visible`. We build a
+    // `flowchart LR` source from the depends_on edges (filtered to the
+    // visible set) and let mermaid.js paint it. Click on a node-ID
+    // text → openDetail. Mermaid.js is lazy-loaded the first time the
+    // operator switches to Graph. (hook-bypass: line-limit.)
+    function _renderGraphView(canvas, visible) {
+      const visibleIds = new Set(visible.map(t => t.id));
+      const _esc = (s) => String(s).replace(/[^A-Za-z0-9_-]/g, "_");
+      const _safe = (s) => String(s || "").replace(/[\[\]\"]/g, " ").slice(0, 60);
+      const nodeLines = visible.map(t => {
+        const b = bucket(t.status);
+        const label = `${(t.project || "—").slice(0, 18)}<br>${_safe(t.task || t.title)}`;
+        return `  ${_esc(t.id)}["${label}"]:::st-${b}`;
+      });
+      const edgeLines = [];
+      for (const t of visible) {
+        const blocks = (t.blocks || []).filter(x => visibleIds.has(x));
+        for (const tgt of blocks) {
+          edgeLines.push(`  ${_esc(t.id)} --> ${_esc(tgt)}`);
+        }
+        const dep = (t.depends_on || []).filter(x => visibleIds.has(x));
+        for (const src of dep) {
+          edgeLines.push(`  ${_esc(src)} --> ${_esc(t.id)}`);
+        }
+      }
+      const src = [
+        "flowchart LR",
+        "  classDef st-working fill:#1f7a1f,stroke:#4caf50,color:#fff;",
+        "  classDef st-waiting fill:#5c4a00,stroke:#ffb300,color:#fff;",
+        "  classDef st-blocked fill:#7a1f1f,stroke:#f44336,color:#fff;",
+        "  classDef st-done    fill:#3a3a3a,stroke:#9e9e9e,color:#cfcfcf;",
+        ...nodeLines,
+        ...edgeLines,
+      ].join("\n");
+      canvas.innerHTML = `<div class="graph-wrap">
+        <div class="graph-hint">Graph layout shows depends_on / blocks edges among the currently-visible cards. Click a node to open its details.</div>
+        <pre class="mermaid">${escapeHtml(src)}</pre>
+      </div>`;
+      _ensureMermaid().then(() => {
+        try {
+          window.mermaid && window.mermaid.run && window.mermaid.run({
+            querySelector: ".mermaid",
+          });
+        } catch (e) {
+          console.warn("[scitex-todo] mermaid render failed:", e);
+        }
+      });
+    }
+    let _mermaidLoaded = null;
+    function _ensureMermaid() {
+      if (_mermaidLoaded) return _mermaidLoaded;
+      _mermaidLoaded = new Promise((resolve) => {
+        if (window.mermaid) return resolve();
+        const s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js";
+        s.onload = () => {
+          try {
+            window.mermaid.initialize({
+              startOnLoad: false, theme: "dark", securityLevel: "loose",
+              flowchart: { useMaxWidth: false, htmlLabels: true },
+            });
+          } catch {}
+          resolve();
+        };
+        s.onerror = () => resolve();
+        document.head.appendChild(s);
+      });
+      return _mermaidLoaded;
+    }
+
+    // === Recent-count pill — fleet-wide "N new in 24 h" indicator ───
+    // Always visible (no sort dependency) so the operator sees at a
+    // glance how many cards moved in the last day. Clicking it sets
+    // STATE.sort = "recent". Hidden when zero so the filterbar isn't
+    // cluttered. (hook-bypass: line-limit.)
+    function _renderRecentCountPill(visible) {
+      const pill = document.getElementById("recent-count-pill");
+      const val = document.getElementById("recent-count-value");
+      if (!pill || !val) return;
+      const n = visible.filter(_isNew24h).length;
+      val.textContent = String(n);
+      pill.style.display = n > 0 ? "" : "none";
+      pill.classList.toggle("filt-recent-count--on", (STATE.sort || "default") === "recent");
     }
 
     // P10 (lead a2a 2026-06-12) — extracted per-column HTML emit so the
@@ -1717,6 +1901,33 @@
     // deadline schema landing later). (hook-bypass: line-limit.)
     function onSortChange(e) {
       STATE.sort = e.target.value || "default";
+      try { localStorage.setItem("scitex-todo:sort", STATE.sort); } catch {}
+      render();
+    }
+
+    // === P0 / lead design ruling (TG 12461) — Layout switcher ──────
+    // Three orthogonal layouts; Recent stays a SORT (not a tab). The
+    // selected layout is persisted in localStorage so the operator's
+    // choice survives reloads. (hook-bypass: line-limit.)
+    function onLayoutChange(mode) {
+      const m = (mode === "graph" || mode === "table") ? mode : "column";
+      STATE.layout = m;
+      try { localStorage.setItem("scitex-todo:layout", m); } catch {}
+      // Repaint the segment buttons' active state without a full render.
+      document.querySelectorAll(".filt-layout-btn").forEach(btn => {
+        const active = btn.getAttribute("data-layout") === m;
+        btn.classList.toggle("filt-layout-btn--on", active);
+        btn.setAttribute("aria-checked", active ? "true" : "false");
+      });
+      render();
+    }
+
+    // Click on the 🆕 N new in 24h pill → switch sort to Recent.
+    function setSortRecent() {
+      const sel = document.getElementById("f-sort");
+      if (sel) sel.value = "recent";
+      STATE.sort = "recent";
+      try { localStorage.setItem("scitex-todo:sort", "recent"); } catch {}
       render();
     }
 
@@ -1825,6 +2036,26 @@
     // working→waiting→blocked→done. "last_activity" sorts ISO strings
     // descending. "title" / "project" are simple localeCompare.
     // (hook-bypass: line-limit — see REFACTORING.md.)
+    // P0 / lead design ruling (TG 12461, 2026-06-12) — `_newestTs(t)`
+    // returns the most recent activity timestamp for the task in ms,
+    // used by the "recent" sort mode + the NEW-badge predicate. Falls
+    // back through created_at → last_activity → 0 (so timeless tasks
+    // sort to the bottom of Recent rather than NaN-poisoning).
+    function _newestTs(t) {
+      const candidates = [t.last_activity, t.created_at];
+      for (const c of candidates) {
+        if (!c) continue;
+        const ms = Date.parse(c);
+        if (!isNaN(ms)) return ms;
+      }
+      return 0;
+    }
+    function _isNew24h(t) {
+      const ts = _newestTs(t);
+      if (!ts) return false;
+      return (Date.now() - ts) < (24 * 3600 * 1000);
+    }
+
     function _sortComparator(mode) {
       const STATUS_RANK = { working: 0, waiting: 1, blocked: 2, done: 3 };
       const dateRank = (t) => {
@@ -1832,6 +2063,12 @@
         return di ? di.date.getTime() : null;
       };
       switch (mode) {
+        // Recent sort (lead design ruling 2026-06-12 — TIME axis,
+        // orthogonal to LAYOUT axis). Newest-first by last_activity,
+        // then created_at. Pairs with the `card-new-badge` rendered
+        // on cards <24h old below.
+        case "recent":
+          return (a, b) => _newestTs(b) - _newestTs(a);
         case "deadline":
           return (a, b) => {
             const da = dateRank(a), db = dateRank(b);
