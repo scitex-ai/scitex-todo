@@ -242,3 +242,39 @@
   padding: 18px;
   overflow: auto;
 }
+/* Empty-state for the Graph layout — fires when the filtered scope
+ * has no depends_on / blocks / parent edges among the visible cards.
+ * Operator-visible explanation per lead ruling c212aa72: don't render
+ * a useless 400-node disconnected layout, explain WHY the canvas is
+ * empty + point at the data shape so the operator can fix it. */
+.graph-empty {
+  background: var(--card-bg);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 24px 28px;
+  color: var(--text);
+}
+.graph-empty h3 {
+  margin: 0 0 10px 0;
+  color: var(--gold);
+  font-size: 1.05rem;
+}
+.graph-empty p {
+  margin: 6px 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+.graph-empty code {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.85rem;
+}
+.graph-empty__hint {
+  margin-top: 12px;
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+}

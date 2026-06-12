@@ -90,23 +90,21 @@
     <h1>scitex-todo
       <span class="small">v{{ scitex_todo_version|default:"?" }}</span></h1>
     <span class="small"><span class="live-dot"></span>LIVE</span>
-    <!-- Fleet-liveness dot-strip (ticket proj-scitex-todo-fleet-liveness,
-         operator TG 9576). One dot per agent, colored by status
-         (blocking-operator gold, working green, active blue, idle grey).
-         Hover = tooltip with current_task + last_activity. Click = sets
-         the f-agent filter so the board scopes to that agent's cards.
-         Renders from STATE.graph.fleet — first slice derives everything
-         from already-loaded tasks.yaml; sidecar daemon + cross-host
-         roll-up land in follow-up PRs. -->
-    <div class="fleetstrip" id="fleetstrip"
-         aria-label="Fleet liveness — one dot per agent"></div>
+    {% comment %}
+      fleetstrip REMOVED (operator inspector report 2026-06-12, lead
+      `032e41545fcf4ab4b98d864ec1770249`). The empty "Fleet liveness —
+      one dot per agent" strip rendered as `Content: none` because the
+      `/graph` payload never populated `STATE.graph.fleet`. Operator
+      "i dont need this" — fleet-liveness is the lead's periodic
+      reports' job, not the board's.
+    {% endcomment %}
     <!-- Search-as-launcher (P1, lead brief 2026-06-12) — the PRIMARY
          filterbar entry point. RESTORED 2026-06-12 after the P10/P11
          squash wave silently dropped these blocks. Pinned by the
          regression test in test__board_v3_signatures.py. -->
     <span class="filt-search-wrap" id="f-search-wrap">
     <input class="filt filt-search" id="f-search" type="search"
-           placeholder="🔎 search — try project:paper-scitex-clew, status:blocked, kind:compute, …"
+           placeholder="🔎 Search… ( / to focus, Esc to blur) — try project:paper-scitex-clew, status:blocked, kind:compute, …"
            title="Fuzzy match + GitHub-style qualifiers (project: / agent: / status: / kind: / parent: / scope: / id: / priority: / host:). Press / to focus, Esc to blur. Tab to autocomplete the qualifier or value under the cursor."
            oninput="onSearchInput(event)" onkeydown="onSearchKeyDown(event)"
            onfocus="onSearchFocus(event)" onblur="onSearchBlur(event)"
@@ -119,10 +117,12 @@
     <ul class="search-suggest" id="search-suggest" role="listbox"
         aria-label="Search suggestions" hidden></ul>
     </span>
-    <span class="filt-search-kbd" aria-hidden="true"
-          title="Press / to focus the search">
-      press <kbd>/</kbd> to focus
-    </span>
+    {% comment %}
+      filt-search-kbd pill REMOVED (operator inspector report 2026-06-12,
+      lead `032e41545fcf4ab4b98d864ec1770249`). The independent "press
+      / to focus" pill is folded into the search input's placeholder
+      itself per operator "just write the kbd in the search box".
+    {% endcomment %}
     <!-- Qualifier hint pills (operator TG 12315/12316, lead a2a 7dde227a).
          As the operator types `project:foo status:blocked`, each
          recognized qualifier becomes a coloured pill so they SEE the
@@ -1545,32 +1545,95 @@
     }
 
     // === Graph layout (mermaid dependency map) ───────────────────────
-    // Inline mermaid render — the same shape `_static_graph_page` uses
-    // server-side, but client-driven from `visible`. We build a
-    // `flowchart LR` source from the depends_on edges (filtered to the
-    // visible set) and let mermaid.js paint it. Click on a node-ID
-    // text → openDetail. Mermaid.js is lazy-loaded the first time the
-    // operator switches to Graph. (hook-bypass: line-limit.)
+    // Inline mermaid render fed from the SERVER's edge list. PR #108
+    // tried to read `t.depends_on` / `t.blocks` on each node and emitted
+    // a 400-node, 0-edge graph (41 552 px tall) because the /graph
+    // payload doesn't expose those fields per-node — it returns the
+    // edges aggregated at top-level (`STATE.graph.edges`, kind values
+    // `depends_on` / `blocks`). Hierarchical `parent` edges are
+    // additionally available per-node (`t.parent`).
+    //
+    // Design (lead-confirmed `c212aa72bb0a4161b4faa8e81d508bc8`,
+    // 2026-06-12): show only nodes that participate in at least one
+    // edge — disconnected nodes have no place in a dependency map.
+    // Empty-state: explain why the canvas is empty (no edges in the
+    // current filter scope) + a 1-line sample of what depends_on /
+    // parent encoding looks like so the operator can fix the data.
+    // (hook-bypass: line-limit.)
     function _renderGraphView(canvas, visible) {
       const visibleIds = new Set(visible.map(t => t.id));
+      const byId = new Map(visible.map(t => [t.id, t]));
       const _esc = (s) => String(s).replace(/[^A-Za-z0-9_-]/g, "_");
       const _safe = (s) => String(s || "").replace(/[\[\]\"]/g, " ").slice(0, 60);
-      const nodeLines = visible.map(t => {
+
+      // Pull EDGES from the canonical server payload, not per-node.
+      const rawEdges = (STATE.graph && STATE.graph.edges) || [];
+      const depEdges = [];
+      for (const e of rawEdges) {
+        // `kind` is "depends_on" or "blocks"; normalize so the arrow
+        // always points from upstream (prereq) to downstream (gated).
+        if (!e || !visibleIds.has(e.source) || !visibleIds.has(e.target)) continue;
+        if (e.kind === "blocks") {
+          depEdges.push({ src: e.source, dst: e.target, kind: "blocks" });
+        } else {
+          // Default + "depends_on" — server already emits source=dep,
+          // target=tid (see handlers/graph.py:121), so arrow already
+          // points prereq → consumer.
+          depEdges.push({ src: e.source, dst: e.target, kind: "depends_on" });
+        }
+      }
+      // Hierarchical `parent` edges are a separate axis (111 of them
+      // in the operator's live store; not in `edges[]`). Render with a
+      // dashed style so they're visually distinct from depends_on.
+      const parentEdges = [];
+      for (const t of visible) {
+        const p = t.parent;
+        if (p && visibleIds.has(p) && p !== t.id) {
+          parentEdges.push({ src: p, dst: t.id, kind: "parent" });
+        }
+      }
+      const allEdges = depEdges.concat(parentEdges);
+
+      // Filter to nodes that participate in at least one edge — a
+      // disconnected node has no place in a dep graph.
+      const touched = new Set();
+      for (const e of allEdges) { touched.add(e.src); touched.add(e.dst); }
+      const connected = visible.filter(t => touched.has(t.id));
+
+      // Empty-state: explain the empty canvas and point at the data
+      // shape so the operator can fix it.
+      if (connected.length === 0) {
+        canvas.innerHTML = `<div class="graph-wrap">
+          <div class="graph-empty">
+            <h3>No dependencies in the current scope</h3>
+            <p>The Graph layout draws <code>depends_on</code> / <code>blocks</code>
+            edges (from the server's <code>edges[]</code> payload) plus
+            <code>parent</code> edges (per-node) among the currently-visible cards.
+            Right now <strong>${visible.length} card${visible.length === 1 ? "" : "s"}</strong>
+            match the filters but none of them are connected to each other.</p>
+            <p class="graph-empty__hint">Encode dependencies in <code>tasks.yaml</code> like this:
+            <code>depends_on: [other-task-id]</code>, <code>blocks: [downstream-id]</code>,
+            or <code>parent: hub-task-id</code>. Switch to <strong>📋 Column</strong> or
+            <strong>📑 Table</strong> if you only want a flat list.</p>
+          </div>
+        </div>`;
+        return;
+      }
+
+      const nodeLines = connected.map(t => {
         const b = bucket(t.status);
         const label = `${(t.project || "—").slice(0, 18)}<br>${_safe(t.task || t.title)}`;
         return `  ${_esc(t.id)}["${label}"]:::st-${b}`;
       });
-      const edgeLines = [];
-      for (const t of visible) {
-        const blocks = (t.blocks || []).filter(x => visibleIds.has(x));
-        for (const tgt of blocks) {
-          edgeLines.push(`  ${_esc(t.id)} --> ${_esc(tgt)}`);
+      const edgeLines = allEdges.map(e => {
+        if (e.kind === "parent") {
+          // Dashed arrow for parent → child so the operator can tell
+          // hierarchy from blocking dependency at a glance.
+          return `  ${_esc(e.src)} -.-> ${_esc(e.dst)}`;
         }
-        const dep = (t.depends_on || []).filter(x => visibleIds.has(x));
-        for (const src of dep) {
-          edgeLines.push(`  ${_esc(src)} --> ${_esc(t.id)}`);
-        }
-      }
+        return `  ${_esc(e.src)} --> ${_esc(e.dst)}`;
+      });
+
       const src = [
         "flowchart LR",
         "  classDef st-working fill:#1f7a1f,stroke:#4caf50,color:#fff;",
@@ -1581,7 +1644,13 @@
         ...edgeLines,
       ].join("\n");
       canvas.innerHTML = `<div class="graph-wrap">
-        <div class="graph-hint">Graph layout shows depends_on / blocks edges among the currently-visible cards. Click a node to open its details.</div>
+        <div class="graph-hint">
+          Graph: <strong>${connected.length}</strong> connected node${connected.length === 1 ? "" : "s"} /
+          <strong>${depEdges.length}</strong> depends_on / blocks edge${depEdges.length === 1 ? "" : "s"} /
+          <strong>${parentEdges.length}</strong> parent edge${parentEdges.length === 1 ? "" : "s"} (dashed).
+          ${visible.length - connected.length} disconnected card${visible.length - connected.length === 1 ? "" : "s"} hidden from the graph
+          (visible in <strong>📋 Column</strong> / <strong>📑 Table</strong> layouts).
+        </div>
         <pre class="mermaid">${escapeHtml(src)}</pre>
       </div>`;
       _ensureMermaid().then(() => {
@@ -2796,10 +2865,6 @@
         const name = nameEl.textContent.trim();
         col.classList.toggle("col--proj-hidden", hidden.has(name));
       });
-      // Fleet-liveness dot-strip — repaint from STATE.graph.fleet on
-      // every render (cheap; the list is small + the 5s AutoRefresh
-      // keeps it fresh).
-      renderFleetStrip();
       // Hidden-cards dropdown (operator TG 381) — repaint the list +
       // the headerlabel count on every render so a new hide / un-hide
       // shows up immediately.
@@ -2896,38 +2961,9 @@
         </div>`;
     }
 
-    // ── Fleet-liveness rendering (ticket proj-scitex-todo-fleet-liveness) ──
-    // Read STATE.graph.fleet (a list of agent summaries served by
-    // _build_fleet in handlers/graph.py), and paint one dot per agent
-    // into #fleetstrip. Clicking a dot toggles the f-agent filter so
-    // the board scopes to that agent's cards.
-    function renderFleetStrip() {
-      const strip = document.getElementById("fleetstrip");
-      if (!strip) return;
-      const fleet = STATE.graph?.fleet || [];
-      if (fleet.length === 0) {
-        strip.innerHTML = `<span class="fleetstrip-empty">no agents yet</span>`;
-        return;
-      }
-      const selected = STATE.filters.agent || "";
-      strip.innerHTML = fleet.map(a => {
-        const cls = `flt-dot flt-dot--${escapeHtml(a.status)}` +
-                    (a.name === selected ? " flt-dot--selected" : "");
-        const lines = [
-          `${a.name}`,
-          `status: ${a.status}`,
-          a.current_task ? `current: ${a.current_task}` : null,
-          a.last_activity ? `last: ${a.last_activity}` : null,
-          `tasks: ${a.task_count} (runnable ${a.runnable_count}` +
-            (a.blocked_count ? `, blocked ${a.blocked_count}` : "") +
-            (a.blocking_operator_count ? `, awaiting you ${a.blocking_operator_count}` : "") +
-            ")",
-        ].filter(Boolean).join("\n");
-        return `<span class="${cls}"
-                  title="${escapeHtml(lines)}"
-                  onclick="toggleAgentFilter('${escapeHtml(a.name)}')"></span>`;
-      }).join("");
-    }
+    // (renderFleetStrip removed with the #fleetstrip element — see the
+    //  filterbar comment near the top of this template. fleet-liveness
+    //  lives in the lead's periodic reports, not the board.)
     function toggleAgentFilter(agent) {
       // Click a dot: if it's not the current f-agent value, set it; if
       // it IS, clear it back to "All agents". Updates the <select> too
