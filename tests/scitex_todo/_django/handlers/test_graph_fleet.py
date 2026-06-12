@@ -29,6 +29,7 @@ Real ``RequestFactory`` GET against a tmp ``tasks.yaml`` — no mocks
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 
 import pytest
@@ -41,54 +42,84 @@ from scitex_todo._django import views  # noqa: E402
 from scitex_todo._django.services import _reset_cache  # noqa: E402
 
 
-# Curated 6-task fixture exercising every status-precedence branch + the
-# current_task derivation chain + the assignee fallback.
-_STORE_TEXT = (
-    "tasks:\n"
-    "  - id: clew-pac-line\n"
-    "    title: 'clew PAC line'\n"
-    "    status: in_progress\n"
-    "    agent: proj-paper-scitex-clew\n"
-    "    project: paper-scitex-clew\n"
-    "    priority: 1\n"
-    "    last_activity: '2026-06-08T06:00:00Z'\n"
-    "  - id: clew-figure-fixes\n"
-    "    title: 'clew figure fixes'\n"
-    "    status: pending\n"
-    "    agent: proj-paper-scitex-clew\n"
-    "    priority: 30\n"
-    "  - id: nv-stuck-on-op\n"
-    "    title: 'NV stuck on operator decision'\n"
-    "    status: blocked\n"
-    "    blocker: operator-decision\n"
-    "    agent: proj-neurovista\n"
-    "    last_activity: '2026-06-07T22:00:00Z'\n"
-    "  - id: nv-other\n"
-    "    title: 'NV other'\n"
-    "    status: pending\n"
-    "    agent: proj-neurovista\n"
-    "    priority: 50\n"
-    "  - id: hub-recent\n"
-    "    title: 'hub recent activity'\n"
-    "    status: pending\n"
-    "    agent: proj-scitex-hub\n"
-    "    last_activity: '2026-06-08T05:30:00Z'\n"
-    "    priority: 20\n"
-    "  - id: orphan-task\n"
-    "    title: 'task with no agent or assignee'\n"
-    "    status: pending\n"
-    "  - id: legacy-assignee-task\n"
-    "    title: 'older row using assignee instead of agent'\n"
-    "    status: pending\n"
-    "    assignee: legacy-agent\n"
-    "    priority: 60\n"
-)
+def _ago_iso(seconds: float) -> str:
+    """ISO-8601 UTC stamp ``seconds`` ago, ``Z``-suffixed.
+
+    Used in the curated fixture so timestamps stay RELATIVE to the
+    test's "now", which lets the working-status decay rule (operator
+    TG12739) make the right call without freezing clocks: a fresh
+    in_progress row stays "working", an old one decays to "stale".
+    """
+    ts = _dt.datetime.now(tz=_dt.timezone.utc) - _dt.timedelta(seconds=seconds)
+    return ts.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _store_text() -> str:
+    """Curated 7-task fixture exercising every status-precedence branch +
+    the current_task derivation chain + the assignee fallback + the
+    working-status decay rule.
+
+    Built at call-time so the relative timestamps land inside the
+    decay windows regardless of wall-clock drift. The clew in_progress
+    task is fresh (60s ago, well inside the default 10-min working
+    window) so it reads as "working"; the hub-active task is older
+    (15 min) so it reads "active" only inside the default 60-min
+    active window; the orochi-stale task is in_progress but old
+    (1h+30m) so it decays to "stale".
+    """
+    return (
+        "tasks:\n"
+        "  - id: clew-pac-line\n"
+        "    title: 'clew PAC line'\n"
+        "    status: in_progress\n"
+        "    agent: proj-paper-scitex-clew\n"
+        "    project: paper-scitex-clew\n"
+        "    priority: 1\n"
+        f"    last_activity: '{_ago_iso(60)}'\n"
+        "  - id: clew-figure-fixes\n"
+        "    title: 'clew figure fixes'\n"
+        "    status: pending\n"
+        "    agent: proj-paper-scitex-clew\n"
+        "    priority: 30\n"
+        "  - id: nv-stuck-on-op\n"
+        "    title: 'NV stuck on operator decision'\n"
+        "    status: blocked\n"
+        "    blocker: operator-decision\n"
+        "    agent: proj-neurovista\n"
+        f"    last_activity: '{_ago_iso(60 * 60 * 6)}'\n"
+        "  - id: nv-other\n"
+        "    title: 'NV other'\n"
+        "    status: pending\n"
+        "    agent: proj-neurovista\n"
+        "    priority: 50\n"
+        "  - id: hub-recent\n"
+        "    title: 'hub recent activity'\n"
+        "    status: pending\n"
+        "    agent: proj-scitex-hub\n"
+        f"    last_activity: '{_ago_iso(60 * 15)}'\n"
+        "    priority: 20\n"
+        "  - id: orochi-stale-in-progress\n"
+        "    title: 'orochi forgot to flip back'\n"
+        "    status: in_progress\n"
+        "    agent: proj-scitex-orochi\n"
+        "    project: scitex-orochi\n"
+        "    priority: 10\n"
+        f"    last_activity: '{_ago_iso(60 * 60 * 1 + 60 * 30)}'\n"
+        "  - id: orphan-task\n"
+        "    title: 'task with no agent or assignee'\n"
+        "    status: pending\n"
+        "  - id: legacy-assignee-task\n"
+        "    title: 'older row using assignee instead of agent'\n"
+        "    status: pending\n"
+        "    assignee: legacy-agent\n"
+        "    priority: 60\n"
+    )
 
 
 @pytest.fixture
 def store(tmp_path):
     path = tmp_path / "tasks.yaml"
-    path.write_text(_STORE_TEXT, encoding="utf-8")
+    path.write_text(_store_text(), encoding="utf-8")
     _reset_cache()
     yield str(path)
     _reset_cache()
@@ -194,6 +225,16 @@ def test_no_activity_no_progress_yields_idle_status(store):
     fleet = _fleet_by_name(_graph(store))
     # Assert
     assert fleet["legacy-agent"]["status"] == "idle"
+
+
+def test_stale_in_progress_decays_to_stale_status(store):
+    # Arrange — proj-scitex-orochi has an in_progress task whose
+    # last_activity is OLDER than the working window (the operator-TG12739
+    # decay rule). Manual `working` is no longer treated as live activity.
+    # Act
+    fleet = _fleet_by_name(_graph(store))
+    # Assert
+    assert fleet["proj-scitex-orochi"]["status"] == "stale"
 
 
 # === current_task derivation ================================================

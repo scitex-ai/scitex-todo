@@ -176,7 +176,7 @@ def _last_activity_key(t: dict) -> str:
     return str(t.get("last_activity") or "")
 
 
-def _build_fleet(tasks: list[dict]) -> list[dict]:
+def _build_fleet(tasks: list[dict], *, now=None) -> list[dict]:
     """Return a list of {agent, status, current_task, ...} summaries.
 
     Grouping field: `agent` (fall back to `assignee` for older rows that
@@ -186,15 +186,39 @@ def _build_fleet(tasks: list[dict]) -> list[dict]:
 
     Status precedence (most attention-demanding first), per the
     task-harvest skill's 4-value blocker enum + the operator's
-    "blocking-me" lens:
+    "blocking-me" lens, plus the **working-status decay** rule
+    (operator TG12739, lead a2a ``f556b755``, 2026-06-13):
+
       1. ``blocking-operator``  any task is blocker=operator-decision
-      2. ``working``            any task is status=in_progress
-      3. ``active``             any task touched within ACTIVE_WINDOW_S
-      4. ``idle``               otherwise
+      2. ``working``            any task is status=in_progress *AND* the
+                                agent's most-recent ``last_activity`` is
+                                within ``SCITEX_TODO_FLEET_WORKING_MIN``
+                                minutes (default 10). Without the
+                                freshness gate, agents that forgot to
+                                flip in_progress→pending stay "working"
+                                forever and the UI lies.
+      3. ``stale``              any task is status=in_progress but the
+                                agent's most-recent ``last_activity`` is
+                                older than the working window (or absent).
+                                This is the **decay** state — surfaces
+                                the "forgot-to-flip" case as a distinct
+                                signal so the operator can prune it.
+      4. ``active``             no in_progress task, but the agent's
+                                most-recent ``last_activity`` is within
+                                ``SCITEX_TODO_FLEET_ACTIVE_MIN`` minutes
+                                (default 60). Activity badge derived
+                                from FRESHNESS, not manual status.
+      5. ``idle``               otherwise.
+
+    The two windows are env-configurable so the operator can tune
+    "what counts as live" without a code change. They default
+    ``working_min`` < ``active_min`` so the badges read as
+    nested-confidence intervals: tight green-light "working", looser
+    yellow-light "active", everything else "idle".
 
     Per-agent fields:
       name                    the agent's id (e.g. proj-paper-scitex-clew)
-      status                  one of the four above
+      status                  one of the five above
       current_task            title of the agent's most-urgent task
       current_task_id         id of the same
       last_activity           max(last_activity) across the agent's tasks
@@ -207,6 +231,30 @@ def _build_fleet(tasks: list[dict]) -> list[dict]:
                               "stuck on YOU" subset the operator needs to
                               see jump out)
     """
+    import datetime as _dt
+    import os
+
+    def _env_minutes(key: str, default: int) -> float:
+        try:
+            return float(os.environ.get(key, str(default)))
+        except (TypeError, ValueError):
+            return float(default)
+
+    working_window_s = _env_minutes("SCITEX_TODO_FLEET_WORKING_MIN", 10) * 60.0
+    active_window_s = _env_minutes("SCITEX_TODO_FLEET_ACTIVE_MIN", 60) * 60.0
+    cur = now or _dt.datetime.now(tz=_dt.timezone.utc)
+
+    def _seconds_since(ts: str) -> float | None:
+        if not ts:
+            return None
+        try:
+            parsed = _dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=_dt.timezone.utc)
+        return (cur - parsed).total_seconds()
+
     by_agent: dict[str, list[dict]] = {}
     for t in tasks:
         a = t.get("agent") or t.get("assignee")
@@ -225,11 +273,17 @@ def _build_fleet(tasks: list[dict]) -> list[dict]:
             (str(t.get("last_activity") or "") for t in items),
             default="",
         )
+        age_s = _seconds_since(last_activity)
+        fresh_working = age_s is not None and age_s <= working_window_s
+        fresh_active = age_s is not None and age_s <= active_window_s
         if has_blocking_operator:
             status = "blocking-operator"
-        elif has_in_progress:
+        elif has_in_progress and fresh_working:
             status = "working"
-        elif last_activity:
+        elif has_in_progress:
+            # decay: in_progress but quiet for > working window → stale.
+            status = "stale"
+        elif fresh_active:
             status = "active"
         else:
             status = "idle"
