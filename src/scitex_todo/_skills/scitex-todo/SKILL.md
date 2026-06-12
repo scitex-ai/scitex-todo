@@ -172,3 +172,18 @@ monitors. Read 32 before wiring up a new agent's harness.
   arrival rate so the board doesn't drift out of sync with the
   codebase. Name locked by operator TG 332 + 335: must carry "task";
   no "branch" / "graph" metaphors.
+- [41_cli-mcp-gap-analysis.md](41_cli-mcp-gap-analysis.md) — CLI /
+  MCP / Python API gap audit. Several items have shipped since the
+  original audit (comment verb in 0.5.x; multi-status + agent /
+  project / host / blocker filters partially shipped via PR #102 /
+  PR #104 search-qualifiers + the WRITE-side flags). Re-check before
+  opening any "still missing" follow-up.
+
+### For consuming agents (42+)
+- [42_for-consuming-agents.md](42_for-consuming-agents.md) — **start
+  here if you've been told "use scitex-todo for your todos."**
+  One-page protocol for any fleet agent: CRUD verbs, closed enums,
+  title-prefix convention, lead↔worker sync wire. (Was `40_…` in PR
+  #63's source branch; renumbered to `42_` during rebase to avoid
+  the slot collision with `40_task-harvest.md` that landed on
+  develop first.)
