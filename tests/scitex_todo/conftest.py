@@ -88,4 +88,38 @@ def env():
     finally:
         helper.restore()
 
+
+# === Suite-wide lane-discovery isolation ====================================
+#
+# PR introducing the per-project lane UNION (lead a2a `1ceec0ef` /
+# `40c0a42d`, operator-validated) made ``services.get_board`` glob
+# ``~/proj/*/.scitex/todo/tasks.yaml`` by default. Without an opt-out,
+# test harnesses that pass an explicit ``tmp_path`` global store would
+# ALSO pick up the test runner's HOST ``~/proj`` lanes — contaminating
+# fixture-pure assertions (e.g. the priority-endpoint test asserts a
+# fixture-exact id set).
+#
+# This autouse fixture pins ``SCITEX_TODO_LANE_GLOBS=""`` for every
+# test in the suite so callers get the pre-union behavior unless they
+# explicitly opt back in via the ``env`` fixture (the lane-union
+# tests do exactly that). PA-306-compliant: uses :class:`_EnvHelper`
+# directly, not ``monkeypatch``.
+
+
+@pytest.fixture(autouse=True)
+def _isolate_host_lane_globs():
+    """Empty out ``SCITEX_TODO_LANE_GLOBS`` for every test by default.
+
+    Stacks safely with the ``env`` fixture — a test that opts back into
+    lane discovery via ``env.set("SCITEX_TODO_LANE_GLOBS", "...")``
+    will see its later value during the test body; this fixture
+    restores the pre-test value on teardown.
+    """
+    helper = _EnvHelper()
+    helper.set("SCITEX_TODO_LANE_GLOBS", "")
+    try:
+        yield
+    finally:
+        helper.restore()
+
 # EOF
