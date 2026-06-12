@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.8] - 2026-06-12 — Graph view edges fix + fleetstrip removal + search-kbd pill folded into placeholder
+
+Operator-reported regressions on `/`, lead-approved fixes:
+
+### Fixed — Graph layout had no edges
+
+- Lead `c212aa72bb0a4161b4faa8e81d508bc8` / `8af2a4a65fe94c9aa0e5f774598127a0`.
+  PR #108's Graph view tried to read `t.depends_on` / `t.blocks` per-node
+  and emitted a 400-node, 0-edge layout (41 552 px tall — operator
+  element-inspector confirmed). The `/graph` endpoint doesn't expose
+  those per-node — it returns them aggregated at top-level
+  (`STATE.graph.edges`, 26 entries in the operator's live store).
+  Hierarchical `parent` edges (111 of them, per-node) were also
+  missing.
+- Fix: `_renderGraphView` now consumes `STATE.graph.edges` directly
+  for the depends_on / blocks set, and walks `t.parent` for the
+  hierarchical edge set. Edges are visually distinguished — solid
+  arrows for depends_on / blocks, dashed for parent. Graph is
+  filtered to the connected component (nodes touched by ≥1 edge);
+  disconnected nodes render in Column / Table layouts only.
+- New empty-state: when 0 edges among the visible scope, the canvas
+  shows a friendly explanation pointing at the `depends_on` / `blocks`
+  / `parent` YAML encoding so the operator can fix the data.
+
+### Removed — empty fleetstrip + standalone kbd-hint pill
+
+- Lead `032e41545fcf4ab4b98d864ec1770249`. The `div#fleetstrip`
+  rendered as `Content: none` because the payload never populated
+  `STATE.graph.fleet` — operator: "i dont need this". The element +
+  the orphan `renderFleetStrip()` helper are removed; fleet-liveness
+  lives in the lead's periodic reports.
+- The standalone `span.filt-search-kbd` "press / to focus" pill is
+  removed. The same hint is now inline in the search input's
+  placeholder text — operator: "just write the kbd in the search box".
+
 ## [0.5.7] - 2026-06-12 — User lane normalization + tighten left space + age pill + finish BLOCKING-YOU removal
 
 Lead-HOLD-approved follow-up to 0.5.6 (PR #107, rebased on top of the

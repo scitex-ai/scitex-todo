@@ -82,15 +82,22 @@ class TestP1SearchAsLauncher:
     def test_attach_search_keyboard_launcher_called(self, board_text):
         assert "attachSearchKeyboardLauncher()" in board_text
 
-    def test_kbd_hint_chip_css_class_defined(self, css_text):
-        # CSS pin — lives in the extracted board_v3 static stylesheets
-        # (02-card.css) after the 2026-06-12 CSS extraction. Pre-extraction
-        # this string lived in the inline <style> block of board_v3.html.
-        assert ".filt-search-kbd" in css_text
-
-    def test_kbd_hint_chip_text_present(self, board_text):
-        # The visible affordance — "press / to focus" must be in the HTML.
-        assert "press <kbd>/</kbd> to focus" in board_text
+    def test_kbd_hint_in_search_placeholder(self, board_text):
+        # Lead `032e41545fcf4ab4b98d864ec1770249` 2026-06-12: the
+        # standalone `.filt-search-kbd` pill was operator-judged
+        # noise and folded into the search input's placeholder per
+        # operator "just write the kbd in the search box". The pin
+        # now asserts the hint is INSIDE the placeholder text on
+        # `#f-search`, so the affordance is still discoverable but
+        # without the extra DOM chrome.
+        assert "/ to focus" in board_text, (
+            "search input must hint at the '/' keyboard shortcut in "
+            "its placeholder (operator UX, lead a2a "
+            "`032e41545fcf4ab4b98d864ec1770249`)"
+        )
+        assert "Esc to blur" in board_text, (
+            "search input must hint at 'Esc to blur' in its placeholder"
+        )
 
     def test_search_input_min_width_bumped(self, css_text):
         # The P1 CSS bump to 320px is what makes the search the PRIMARY
