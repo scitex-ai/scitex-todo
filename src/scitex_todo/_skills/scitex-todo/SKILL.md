@@ -145,6 +145,9 @@ monitors. Read 32 before wiring up a new agent's harness.
 
 ### Meta (20+)
 - [20_env-vars.md](20_env-vars.md) — environment variables and local state
+- [21_fleet-mcp-rollout.md](21_fleet-mcp-rollout.md) — **canonical
+  `.mcp.json` block + binding "MCP-only durable todos" mandate** for
+  the fleet-wide P3a rollout (agent-container `to_home/_base/.mcp.json`)
 
 ### Architecture (30+)
 - [30_two-tier-conventions-and-write-protocol.md](30_two-tier-conventions-and-write-protocol.md)
