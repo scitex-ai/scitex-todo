@@ -146,10 +146,16 @@ def render_graph_cmd(tasks_path: str | None, output: str, print_mermaid: bool) -
 @main.command(
     "list-tasks",
     help=(
-        "List tasks with optional scope/assignee/status filters.\n\n"
-        "Without filters and without --json, prints the same plain-text\n"
-        "table as before (backward-compatible).\n\n"
-        "Example:\n  scitex-todo list-tasks --scope agent:proj-scitex-todo --json"
+        "List tasks with optional filters.\n\n"
+        "Without any filter, prints the same plain-text table / JSON array\n"
+        "as before (backward-compatible). With one or more filters,\n"
+        "matches are AND-composed.\n\n"
+        "Examples:\n"
+        "  scitex-todo list-tasks --assignee proj-scitex-todo --json\n"
+        "  scitex-todo list-tasks --project scitex-todo --status pending --status in_progress\n"
+        "  scitex-todo list-tasks --blocking-me\n"
+        "  scitex-todo list-tasks --id-prefix proj-scitex-\n"
+        "  scitex-todo list-tasks --blocker __none  # rows with no blocker"
     ),
 )
 @click.option(
@@ -164,8 +170,42 @@ def render_graph_cmd(tasks_path: str | None, output: str, print_mermaid: bool) -
     default=None,
     help="Match `scope` exactly (use '' to ignore $SCITEX_TODO_SCOPE).",
 )
-@click.option("--assignee", default=None, help="Match `assignee` exactly.")
-@click.option("--status", default=None, help="Match `status` exactly.")
+@click.option("--assignee", default=None, help="Match `assignee` exactly (PRIMARY linking field today).")
+@click.option(
+    "--agent",
+    default=None,
+    help="Match `agent` exactly (forward-compat alias for --assignee).",
+)
+@click.option("--project", default=None, help="Match `project` exactly.")
+@click.option("--host", default=None, help="Match `host` exactly.")
+@click.option(
+    "--blocker",
+    default=None,
+    help="Match `blocker` exactly; `__none` matches rows with no blocker.",
+)
+@click.option(
+    "--kind",
+    default=None,
+    help="Match `kind` exactly; `task` matches both explicit and absent rows.",
+)
+@click.option(
+    "--id-prefix",
+    "id_prefix",
+    default=None,
+    help="Match the front of `id` (cheap project-rollup lookup).",
+)
+@click.option(
+    "--blocking-me",
+    "blocking_me",
+    is_flag=True,
+    help="Predicate: status=blocked AND blocker=operator-decision (BLOCKING-YOU panel).",
+)
+@click.option(
+    "--status",
+    "statuses",
+    multiple=True,
+    help="Match `status` exactly. Repeat for multi-status filter.",
+)
 @click.option(
     "--json",
     "as_json",
@@ -176,15 +216,47 @@ def list_tasks_cmd(
     tasks_path: str | None,
     scope: str | None,
     assignee: str | None,
-    status: str | None,
+    agent: str | None,
+    project: str | None,
+    host: str | None,
+    blocker: str | None,
+    kind: str | None,
+    id_prefix: str | None,
+    blocking_me: bool,
+    statuses: tuple,
     as_json: bool,
 ) -> None:
-    """Print the resolved task list (filtered if any --scope/--assignee/--status)."""
-    # Filter path (any filter or scope explicitly opted out via ""):
-    if scope is not None or assignee is not None or status is not None:
+    """Print the resolved task list (filtered or not)."""
+    # Normalize: click's multiple=True returns a tuple; the helper
+    # signature takes a list[str] | None. Empty tuple = no constraint.
+    statuses_list: list[str] | None = list(statuses) if statuses else None
+    # Did the caller pass ANY filter? Drive the dispatch off this.
+    has_filter = any(
+        v is not None for v in (
+            scope, assignee, agent, project, host, blocker, kind, id_prefix,
+        )
+    ) or bool(statuses_list) or blocking_me
+
+    if has_filter:
         from ._admin import list_tasks_filtered
 
-        list_tasks_filtered(scope, assignee, status, as_json, tasks_path)
+        list_tasks_filtered(
+            scope,
+            assignee,
+            # Legacy positional `status` (single) is None when --status
+            # is empty / multi; the multi case feeds `statuses=`.
+            None,
+            as_json,
+            tasks_path,
+            statuses=statuses_list,
+            agent=agent,
+            project=project,
+            host=host,
+            blocker=blocker,
+            kind=kind,
+            id_prefix=id_prefix,
+            blocking_me=blocking_me,
+        )
         return
     # Plain path — backward-compatible plain table / JSON array.
     resolved = resolve_tasks_path(tasks_path)

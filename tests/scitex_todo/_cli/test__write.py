@@ -584,6 +584,91 @@ def test_list_env_scope_default(tmp_path, env):
 
 
 # --------------------------------------------------------------------------- #
+# list-tasks — PR #66 filter expansion (agent / project / host / blocker /    #
+# kind / id-prefix / blocking-me + multi-status)                              #
+# --------------------------------------------------------------------------- #
+def _seed_for_pr66(runner, store):
+    """Seed the extended-filter test store."""
+    runner.invoke(main, ["add", "px1", "X1", "--tasks", store])
+    runner.invoke(main, ["add", "px2", "X2", "--tasks", store,
+                         "--status", "in_progress"])
+    runner.invoke(main, ["add", "py1", "Y1", "--tasks", store])
+    runner.invoke(main, ["add", "py2", "Y2", "--tasks", store])
+
+
+def test_list_filter_by_id_prefix(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    _seed_for_pr66(runner, store)
+    # Act
+    result = runner.invoke(
+        main,
+        ["list-tasks", "--tasks", store, "--json", "--id-prefix", "py"],
+    )
+    rows = json.loads(result.output.strip())
+    # Assert
+    assert {r["id"] for r in rows} == {"py1", "py2"}
+
+
+def test_list_filter_by_blocker_none_token(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    _seed_for_pr66(runner, store)
+    # Act — all four seeded rows have NO blocker field
+    result = runner.invoke(
+        main, ["list-tasks", "--tasks", store, "--json", "--blocker", "__none"]
+    )
+    rows = json.loads(result.output.strip())
+    # Assert
+    assert {r["id"] for r in rows} == {"px1", "px2", "py1", "py2"}
+
+
+def test_list_filter_multi_status_unions(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    _seed_for_pr66(runner, store)
+    # Act — pending (px1, py1, py2) + in_progress (px2) = all 4
+    result = runner.invoke(
+        main,
+        [
+            "list-tasks", "--tasks", store, "--json",
+            "--status", "pending", "--status", "in_progress",
+        ],
+    )
+    rows = json.loads(result.output.strip())
+    # Assert
+    assert {r["id"] for r in rows} == {"px1", "px2", "py1", "py2"}
+
+
+def test_list_filter_blocking_me_flag(tmp_path):
+    # Arrange — seed via CLI for shape + Python API for the blocker
+    # field (the CLI --blocker flag lands in a sibling PR; this PR's
+    # filter logic doesn't need the CLI surface to test the predicate).
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    runner.invoke(
+        main, ["add", "b", "B", "--tasks", store, "--status", "blocked"]
+    )
+    _store.update_task(store, "b", blocker="operator-decision")
+    runner.invoke(
+        main, ["add", "c", "C", "--tasks", store, "--status", "blocked"]
+    )
+    _store.update_task(store, "c", blocker="dependency")
+    # Act
+    result = runner.invoke(
+        main,
+        ["list-tasks", "--tasks", store, "--json", "--blocking-me"],
+    )
+    rows = json.loads(result.output.strip())
+    # Assert
+    assert {r["id"] for r in rows} == {"b"}
+
+
+# --------------------------------------------------------------------------- #
 # summary                                                                     #
 # --------------------------------------------------------------------------- #
 def test_summary_exits_zero(tmp_path):

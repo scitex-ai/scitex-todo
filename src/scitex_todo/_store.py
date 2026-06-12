@@ -128,15 +128,75 @@ def _utc_now_iso() -> str:
     )
 
 
-def _match(task: dict, *, scope: str | None, assignee: str | None,
-           status: str | None) -> bool:
-    """Three-way string-equality filter. Any argument that is None is
-    treated as "no constraint"."""
+def _match(
+    task: dict,
+    *,
+    scope: str | None = None,
+    assignee: str | None = None,
+    status: str | None = None,
+    statuses: list[str] | None = None,
+    agent: str | None = None,
+    project: str | None = None,
+    host: str | None = None,
+    blocker: str | None = None,
+    kind: str | None = None,
+    id_prefix: str | None = None,
+    blocking_me: bool = False,
+) -> bool:
+    """String-equality + predicate filter. ``None`` / empty = no constraint.
+
+    Filter semantics (per PR #66 / ADR-0008 D2 + D10):
+      - ``status`` (single) and ``statuses`` (multi) are OR-combined: a
+        row matches if its status is in ``set([status]) ∪ set(statuses)``
+        (after dropping ``None``).
+      - ``blocker="__none"`` matches rows with no blocker field (the
+        explicit "no blocker named" filter the board's `/graph` uses).
+      - ``kind=None`` is NO filter; ``kind="task"`` matches both
+        explicit ``"task"`` AND ``absent`` rows (since absent ≡ "task"
+        per ADR-0002).
+      - ``id_prefix`` is a substring match on the front of ``id`` —
+        the cheap "find my project's rows" without remembering exact
+        ids.
+      - ``blocking_me`` is the BLOCKING-YOU predicate (board-v3 panel):
+        ``status == "blocked" AND blocker == "operator-decision"``.
+        Composes with the other filters via AND.
+    """
     if scope is not None and task.get("scope") != scope:
         return False
     if assignee is not None and task.get("assignee") != assignee:
         return False
-    if status is not None and task.get("status") != status:
+    if agent is not None and task.get("agent") != agent:
+        return False
+    if project is not None and task.get("project") != project:
+        return False
+    if host is not None and task.get("host") != host:
+        return False
+    if blocker is not None:
+        if blocker == "__none":
+            if task.get("blocker"):
+                return False
+        elif task.get("blocker") != blocker:
+            return False
+    if kind is not None:
+        eff = task.get("kind") or "task"
+        if eff != kind:
+            return False
+    if id_prefix and not str(task.get("id", "")).startswith(id_prefix):
+        return False
+    # Union the single + multi status constraints. None and empty list
+    # collapse to "no constraint." When BOTH are provided, the union is
+    # checked (so callers can extend an existing single-status default).
+    allowed: set[str] = set()
+    if status is not None:
+        allowed.add(status)
+    if statuses:
+        allowed.update(statuses)
+    if allowed and task.get("status") not in allowed:
+        return False
+    if blocking_me and not (
+        task.get("status") == "blocked"
+        and task.get("blocker") == "operator-decision"
+    ):
         return False
     return True
 
@@ -321,14 +381,34 @@ def list_tasks(
     scope: str | None = None,
     assignee: str | None = None,
     status: str | None = None,
+    # PR #66 additions per ADR-0008 D2 / D10:
+    statuses: list[str] | None = None,
+    agent: str | None = None,
+    project: str | None = None,
+    host: str | None = None,
+    blocker: str | None = None,
+    kind: str | None = None,
+    id_prefix: str | None = None,
+    blocking_me: bool = False,
 ) -> list[dict]:
-    """Snapshot the store, then filter by scope / assignee / status.
+    """Snapshot the store, then filter by any combination of fields.
 
     Filter semantics:
     - ``scope=None`` (default): use ``$SCITEX_TODO_SCOPE`` if set, else
       no filter. ``scope=""`` opts out of the env default explicitly.
-    - ``assignee`` / ``status``: ``None`` = no filter; any string = exact
-      match. (Generic Req 8 — no fuzzy / glob; callers compose.)
+    - ``assignee`` / ``agent`` / ``project`` / ``host`` / ``status``:
+      ``None`` = no filter; any string = exact match. (Generic Req 8 —
+      no fuzzy / glob; callers compose.)
+    - ``statuses`` (list) AND ``status`` (single) are OR-combined.
+    - ``blocker="__none"`` matches rows with no blocker field; any other
+      value is an exact match (closed-enum gating at the CLI layer).
+    - ``kind="task"`` matches both explicit ``"task"`` AND absent rows
+      (since absent ≡ ``"task"`` per ADR-0002).
+    - ``id_prefix`` matches the front of ``id`` (cheap project-rollup
+      lookup without exact id).
+    - ``blocking_me=True`` is the board's BLOCKING-YOU predicate
+      (``status == "blocked" AND blocker == "operator-decision"``);
+      composes with the other filters via AND.
 
     The returned list contains fresh dicts, safe to mutate without
     affecting the on-disk store (no save here).
@@ -339,7 +419,20 @@ def list_tasks(
     return [
         dict(t)
         for t in tasks
-        if _match(t, scope=scope_eff, assignee=assignee, status=status)
+        if _match(
+            t,
+            scope=scope_eff,
+            assignee=assignee,
+            status=status,
+            statuses=statuses,
+            agent=agent,
+            project=project,
+            host=host,
+            blocker=blocker,
+            kind=kind,
+            id_prefix=id_prefix,
+            blocking_me=blocking_me,
+        )
     ]
 
 

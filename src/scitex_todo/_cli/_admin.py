@@ -36,6 +36,15 @@ def list_tasks_filtered(
     status: str | None,
     as_json: bool,
     tasks_path: str | None,
+    *,
+    statuses: list[str] | None = None,
+    agent: str | None = None,
+    project: str | None = None,
+    host: str | None = None,
+    blocker: str | None = None,
+    kind: str | None = None,
+    id_prefix: str | None = None,
+    blocking_me: bool = False,
 ) -> None:
     """Filter the store and print the matching tasks.
 
@@ -43,11 +52,27 @@ def list_tasks_filtered(
     `_cli/_main.py` so the filter logic stays alongside the other
     `_store`-backed verbs. The `list` Click verb that used to live
     here was removed per audit §1 (bare transitive verb at top level).
+
+    PR #66 added the new filter kwargs (agent / project / host / blocker
+    / kind / id_prefix / blocking_me + multi-status via ``statuses``)
+    per ADR-0008 D2 / D10. Legacy callers passing only the original four
+    positional/keyword args still work; new args default to "no filter".
     """
     from .. import _store
 
     rows = _store.list_tasks(
-        tasks_path, scope=scope, assignee=assignee, status=status
+        tasks_path,
+        scope=scope,
+        assignee=assignee,
+        status=status,
+        statuses=statuses,
+        agent=agent,
+        project=project,
+        host=host,
+        blocker=blocker,
+        kind=kind,
+        id_prefix=id_prefix,
+        blocking_me=blocking_me,
     )
     if as_json:
         click.echo(json.dumps(rows))

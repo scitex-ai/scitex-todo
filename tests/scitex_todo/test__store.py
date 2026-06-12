@@ -597,6 +597,153 @@ def test_list_tasks_explicit_empty_string_overrides_env(populated_store, env):
 
 
 # --------------------------------------------------------------------------- #
+# list_tasks — PR #66 filter expansion (agent / project / host / blocker /    #
+# kind / id_prefix / blocking_me + multi-status via statuses=)                #
+# --------------------------------------------------------------------------- #
+@pytest.fixture
+def extended_store(tmp_path):
+    """Store seeded with operator-co-designed fields for filter tests.
+
+    Uses ``add_task`` for the schema fields the develop-side API
+    accepts directly, then ``update_task(**fields)`` for the
+    operator-co-designed extras (project / host / agent / blocker /
+    kind / job_id). The CLI / Python **extras surface on add_task
+    lands in a sibling PR; this PR's filter logic doesn't require
+    that surface to be exercised end-to-end.
+    """
+    store = tmp_path / "tasks.yaml"
+    _store.add_task(store, id="proj-x-1", title="X1")
+    _store.update_task(
+        store, "proj-x-1", agent="proj-x", project="x", host="alpha"
+    )
+    _store.add_task(store, id="proj-x-2", title="X2", status="in_progress")
+    _store.update_task(
+        store, "proj-x-2", agent="proj-x", project="x", host="beta"
+    )
+    _store.add_task(store, id="proj-y-1", title="Y1", status="blocked")
+    _store.update_task(
+        store, "proj-y-1", agent="proj-y", project="y", host="alpha",
+        blocker="operator-decision",
+    )
+    _store.add_task(store, id="proj-y-2", title="Y2", status="blocked")
+    _store.update_task(
+        store, "proj-y-2", agent="proj-y", project="y", host="alpha",
+        blocker="dependency",
+    )
+    _store.add_task(store, id="compute-1", title="C1")
+    _store.update_task(
+        store, "compute-1", agent="proj-x", kind="compute", job_id="999"
+    )
+    return store
+
+
+def test_list_tasks_filters_by_agent(extended_store):
+    # Arrange
+    store = extended_store
+    # Act
+    rows = _store.list_tasks(store, scope="", agent="proj-x")
+    # Assert
+    assert {r["id"] for r in rows} == {"proj-x-1", "proj-x-2", "compute-1"}
+
+
+def test_list_tasks_filters_by_project(extended_store):
+    # Arrange
+    store = extended_store
+    # Act
+    rows = _store.list_tasks(store, scope="", project="y")
+    # Assert
+    assert {r["id"] for r in rows} == {"proj-y-1", "proj-y-2"}
+
+
+def test_list_tasks_filters_by_host(extended_store):
+    # Arrange
+    store = extended_store
+    # Act
+    rows = _store.list_tasks(store, scope="", host="alpha")
+    # Assert
+    assert {r["id"] for r in rows} == {"proj-x-1", "proj-y-1", "proj-y-2"}
+
+
+def test_list_tasks_filters_by_blocker_exact(extended_store):
+    # Arrange
+    store = extended_store
+    # Act
+    rows = _store.list_tasks(store, scope="", blocker="operator-decision")
+    # Assert
+    assert {r["id"] for r in rows} == {"proj-y-1"}
+
+
+def test_list_tasks_filters_by_blocker_none_token(extended_store):
+    # Arrange
+    store = extended_store
+    # Act
+    rows = _store.list_tasks(store, scope="", blocker="__none")
+    # Assert — all rows WITHOUT a blocker field
+    assert {r["id"] for r in rows} == {"proj-x-1", "proj-x-2", "compute-1"}
+
+
+def test_list_tasks_filters_by_kind_compute(extended_store):
+    # Arrange
+    store = extended_store
+    # Act
+    rows = _store.list_tasks(store, scope="", kind="compute")
+    # Assert
+    assert {r["id"] for r in rows} == {"compute-1"}
+
+
+def test_list_tasks_kind_task_matches_absent(extended_store):
+    # Arrange — proj-x-1, proj-x-2, proj-y-1, proj-y-2 have NO kind field
+    # (absent ≡ "task" per ADR-0002).
+    store = extended_store
+    # Act
+    rows = _store.list_tasks(store, scope="", kind="task")
+    # Assert
+    assert {r["id"] for r in rows} == {
+        "proj-x-1", "proj-x-2", "proj-y-1", "proj-y-2"
+    }
+
+
+def test_list_tasks_blocking_me_predicate(extended_store):
+    # Arrange
+    store = extended_store
+    # Act
+    rows = _store.list_tasks(store, scope="", blocking_me=True)
+    # Assert
+    assert {r["id"] for r in rows} == {"proj-y-1"}
+
+
+def test_list_tasks_id_prefix_matches_prefix(extended_store):
+    # Arrange
+    store = extended_store
+    # Act
+    rows = _store.list_tasks(store, scope="", id_prefix="proj-y")
+    # Assert
+    assert {r["id"] for r in rows} == {"proj-y-1", "proj-y-2"}
+
+
+def test_list_tasks_multi_status_unions(extended_store):
+    # Arrange
+    store = extended_store
+    # Act
+    rows = _store.list_tasks(
+        store, scope="", statuses=["in_progress", "blocked"]
+    )
+    # Assert
+    assert {r["id"] for r in rows} == {"proj-x-2", "proj-y-1", "proj-y-2"}
+
+
+def test_list_tasks_filters_compose_AND(extended_store):
+    # Arrange
+    store = extended_store
+    # Act — agent=proj-y AND blocker=operator-decision
+    rows = _store.list_tasks(
+        store, scope="", agent="proj-y", blocker="operator-decision"
+    )
+    # Assert
+    assert {r["id"] for r in rows} == {"proj-y-1"}
+
+
+# --------------------------------------------------------------------------- #
 # summary                                                                     #
 # --------------------------------------------------------------------------- #
 def test_summary_total_count(populated_store):

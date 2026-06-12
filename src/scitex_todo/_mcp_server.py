@@ -224,15 +224,37 @@ async def list_tasks(
     scope: str | None = None,
     assignee: str | None = None,
     status: str | None = None,
+    statuses: list[str] | None = None,
+    agent: str | None = None,
+    project: str | None = None,
+    host: str | None = None,
+    blocker: str | None = None,
+    kind: str | None = None,
+    id_prefix: str | None = None,
+    blocking_me: bool = False,
     tasks_path: str | None = None,
 ) -> str:
-    """List tasks, filtered by scope/assignee/status. Returns a JSON array.
+    """List tasks, filtered by any combination of fields. Returns a JSON array.
 
-    `scope=None` (the default) uses $SCITEX_TODO_SCOPE if set;
-    `scope=""` (empty string) opts out of that env default.
+    ``scope=None`` (default) uses $SCITEX_TODO_SCOPE if set; ``scope=""``
+    opts out of that env default. ``statuses`` (multi) OR-combines with
+    ``status`` (single). ``blocker="__none"`` matches rows with no blocker.
+    ``blocking_me=True`` matches the board's BLOCKING-YOU predicate
+    (``status=blocked AND blocker=operator-decision``).
     """
     rows = _store.list_tasks(
-        tasks_path, scope=scope, assignee=assignee, status=status
+        tasks_path,
+        scope=scope,
+        assignee=assignee,
+        status=status,
+        statuses=statuses,
+        agent=agent,
+        project=project,
+        host=host,
+        blocker=blocker,
+        kind=kind,
+        id_prefix=id_prefix,
+        blocking_me=blocking_me,
     )
     return json.dumps(rows)
 
