@@ -179,6 +179,21 @@
             <option value="undated">no date in title</option>
           </select>
         </div>
+        <!-- Show-done toggle (operator direct request, lead a2a
+             `b9d135c1ea8348dea80f027ba66a0079` 2026-06-12). DEFAULT
+             OFF — `status: done` cards are hidden from every layout
+             (Column / Graph / Table / Calendar). Persisted in
+             localStorage["scitex-todo:show-done"]. The hidden-done
+             count surfaces in the popover row label so the operator
+             can't think "where did my done cards go". -->
+        <div class="filt-popover-row filt-popover-row--toggle">
+          <label for="f-showdone" class="filt-popover-toggle-label">
+            <input type="checkbox" id="f-showdone"
+                   onchange="onShowDoneChange(event)">
+            <span>Show <code>done</code> tasks
+              (<span id="f-showdone-count">0</span> hidden)</span>
+          </label>
+        </div>
         <div class="filt-popover-actions">
           <button type="button" class="filt-popover-clear"
                   onclick="clearAllFilters()"
@@ -473,6 +488,16 @@
     let STATE = { graph: null, openId: null, lastMtime: null,
       filters: { project: "", host: "", status: "", blocker: "", agent: "",
                  blockingMe: false, showHidden: false,
+                 // Show-done — DEFAULT OFF (operator direct, lead a2a
+                 // `b9d135c1ea8348dea80f027ba66a0079` 2026-06-12).
+                 // `status: done` cards drop from every layout unless
+                 // the popover toggle is flipped on. Sticky via
+                 // localStorage["scitex-todo:show-done"].
+                 showDone: (function () {
+                   try {
+                     return localStorage.getItem("scitex-todo:show-done") === "1";
+                   } catch { return false; }
+                 })(),
                  search: "", date: "" },
       // P9 (lead brief 2026-06-12): per-column card sort. "default" = legacy
       // date-aware sort; other values pick a single field comparator.
@@ -544,6 +569,10 @@
           btn.classList.toggle("filt-layout-btn--on", active);
           btn.setAttribute("aria-checked", active ? "true" : "false");
         });
+        // Sync the Show-done checkbox to the persisted STATE so the
+        // popover reflects the actual filter state on first paint.
+        const _sdBox = document.getElementById("f-showdone");
+        if (_sdBox) _sdBox.checked = !!STATE.filters.showDone;
         render();
       } catch (e) {
         document.getElementById("columns").innerHTML =
@@ -553,6 +582,11 @@
 
     function passes(t) {
       const f = STATE.filters;
+      // Show-done — DEFAULT OFF (operator direct, lead a2a
+      // `b9d135c1ea8348dea80f027ba66a0079`). `status: done` cards drop
+      // from every layout unless the popover toggle is flipped on.
+      // Done early so the rest of the predicates never see done rows.
+      if (!f.showDone && t.status === "done") return false;
       if (f.project && (t.project || "Uncategorized") !== f.project) return false;
       if (f.host && (t.host || "") !== f.host) return false;
       if (f.status && bucket(t.status) !== f.status) return false;
@@ -1438,6 +1472,16 @@
       // operator sees how many cards are currently being filtered out.
       const hc = document.getElementById("hidden-count");
       if (hc) hc.textContent = String(hiddenSet().size);
+      // Hidden-done counter — surfaces in the popover toggle label so
+      // the operator can't think "where did my done cards go" (operator
+      // direct, lead `b9d135c1ea8348dea80f027ba66a0079`).
+      const sdc = document.getElementById("f-showdone-count");
+      if (sdc) {
+        const doneCount = STATE.graph.nodes.filter(n => n.status === "done").length;
+        sdc.textContent = STATE.filters.showDone
+          ? String(doneCount) + " shown"
+          : String(doneCount) + " hidden";
+      }
     }
 
     // === Column layout (default kanban) ─────────────────────────────
@@ -2027,7 +2071,26 @@
         const el = document.getElementById("f-" + k);
         if (el) el.value = "";
       });
+      // "Clear all" leaves the show-done toggle alone — it's a persistent
+      // user preference, not a transient filter selection (operator
+      // direct, lead `b9d135c1ea8348dea80f027ba66a0079`).
       renderActiveFilterChips();
+      render();
+    }
+
+    // === Show-done toggle (operator direct, lead a2a
+    // `b9d135c1ea8348dea80f027ba66a0079` 2026-06-12). DEFAULT OFF —
+    // `status: done` cards drop from every layout (Column / Graph /
+    // Table / Calendar) unless this toggle flips on. Persisted in
+    // localStorage. The "(N hidden)" count in the toggle label is
+    // updated in render() so the operator can't think "where did my
+    // done cards go". (hook-bypass: line-limit.)
+    function onShowDoneChange(e) {
+      const on = !!(e && e.target && e.target.checked);
+      STATE.filters.showDone = on;
+      try {
+        localStorage.setItem("scitex-todo:show-done", on ? "1" : "0");
+      } catch {}
       render();
     }
 

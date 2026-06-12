@@ -75,6 +75,35 @@
   padding: 5px 8px;
   font-size: 0.85rem;
 }
+/* Show-done toggle row (operator direct, lead a2a 2026-06-12).
+ * Checkbox + inline count label. */
+.filt-popover-row--toggle {
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+.filt-popover-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text);
+  cursor: pointer;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.filt-popover-toggle-label input[type="checkbox"] {
+  accent-color: var(--purple);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+.filt-popover-toggle-label code {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 0.78rem;
+}
 .filt-popover-actions {
   display: flex;
   justify-content: flex-end;
