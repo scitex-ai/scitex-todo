@@ -303,6 +303,13 @@ def _build_fleet(tasks: list[dict], *, now=None) -> list[dict]:
                 pool = pending or items
                 current = sorted(pool, key=_priority_key)[0]
 
+        # `overdue_count` = tasks past their next deadline AND not in a
+        # terminal state. Feeds the operator UX (todo-p6-overdue-ui):
+        # "attended an overdue task but no suitable UI to act" — the
+        # fleet strip + filter bar can now surface a per-agent overdue
+        # tally without re-walking the store on the client side.
+        from scitex_todo._model import is_overdue as _is_overdue
+
         out.append(
             {
                 "name": agent,
@@ -320,6 +327,7 @@ def _build_fleet(tasks: list[dict], *, now=None) -> list[dict]:
                 "blocking_operator_count": sum(
                     1 for t in items if t.get("blocker") == "operator-decision"
                 ),
+                "overdue_count": sum(1 for t in items if _is_overdue(t, now=cur)),
             }
         )
     return out

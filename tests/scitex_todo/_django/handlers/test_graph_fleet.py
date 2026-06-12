@@ -294,3 +294,65 @@ def test_runnable_count_excludes_blocked_done_deferred_failed_goal(store):
     fleet = _fleet_by_name(_graph(store))
     # Assert
     assert fleet["proj-neurovista"]["runnable_count"] == 1
+
+
+def test_overdue_count_present_on_every_fleet_row(store):
+    # The fleet payload exposes per-agent `overdue_count` so the FE can
+    # surface a tally without re-walking the store (todo-p6-overdue-ui).
+    # The curated fixture has no deadlines, so every count is 0 — the
+    # key still must be there.
+    # Arrange
+    # Act
+    fleet = _fleet_by_name(_graph(store))
+    # Assert
+    assert all("overdue_count" in row for row in fleet.values())
+
+
+def test_overdue_count_zero_when_no_deadlines(store):
+    # Arrange — fixture has no deadline fields anywhere.
+    # Act
+    fleet = _fleet_by_name(_graph(store))
+    # Assert
+    assert all(row["overdue_count"] == 0 for row in fleet.values())
+
+
+# === Overdue counts (dedicated fixture with deadline rows) ==================
+
+
+_OVERDUE_FIXTURE = (
+    "tasks:\n"
+    "  - id: t-overdue-yesterday\n"
+    "    title: 'Late task'\n"
+    "    status: pending\n"
+    "    agent: proj-late\n"
+    "    deadline: '2000-01-01'\n"
+    "  - id: t-future\n"
+    "    title: 'Future task'\n"
+    "    status: pending\n"
+    "    agent: proj-late\n"
+    "    deadline: '2099-01-01'\n"
+    "  - id: t-done-past\n"
+    "    title: 'Past done task'\n"
+    "    status: done\n"
+    "    agent: proj-late\n"
+    "    deadline: '2000-01-01'\n"
+)
+
+
+@pytest.fixture
+def overdue_store(tmp_path):
+    path = tmp_path / "tasks.yaml"
+    path.write_text(_OVERDUE_FIXTURE, encoding="utf-8")
+    _reset_cache()
+    yield str(path)
+    _reset_cache()
+
+
+def test_overdue_count_counts_pending_past_deadline(overdue_store):
+    # Arrange — proj-late has 1 overdue pending + 1 future + 1 done-past.
+    # The done one must NOT count (terminal state); the future one must
+    # NOT count (deadline ahead).
+    # Act
+    fleet = _fleet_by_name(_graph(overdue_store))
+    # Assert
+    assert fleet["proj-late"]["overdue_count"] == 1

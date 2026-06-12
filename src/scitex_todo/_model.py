@@ -365,6 +365,39 @@ def _pick_next_dt(value, *, now=None):
     return repeater.next_occurrence(dt, now=now)
 
 
+def is_overdue(task: dict, *, now=None) -> bool:
+    """Return True iff ``task`` has a next deadline strictly in the past.
+
+    A task is **overdue** when:
+      * it has a `deadline` or `deadlines` field, AND
+      * the next-occurrence (per :func:`next_deadline_for_task`) is
+        strictly before today (UTC by default), AND
+      * the task hasn't reached a terminal lifecycle state (`done` /
+        `deferred` / `failed` aren't overdue — they're closed).
+
+    Used by the fleet liveness handler and the CLI's `list-tasks
+    --overdue` filter to surface late tasks at a glance (operator
+    TG12664 "attended an overdue task but no suitable UI to act on it" —
+    todo-p6-overdue-ui). Pure function (no I/O); deterministic given
+    ``now``.
+    """
+    import datetime as _dt
+
+    status = (task.get("status") or "").strip()
+    if status in {"done", "deferred", "failed", "goal"}:
+        return False
+    nxt = next_deadline_for_task(task, now=now)
+    if not nxt:
+        return False
+    cur = now or _dt.datetime.now(tz=_dt.timezone.utc)
+    today = cur.date() if hasattr(cur, "date") else cur
+    try:
+        nxt_date = _dt.date.fromisoformat(str(nxt)[:10])
+    except (TypeError, ValueError):
+        return False
+    return nxt_date < today
+
+
 def load_tasks(path: str | Path) -> list[dict]:
     """Load and validate the task list from a YAML store.
 
