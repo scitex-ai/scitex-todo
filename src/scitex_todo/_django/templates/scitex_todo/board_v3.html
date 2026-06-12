@@ -49,6 +49,10 @@
    expected GitHub-style syntax. Pure JS module, no DOM deps; unit
    tests at tests/scitex_todo/test__search_query.js. #}
 <script defer src="{% static 'scitex_todo/board_v3/searchQuery.js' %}"></script>
+{# searchSuggest.js — autocomplete/Tab-completion engine, extends PR #102.
+   Pure module; the inline script in extra_js below wires it to the
+   #f-search input. Exposes window.STX.searchSuggest. Operator TG 12318. #}
+<script defer src="{% static 'scitex_todo/board_v3/searchSuggest.js' %}"></script>
 {% endblock extra_css %}
 
 {% block app_content %}
@@ -70,10 +74,21 @@
          filterbar entry point. RESTORED 2026-06-12 after the P10/P11
          squash wave silently dropped these blocks. Pinned by the
          regression test in test__board_v3_signatures.py. -->
+    <span class="filt-search-wrap" id="f-search-wrap">
     <input class="filt filt-search" id="f-search" type="search"
            placeholder="🔎 search — try project:paper-scitex-clew, status:blocked, kind:compute, …"
-           title="Fuzzy match + GitHub-style qualifiers (project: / agent: / status: / kind: / parent: / scope: / id: / priority: / host:). Press / to focus, Esc to blur."
-           oninput="onSearchInput(event)" autocomplete="off">
+           title="Fuzzy match + GitHub-style qualifiers (project: / agent: / status: / kind: / parent: / scope: / id: / priority: / host:). Press / to focus, Esc to blur. Tab to autocomplete the qualifier or value under the cursor."
+           oninput="onSearchInput(event)" onkeydown="onSearchKeyDown(event)"
+           onfocus="onSearchFocus(event)" onblur="onSearchBlur(event)"
+           role="combobox" aria-autocomplete="list"
+           aria-controls="search-suggest" aria-expanded="false"
+           autocomplete="off">
+    <!-- Autocomplete dropdown (operator TG 12318) — populated by
+         renderSearchSuggest() inside onSearchInput / focus. Empty
+         until the operator focuses or types. -->
+    <ul class="search-suggest" id="search-suggest" role="listbox"
+        aria-label="Search suggestions" hidden></ul>
+    </span>
     <span class="filt-search-kbd" aria-hidden="true"
           title="Press / to focus the search">
       press <kbd>/</kbd> to focus
@@ -562,7 +577,134 @@
       STATE._searchParsedRaw = null;
       renderQualifierHints(e.currentTarget.value);
       renderActiveFilterChips();  // P2: surface the search chip while typing
+      renderSearchSuggest(e.currentTarget);
       render();
+    }
+
+    // === Search autocomplete (operator TG 12318) ===========================
+    // Inline-script wrapper around static/scitex_todo/board_v3/searchSuggest.js
+    // (deferred load). Mirrors the React SearchAutocomplete.tsx component so
+    // the vanilla board stays in lock-step with the React surface. Pure DOM
+    // here — the suggestion math lives in searchSuggest.js / searchQuery.js.
+    let _SEARCH_SUGG_ACTIVE = 0;
+    let _SEARCH_SUGG_ITEMS = [];
+    function _suggDataSource() {
+      const nodes = (STATE.graph && STATE.graph.nodes) || [];
+      return { nodes };
+    }
+    function renderSearchSuggest(input) {
+      const list = document.getElementById("search-suggest");
+      if (!list) return;
+      const SS = (window.STX && window.STX.searchSuggest) || null;
+      if (!SS) { list.hidden = true; input.setAttribute("aria-expanded", "false"); return; }
+      const q = input.value;
+      const pos = input.selectionStart != null ? input.selectionStart : q.length;
+      const sugs = SS.computeSuggestions(q, pos, _suggDataSource()).slice(0, 8);
+      _SEARCH_SUGG_ITEMS = sugs;
+      if (_SEARCH_SUGG_ACTIVE >= sugs.length) _SEARCH_SUGG_ACTIVE = 0;
+      if (!sugs.length) {
+        list.innerHTML = "";
+        list.hidden = true;
+        input.setAttribute("aria-expanded", "false");
+        input.removeAttribute("aria-activedescendant");
+        return;
+      }
+      list.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+      list.innerHTML = sugs.map((s, i) => {
+        const f = SS.formatSuggestion(s);
+        const cls = ["search-suggest__row", `search-suggest__row--${s.kind}`,
+                     i === _SEARCH_SUGG_ACTIVE ? "search-suggest__row--active" : ""]
+          .filter(Boolean).join(" ");
+        const badge = (s.count != null)
+          ? `<span class="search-suggest__badge">${s.count}</span>` : "";
+        const hint = f.hint
+          ? `<span class="search-suggest__hint">${escapeHtml(f.hint)}</span>` : "";
+        return `<li id="search-suggest-row-${i}" role="option" `
+             + `aria-selected="${i === _SEARCH_SUGG_ACTIVE}" class="${cls}" `
+             + `onmousedown="_searchSuggClick(event, ${i})" `
+             + `onmouseenter="_searchSuggHover(${i})">`
+             + `<span class="search-suggest__label">${escapeHtml(f.label)}</span>`
+             + badge + hint + `</li>`;
+      }).join("");
+      input.setAttribute("aria-activedescendant",
+                         `search-suggest-row-${_SEARCH_SUGG_ACTIVE}`);
+    }
+    function _searchSuggHover(i) {
+      _SEARCH_SUGG_ACTIVE = i;
+      const list = document.getElementById("search-suggest");
+      if (!list) return;
+      [...list.children].forEach((el, j) => {
+        el.classList.toggle("search-suggest__row--active", j === i);
+        el.setAttribute("aria-selected", j === i);
+      });
+      const input = document.getElementById("f-search");
+      if (input) input.setAttribute("aria-activedescendant", `search-suggest-row-${i}`);
+    }
+    function _searchSuggClick(e, i) {
+      // mousedown so the input doesn't blur first.
+      e.preventDefault();
+      _SEARCH_SUGG_ACTIVE = i;
+      _commitSearchSuggest();
+    }
+    function _commitSearchSuggest() {
+      const SS = (window.STX && window.STX.searchSuggest) || null;
+      const input = document.getElementById("f-search");
+      if (!SS || !input) return false;
+      const sug = _SEARCH_SUGG_ITEMS[_SEARCH_SUGG_ACTIVE];
+      if (!sug) return false;
+      const pos = input.selectionStart != null ? input.selectionStart : input.value.length;
+      const { newQuery, newCursorPos } = SS.applySuggestion(input.value, pos, sug);
+      input.value = newQuery;
+      try { input.setSelectionRange(newCursorPos, newCursorPos); } catch {}
+      STATE.filters.search = newQuery;
+      STATE._searchParsed = null;
+      STATE._searchParsedRaw = null;
+      renderQualifierHints(newQuery);
+      renderActiveFilterChips();
+      renderSearchSuggest(input);
+      render();
+      return true;
+    }
+    function onSearchKeyDown(e) {
+      const list = document.getElementById("search-suggest");
+      const open = list && !list.hidden;
+      if (!open) {
+        if (e.key === "ArrowDown" || e.key === "Tab") {
+          renderSearchSuggest(e.currentTarget);
+        }
+        return;
+      }
+      const n = _SEARCH_SUGG_ITEMS.length;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        _SEARCH_SUGG_ACTIVE = n ? (_SEARCH_SUGG_ACTIVE + 1) % n : 0;
+        renderSearchSuggest(e.currentTarget);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        _SEARCH_SUGG_ACTIVE = n ? (_SEARCH_SUGG_ACTIVE - 1 + n) % n : 0;
+        renderSearchSuggest(e.currentTarget);
+      } else if (e.key === "Tab" || e.key === "Enter") {
+        if (n > 0) {
+          e.preventDefault();
+          _commitSearchSuggest();
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        list.hidden = true;
+        e.currentTarget.setAttribute("aria-expanded", "false");
+      }
+    }
+    function onSearchFocus(e) {
+      renderSearchSuggest(e.currentTarget);
+    }
+    function onSearchBlur(e) {
+      // Defer close so a click on a row commits before the dropdown vanishes.
+      setTimeout(() => {
+        const list = document.getElementById("search-suggest");
+        if (list) list.hidden = true;
+        e.target.setAttribute("aria-expanded", "false");
+      }, 150);
     }
 
     // === Date extraction + proximity color (operator TG 440/442) =====
