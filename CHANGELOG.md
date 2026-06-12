@@ -4,6 +4,73 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-06-12 — `stats` CLI + WIP-validation gate + `sync-github` verb + `--notify` push
+
+Operator standing direction via lead a2a `4b23ebc1` + `7489ac31` +
+`6f24a752` + `5263c8d9` + `02b71bd0` + `130cc5ac` + `d99b8de6` +
+`5acfbb5d` (2026-06-12): the fleet must measure its own creation vs
+completion rate, push the per-agent numbers hourly so receivers
+self-correct, hard-throttle add-task at 2× the agent's WIP limit, and
+absorb GitHub merges back into the canonical board automatically.
+
+### Added — `scitex-todo stats`
+
+- New CLI: `scitex-todo stats [--by agent|project|host] [--since
+  YYYY-MM-DD] [--format text|json] [--notify]`.
+- Per-group rows: `name / open / stale / created / completed / delta
+  / ratio / velocity_per_day`. Source = canonical `tasks.yaml`. The
+  `created_at` field anchors the window; `last_activity` anchors the
+  `done` projection; `in_progress` rows older than
+  `SCITEX_TODO_STALE_HOURS` (default 24) count as `stale`.
+- `--notify` (agent grouping only): for each agent, push a body via
+  `sac agents send <agent> <body>` (stdout fallback when `sac`
+  unavailable). Body layout: HEADER (counts + ratio) → RUNNABLE
+  tasks first, then BLOCKED (depends_on-gate / blocker-reason),
+  capped at 10 + `+ N more`, then a RECENT DONE section. `⚠` marks
+  stale in_progress so receivers see neglected work at a glance.
+
+### Added — `scitex-todo sync-github`
+
+- New CLI: `scitex-todo sync-github [--since YYYY-MM-DD] [--dry-run]`.
+- Permanent version of the lead's 2026-06-12 one-time GitHub→board
+  sync. Pulls `ywatanabe1989/*` merged PRs in the window, matches by
+  `pr_url` (and creates new `status=done` records for unmatched PRs),
+  collapses mechanical CI-speedup PRs (`title contains "ci-speedup"
+  | "L1-L5"`) into a single bundle task per day.
+- Designed for the scitex-dev cron registry's hourly poll — the lead
+  registers the JOB_REGISTRY entry; this PR ships the verb itself.
+
+### Added — WIP-validation gate on the write side
+
+- `_store.add_task` now consults `_throughput.evaluate_wip(tasks,
+  agent)` BEFORE the append. The agent's open-task count (`status
+  NOT IN {done, goal}`) drives:
+  - `>= SCITEX_TODO_WIP_LIMIT` (default 20) → WARN to stderr.
+  - `>= 2 × SCITEX_TODO_WIP_LIMIT` → `TaskValidationError` HARD
+    REFUSE; the message names the agent + the count + the limit.
+- Goal-tier umbrellas (`status == "goal"`) are explicitly excluded
+  per lead-confirm `5acfbb5d`.
+- The gate is CLI/MCP/Python-path only — direct YAML hand-edits
+  bypass it by design (operator wants the normal path made fat so
+  hand-edits are unnecessary, not policed).
+
+### Added — `_throughput.py` shared aggregator
+
+- New module `src/scitex_todo/_throughput.py` — the single source of
+  truth for "open" / "stale" / "completed" / "RUNNABLE" / "BLOCKED"
+  semantics across the three new surfaces (stats CLI, WIP gate,
+  notify body). The dependency classifier (`classify()`) is
+  operator-confirmed defensive: an `depends_on` reference to a task
+  id that doesn't exist returns `BLOCKED(→ unknown:<id>)` rather
+  than silently treating it as RUNNABLE (lead-confirmed `130cc5ac`).
+- 26 unit tests in `tests/scitex_todo/test__throughput.py` covering
+  `aggregate` (groupings, status semantics, stale flag, unassigned
+  rendering), `classify` (RUNNABLE / BLOCKED / unknown-dep
+  defensive / status-blocked precedence), the WIP thresholds
+  (warn / refuse / agent-attribution short-circuit), and the
+  `--notify` body (RUNNABLE-first sort, truncation, ⚠ on stale,
+  recent-done section).
+
 ## [0.5.9] - 2026-06-12 — Filterbar reorganization (3-group layout)
 
 Operator UX feedback (lead a2a `b48f7c2c438b464698183d2e95d3bb04`,

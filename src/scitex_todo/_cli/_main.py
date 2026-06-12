@@ -329,11 +329,15 @@ def board_cmd(tasks_path: str | None, port: int, no_browser: bool) -> None:
 # --------------------------------------------------------------------------- #
 # Attach the §1a sub-groups (defined in sibling modules).                     #
 # --------------------------------------------------------------------------- #
-from . import _completion, _introspect, _loop, _mcp, _skills, _write  # noqa: E402
+from . import _completion, _introspect, _loop, _mcp, _skills, _stats, _write  # noqa: E402
 
 _introspect.register(main)
 _completion.register(main)
 _skills.register(main)
+# `stats` + `sync-github` (operator standing direction via lead a2a
+# `4b23ebc1` / `7489ac31` / `6f24a752` / `5263c8d9` / `02b71bd0` /
+# `130cc5ac`, 2026-06-12). Shared aggregator in `_throughput.py`.
+_stats.register(main)
 # Phase 1 mutation/admin verbs: add / update / done / list / summary /
 # where / init / sync(stub). See GITIGNORED/ARCHITECTURE.md.
 _write.register(main)
