@@ -285,9 +285,49 @@ def add_task(
     # tests/scitex_todo/test__store.py::test_two_concurrent_writers...
     with _store_lock(resolved):
         tasks = load_tasks(resolved) if resolved.exists() else []
+        # WIP-validation gate (operator standing direction via lead a2a
+        # `d99b8de6839d46e586e4ee692f43c1d9` + ``5acfbb5d0db44db8a7fa4f70c399d539``,
+        # 2026-06-12). Count the new task's agent's open tasks (status NOT
+        # in {done, goal}) BEFORE the append; WARN to stderr at the
+        # threshold, HARD REFUSE (raise) at 2x. Goal-tier umbrellas are
+        # excluded — they accumulate by design, not by WIP-failure.
+        # Direct YAML hand-edits bypass this gate by design (CLI/MCP
+        # path enforcement only — operator wants the CLI/MCP path made
+        # fat so hand-edits are unnecessary, not policed).
+        agent_for_wip = new.get("agent")
+        if agent_for_wip and new.get("status") not in _wip_excluded_statuses():
+            from ._throughput import evaluate_wip
+
+            rep = evaluate_wip(tasks, agent_for_wip)
+            if rep is not None and rep.is_refuse:
+                raise TaskValidationError(
+                    f"WIP gate refuses add: {rep.agent} already has "
+                    f"{rep.open_count} open tasks (>= 2 × limit "
+                    f"{rep.limit}). Close existing tasks before adding "
+                    f"more — see SCITEX_TODO_WIP_LIMIT env."
+                )
+            if rep is not None and rep.is_warn:
+                import sys
+
+                print(
+                    f"WARN: WIP gate — {rep.agent} now has "
+                    f"{rep.open_count + 1} open tasks (limit {rep.limit}). "
+                    f"Completion is not keeping up with creation; close "
+                    f"existing before adding more.",
+                    file=sys.stderr,
+                )
         tasks.append(new)
         _save_tasks_unlocked(tasks, resolved)
     return dict(new)
+
+
+def _wip_excluded_statuses() -> frozenset[str]:
+    """Re-export from ``_throughput`` so the gate's exclusion list stays
+    a single source of truth (lead-confirmed ``5acfbb5d`` — exclude
+    ``done`` + ``goal``)."""
+    from ._throughput import WIP_EXCLUDED_STATUSES
+
+    return WIP_EXCLUDED_STATUSES
 
 
 def update_task(
