@@ -115,10 +115,9 @@ def provide_jobs() -> list[JobSpec]:
         JobSpec(
             name="scitex-todo.notify",
             # `cron` (the JobSpec valid set is `cron|service|timer`).
-            # systemd materializes it as a `.timer` + `.service` pair
-            # with `OnCalendar=*:0/10` — every 10 minutes.
+            # 5-field cron schedule (min hour dom mon dow): every 10 min.
             kind="cron",
-            schedule="*:0/10",
+            schedule="*/10 * * * *",
             command=(
                 "scitex-todo print-stats --by agent "
                 "--notify --nudge-quiet"
