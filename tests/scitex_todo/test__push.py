@@ -32,6 +32,8 @@ import pytest
 from scitex_todo._push import (
     ENV_DRY_RUN,
     ENV_MAP,
+    ENV_SAC_BEARER,
+    ENV_SAC_LISTEN,
     PER_AGENT_PREFIX,
     announce_missing_at_boot,
     deliver,
@@ -87,6 +89,44 @@ def _server(capture: _Capture):
         httpd.shutdown()
 
 
+@contextmanager
+def _registry_server(payload: dict, response_code: int = 200):
+    """Spawn a localhost sac-listen-shaped registry server.
+
+    Responds to ``GET /agents`` with ``payload`` (already a Python
+    dict, encoded as JSON on each request). Any other method or path
+    returns 404. Bearer token is accepted unconditionally — auth is
+    sac's concern, not this test's. Used by the registry-lookup
+    precedence-3 tests.
+    """
+
+    body = json.dumps(payload).encode("utf-8")
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            if self.path != "/agents":
+                self.send_response(404)
+                self.end_headers()
+                return
+            self.send_response(response_code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a, **kw):  # silence test noise
+            return
+
+    port = _free_port()
+    httpd = http.server.HTTPServer(("127.0.0.1", port), Handler)
+    th = threading.Thread(target=httpd.serve_forever, daemon=True)
+    th.start()
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        httpd.shutdown()
+
+
 # --------------------------------------------------------------------------- #
 # turn_url_for                                                                #
 # --------------------------------------------------------------------------- #
@@ -131,6 +171,140 @@ class TestTurnUrlFor:
         url = turn_url_for("anything")
         # Assert
         assert url is None
+
+
+# --------------------------------------------------------------------------- #
+# turn_url_for — registry lookup (precedence 3)                              #
+# --------------------------------------------------------------------------- #
+
+
+class TestRegistryLookup:
+    """The sac listen daemon's /agents endpoint as a precedence-3
+    fallback. End-to-end via a real localhost http.server (no mocks
+    per STX-NM / PA-306).
+
+    Field shape we honor on a row:
+      * ``turn_url`` (str) — used verbatim.
+      * ``a2a_port`` (int) — derive ``http://<base-host>:<port>/v1/turn``.
+
+    Neither is on the sac listen row shape as of 2026-06-12 — the
+    field addition is agent-container's side. These tests pin the
+    contract so the code is ready the moment they land.
+    """
+
+    def _clear_env(self, monkeypatch):
+        """Strip env precedence 1+2 so registry path is the only winner."""
+        monkeypatch.delenv(ENV_MAP, raising=False)
+        # Also clear any per-agent env that might leak in via the shell.
+        for k in list(os.environ):
+            if k.startswith(PER_AGENT_PREFIX):
+                monkeypatch.delenv(k, raising=False)
+
+    def test_explicit_turn_url_field_is_returned_verbatim(self, monkeypatch):
+        # Arrange
+        self._clear_env(monkeypatch)
+        monkeypatch.setenv(ENV_SAC_BEARER, "any-token")
+        payload = {
+            "agents": [
+                {"name": "proj-alpha", "turn_url": "https://explicit/v1/turn/alpha"},
+            ]
+        }
+        with _registry_server(payload) as base:
+            monkeypatch.setenv(ENV_SAC_LISTEN, base)
+            # Act
+            url = turn_url_for("proj-alpha")
+        # Assert
+        assert url == "https://explicit/v1/turn/alpha"
+
+    def test_a2a_port_derives_loopback_turn_url(self, monkeypatch):
+        # Arrange
+        self._clear_env(monkeypatch)
+        monkeypatch.setenv(ENV_SAC_BEARER, "any-token")
+        payload = {"agents": [{"name": "proj-beta", "a2a_port": 19007}]}
+        with _registry_server(payload) as base:
+            monkeypatch.setenv(ENV_SAC_LISTEN, base)
+            # Act
+            url = turn_url_for("proj-beta")
+        # Assert
+        assert url == "http://127.0.0.1:19007/v1/turn"
+
+    def test_row_without_dispatch_fields_returns_none(self, monkeypatch):
+        # Arrange — today's actual sac listen row shape (the gap).
+        self._clear_env(monkeypatch)
+        monkeypatch.setenv(ENV_SAC_BEARER, "any-token")
+        payload = {
+            "agents": [
+                {
+                    "name": "proj-gamma",
+                    "config": "/some/path/spec.yaml",
+                    "pid": 1234,
+                    "started_at": "2026-06-12T00:00:00Z",
+                    "screen": "proj-gamma",
+                },
+            ]
+        }
+        with _registry_server(payload) as base:
+            monkeypatch.setenv(ENV_SAC_LISTEN, base)
+            # Act
+            url = turn_url_for("proj-gamma")
+        # Assert — known gap until agent-container ships the field.
+        assert url is None
+
+    def test_agent_not_in_registry_returns_none(self, monkeypatch):
+        # Arrange
+        self._clear_env(monkeypatch)
+        monkeypatch.setenv(ENV_SAC_BEARER, "any-token")
+        payload = {"agents": [{"name": "proj-other", "a2a_port": 19999}]}
+        with _registry_server(payload) as base:
+            monkeypatch.setenv(ENV_SAC_LISTEN, base)
+            # Act
+            url = turn_url_for("proj-ghost")
+        # Assert
+        assert url is None
+
+    def test_missing_bearer_short_circuits(self, monkeypatch):
+        # Arrange — no bearer → we don't even reach out.
+        self._clear_env(monkeypatch)
+        monkeypatch.delenv(ENV_SAC_BEARER, raising=False)
+        # Point at an unbound port: if we DID reach out, we'd get a
+        # transport error; the short-circuit means we never try.
+        monkeypatch.setenv(
+            ENV_SAC_LISTEN, f"http://127.0.0.1:{_free_port()}"
+        )
+        # Act
+        url = turn_url_for("proj-alpha")
+        # Assert
+        assert url is None
+
+    def test_unreachable_registry_returns_none_silently(self, monkeypatch):
+        # Arrange — bearer set, listen URL points at no server.
+        self._clear_env(monkeypatch)
+        monkeypatch.setenv(ENV_SAC_BEARER, "any-token")
+        monkeypatch.setenv(
+            ENV_SAC_LISTEN, f"http://127.0.0.1:{_free_port()}"
+        )
+        # Act
+        url = turn_url_for("proj-alpha")
+        # Assert
+        assert url is None
+
+    def test_env_precedence_wins_over_registry(self, monkeypatch):
+        # Arrange — both env map AND registry would resolve; env wins.
+        monkeypatch.setenv(
+            ENV_MAP, json.dumps({"proj-alpha": "https://env-pin/turn"}),
+        )
+        monkeypatch.setenv(ENV_SAC_BEARER, "any-token")
+        payload = {
+            "agents": [
+                {"name": "proj-alpha", "turn_url": "https://registry/turn"},
+            ]
+        }
+        with _registry_server(payload) as base:
+            monkeypatch.setenv(ENV_SAC_LISTEN, base)
+            # Act
+            url = turn_url_for("proj-alpha")
+        # Assert
+        assert url == "https://env-pin/turn"
 
 
 # --------------------------------------------------------------------------- #
