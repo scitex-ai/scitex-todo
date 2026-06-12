@@ -4,6 +4,39 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.3] - 2026-06-12 — `_push.deliver` payload aliases `text` to `body` (SAC /v1/turn unblocked)
+
+Second hotfix found via the P3a(c) cron pilot. The 0.7.2 fix made the
+cron survive its tick, but the POST then failed at the *receiver*:
+SAC's `/v1/turn` (and `claude-code-telegrammer`'s TURN_URL) require a
+`text=<msg>` field, while `_push.deliver` only sent `body=<msg>`. The
+receiver returned `HTTP 400 "missing or empty 'text' field"`, so the
+whole nudge chain still produced zero delivered turns.
+
+### Fixed
+
+- **`_push.deliver` now sends BOTH `text` and `body`** in the payload.
+  `text` satisfies SAC + the telegrammer; `body` stays for back-compat
+  with any pre-existing consumer keying off scitex-todo's historical
+  name.
+
+### Tests
+
+Real localhost `http.server` round-trips (no mocks, STX-NM / PA-306):
+
+- `test_post_carries_text_field_aliased_to_body` — the payload
+  round-trip pins both fields.
+- `test_succeeds_against_text_strict_receiver` — end-to-end against a
+  stdlib `HTTPServer` that mimics SAC's 400-on-missing-text
+  validation; pre-fix this returned `reason=http-error`, post-fix
+  it returns `reason=delivered`.
+
+### Provenance
+
+PR #120 (`fix/push-text-alias`), lead a2a `8afe659e` (SPLIT directive
+from the decay PR so the delivery fix ships first), proj-scitex-todo
+overnight mission.
+
 ## [0.7.2] - 2026-06-12 — coerce naive ISO timestamps to UTC-aware (unblocks `--notify` cron)
 
 Hotfix for the 10-min structural-nudge cron shipped in 0.7.1. The
