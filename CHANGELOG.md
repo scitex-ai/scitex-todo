@@ -4,6 +4,35 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.9] - 2026-06-12 — Filterbar reorganization (3-group layout)
+
+Operator UX feedback (lead a2a `b48f7c2c438b464698183d2e95d3bb04`,
+2026-06-12): `current UI/UX is terrible` — the filterbar grew to
+~108 px tall because every control sat in a single `display: flex;
+flex-wrap: wrap` row and the wrap order was chaotic. Reorg into three
+explicit groups so the placement is intentional, not flex-wrap-roulette.
+
+### Changed
+
+- **HTML**: wrap filterbar children in `.fb-left` (identity:
+  title + version + LIVE chip) / `.fb-center` (search input +
+  autocomplete suggest dropdown) / `.fb-right` (Layout segment +
+  Sort + Filters popover + Recent count + Group + Add Task +
+  blocking-me + project-hide + hidden + Reload).
+- **Second row** `.filterbar-chips` — active filter chips
+  (`#filt-chips`) + qualifier hint pills (`#filt-qhints`) moved off
+  the main row into a slim band shown ONLY when populated (via
+  `:has(...:empty)` selector). Default state collapses to a single
+  ~48 px row.
+- **CSS**: `.filterbar { display: flex; min-height: 48px }` with NO
+  top-level wrap. The `.fb-right` group wraps internally on narrow
+  viewports so the identity + search row stays intact regardless of
+  how many right-side controls are visible.
+- **Removed** the `margin-left: auto` hack from `.toggle-block` —
+  explicit grouping now controls position; the auto-margin pushed
+  this single button to the right edge in the old layout, which was
+  the source of the asymmetric wrapping the operator photographed.
+
 ## [0.5.8] - 2026-06-12 — Graph view edges fix + fleetstrip removal + search-kbd pill folded into placeholder
 
 Operator-reported regressions on `/`, lead-approved fixes:
