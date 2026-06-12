@@ -142,6 +142,7 @@ def _match(
     kind: str | None = None,
     id_prefix: str | None = None,
     blocking_me: bool = False,
+    overdue: bool = False,
 ) -> bool:
     """String-equality + predicate filter. ``None`` / empty = no constraint.
 
@@ -198,6 +199,10 @@ def _match(
         and task.get("blocker") == "operator-decision"
     ):
         return False
+    if overdue:
+        from ._model import is_overdue as _is_overdue
+        if not _is_overdue(task):
+            return False
     return True
 
 
@@ -430,6 +435,7 @@ def list_tasks(
     kind: str | None = None,
     id_prefix: str | None = None,
     blocking_me: bool = False,
+    overdue: bool = False,
 ) -> list[dict]:
     """Snapshot the store, then filter by any combination of fields.
 
@@ -472,6 +478,7 @@ def list_tasks(
             kind=kind,
             id_prefix=id_prefix,
             blocking_me=blocking_me,
+            overdue=overdue,
         )
     ]
 
