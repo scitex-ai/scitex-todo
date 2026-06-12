@@ -119,10 +119,10 @@ jobs:
         run: |
           export PATH="$PWD/.venv/bin:$PATH"
           set -e
-          scitex-dev ecosystem audit-cli       scitex-todo --no-version-check
-          scitex-dev ecosystem audit-mcp-tools scitex-todo --no-version-check
+          scitex-dev ecosystem audit-cli       scitex-todo
+          scitex-dev ecosystem audit-mcp-tools scitex-todo
           # audit-skills returns rc=1 even when every finding is WARN
           # (scitex-dev/_cli/audit/_skills/_audit.py:558,583). Echo the
           # findings so they stay visible in the log, then continue.
-          scitex-dev ecosystem audit-skills    scitex-todo --no-version-check || true
-          scitex-dev ecosystem audit-project   scitex-todo --no-version-check
+          scitex-dev ecosystem audit-skills    scitex-todo || true
+          scitex-dev ecosystem audit-project   scitex-todo

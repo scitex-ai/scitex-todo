@@ -137,7 +137,7 @@ jobs:
         run: |
           export PATH="$PWD/.venv/bin:$PATH"
           set -e
-          scitex-dev ecosystem audit-cli       scitex-todo --no-version-check
-          scitex-dev ecosystem audit-mcp-tools scitex-todo --no-version-check
-          scitex-dev ecosystem audit-skills    scitex-todo --no-version-check || true
-          scitex-dev ecosystem audit-project   scitex-todo --no-version-check
+          scitex-dev ecosystem audit-cli       scitex-todo
+          scitex-dev ecosystem audit-mcp-tools scitex-todo
+          scitex-dev ecosystem audit-skills    scitex-todo || true
+          scitex-dev ecosystem audit-project   scitex-todo
