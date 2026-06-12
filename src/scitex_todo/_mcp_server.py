@@ -449,6 +449,11 @@ TOOL_NAMES: tuple[str, ...] = (
     "reopen_task",
     "todo_skills_list",
     "todo_skills_get",
+    # PR #64 (rebased + landed 2026-06-12) — exposes the
+    # `_store.add_comment` Python API as an MCP tool too. Duplicates
+    # `comment_task` semantically; collapse-to-one is a follow-up
+    # convention-§6 cleanup PR.
+    "add_comment",
 )
 
 
