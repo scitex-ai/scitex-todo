@@ -191,7 +191,7 @@
             <input type="checkbox" id="f-showdone"
                    onchange="onShowDoneChange(event)">
             <span>Show <code>done</code> tasks
-              (<span id="f-showdone-count">0</span> hidden)</span>
+              <span id="f-showdone-count" class="filt-popover-count">(0 hidden)</span></span>
           </label>
         </div>
         <div class="filt-popover-actions">
@@ -1479,8 +1479,8 @@
       if (sdc) {
         const doneCount = STATE.graph.nodes.filter(n => n.status === "done").length;
         sdc.textContent = STATE.filters.showDone
-          ? String(doneCount) + " shown"
-          : String(doneCount) + " hidden";
+          ? `(${doneCount} shown)`
+          : `(${doneCount} hidden)`;
       }
     }
 
