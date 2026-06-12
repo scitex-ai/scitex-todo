@@ -255,35 +255,80 @@ def test_list_tasks_filter_overdue(tmp_path):
     # (PR #126) and the fleet payload's `overdue_count` (PR #125). A
     # task is overdue when its next deadline is strictly before today
     # AND it is NOT in a terminal lifecycle state.
-    #
-    # The MCP add_task / update_task surfaces don't currently expose
-    # `deadline` as a kwarg (separate gap to plug if needed); write
-    # the YAML directly so this test stays focused on the MCP
-    # `list_tasks(overdue=True)` plumbing, not the writer surface.
-    from scitex_todo._mcp_server import list_tasks
-    store = tmp_path / "tasks.yaml"
-    store.write_text(
-        "tasks:\n"
-        "  - id: late\n"
-        "    title: Late\n"
-        "    status: pending\n"
-        "    deadline: '2000-01-01'\n"
-        "  - id: future\n"
-        "    title: Future\n"
-        "    status: pending\n"
-        "    deadline: '2099-01-01'\n"
-        "  - id: done-past\n"
-        "    title: Done-Past\n"
-        "    status: done\n"
-        "    deadline: '2000-01-01'\n",
-        encoding="utf-8",
-    )
+    from scitex_todo._mcp_server import add_task, list_tasks, update_task
+    store = str(tmp_path / "tasks.yaml")
+    asyncio.run(_call_tool(
+        add_task, id="late", title="Late",
+        deadline="2000-01-01", tasks_path=store,
+    ))
+    asyncio.run(_call_tool(
+        add_task, id="future", title="Future",
+        deadline="2099-01-01", tasks_path=store,
+    ))
+    asyncio.run(_call_tool(
+        add_task, id="done-past", title="Done-Past",
+        deadline="2000-01-01", tasks_path=store,
+    ))
+    asyncio.run(_call_tool(
+        update_task, task_id="done-past", status="done", tasks_path=store,
+    ))
     # Act
     listed = asyncio.run(_call_tool(
-        list_tasks, scope="", overdue=True, tasks_path=str(store),
+        list_tasks, scope="", overdue=True, tasks_path=store,
     ))
     # Assert — only the past-due, non-terminal row matches.
     assert {r["id"] for r in json.loads(listed)} == {"late"}
+
+
+def test_add_task_with_deadline_sets_deadline_field(tmp_path):
+    # PR-followup gap closer (from PR #127): MCP `add_task` now accepts
+    # `deadline=`. The writer's validator parses the P4 schema (bare
+    # ISO date / repeater suffix).
+    # Arrange
+    from scitex_todo._mcp_server import add_task, list_tasks
+    store = str(tmp_path / "tasks.yaml")
+    asyncio.run(_call_tool(
+        add_task, id="a", title="A", deadline="2030-01-01", tasks_path=store,
+    ))
+    # Act
+    listed = asyncio.run(_call_tool(list_tasks, scope="", tasks_path=store))
+    # Assert
+    rows = json.loads(listed)
+    assert rows[0]["deadline"] == "2030-01-01"
+
+
+def test_update_task_with_deadline_sets_deadline_field(tmp_path):
+    # Companion to add_task's deadline kwarg — update_task can also set
+    # the deadline post-hoc.
+    # Arrange
+    from scitex_todo._mcp_server import add_task, list_tasks, update_task
+    store = str(tmp_path / "tasks.yaml")
+    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
+    asyncio.run(_call_tool(
+        update_task, task_id="a", deadline="2030-06-15", tasks_path=store,
+    ))
+    # Act
+    listed = asyncio.run(_call_tool(list_tasks, scope="", tasks_path=store))
+    # Assert
+    rows = json.loads(listed)
+    assert rows[0]["deadline"] == "2030-06-15"
+
+
+def test_add_task_with_deadlines_list_sets_multi_deadlines(tmp_path):
+    # The multi-deadline form (P4 PR3 recurring extension).
+    # Arrange
+    from scitex_todo._mcp_server import add_task, list_tasks
+    store = str(tmp_path / "tasks.yaml")
+    asyncio.run(_call_tool(
+        add_task, id="a", title="A",
+        deadlines=["2030-01-01", "2030-07-01"],
+        tasks_path=store,
+    ))
+    # Act
+    listed = asyncio.run(_call_tool(list_tasks, scope="", tasks_path=store))
+    # Assert
+    rows = json.loads(listed)
+    assert rows[0]["deadlines"] == ["2030-01-01", "2030-07-01"]
 
 
 def test_complete_sets_status_done(tmp_path, env):

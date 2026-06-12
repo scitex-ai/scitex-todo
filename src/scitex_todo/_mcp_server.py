@@ -86,6 +86,11 @@ async def add_task(
     command: str | None = None,
     started_at: str | None = None,
     finished_at: str | None = None,
+    # Deadline schema (P4 + recurring extension; closes the gap
+    # noted in PR #127: callers couldn't SET deadlines via MCP).
+    deadline: str | None = None,
+    deadlines: list[str] | None = None,
+    scheduled: str | None = None,
     tasks_path: str | None = None,
 ) -> str:
     """Append a new task to the store. Returns the inserted task as JSON.
@@ -96,6 +101,14 @@ async def add_task(
     Closed-enum fields (``status`` / ``kind`` / ``blocker``) are gated by
     the writer's validator — typos raise ``TaskValidationError`` with the
     bad value and the valid set.
+
+    ``deadline`` accepts the P4 schema: a bare ISO date / ISO datetime,
+    optionally followed by a recurring repeater suffix
+    (``+1d``/``+1w``/``+1m``/``+1y``). ``deadlines`` is the multi form (a
+    list of the same shape) — mutually exclusive with ``deadline``.
+    ``scheduled`` is the corresponding "start work on" stamp (validator
+    rejects ``deadline < scheduled``). See ``scitex_todo._model`` +
+    ``next_deadline_for_task`` for parse rules.
     """
     inserted = _store.add_task(
         tasks_path,
@@ -124,6 +137,9 @@ async def add_task(
         command=command,
         started_at=started_at,
         finished_at=finished_at,
+        deadline=deadline,
+        deadlines=deadlines,
+        scheduled=scheduled,
     )
     return json.dumps(inserted)
 
@@ -157,6 +173,12 @@ async def update_task(
     command: str | None = None,
     started_at: str | None = None,
     finished_at: str | None = None,
+    # Deadline schema (P4 + recurring extension) — mirror of the
+    # add_task surface so callers can SET deadlines via MCP, not just
+    # READ them via list_tasks (PR #127 gap).
+    deadline: str | None = None,
+    deadlines: list[str] | None = None,
+    scheduled: str | None = None,
     tasks_path: str | None = None,
 ) -> str:
     """Mutate fields of an existing task. Returns the merged task as JSON.
@@ -165,6 +187,12 @@ async def update_task(
     Pass an empty list to CLEAR a list field. Omit a field to leave it
     untouched. Closed-enum values (``status`` / ``kind`` / ``blocker``)
     are gated by the writer's validator.
+
+    ``deadline`` / ``deadlines`` / ``scheduled`` follow the same P4
+    schema as ``add_task``. Pass an empty string to CLEAR ``deadline`` /
+    ``scheduled``; pass an empty list to CLEAR ``deadlines``. The pair
+    ``deadline`` + ``deadlines`` is mutually exclusive; the validator
+    will raise if both are set on the resulting task.
     """
     fields: dict = {}
     for key, value in (
@@ -190,6 +218,8 @@ async def update_task(
         ("command", command),
         ("started_at", started_at),
         ("finished_at", finished_at),
+        ("deadline", deadline),
+        ("scheduled", scheduled),
     ):
         if value is None:
             continue
@@ -200,6 +230,8 @@ async def update_task(
         fields["depends_on"] = list(depends_on) if depends_on else None
     if blocks is not None:
         fields["blocks"] = list(blocks) if blocks else None
+    if deadlines is not None:
+        fields["deadlines"] = list(deadlines) if deadlines else None
     merged = _store.update_task(tasks_path, task_id, **fields)
     return json.dumps(merged)
 
