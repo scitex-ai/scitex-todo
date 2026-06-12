@@ -44,21 +44,72 @@ a {
   color: var(--green);
 }
 
-/* === FILTER BAR (top) =================================================== */
+/* === FILTER BAR (top) ===================================================
+ * Reorganized 2026-06-12 (operator TG, lead a2a
+ * `b48f7c2c438b464698183d2e95d3bb04`): three explicit groups end the
+ * flex-wrap chaos that used to bleed the filterbar to ~108 px tall.
+ *
+ *   .fb-left   — identity   (fixed width, never shrinks)
+ *   .fb-center — search     (flex:1, fills the middle)
+ *   .fb-right  — operations (fixed width, wraps internally on narrow
+ *                            viewports without breaking row 1)
+ *
+ * Target main-row height ~50 px. Active filter chips + qualifier hint
+ * pills moved to a second row (`.filterbar-chips`) shown only when
+ * populated.
+ */
 .filterbar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: 12px;
+  padding: 8px 14px;
+  background: var(--col-bg);
+  border-bottom: 1px solid var(--border);
+  min-height: 48px;
+  /* No flex-wrap on the top-level — the .fb-right group wraps
+   * internally so the identity + search row stays intact. */
+}
+.fb-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.fb-center {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  min-width: 260px;
+  position: relative;  /* search-suggest dropdown anchor */
+}
+.fb-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: wrap;  /* graceful internal wrap on narrow viewports */
+  justify-content: flex-end;
+}
+/* Filterbar second row — chips + qualifier hint pills, hidden when
+ * both children are empty so the default state is a single 48 px row. */
+.filterbar-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px;
   background: var(--col-bg);
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
+.filterbar-chips:has(#filt-qhints:empty):has(#filt-chips:empty) {
+  display: none;
+}
 .filterbar h1 {
-  margin: 0 12px 0 0;
+  margin: 0 4px 0 0;
   font-size: 1.05rem;
   font-weight: 700;
   color: #fff;
+  white-space: nowrap;
 }
 .filterbar .small {
   font-size: 0.72rem;
@@ -82,15 +133,19 @@ a {
   color: var(--text);
 }
 .toggle-block {
-  margin-left: auto;
-  padding: 6px 14px;
+  padding: 5px 12px;
   background: rgba(255, 193, 7, 0.16);
   color: var(--gold);
   border: 1px solid var(--gold);
   border-radius: 999px;
   font-weight: 700;
   cursor: pointer;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  /* margin-left:auto removed 2026-06-12 — explicit `.fb-right` grouping
+   * now controls position; the auto-margin hack pushed this button to
+   * the right edge in the legacy single-flex layout, which was the
+   * source of the asymmetric wrapping the operator photographed. */
 }
 .toggle-block.on {
   background: var(--gold);

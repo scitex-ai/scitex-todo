@@ -86,61 +86,45 @@
 {% endblock extra_css %}
 
 {% block app_content %}
+  {% comment %}
+    Filterbar reorg (operator TG, lead a2a `b48f7c2c438b464698183d2e95d3bb04`,
+    2026-06-12). Three explicit groups end the flex-wrap chaos:
+      .fb-left   — identity   (title + version + LIVE chip)
+      .fb-center — search     (input + autocomplete suggest)
+      .fb-right  — operations (Layout | Sort | Filters | Recent
+                               count | Group | Add Task | blocking
+                               me | overflow controls)
+    Active-filter chips + qualifier hint pills move to a second row
+    `<div class="filterbar-chips">` shown only when populated.
+  {% endcomment %}
   <div class="filterbar">
-    <h1>scitex-todo
-      <span class="small">v{{ scitex_todo_version|default:"?" }}</span></h1>
-    <span class="small"><span class="live-dot"></span>LIVE</span>
-    {% comment %}
-      fleetstrip REMOVED (operator inspector report 2026-06-12, lead
-      `032e41545fcf4ab4b98d864ec1770249`). The empty "Fleet liveness —
-      one dot per agent" strip rendered as `Content: none` because the
-      `/graph` payload never populated `STATE.graph.fleet`. Operator
-      "i dont need this" — fleet-liveness is the lead's periodic
-      reports' job, not the board's.
-    {% endcomment %}
-    <!-- Search-as-launcher (P1, lead brief 2026-06-12) — the PRIMARY
-         filterbar entry point. RESTORED 2026-06-12 after the P10/P11
-         squash wave silently dropped these blocks. Pinned by the
-         regression test in test__board_v3_signatures.py. -->
-    <span class="filt-search-wrap" id="f-search-wrap">
-    <input class="filt filt-search" id="f-search" type="search"
-           placeholder="🔎 Search… ( / to focus, Esc to blur) — try project:paper-scitex-clew, status:blocked, kind:compute, …"
-           title="Fuzzy match + GitHub-style qualifiers (project: / agent: / status: / kind: / parent: / scope: / id: / priority: / host:). Press / to focus, Esc to blur. Tab to autocomplete the qualifier or value under the cursor."
-           oninput="onSearchInput(event)" onkeydown="onSearchKeyDown(event)"
-           onfocus="onSearchFocus(event)" onblur="onSearchBlur(event)"
-           role="combobox" aria-autocomplete="list"
-           aria-controls="search-suggest" aria-expanded="false"
-           autocomplete="off">
-    <!-- Autocomplete dropdown (operator TG 12318) — populated by
-         renderSearchSuggest() inside onSearchInput / focus. Empty
-         until the operator focuses or types. -->
-    <ul class="search-suggest" id="search-suggest" role="listbox"
-        aria-label="Search suggestions" hidden></ul>
-    </span>
-    {% comment %}
-      filt-search-kbd pill REMOVED (operator inspector report 2026-06-12,
-      lead `032e41545fcf4ab4b98d864ec1770249`). The independent "press
-      / to focus" pill is folded into the search input's placeholder
-      itself per operator "just write the kbd in the search box".
-    {% endcomment %}
-    <!-- Qualifier hint pills (operator TG 12315/12316, lead a2a 7dde227a).
-         As the operator types `project:foo status:blocked`, each
-         recognized qualifier becomes a coloured pill so they SEE the
-         parser's understanding. Unknown qualifiers (typos) render grey
-         with a "did you mean: project / agent / status / ..." tooltip.
-         Populated by renderQualifierHints() inside onSearchInput. -->
-    <div class="filt-qhints" id="filt-qhints"
-         aria-live="polite"
-         aria-label="Recognized search qualifiers"></div>
-    <!-- P2 (lead brief 2026-06-12) — filter-UX collapse. The six filter
-         dropdowns now live inside a single "🔧 Filters (N active)"
-         popover (cleaner filterbar; less visual noise). Active filters
-         render as inline chips in #filt-chips at all times so the
-         operator sees the current scope without opening the popover.
-         P9 sort-by select sits next to the popover trigger.
-         (hook-bypass: line-limit — see REFACTORING.md.) -->
-    <div id="filt-chips" class="filt-chips"
-         aria-live="polite" aria-label="Active filters"></div>
+    <div class="fb-left">
+      <h1>scitex-todo
+        <span class="small">v{{ scitex_todo_version|default:"?" }}</span></h1>
+      <span class="small"><span class="live-dot"></span>LIVE</span>
+    </div>
+
+    <div class="fb-center">
+      <!-- Search-as-launcher (P1, lead brief 2026-06-12) — the PRIMARY
+           filterbar entry point. -->
+      <span class="filt-search-wrap" id="f-search-wrap">
+        <input class="filt filt-search" id="f-search" type="search"
+               placeholder="🔎 Search… ( / to focus, Esc to blur) — try project:paper-scitex-clew, status:blocked, kind:compute, …"
+               title="Fuzzy match + GitHub-style qualifiers (project: / agent: / status: / kind: / parent: / scope: / id: / priority: / host:). Press / to focus, Esc to blur. Tab to autocomplete the qualifier or value under the cursor."
+               oninput="onSearchInput(event)" onkeydown="onSearchKeyDown(event)"
+               onfocus="onSearchFocus(event)" onblur="onSearchBlur(event)"
+               role="combobox" aria-autocomplete="list"
+               aria-controls="search-suggest" aria-expanded="false"
+               autocomplete="off">
+        <!-- Autocomplete dropdown (operator TG 12318) -->
+        <ul class="search-suggest" id="search-suggest" role="listbox"
+            aria-label="Search suggestions" hidden></ul>
+      </span>
+    </div>
+
+    <div class="fb-right">
+    <!-- P2 (lead brief 2026-06-12) — filter-UX collapse. Six filter
+         dropdowns live inside a single "🔧 Filters (N active)" popover. -->
     <details id="filt-popover-wrap" class="filt-popover">
       <summary id="filt-popover-summary"
                title="Open filter popover (project / host / status / blocker / agent / date)">
@@ -299,6 +283,21 @@
         <div class="hidden-list-empty">No hidden cards.</div>
       </div>
     </details>
+    </div>{# end .fb-right #}
+  </div>{# end .filterbar #}
+
+  {% comment %}
+    Filterbar second row — active filter chips + qualifier-hint pills.
+    Hidden via CSS when both children are empty so the main filterbar
+    stays at ~50 px on the default state. Populated by
+    renderActiveFilterChips() / renderQualifierHints() in extra_js.
+  {% endcomment %}
+  <div class="filterbar-chips" id="filterbar-chips">
+    <div class="filt-qhints" id="filt-qhints"
+         aria-live="polite"
+         aria-label="Recognized search qualifiers"></div>
+    <div id="filt-chips" class="filt-chips"
+         aria-live="polite" aria-label="Active filters"></div>
   </div>
 
   {% comment %}
