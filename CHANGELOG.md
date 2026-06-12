@@ -4,6 +4,57 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.4] - 2026-06-12 — `_push.deliver` semantics: 30 s timeout + dispatched-on-read-timeout
+
+Third (and likely last) cron-pilot hotfix. The 0.7.3 fix made the
+receiver accept the body, but the client gave up too early: SAC's
+`/v1/turn` runs the agent turn synchronously (up to ~120 s), and the
+5 s client cap aborted before any turn could land in
+`session.jsonl`. Probed `/v1/turn` for a fast-ack flag —
+`wait=false`/`dispatch_only=true`/`async=true` all reject — so the
+pragmatic stopgap (lead a2a `0b59485f`) is to give the client more
+time AND treat the client-side read-timeout as "request was already
+fully sent, receiver is mid-turn = dispatched success" so one slow
+turn can't fail the nudge batch.
+
+### Fixed
+
+- **`DEFAULT_TIMEOUT_S` 5.0 → 30.0**, env-overridable via
+  `SCITEX_TODO_PUSH_TIMEOUT_S`. Reflects the receiver's actual
+  budget so short ack-style turns complete cleanly.
+- **Read-timeout treated as `DISPATCHED` success**
+  (`ok=True, reason="dispatched"`), not `transport-error`. By the
+  time the client read-timeout fires, the request body has long
+  since been fully transmitted; treating it as success stops one
+  slow turn from failing the whole `*/10` nudge batch. Connection-
+  refused / DNS / SSL handshake errors still surface as
+  `transport-error`.
+
+### Tests
+
+Real localhost `http.server` round-trips (no mocks, STX-NM / PA-306):
+
+- `test_read_timeout_treated_as_dispatched_ok` — handler accepts the
+  request body then sleeps past the client timeout; pre-fix this
+  returned `reason=transport-error`, post-fix it returns
+  `reason=dispatched`.
+- `test_default_timeout_env_override` — `SCITEX_TODO_PUSH_TIMEOUT_S`
+  reflected at call-time.
+- `test_default_timeout_falls_back_to_constant_when_env_unset` — bare
+  case yields `DEFAULT_TIMEOUT_S`.
+
+### Followup (out of scope)
+
+Long-term: sac-listen should grow a real fast-ack endpoint
+(e.g. `POST /v1/turn/dispatch` returning 202 + an async session id).
+The pragmatic stopgap here can then be reverted.
+
+### Provenance
+
+PR #123 (`fix/push-timeout-env`), lead a2a `0b59485f` (root-fix
+directive: not just a bigger timeout but DISPATCHED-success
+semantics), proj-scitex-todo overnight mission.
+
 ## [0.7.3] - 2026-06-12 — `_push.deliver` payload aliases `text` to `body` (SAC /v1/turn unblocked)
 
 Second hotfix found via the P3a(c) cron pilot. The 0.7.2 fix made the
