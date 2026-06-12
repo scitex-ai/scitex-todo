@@ -333,3 +333,61 @@ a {
   gap: 8px;
   min-height: 120px;
 }
+
+/* === Qualifier hint pills (operator TG 12315/12316) =======================
+ * Pills above (or inline with) the search input, rendered by
+ * renderQualifierHints() as the user types `project:foo status:blocked`.
+ * Known qualifier → purple-accented; unknown qualifier or unknown enum
+ * value → grey + dashed border + tooltip ("did you mean: project /
+ * agent / ..."). Reuses the existing filter-chip visual idiom from PR
+ * #80 so the pills feel part of the filterbar without a new component. */
+.filt-qhints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  /* Sits inline in the filterbar grid; empty state collapses to zero
+     width so the filterbar layout is unchanged when no qualifiers
+     are in the query. */
+  min-height: 0;
+}
+.filt-qhint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border: 1px solid var(--purple);
+  background: rgba(109, 76, 173, 0.12);
+  color: var(--text);
+  cursor: help;
+  line-height: 1.5;
+}
+.filt-qhint-key {
+  color: var(--purple);
+  font-weight: 700;
+  text-transform: lowercase;
+}
+.filt-qhint-val {
+  color: var(--text);
+  opacity: 0.92;
+}
+.filt-qhint--unknown {
+  border-color: var(--grey);
+  border-style: dashed;
+  background: rgba(110, 118, 134, 0.08);
+  color: var(--text-muted);
+}
+.filt-qhint--unknown .filt-qhint-key {
+  color: var(--text-muted);
+}
+.filt-qhint--unknown-value {
+  border-color: var(--amber);
+  border-style: dashed;
+  background: rgba(255, 179, 0, 0.08);
+}
+.filt-qhint--unknown-value .filt-qhint-key {
+  color: var(--amber);
+}

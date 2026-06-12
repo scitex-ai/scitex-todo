@@ -41,6 +41,14 @@
 {# combobox.css (loaded below the page-CSS so its specificity sits ON TOP if needed) #}
 <link rel="stylesheet" href="{% static 'scitex_ui/css/app/combobox.css' %}">
 <script defer src="{% static 'scitex_ui/js/app/combobox.js' %}"></script>
+{# searchQuery.js — GitHub-style qualifier-syntax parser (project:/agent:/
+   status:/...). Exposes window.STX.searchQuery; the page logic below
+   delegates `fuzzyMatch` to it whenever the input contains a recognized
+   qualifier. Operator TG 12315/12316: photographed typing
+   `project: paper-scitex-clew` into the search bar — they already
+   expected GitHub-style syntax. Pure JS module, no DOM deps; unit
+   tests at tests/scitex_todo/test__search_query.js. #}
+<script defer src="{% static 'scitex_todo/board_v3/searchQuery.js' %}"></script>
 {% endblock extra_css %}
 
 {% block app_content %}
@@ -63,13 +71,22 @@
          squash wave silently dropped these blocks. Pinned by the
          regression test in test__board_v3_signatures.py. -->
     <input class="filt filt-search" id="f-search" type="search"
-           placeholder="🔎 search (fuzzy) — press / to focus"
-           title="Fuzzy match on title / project / agent / note. Press / to focus, Esc to blur."
+           placeholder="🔎 search — try project:paper-scitex-clew, status:blocked, kind:compute, …"
+           title="Fuzzy match + GitHub-style qualifiers (project: / agent: / status: / kind: / parent: / scope: / id: / priority: / host:). Press / to focus, Esc to blur."
            oninput="onSearchInput(event)" autocomplete="off">
     <span class="filt-search-kbd" aria-hidden="true"
           title="Press / to focus the search">
       press <kbd>/</kbd> to focus
     </span>
+    <!-- Qualifier hint pills (operator TG 12315/12316, lead a2a 7dde227a).
+         As the operator types `project:foo status:blocked`, each
+         recognized qualifier becomes a coloured pill so they SEE the
+         parser's understanding. Unknown qualifiers (typos) render grey
+         with a "did you mean: project / agent / status / ..." tooltip.
+         Populated by renderQualifierHints() inside onSearchInput. -->
+    <div class="filt-qhints" id="filt-qhints"
+         aria-live="polite"
+         aria-label="Recognized search qualifiers"></div>
     <!-- P2 (lead brief 2026-06-12) — filter-UX collapse. The six filter
          dropdowns now live inside a single "🔧 Filters (N active)"
          popover (cleaner filterbar; less visual noise). Active filters
@@ -466,14 +483,28 @@
       return true;
     }
 
-    // === Fuzzy search (operator TG 437/438) ===========================
-    // fzf-style: every character of the query must appear in the haystack
-    // IN ORDER, not necessarily consecutively. Case-insensitive. The
-    // haystack is `${title} ${project} ${agent} ${note}` so a project
-    // name or a note keyword surfaces a card without leaving search.
+    // === Fuzzy search (operator TG 437/438) + qualifier syntax (TG 12315/16)
+    // fzf-style subsequence (PR #80) for BARE tokens. When the query
+    // contains a GitHub-style qualifier (project:foo, status:blocked, …)
+    // the searchQuery.js parser takes over via window.STX.searchQuery;
+    // qualifiers AND-combine + bare tokens still go through the fuzzy
+    // haystack so nothing PR #80 shipped regresses.
     function fuzzyMatch(query, t) {
-      const q = String(query || "").toLowerCase().trim();
-      if (!q) return true;
+      const raw = String(query || "");
+      if (!raw.trim()) return true;
+      const SQ = (typeof window !== "undefined" && window.STX &&
+                  window.STX.searchQuery) || null;
+      if (SQ && /[A-Za-z_][A-Za-z0-9_-]*:/.test(raw)) {
+        // Delegate to the qualifier-aware matcher. Parse-once cache lives
+        // on STATE so we don't re-tokenize per task.
+        if (STATE._searchParsed == null || STATE._searchParsedRaw !== raw) {
+          STATE._searchParsed = SQ.parseSearchQuery(raw);
+          STATE._searchParsedRaw = raw;
+        }
+        return SQ.matchesSearchQuery(t, STATE._searchParsed);
+      }
+      // Legacy fast path — no qualifiers, just the PR #80 fzf-style match.
+      const q = raw.toLowerCase().trim();
       const hay = (
         (t.title || "") + " " +
         (t.task || "") + " " +
@@ -492,8 +523,44 @@
       return true;
     }
 
+    // === Qualifier hint pills (operator TG 12315/12316) ====================
+    // Renders one pill per recognized qualifier above the search input.
+    // Unknown qualifiers (typos) render grey with a "did you mean ..."
+    // tooltip — don't block typing, just hint. Reuses the date-pill /
+    // filter-chip visual pattern from PR #80.
+    function renderQualifierHints(raw) {
+      const wrap = document.getElementById("filt-qhints");
+      if (!wrap) return;
+      const SQ = (typeof window !== "undefined" && window.STX &&
+                  window.STX.searchQuery) || null;
+      if (!SQ || !raw || !/[A-Za-z_][A-Za-z0-9_-]*:/.test(raw)) {
+        wrap.innerHTML = "";
+        return;
+      }
+      const parsed = SQ.parseSearchQuery(raw);
+      const pills = parsed.hints.map((h) => {
+        const classes = ["filt-qhint"];
+        if (h.unknown) classes.push("filt-qhint--unknown");
+        if (h.unknownValue) classes.push("filt-qhint--unknown-value");
+        const tip = h.unknown
+          ? `unknown qualifier — did you mean: ${h.suggestion}`
+          : h.unknownValue
+            ? `unknown value — try one of: ${h.suggestion}`
+            : `filter on ${h.label}`;
+        return `<span class="${classes.join(" ")}" title="${escapeHtml(tip)}">` +
+               `<span class="filt-qhint-key">${escapeHtml(h.label)}:</span>` +
+               `<span class="filt-qhint-val">${escapeHtml(h.value || "(empty)")}</span>` +
+               `</span>`;
+      });
+      wrap.innerHTML = pills.join("");
+    }
+
     function onSearchInput(e) {
       STATE.filters.search = e.currentTarget.value;
+      // Invalidate the qualifier-parse cache on every keystroke.
+      STATE._searchParsed = null;
+      STATE._searchParsedRaw = null;
+      renderQualifierHints(e.currentTarget.value);
       renderActiveFilterChips();  // P2: surface the search chip while typing
       render();
     }

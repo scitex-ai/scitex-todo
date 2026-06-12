@@ -239,4 +239,47 @@ class TestP11bComboboxConsumer:
         assert "function _openMoveToCombobox" in board_text
 
 
+# -----------------------------------------------------------------------------
+# Search qualifier syntax (operator TG 12315/12316, lead a2a 7dde227a)
+# -----------------------------------------------------------------------------
+
+
+class TestSearchQualifierSyntax:
+    """Pins for the GitHub-style ``project:foo`` / ``status:blocked`` /
+    ``kind:compute`` search syntax. The operator was photographed typing
+    ``project: paper-scitex-clew`` (TG 12315/12316) and expected the
+    qualifier to filter — i.e. they assumed GitHub-style behaviour. This
+    test class makes sure the wiring stays in.
+    """
+
+    def test_search_query_js_static_load(self, board_text):
+        # The parser ships as static/scitex_todo/board_v3/searchQuery.js
+        # — board_v3.html must pull it in via {% static %}.
+        assert "board_v3/searchQuery.js" in board_text
+
+    def test_render_qualifier_hints_defined(self, board_text):
+        # The hint-pill renderer must exist in the page logic.
+        assert "function renderQualifierHints" in board_text
+
+    def test_hint_pill_container_present(self, board_text):
+        # And the <div id="filt-qhints"> the renderer writes into.
+        assert 'id="filt-qhints"' in board_text
+
+    def test_search_input_advertises_qualifier_syntax(self, board_text):
+        # Placeholder + title should mention the new qualifier syntax so
+        # the operator's expectation (GitHub-style) is met without docs.
+        assert "project:" in board_text
+        assert "status:" in board_text
+
+    def test_fuzzy_match_delegates_to_parser(self, board_text):
+        # Sanity pin: the fuzzy-match function must consult
+        # window.STX.searchQuery so a future squash that strips the
+        # delegation reverts the operator pain.
+        assert "window.STX.searchQuery" in board_text
+
+    def test_hint_pill_css_defined(self, css_text):
+        # CSS pin — `.filt-qhint` lives in the extracted filterbar stylesheet.
+        assert ".filt-qhint" in css_text
+
+
 # EOF
