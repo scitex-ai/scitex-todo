@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>scitex_todo._store &mdash; scitex-todo v0.5.9</title>
+  <title>scitex_todo._store &mdash; scitex-todo v0.6.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -13,7 +13,7 @@
   
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../_static/documentation_options.js?v=9a3cda14"></script>
+      <script src="../../_static/documentation_options.js?v=8fa8b3e9"></script>
       <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -396,10 +396,50 @@
     <span class="c1"># tests/scitex_todo/test__store.py::test_two_concurrent_writers...</span>
     <span class="k">with</span> <span class="n">_store_lock</span><span class="p">(</span><span class="n">resolved</span><span class="p">):</span>
         <span class="n">tasks</span> <span class="o">=</span> <span class="n">load_tasks</span><span class="p">(</span><span class="n">resolved</span><span class="p">)</span> <span class="k">if</span> <span class="n">resolved</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="k">else</span> <span class="p">[]</span>
+        <span class="c1"># WIP-validation gate (operator standing direction via lead a2a</span>
+        <span class="c1"># `d99b8de6839d46e586e4ee692f43c1d9` + ``5acfbb5d0db44db8a7fa4f70c399d539``,</span>
+        <span class="c1"># 2026-06-12). Count the new task&#39;s agent&#39;s open tasks (status NOT</span>
+        <span class="c1"># in {done, goal}) BEFORE the append; WARN to stderr at the</span>
+        <span class="c1"># threshold, HARD REFUSE (raise) at 2x. Goal-tier umbrellas are</span>
+        <span class="c1"># excluded — they accumulate by design, not by WIP-failure.</span>
+        <span class="c1"># Direct YAML hand-edits bypass this gate by design (CLI/MCP</span>
+        <span class="c1"># path enforcement only — operator wants the CLI/MCP path made</span>
+        <span class="c1"># fat so hand-edits are unnecessary, not policed).</span>
+        <span class="n">agent_for_wip</span> <span class="o">=</span> <span class="n">new</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;agent&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">agent_for_wip</span> <span class="ow">and</span> <span class="n">new</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_wip_excluded_statuses</span><span class="p">():</span>
+            <span class="kn">from</span><span class="w"> </span><span class="nn">._throughput</span><span class="w"> </span><span class="kn">import</span> <span class="n">evaluate_wip</span>
+
+            <span class="n">rep</span> <span class="o">=</span> <span class="n">evaluate_wip</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">agent_for_wip</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">rep</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">rep</span><span class="o">.</span><span class="n">is_refuse</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;WIP gate refuses add: </span><span class="si">{</span><span class="n">rep</span><span class="o">.</span><span class="n">agent</span><span class="si">}</span><span class="s2"> already has &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">rep</span><span class="o">.</span><span class="n">open_count</span><span class="si">}</span><span class="s2"> open tasks (&gt;= 2 × limit &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">rep</span><span class="o">.</span><span class="n">limit</span><span class="si">}</span><span class="s2">). Close existing tasks before adding &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;more — see SCITEX_TODO_WIP_LIMIT env.&quot;</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="n">rep</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">rep</span><span class="o">.</span><span class="n">is_warn</span><span class="p">:</span>
+                <span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+
+                <span class="nb">print</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;WARN: WIP gate — </span><span class="si">{</span><span class="n">rep</span><span class="o">.</span><span class="n">agent</span><span class="si">}</span><span class="s2"> now has &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">rep</span><span class="o">.</span><span class="n">open_count</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2"> open tasks (limit </span><span class="si">{</span><span class="n">rep</span><span class="o">.</span><span class="n">limit</span><span class="si">}</span><span class="s2">). &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;Completion is not keeping up with creation; close &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;existing before adding more.&quot;</span><span class="p">,</span>
+                    <span class="n">file</span><span class="o">=</span><span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="p">,</span>
+                <span class="p">)</span>
         <span class="n">tasks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new</span><span class="p">)</span>
         <span class="n">_save_tasks_unlocked</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">resolved</span><span class="p">)</span>
     <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">new</span><span class="p">)</span></div>
 
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_wip_excluded_statuses</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Re-export from ``_throughput`` so the gate&#39;s exclusion list stays</span>
+<span class="sd">    a single source of truth (lead-confirmed ``5acfbb5d`` — exclude</span>
+<span class="sd">    ``done`` + ``goal``).&quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">._throughput</span><span class="w"> </span><span class="kn">import</span> <span class="n">WIP_EXCLUDED_STATUSES</span>
+
+    <span class="k">return</span> <span class="n">WIP_EXCLUDED_STATUSES</span>
 
 
 <div class="viewcode-block" id="update_task">
