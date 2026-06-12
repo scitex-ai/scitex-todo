@@ -114,8 +114,11 @@ def provide_jobs() -> list[JobSpec]:
         # → escalation, no manual lead intervention required.
         JobSpec(
             name="scitex-todo.notify",
-            kind="oneshot",
-            schedule="*:0/10",  # every 10 minutes
+            # `cron` (the JobSpec valid set is `cron|service|timer`).
+            # systemd materializes it as a `.timer` + `.service` pair
+            # with `OnCalendar=*:0/10` — every 10 minutes.
+            kind="cron",
+            schedule="*:0/10",
             command=(
                 "scitex-todo print-stats --by agent "
                 "--notify --nudge-quiet"
