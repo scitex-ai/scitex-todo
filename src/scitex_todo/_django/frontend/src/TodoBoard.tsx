@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo } from "react";
 import { GraphView } from "./GraphView";
+import { RecentView } from "./RecentView";
 import { TableView } from "./TableView";
 import { NodeDetailPanelContainer } from "./NodeDetailPanel";
 import { ContextMenu } from "./ContextMenu";
@@ -47,6 +48,17 @@ function ViewToggle() {
         aria-pressed={view === "table"}
       >
         Table
+      </button>
+      <button
+        type="button"
+        className={`stx-todo-viewtoggle__btn${
+          view === "recent" ? " stx-todo-viewtoggle__btn--on" : ""
+        }`}
+        onClick={() => setView("recent")}
+        aria-pressed={view === "recent"}
+        title="Recent — newest-first triage (operator TG 513)"
+      >
+        Recent
       </button>
     </div>
   );
@@ -502,6 +514,8 @@ export function TodoBoard() {
       <div className="stx-todo-board__canvas">
         {view === "graph" ? (
           <GraphView graph={graph} />
+        ) : view === "recent" ? (
+          <RecentView graph={graph} />
         ) : (
           <TableView graph={graph} />
         )}
