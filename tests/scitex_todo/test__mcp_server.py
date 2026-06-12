@@ -250,6 +250,42 @@ def test_list_tasks_filter_blocking_me(tmp_path):
     assert {r["id"] for r in json.loads(listed)} == {"b"}
 
 
+def test_list_tasks_filter_overdue(tmp_path):
+    # The MCP `list_tasks(overdue=True)` mirrors the CLI's `--overdue`
+    # (PR #126) and the fleet payload's `overdue_count` (PR #125). A
+    # task is overdue when its next deadline is strictly before today
+    # AND it is NOT in a terminal lifecycle state.
+    #
+    # The MCP add_task / update_task surfaces don't currently expose
+    # `deadline` as a kwarg (separate gap to plug if needed); write
+    # the YAML directly so this test stays focused on the MCP
+    # `list_tasks(overdue=True)` plumbing, not the writer surface.
+    from scitex_todo._mcp_server import list_tasks
+    store = tmp_path / "tasks.yaml"
+    store.write_text(
+        "tasks:\n"
+        "  - id: late\n"
+        "    title: Late\n"
+        "    status: pending\n"
+        "    deadline: '2000-01-01'\n"
+        "  - id: future\n"
+        "    title: Future\n"
+        "    status: pending\n"
+        "    deadline: '2099-01-01'\n"
+        "  - id: done-past\n"
+        "    title: Done-Past\n"
+        "    status: done\n"
+        "    deadline: '2000-01-01'\n",
+        encoding="utf-8",
+    )
+    # Act
+    listed = asyncio.run(_call_tool(
+        list_tasks, scope="", overdue=True, tasks_path=str(store),
+    ))
+    # Assert — only the past-due, non-terminal row matches.
+    assert {r["id"] for r in json.loads(listed)} == {"late"}
+
+
 def test_complete_sets_status_done(tmp_path, env):
     # Arrange
     env.set("SCITEX_TODO_AGENT", "agent:mcp-test")

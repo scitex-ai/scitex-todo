@@ -232,6 +232,7 @@ async def list_tasks(
     kind: str | None = None,
     id_prefix: str | None = None,
     blocking_me: bool = False,
+    overdue: bool = False,
     tasks_path: str | None = None,
 ) -> str:
     """List tasks, filtered by any combination of fields. Returns a JSON array.
@@ -240,7 +241,11 @@ async def list_tasks(
     opts out of that env default. ``statuses`` (multi) OR-combines with
     ``status`` (single). ``blocker="__none"`` matches rows with no blocker.
     ``blocking_me=True`` matches the board's BLOCKING-YOU predicate
-    (``status=blocked AND blocker=operator-decision``).
+    (``status=blocked AND blocker=operator-decision``). ``overdue=True``
+    matches tasks past their next deadline AND not in a terminal lifecycle
+    state (mirrors the ``scitex-todo list-tasks --overdue`` CLI flag and
+    the fleet payload's ``overdue_count``; see scitex_todo._model.is_overdue
+    — todo-p6-overdue-ui, PR #125 / #126).
     """
     rows = _store.list_tasks(
         tasks_path,
@@ -255,6 +260,7 @@ async def list_tasks(
         kind=kind,
         id_prefix=id_prefix,
         blocking_me=blocking_me,
+        overdue=overdue,
     )
     return json.dumps(rows)
 
