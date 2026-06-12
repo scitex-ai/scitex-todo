@@ -1,0 +1,20 @@
+# scitex-dev audit-cli — per-package vocabulary additions
+#
+# Format expected by scitex_dev/_cli/audit/_summary/_audit.py::_load_custom_dict():
+#   nouns:            [...]
+#   transitive_verbs: [...]
+#   intransitive_verbs: [...]
+#
+# Keys must match exactly. The auditor merges this dict with its base
+# catalog + Moby POS, then classifies each CLI sub-command token. A
+# token labelled "unknown" by §1d would emit a violation pointing here.
+
+intransitive_verbs:
+  # `scitex-todo next` — prints the next runnable task for an agent.
+  # Lead a2a `fb413fb038da49d1b18262b237385c33` (2026-06-12, PR #110
+  # fix-forward): "next" is a temporal adverb in English and the
+  # default Moby POS classifier rejects it as a verb. We whitelist it
+  # because `scitex-todo next` matches the established `git next` /
+  # `task next` pattern operators already expect — rename would be
+  # worse UX.
+  - next
