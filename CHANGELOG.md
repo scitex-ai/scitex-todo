@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.2] - 2026-06-12 — coerce naive ISO timestamps to UTC-aware (unblocks `--notify` cron)
+
+Hotfix for the 10-min structural-nudge cron shipped in 0.7.1. The
+P3a(c) cron pilot caught a `TypeError: can't subtract offset-naive
+and offset-aware datetimes` raised by `_throughput._hours_since` on
+the first `tasks.yaml` row whose `last_activity` was serialized
+without a timezone suffix (e.g. `"2026-06-08T00:42:30"` vs.
+`"2026-06-08T00:42:30Z"`). The cron then died silently every tick
+BEFORE any POST fired, so no agent ever received a structural nudge.
+
+### Fixed
+
+- **`_throughput._parse_iso` always returns UTC-aware.** Naive ISO
+  strings are coerced to UTC — the canonical assumption for
+  `tasks.yaml` timestamps. One offending row no longer kills the
+  entire `--notify` / `--nudge-quiet` sweep.
+
+### Tests
+
+- `TestNotifyBody::test_naive_last_activity_does_not_crash` —
+  composes a notify body for a task whose `last_activity` lacks a
+  timezone suffix.
+- `TestParseIso::test_naive_string_coerces_to_utc_aware` — direct
+  unit check on the helper.
+
+### Provenance
+
+PR #118 (`fix/parse-iso-utc-coerce`), lead-ACK a2a `cfbade6b` /
+`f556b755`, proj-scitex-todo overnight mission.
+
 ## [0.7.1] - 2026-06-12 — 10-min structural-nudge cron + `--nudge-quiet` flag
 
 Operator standing direction (lead a2a `19d575415a` + revision
