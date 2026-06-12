@@ -4,6 +4,44 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.7] - 2026-06-12 — User lane normalization + tighten left space + age pill + finish BLOCKING-YOU removal
+
+Lead-HOLD-approved follow-up to 0.5.6 (PR #107, rebased on top of the
+P0 LAYOUT-axis + Recent-sort merge):
+
+### Changed — User lane normalization
+
+- **The 360 px BLOCKING-YOU right-side aside is now FULLY removed.**
+  0.5.6's render-refactor removed the JS that populated `#block-rows`
+  but left the `<aside id="right-panel">` HTML in the template — the
+  operator saw "loading…" forever in the right sidebar. This PR
+  finishes the job: the `<aside>` block + the mobile `#by-fab` toggle
+  + the `toggleByDrawer` / `updateByFabBadge` helpers are all
+  removed. Operator-decision-blocked tasks live in the synthesized
+  `user` lane in `_renderColumnView` (a normal column with normal
+  width, drag-reorder, pin, column-context-menu).
+
+### Changed — Left space tightened
+
+- Board overrides the scitex-ui standalone shell so the
+  `ws-ai-pane` (console / chat), `ws-worktree-pane` (file tree), and
+  `ws-viewer-pane` (file viewer) are `display: none`. The kanban
+  doesn't need any of those, and the operator reported "left empty
+  space" eating the columns area. The `ws-module-pane` (board
+  content) now uses the full viewport width.
+
+### Added — Card age pill
+
+- Each card carries a `⏳ Nd` pill in the header next to
+  `last <activity>`. Stale color buckets:
+  `today` mint-green "new" / `fresh 1–6d` muted / `aging 7–29d`
+  amber / `stale 30–89d` orange / `rotten ≥90d` saturated red.
+  Source is `created_at` (preferred) with `last_activity` fallback;
+  null when neither parses (back-compat: legacy data shows no pill
+  instead of `NaN`).
+- CSS in `board_v3/02-card.css` (`.age-pill` + 5 modifiers, same
+  shape as the existing `.date-pill` family).
+
 ## [0.5.6] - 2026-06-12 — Board v0.5.4 P0: empty-pill fix + LAYOUT axis + Recent sort
 
 Lead-prioritized fix after PR #105 verification miss surfaced two

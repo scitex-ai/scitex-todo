@@ -62,6 +62,27 @@
   #f-search input. Exposes window.STX.searchSuggest. Operator TG 12318.
 {% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/searchSuggest.js' %}"></script>
+<style>
+  /* P12 (operator TG, lead a2a 2026-06-12) — board reclaims the left
+     IDE-style panes. The scitex-ui standalone shell renders an AI
+     console pane + a worktree file tree + a media viewer to the LEFT
+     of the module pane; the kanban board doesn't need any of them, and
+     the operator was photographed reporting "left empty space" eating
+     the columns area. Override the shell defaults here so the kanban
+     grid uses the full viewport width. The shell's resizer/toggle JS
+     still no-ops cleanly when the targets are display:none. */
+  #workspace-three-col > .ws-ai-pane,
+  #workspace-three-col > .ws-worktree-pane,
+  #workspace-three-col > .ws-viewer-pane {
+    display: none !important;
+  }
+  #workspace-three-col > .ws-module-pane,
+  #workspace-three-col > #main-content.ws-module-pane {
+    flex: 1 1 100%;
+    max-width: 100vw;
+    width: 100vw;
+  }
+</style>
 {% endblock extra_css %}
 
 {% block app_content %}
@@ -265,14 +286,24 @@
     </details>
   </div>
 
-  <!-- Mobile BLOCKING-YOU drawer toggle (operator TG 459/460) — tap
-       opens / closes the right-side aside. Hidden on desktop (CSS
-       @media). Badge shows the count of operator-decision blockers. -->
-  <button id="by-fab" class="by-fab" type="button"
-          onclick="toggleByDrawer()"
-          aria-label="Toggle BLOCKING YOU panel">
-    🚧<span id="by-fab-count" class="by-fab-count" style="display:none">0</span>
-  </button>
+  {% comment %}
+    BLOCKING-YOU 360 px aside REMOVED (P12, lead a2a 2026-06-12). The
+    "right-end giant lane" the operator photographed is now a normal
+    project column synthesized client-side as the `user` lane (see
+    USER_LANE_KEY in _renderColumnView): every task with
+    `status === "blocked" && blocker === "operator-decision"` shows up
+    in a column titled `user` at normal width, with normal drag-reorder
+    / pin / column-context-menu. Tasks still live in their REAL project
+    column too; the user lane is a render-time aggregation, not a
+    schema change. The mobile `#by-fab` drawer toggle is removed with
+    the aside; the "🚧 blocking me" filterbar toggle (#t-block) still
+    works because it's a filter, not a drawer.
+
+    NB: PR #108 inadvertently left the aside HTML + `#block-rows`
+    placeholder in place while removing the JS that populated it —
+    operator saw "loading…" forever in the right sidebar. This commit
+    finishes the job.
+  {% endcomment %}
 
   <div class="main">
     <!-- P10 (lead a2a 2026-06-12) — spans_all groups (e.g. "lead") render
@@ -282,23 +313,6 @@
     <div class="columns" id="columns">
       <div class="loading">loading…</div>
     </div>
-    <aside class="right" id="right-panel">
-      <div class="block-you">
-        <h3>🚧 BLOCKING YOU</h3>
-        <div id="block-rows">
-          <div class="by-empty">loading…</div>
-        </div>
-      </div>
-      <div style="margin-top: 14px; color: var(--text-muted); font-size: 0.72rem;">
-        <strong>GUI→CODE wiring (LIVE):</strong>
-        <ul style="margin: 4px 0 0 0; padding-left: 18px; line-height: 1.55;">
-          <li>Cards render from real <code>~/.scitex/todo/tasks.yaml</code> via <code>/graph</code></li>
-          <li>Auto-refresh: 5 s via <code>/rev</code> mtime fingerprint</li>
-          <li>Resolve POSTs <code>/resolve</code> → flips status=done, blocker=null, appends comment</li>
-          <li>NotificationPort.publish fires on resolve (in-process today; SacChannel adapter later)</li>
-        </ul>
-      </div>
-    </aside>
   </div>
 
   <div class="foot">
@@ -866,6 +880,39 @@
       return `<span class="${cls}" title="next date: ${iso} (${d>=0?'+':''}${d}d)${di.repeater ? ' ' + di.repeater : ''}">${label}</span>`;
     }
 
+    // === Age pill (P12, operator-asked age display + stale color) ====
+    // Bucket cards by how long they have been on the board, derived from
+    // `created_at` (preferred) or `last_activity` (fallback for the
+    // ~80 % of legacy tasks without `created_at` set). Returns null when
+    // neither field is present / parseable so the pill simply doesn't
+    // render (back-compat: old data shows no pill, not "NaN").
+    //   today    : 0 d
+    //   fresh    : 1-6 d
+    //   aging    : 7-29 d
+    //   stale    : 30-89 d
+    //   rotten   : >= 90 d
+    // CSS lives in board_v3/02-card.css (.age-pill + 5 modifier classes).
+    function _ageDays(t) {
+      const ts = t.created_at || t.last_activity;
+      if (!ts) return null;
+      const created = new Date(ts);
+      if (isNaN(created)) return null;
+      const days = Math.floor((Date.now() - created.getTime()) / 86400000);
+      return days >= 0 ? days : null;
+    }
+    function agePillHtml(t) {
+      const days = _ageDays(t);
+      if (days == null) return "";
+      let cls = "age-pill", label = `${days}d`;
+      if (days === 0)        { cls += " age-pill--today";  label = "new"; }
+      else if (days <= 6)    { cls += " age-pill--fresh"; }
+      else if (days <= 29)   { cls += " age-pill--aging"; }
+      else if (days <= 89)   { cls += " age-pill--stale"; }
+      else                   { cls += " age-pill--rotten"; }
+      const src = t.created_at ? "created" : "last activity";
+      return `<span class="${cls}" title="${days}d since ${src}">⏳ ${label}</span>`;
+    }
+
     function populateFilters() {
       if (!STATE.graph) return;
       const nodes = STATE.graph.nodes;
@@ -978,6 +1025,7 @@
             <span class="card-status">${b}</span>
             ${newBadge}
             <span class="card-last">${last}</span>
+            ${agePillHtml(t)}
             ${prioRank}
             ${prio}
           </div>
@@ -1404,10 +1452,31 @@
         if (isSelfNamedProjectCard(t, p)) continue;
         (byProj[p] = byProj[p] || []).push(t);
       }
+      // P12 (operator TG, lead a2a 2026-06-12) — synthesize the "user"
+      // project lane. Operator-decision-blocked tasks (the ones that
+      // previously lived in the 360 px BLOCKING-YOU aside) now ALSO
+      // appear in a synthetic project column named USER_LANE_KEY so
+      // the operator's "what's waiting on me" queue is a normal column
+      // (normal width, pinnable, drag-reorderable). Cards still live
+      // in their real project column too — the aggregation is purely
+      // render-time, no schema change. The `passes()` filter still
+      // applies so the user lane respects the search/host/agent/date
+      // filters; the existing "🚧 blocking me" toggle (#t-block) keeps
+      // working because it filters the same predicate fleet-wide.
+      const USER_LANE_KEY = "user";
+      for (const t of visible) {
+        if (t.status === "blocked" && t.blocker === "operator-decision") {
+          (byProj[USER_LANE_KEY] = byProj[USER_LANE_KEY] || []).push(t);
+        }
+      }
       const projects = new Set();
       for (const t of STATE.graph.nodes) {
         projects.add(t.project || NO_PROJECT_LABEL);
       }
+      // Always expose the `user` lane in the project list — even when
+      // empty, so the operator sees an explicit column rather than
+      // having it disappear/reappear with each filter change.
+      projects.add(USER_LANE_KEY);
       const pinned = pinnedSet();
       const order = colOrder();
       const projList = [...projects];
@@ -2735,26 +2804,13 @@
       // the headerlabel count on every render so a new hide / un-hide
       // shows up immediately.
       rebuildHiddenList();
-      // Mobile FAB badge (operator TG 459/460) — count of
-      // operator-decision blockers (the "blocking YOU" set).
-      updateByFabBadge();
     };
 
-    // ── Mobile responsive helpers (operator TG 459/460/463) ───────────
-    function toggleByDrawer() {
-      const r = document.getElementById("right-panel");
-      if (r) r.classList.toggle("mobile-open");
-    }
-    function updateByFabBadge() {
-      if (!STATE.graph) return;
-      const n = STATE.graph.nodes.filter(t =>
-        t.status === "blocked" && t.blocker === "operator-decision"
-      ).length;
-      const el = document.getElementById("by-fab-count");
-      if (!el) return;
-      if (n > 0) { el.textContent = String(n); el.style.display = ""; }
-      else { el.style.display = "none"; }
-    }
+    // ── Mobile responsive helpers ─────────────────────────────────────
+    // (was: toggleByDrawer / updateByFabBadge for the BLOCKING-YOU
+    // 360 px aside — removed in P12 along with the aside; the
+    // operator-decision queue is now the synthesized `user` column in
+    // `_renderColumnView`.)
 
     // Touch long-press → context menu (operator TG 459/460). Native
     // contextmenu isn't reliably fired on iOS, so we open it via a
