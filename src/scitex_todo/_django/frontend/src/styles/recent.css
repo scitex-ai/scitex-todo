@@ -1,0 +1,233 @@
+/* recent.css — RecentView styles (operator TG msg 513, 2026-06-12).
+ *
+ * Styling discipline: scope all selectors under `.stx-todo-recent` so the
+ * Recent view's CSS can never leak into Graph / Table. Reuse the
+ * board's --stx-* palette + status colors via inline-styles set in
+ * RecentView.tsx (so the existing theme switch keeps working).
+ *
+ * Kept in a separate file (not appended to board.css) because board.css
+ * is already past the per-file line limit and a follow-up split is
+ * tracked in GITIGNORED/REFACTORING.md.
+ */
+
+.stx-todo-recent {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--stx-canvas-bg);
+  color: var(--stx-text);
+}
+
+.stx-todo-recent__titlebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--stx-border);
+  flex: 0 0 auto;
+}
+
+.stx-todo-recent__heading {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--stx-text);
+}
+
+.stx-todo-recent__count {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: rgba(255, 140, 0, 0.18);
+  border: 1px solid rgba(255, 140, 0, 0.5);
+  color: #ff9a3c;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.stx-todo-recent__show-older {
+  appearance: none;
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--stx-border-strong);
+  border-radius: 4px;
+  color: var(--stx-text-muted);
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.stx-todo-recent__show-older:hover {
+  background: var(--stx-hover-bg);
+  color: var(--stx-text);
+}
+
+.stx-todo-recent__list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 8px 12px 24px;
+}
+
+.stx-todo-recent__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  margin: 6px 0;
+  background: var(--stx-panel-bg);
+  border: 1px solid var(--stx-border);
+  border-radius: 6px;
+  border-left-width: 4px;
+  cursor: pointer;
+  transition:
+    background 0.08s ease,
+    border-color 0.08s ease;
+}
+
+.stx-todo-recent__row:hover {
+  background: var(--stx-hover-bg);
+  border-color: var(--stx-border-strong);
+}
+
+/* Recency tints — applied via the row's --new / --recent / --older
+ * modifier class. The "new" variant gets a bright orange left-border;
+ * the "recent" (24-72h) variant a subtle yellow tint; older + unknown
+ * stay plain (just the default border). */
+.stx-todo-recent__row--new {
+  border-left-color: #ff8c00;
+}
+
+.stx-todo-recent__row--recent {
+  border-left-color: #d4b341;
+  background: linear-gradient(
+    90deg,
+    rgba(212, 179, 65, 0.06) 0%,
+    var(--stx-panel-bg) 12%
+  );
+}
+
+.stx-todo-recent__topline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stx-todo-recent__ts {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--stx-text);
+  min-width: 80px;
+}
+
+.stx-todo-recent__newbadge {
+  font-size: 11px;
+  font-weight: 700;
+  background: #ff8c00;
+  color: #1b1b29;
+  padding: 2px 8px;
+  border-radius: 10px;
+  letter-spacing: 0.04em;
+}
+
+.stx-todo-recent__status {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border-style: solid;
+  border-width: 1px;
+  color: #222;
+  text-transform: capitalize;
+  font-weight: 500;
+}
+
+.stx-todo-recent__project {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border-style: solid;
+  border-width: 1px;
+  color: #fff;
+  font-weight: 500;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stx-todo-recent__prio {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+}
+
+.stx-todo-recent__prio--p0 {
+  background: rgba(255, 80, 80, 0.18);
+  color: #ff6b6b;
+  border: 1px solid rgba(255, 80, 80, 0.5);
+}
+
+.stx-todo-recent__prio--p1 {
+  background: rgba(255, 165, 0, 0.18);
+  color: #ffb147;
+  border: 1px solid rgba(255, 165, 0, 0.5);
+}
+
+.stx-todo-recent__prio--p2,
+.stx-todo-recent__prio--p3 {
+  background: rgba(140, 140, 160, 0.18);
+  color: var(--stx-text-muted);
+  border: 1px solid var(--stx-border-strong);
+}
+
+.stx-todo-recent__title {
+  font-size: 14px;
+  color: var(--stx-text);
+  line-height: 1.35;
+}
+
+.stx-todo-recent__meta {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--stx-text-muted);
+}
+
+.stx-todo-recent__assignee {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.stx-todo-recent__empty {
+  margin: 24px 16px;
+  padding: 16px 20px;
+  border: 1px dashed var(--stx-border-strong);
+  border-radius: 8px;
+  background: var(--stx-panel-bg);
+  color: var(--stx-text-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.stx-todo-recent__empty code {
+  background: var(--stx-code-bg);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--stx-text);
+}
+
+[data-theme="light"] .stx-todo-recent__row--recent {
+  background: linear-gradient(
+    90deg,
+    rgba(212, 179, 65, 0.12) 0%,
+    var(--stx-panel-bg) 12%
+  );
+}
+
+[data-theme="light"] .stx-todo-recent__newbadge {
+  color: #fff;
+}
