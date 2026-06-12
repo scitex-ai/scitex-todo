@@ -4,6 +4,37 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.4] - 2026-06-12 — Board v0.5.3 display fix (template leak + bundle/template food)
+
+Operator-reported regression after the 0.5.3 release:
+
+- Multi-line `{# … #}` comment block leaked verbatim ("`{# searchQuery.js …
+  #}`") into the rendered HTML at the top of every board page.
+- Cards in every lane rendered as empty pills (no text) — `board_v3/*.css`
+  had been wiped from the static dir.
+- View toggle (Graph / Table / Recent) was invisible — the React SPA bundle
+  was out of sync with the TypeScript source.
+
+### Fixed
+
+- **Template comment leak** (PR #105). Replaced the two multi-line `{# … #}`
+  blocks in `board_v3.html` with `{% comment %} … {% endcomment %}`.
+  Django's `{# … #}` is single-line only; multi-line blocks render their
+  body as page text. Already pinned by
+  `test_standalone_template_does_not_leak_django_comment` in
+  `tests/scitex_todo/_django/test_views.py`.
+- **Bundle/template food (root cause)** (PR #105). The vite config wrote
+  into `../static/scitex_todo` with `emptyOutDir: true`, which wiped the
+  SIBLINGS of `assets/` on every rebuild — `favicon.svg`,
+  `board_v3/*.css`, and `board_v3/searchQuery.js`/`searchSuggest.js` are
+  all tracked-in-git static assets consumed by the live `board_v3.html`
+  template. We now scope `outDir` to the `assets/` subdir, so a rebuild
+  only ever touches the React SPA bundle and never the board_v3 statics.
+- **Bundle rebuild from current TS source** (PR #105). Clean
+  `npm install` + `vite build` ran against the post-#104 source so the
+  shipped `assets/index.js` / `assets/index.css` matches the TypeScript
+  source (the Graph / Table / Recent toggle ships with the bundle).
+
 ## [0.5.3] - 2026-06-12 — Board UX wave + self-consuming loop + deadline schema
 
 Captures every PR that landed between 0.5.2 and develop tip (operator
