@@ -333,9 +333,60 @@ def _build_fleet(tasks: list[dict], *, now=None) -> list[dict]:
     return out
 
 
+#: In-process cache of the BUILT graph payload, keyed on
+#: ``(store_path_str, mtime)``. ``get_board`` already mtime-caches the
+#: parsed task list; this cache piggybacks on the same key to skip the
+#: per-request ``_build_graph`` rebuild (mermaid + nodes + edges +
+#: fleet + groups) when the store hasn't changed. ~50-100 ms savings
+#: per /graph for a 500-task store — directly addresses operator
+#: TG12911 ("the board UI is slow") and is the Stage-1 perf half of
+#: lead a2a `aa02fb0e` + `e5243003`.
+#:
+#: NEVER authoritative: any change to ``board.mtime`` invalidates the
+#: entry; entries are dropped on TTL via :func:`_graph_cache_gc`.
+_GRAPH_PAYLOAD_CACHE: dict = {}
+_GRAPH_PAYLOAD_CACHE_TTL_S = 3_600.0  # 1h, mirrors BoardState's TTL.
+
+
+def _graph_cache_gc() -> None:
+    """Drop stale entries from :data:`_GRAPH_PAYLOAD_CACHE`."""
+    import time
+    now = time.time()
+    stale = [
+        k for k, (_, ts) in _GRAPH_PAYLOAD_CACHE.items()
+        if now - ts > _GRAPH_PAYLOAD_CACHE_TTL_S
+    ]
+    for k in stale:
+        _GRAPH_PAYLOAD_CACHE.pop(k, None)
+
+
+def _graph_cache_reset() -> None:
+    """Test hook — clear the cache between assertions."""
+    _GRAPH_PAYLOAD_CACHE.clear()
+
+
 def handle_graph(request, board):
-    """GET graph -> structured nodes + edges + status colors (+ mermaid)."""
-    return JsonResponse(_build_graph(board))
+    """GET graph -> structured nodes + edges + status colors (+ mermaid).
+
+    Cached by ``(store_path, mtime)``; on hit, returns the prior payload
+    directly. Cache is invalidated when the YAML's mtime changes (i.e.
+    any agent or operator write rolls the cache forward by one rebuild).
+    The auto-update SSE wire (PR-C in the lead-approved Stage 2 plan)
+    will additionally PUSH the new payload — this cache is the same
+    derivation, just stored.
+    """
+    import time
+    _graph_cache_gc()
+    key = (str(board.store_path), board.mtime)
+    hit = _GRAPH_PAYLOAD_CACHE.get(key)
+    if hit is not None:
+        payload, _ = hit
+        # Touch the access time so the GC doesn't sweep a hot key.
+        _GRAPH_PAYLOAD_CACHE[key] = (payload, time.time())
+        return JsonResponse(payload)
+    payload = _build_graph(board)
+    _GRAPH_PAYLOAD_CACHE[key] = (payload, time.time())
+    return JsonResponse(payload)
 
 
 def handle_tasks(request, board):
