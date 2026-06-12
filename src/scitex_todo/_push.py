@@ -289,10 +289,19 @@ def deliver(
             "reason": "no-turn-url-configured",
         }
 
+    # ``text`` is the field SAC's /v1/turn (and claude-code-telegrammer's
+    # TURN_URL) expects; ``body`` is scitex-todo's historical name. We send
+    # BOTH so the wire is back-compat: consumers that key off ``text`` (SAC,
+    # the telegrammer) succeed, and any older consumer keying off ``body``
+    # still works. Without this alias the SAC receiver returns
+    # ``HTTP 400 missing or empty 'text' field`` and the whole nudge chain
+    # is dead on arrival (proj-scitex-todo P3a(c) pilot, 2026-06-13 — see
+    # lead a2a ``8afe659e``).
     payload = {
         "agent": agent,
         "kind": kind,
         "source": "scitex-todo",
+        "text": body,
         "body": body,
         "task_id": task_id,
         "store_path": store_path,

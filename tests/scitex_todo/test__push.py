@@ -358,6 +358,75 @@ class TestDeliver:
         # Assert
         assert (payload["agent"], payload["body"]) == ("alpha", "hi-from-test")
 
+    def test_post_carries_text_field_aliased_to_body(self, monkeypatch):
+        # Regression guard: SAC's /v1/turn (and claude-code-telegrammer's
+        # TURN_URL) require a `text` key — pre-fix scitex-todo only sent
+        # `body`, so the SAC receiver returned HTTP 400 "missing or empty
+        # 'text' field" and the whole nudge chain died on arrival
+        # (proj-scitex-todo P3a(c) pilot, 2026-06-13; lead a2a 8afe659e).
+        # Arrange
+        cap = _Capture()
+        cap.response_code = 200
+        monkeypatch.delenv(ENV_DRY_RUN, raising=False)
+        with _server(cap) as url:
+            monkeypatch.setenv(ENV_MAP, json.dumps({"alpha": url}))
+            deliver("alpha", "hi-from-pilot", kind="notify")
+        # Act
+        payload = json.loads(cap.last_body)
+        # Assert
+        assert payload["text"] == "hi-from-pilot"
+
+    def test_succeeds_against_text_strict_receiver(self, monkeypatch):
+        # End-to-end via a real localhost http.server that mimics SAC's
+        # /v1/turn validation: 400 when `text` is missing or empty, 200
+        # otherwise. Pre-fix this test would fail (HTTP 400 → reason=
+        # http-error). With the `text` alias in the payload it passes.
+        # Arrange
+        received: dict = {}
+
+        class _TextStrictHandler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802
+                length = int(self.headers.get("Content-Length", "0"))
+                raw = self.rfile.read(length)
+                try:
+                    body = json.loads(raw)
+                except json.JSONDecodeError:
+                    body = {}
+                text = (body.get("text") or "").strip()
+                if not text:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(
+                        b'{"error":"missing or empty text field"}'
+                    )
+                    return
+                received["text"] = text
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"ok":true}')
+
+            def log_message(self, *a, **kw):  # silence test noise
+                return
+
+        port = _free_port()
+        httpd = http.server.HTTPServer(("127.0.0.1", port), _TextStrictHandler)
+        th = threading.Thread(target=httpd.serve_forever, daemon=True)
+        th.start()
+        monkeypatch.delenv(ENV_DRY_RUN, raising=False)
+        monkeypatch.setenv(
+            ENV_MAP,
+            json.dumps({"alpha": f"http://127.0.0.1:{port}/v1/turn"}),
+        )
+        try:
+            # Act
+            result = deliver("alpha", "hi from pilot", kind="notify")
+        finally:
+            httpd.shutdown()
+        # Assert — payload satisfied the text-strict receiver.
+        assert result["reason"] == "delivered"
+
     def test_http_4xx_returns_http_error(self, monkeypatch):
         # Arrange
         cap = _Capture()
