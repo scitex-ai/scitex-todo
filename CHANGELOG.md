@@ -4,6 +4,35 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.1] - 2026-06-12 — 10-min structural-nudge cron + `--nudge-quiet` flag
+
+Operator standing direction (lead a2a `19d575415a` + revision
+`9e710ab074ef4bf3a615be41793e0c51`, 2026-06-12): the structural
+feedback loop must push per-agent nudges every 10 minutes, not on
+manual lead intervention. The 10-min threshold is the operator's
+"silence + in_progress = escalation" rule from TG12600.
+
+### Added
+
+- **New `--nudge-quiet` flag on `scitex-todo print-stats`.** Per-agent
+  sweep: if any open `in_progress` task hasn't been touched in
+  `SCITEX_TODO_NUDGE_QUIET_MIN` (default 10) minutes, push a
+  quiet-nudge body via `_push.deliver(kind="quiet-nudge")` — the
+  same self-contained HTTP push wire 0.7.0 introduced. Composes the
+  full per-agent open list (RUNNABLE first, BLOCKED after) so the
+  recipient sees the full picture, not just the stalled row.
+- **`scitex-todo.notify` JobSpec** in `_jobs_provider.provide_jobs`.
+  `kind="oneshot"` + `schedule="*:0/10"` → systemd runs it every 10
+  minutes via the existing `scitex-dev ecosystem up` federation.
+  Command: `scitex-todo print-stats --by agent --notify --nudge-quiet`.
+  Pairs with the v0.7.0 UI nudge button: the cron is the STRUCTURAL
+  feedback path; the button is the manual override.
+
+### Out of scope
+
+- Stdio MCP channel server + board-event poller (operator TG12618
+  long-term plan) — tracked as PR (j) in the queue.
+
 ## [0.7.0] - 2026-06-12 — Self-contained push channel + nudge button + comment relay
 
 Operator standing direction (lead a2a `f16b0d2a` + `9e710ab0` +

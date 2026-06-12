@@ -123,10 +123,23 @@ def _push_notify(agent: str, body: str) -> str:
     is_flag=True,
     help=(
         "After printing the stats, push a per-agent notify body via "
-        "`sac agents send` (stdout fallback when sac unavailable). "
+        "scitex-todo's self-contained HTTP push wire (_push.deliver). "
         "The body lists each agent's open tasks (RUNNABLE first, "
         "then BLOCKED + reason), ⚠ on stale in_progress, and "
         "recently-completed lines so the receiver can self-correct."
+    ),
+)
+@click.option(
+    "--nudge-quiet",
+    is_flag=True,
+    help=(
+        "Per-agent structural nudge: if the agent has open in_progress "
+        "tasks AND no recent activity within SCITEX_TODO_NUDGE_QUIET_MIN "
+        "(default 10 minutes), push an additional nudge body. Designed "
+        "for the hourly / 10-min cron entry — operator's standing "
+        "direction is that 'silence + in_progress = escalation', not "
+        "a manual lead intervention. Implies --notify=agent push; "
+        "the quiet nudge piggybacks on the same wire."
     ),
 )
 @click.option(
@@ -136,7 +149,8 @@ def _push_notify(agent: str, body: str) -> str:
     help="Path to tasks.yaml (default: project -> user -> bundled example, or $SCITEX_TODO_TASKS).",
 )
 def stats_cmd(
-    by: str, since: str | None, fmt: str, notify: bool, tasks_path: str | None
+    by: str, since: str | None, fmt: str, notify: bool,
+    nudge_quiet: bool, tasks_path: str | None,
 ) -> None:
     """Print throughput stats (per-agent / project / host).
 
@@ -150,6 +164,7 @@ def stats_cmd(
     Example:
       $ scitex-todo print-stats --by agent --since 2026-06-01
       $ scitex-todo print-stats --by agent --notify
+      $ scitex-todo print-stats --by agent --notify --nudge-quiet
       $ scitex-todo print-stats --by project --format json
     """
     path = resolve_tasks_path(tasks_path)
@@ -157,22 +172,96 @@ def stats_cmd(
     rows = aggregate(tasks, by=by, since=since)
     out = _format_json(rows) if fmt == "json" else _format_text(rows)
     click.echo(out)
-    if notify and by == "agent":
-        # --notify only makes sense when grouped by agent — that's
-        # what the push target identifies.
+    if (notify or nudge_quiet) and by == "agent":
         click.echo("")
         click.echo(f"# Notify push → {len(rows)} agents")
         for r in rows:
             if r.name == "(unassigned)":
                 continue
-            body = build_notify_body(r.name, tasks, since=since)
-            wire = _push_notify(r.name, body)
-            click.echo(f"  {wire:>6}  {r.name}  ({len(body)} chars)")
-    elif notify:
+            if notify:
+                body = build_notify_body(r.name, tasks, since=since)
+                wire = _push_notify(r.name, body)
+                click.echo(f"  {wire:>6}  {r.name}  ({len(body)} chars)")
+        if nudge_quiet:
+            click.echo("")
+            click.echo(f"# Quiet-nudge sweep (SCITEX_TODO_NUDGE_QUIET_MIN)")
+            _emit_quiet_nudges(tasks, rows)
+    elif notify or nudge_quiet:
         click.echo(
-            "WARN: --notify ignored when --by != agent (push target needs an agent id).",
+            "WARN: --notify / --nudge-quiet ignored when --by != agent "
+            "(push target needs an agent id).",
             err=True,
         )
+
+
+def _emit_quiet_nudges(tasks: list[dict], rows: list) -> None:
+    """Per-agent structural nudge (PR (h) — lead a2a `19d575415a` +
+    revision `9e710ab0` 2026-06-12). For each agent lane, if any
+    in_progress task has not been touched in
+    ``SCITEX_TODO_NUDGE_QUIET_MIN`` minutes (default 10), push a
+    nudge body via :func:`scitex_todo._push.deliver`.
+
+    Why per-task quiet check (rather than per-agent-only)? Because a
+    single agent with 5 open tasks would otherwise quietly stall on
+    1 while the others mask it. We nudge if ANY in_progress is quiet.
+    The nudge body lists ALL open tasks for the agent (same
+    ``build_notify_body`` as --notify) so the recipient sees the
+    full picture, not just the stalled row.
+    """
+    import os
+
+    from .._push import deliver
+
+    quiet_min = float(os.environ.get("SCITEX_TODO_NUDGE_QUIET_MIN", "10"))
+    quiet_seconds = quiet_min * 60.0
+
+    by_agent: dict[str, list[dict]] = {}
+    for t in tasks:
+        a = (t.get("agent") or "").strip()
+        if not a or a == "(unassigned)":
+            continue
+        if t.get("status") == "in_progress":
+            by_agent.setdefault(a, []).append(t)
+
+    import datetime as _dt
+    now = _dt.datetime.now(tz=_dt.timezone.utc)
+
+    def _quiet_age_s(t: dict) -> float | None:
+        ts = t.get("last_activity") or t.get("created_at")
+        if not ts:
+            return None
+        try:
+            parsed = _dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return (now - parsed).total_seconds()
+
+    pushed = 0
+    for agent, in_prog in sorted(by_agent.items()):
+        worst_age = max(
+            (_quiet_age_s(t) or 0.0 for t in in_prog),
+            default=0.0,
+        )
+        if worst_age <= quiet_seconds:
+            continue
+        body = build_notify_body(agent, tasks)
+        body += (
+            "\n————————\n"
+            f"QUIET NUDGE: at least one in_progress task has not been "
+            f"touched for {int(worst_age // 60)} min (threshold "
+            f"{int(quiet_min)} min). Push a commit / comment / status "
+            f"flip — or mark BLOCKED with a concrete reason."
+        )
+        result = deliver(agent, body, kind="quiet-nudge")
+        ok_label = "✓" if result.get("ok") else "✗"
+        click.echo(
+            f"  {ok_label}  {agent:30}  quiet {int(worst_age//60)}m  "
+            f"wire={result.get('wire')}  reason={result.get('reason')}"
+        )
+        if result.get("ok"):
+            pushed += 1
+
+    click.echo(f"# {pushed} quiet-nudge push(es) sent")
 
 
 # --------------------------------------------------------------------------- #
