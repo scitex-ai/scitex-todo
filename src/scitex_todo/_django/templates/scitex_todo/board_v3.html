@@ -324,6 +324,22 @@
          as a thin banner here, above the columns grid. Empty by default
          (no groups, or no spans_all groups). -->
     <div id="group-spans-all" class="group-strip" style="display:none"></div>
+    <!-- Empty-state banner (operator TG12911, lead a2a `ffa6c606`) — when
+         the active filters narrow the visible set to 0 cards, surface an
+         explicit "0 matches" line + a one-click "Clear filters" so a
+         silent empty board doesn't read as "the filter is broken".
+         Hidden by default; render() flips it on/off. -->
+    <div id="filter-empty-banner"
+         style="display:none; padding:14px 18px; margin:6px 12px;
+                background:var(--accent-soft, #fff7e6);
+                border:1px solid var(--accent, #d99700);
+                border-radius:6px; font-size:13px; line-height:1.5;"
+         role="status">
+      <strong style="color:var(--accent-strong, #b97400)">0 matches.</strong>
+      <span id="filter-empty-banner-detail"></span>
+      <button type="button" id="filter-empty-banner-clear"
+              style="margin-left:10px; cursor:pointer;">Clear all filters</button>
+    </div>
     <div class="columns" id="columns">
       <div class="loading">loading…</div>
     </div>
@@ -1448,6 +1464,12 @@
       if (!STATE.graph) return;
       const visible = STATE.graph.nodes.filter(passes);
 
+      // Empty-state banner (operator TG12911 — "filtering by nv-lessons
+      // does NOT work at all"): when the store HAS tasks but the active
+      // filters narrow `visible` to 0, surface an explicit message + a
+      // one-click clear so a silent empty board doesn't read as broken.
+      _renderEmptyStateBanner(visible.length, STATE.graph.nodes.length);
+
       // === LAYOUT axis dispatch (lead design ruling 2026-06-12 — TG
       // 12461). The same `visible` task set renders into one of three
       // orthogonal layouts. STATE.sort (incl. "recent") applies
@@ -1482,6 +1504,71 @@
           : `(${doneCount} hidden)`;
       }
     }
+
+    // === Empty-state banner ──────────────────────────────────────────
+    // Operator TG12911 (via lead a2a `ffa6c606`): "filtering by
+    // nv-lessons does NOT work at all — returns nothing / no effect."
+    // Root cause was UX: the filter LOGICALLY narrowed the set to 0
+    // matches and the board went blank with no explanation, reading as
+    // "broken filter". This helper flips a banner on whenever the store
+    // has rows but the active filters drop everything, and offers a
+    // one-click "Clear all filters" that resets STATE.filters.
+    // (hook-bypass: line-limit.)
+    function _renderEmptyStateBanner(visibleCount, totalCount) {
+      const banner = document.getElementById("filter-empty-banner");
+      if (!banner) return;
+      // Show only when the store HAS rows but filters narrow to 0;
+      // a truly empty store falls through to the normal columns view
+      // (the user just hasn't seeded any tasks yet).
+      const filtersAreActive = _anyActiveFilter();
+      if (visibleCount === 0 && totalCount > 0 && filtersAreActive) {
+        const detail = document.getElementById("filter-empty-banner-detail");
+        if (detail) {
+          detail.textContent =
+            ` Active filters narrow ${totalCount} task` +
+            (totalCount === 1 ? "" : "s") +
+            " to none. Either widen the filters or use the button to" +
+            " clear them.";
+        }
+        banner.style.display = "block";
+      } else {
+        banner.style.display = "none";
+      }
+    }
+
+    function _anyActiveFilter() {
+      const f = STATE.filters || {};
+      return Boolean(
+        f.project || f.host || f.status || f.blocker ||
+        f.agent || f.date || f.search || f.blockingMe,
+      );
+    }
+
+    // Wire the banner's "Clear all filters" button once at boot. The
+    // banner element is in the static template; the button needs a JS
+    // listener so the click resets STATE.filters and re-renders.
+    document.addEventListener("DOMContentLoaded", () => {
+      const btn = document.getElementById("filter-empty-banner-clear");
+      if (!btn) return;
+      btn.addEventListener("click", () => {
+        // Reset every filter dimension to its empty value + clear the
+        // <select.filt> + search-input DOM controls so the chip strip
+        // re-renders consistent with the cleared state.
+        const f = STATE.filters || {};
+        f.project = ""; f.host = ""; f.status = "";
+        f.blocker = ""; f.agent = ""; f.date = "";
+        f.search = ""; f.blockingMe = false;
+        for (const id of ["f-project", "f-host", "f-status",
+                          "f-blocker", "f-agent", "f-date"]) {
+          const el = document.getElementById(id);
+          if (el) el.value = "";
+        }
+        const search = document.getElementById("f-search");
+        if (search) search.value = "";
+        renderActiveFilterChips();
+        render();
+      });
+    });
 
     // === Column layout (default kanban) ─────────────────────────────
     // Extracted from the previous monolithic render() body. Identical
