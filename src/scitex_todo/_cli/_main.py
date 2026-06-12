@@ -201,6 +201,16 @@ def render_graph_cmd(tasks_path: str | None, output: str, print_mermaid: bool) -
     help="Predicate: status=blocked AND blocker=operator-decision (BLOCKING-YOU panel).",
 )
 @click.option(
+    "--overdue",
+    is_flag=True,
+    help=(
+        "Predicate: tasks past their next deadline AND not in a terminal "
+        "lifecycle state (done / deferred / failed / goal). Uses the "
+        "deadline / deadlines schema + repeater rules from "
+        "scitex_todo._model.is_overdue (PR #125, todo-p6-overdue-ui)."
+    ),
+)
+@click.option(
     "--status",
     "statuses",
     multiple=True,
@@ -223,6 +233,7 @@ def list_tasks_cmd(
     kind: str | None,
     id_prefix: str | None,
     blocking_me: bool,
+    overdue: bool,
     statuses: tuple,
     as_json: bool,
 ) -> None:
@@ -235,7 +246,7 @@ def list_tasks_cmd(
         v is not None for v in (
             scope, assignee, agent, project, host, blocker, kind, id_prefix,
         )
-    ) or bool(statuses_list) or blocking_me
+    ) or bool(statuses_list) or blocking_me or overdue
 
     if has_filter:
         from ._admin import list_tasks_filtered
@@ -256,6 +267,7 @@ def list_tasks_cmd(
             kind=kind,
             id_prefix=id_prefix,
             blocking_me=blocking_me,
+            overdue=overdue,
         )
         return
     # Plain path — backward-compatible plain table / JSON array.

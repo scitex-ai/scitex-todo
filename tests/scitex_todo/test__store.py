@@ -743,6 +743,32 @@ def test_list_tasks_filters_compose_AND(extended_store):
     assert {r["id"] for r in rows} == {"proj-y-1"}
 
 
+@pytest.fixture
+def overdue_store(tmp_path):
+    """Fixture for the ``--overdue`` predicate. Three tasks:
+      * past-due pending  → matches
+      * past-due done     → terminal, does NOT match
+      * future-due pending → not yet due, does NOT match
+    """
+    store = tmp_path / "tasks.yaml"
+    _store.add_task(store, id="past-pending", title="P")
+    _store.update_task(store, "past-pending", deadline="2000-01-01")
+    _store.add_task(store, id="past-done", title="D", status="done")
+    _store.update_task(store, "past-done", deadline="2000-01-01")
+    _store.add_task(store, id="future-pending", title="F")
+    _store.update_task(store, "future-pending", deadline="2099-01-01")
+    return store
+
+
+def test_list_tasks_overdue_predicate_matches_past_due_only(overdue_store):
+    # Arrange
+    store = overdue_store
+    # Act
+    rows = _store.list_tasks(store, scope="", overdue=True)
+    # Assert — only the past-due pending row matches.
+    assert {r["id"] for r in rows} == {"past-pending"}
+
+
 # --------------------------------------------------------------------------- #
 # summary                                                                     #
 # --------------------------------------------------------------------------- #

@@ -45,6 +45,7 @@ def list_tasks_filtered(
     kind: str | None = None,
     id_prefix: str | None = None,
     blocking_me: bool = False,
+    overdue: bool = False,
 ) -> None:
     """Filter the store and print the matching tasks.
 
@@ -73,6 +74,7 @@ def list_tasks_filtered(
         kind=kind,
         id_prefix=id_prefix,
         blocking_me=blocking_me,
+        overdue=overdue,
     )
     if as_json:
         click.echo(json.dumps(rows))
