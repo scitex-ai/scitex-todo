@@ -129,7 +129,8 @@ def provide_jobs() -> list[JobSpec]:
                 "vision: the cron is the STRUCTURAL feedback path; "
                 "the UI button is the manual override."
             ),
-            on_boot_sec="2min",
+            # cron has no boot concept (the systemd .timer fires on
+            # the next scheduled tick), so on_boot_sec stays None.
             restart_policy="no",
             timeout_sec=60,
         ),
