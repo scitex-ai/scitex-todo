@@ -1768,6 +1768,10 @@
         <header class="col-head" title="Drag to reorder">
           <span class="col-name">${escapeHtml(p)}</span>
           <span style="display:flex;align-items:center;gap:4px;">
+            <button class="col-nudge-btn"
+              title="Nudge the primary agent of this column (POST /nudge)"
+              onclick="event.stopPropagation(); nudgePrimaryAgent('${escapeHtml(p)}', this)"
+              aria-label="Nudge agent">🔔</button>
             <button class="col-pin-btn"
               title="${isPinned ? "Unpin column" : "Pin column to the left"}"
               onclick="event.stopPropagation(); toggleColPin('${escapeHtml(p)}')"
@@ -1808,6 +1812,59 @@
       if (s.has(project)) s.delete(project); else s.add(project);
       savePinned(s);
       render();
+    }
+
+    // === PR (g) — per-column 催促 (nudge) button (operator TG12608 +
+    // TG12617 + TG12618, lead a2a `f16b0d2a` + `9e710ab0` +
+    // `8e51b1e0` + `ffc6629c`, 2026-06-12). Picks the PRIMARY agent
+    // of the column (modal agent across the column's visible cards)
+    // and POSTs /nudge. The backend writes via the self-contained
+    // `_push.deliver()` wire (no sac CLI dependency). UI surfaces the
+    // result via the existing toast(): ok → "🔔 nudge → <agent>",
+    // no-turn-url → loud warning, http-error → loud warning. Per-
+    // agent cooldown lives on the backend (5min); a 429 response
+    // surfaces as a "cooling down" toast.
+    function _primaryAgentForProject(project) {
+      if (!STATE.graph) return null;
+      const inCol = STATE.graph.nodes.filter(n => (n.project || "Uncategorized") === project);
+      if (!inCol.length) return null;
+      const counts = {};
+      for (const t of inCol) {
+        const a = (t.agent || "").trim();
+        if (!a) continue;
+        counts[a] = (counts[a] || 0) + 1;
+      }
+      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      return sorted.length ? sorted[0][0] : null;
+    }
+    async function nudgePrimaryAgent(project, btn) {
+      const agent = _primaryAgentForProject(project);
+      if (!agent) {
+        toast(`⚠ no agent attribution for column "${project}"`, true);
+        return;
+      }
+      if (btn) { btn.disabled = true; btn.textContent = "…"; }
+      try {
+        const r = await fetch("/nudge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agent }),
+        });
+        const result = await r.json().catch(() => ({}));
+        if (r.ok && result.ok) {
+          toast(`🔔 nudge → ${agent} via ${result.wire || "?"}`);
+        } else if (r.status === 429) {
+          toast(`⏱ ${agent} cooling down (${result.cooldown_remaining_s || "?"}s)`, true);
+        } else if (result.reason === "no-turn-url-configured") {
+          toast(`⚠ ${agent}: no turn URL configured (set SCITEX_TODO_AGENT_TURN_URLS)`, true);
+        } else {
+          toast(`✗ nudge ${agent} failed: ${result.reason || ("HTTP " + r.status)}`, true);
+        }
+      } catch (e) {
+        toast(`✗ nudge ${agent} error: ${e.message}`, true);
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "🔔"; }
+      }
     }
 
     // -- Drag-reorder via HTML5 drag API. The full section.col is

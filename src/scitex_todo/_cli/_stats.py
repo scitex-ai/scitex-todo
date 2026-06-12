@@ -83,29 +83,20 @@ def _format_json(rows: list[GroupStats]) -> str:
 
 
 def _push_notify(agent: str, body: str) -> str:
-    """Push the notify body to ``agent`` via ``sac agents send``.
+    """Push the notify body to ``agent`` via scitex-todo's self-contained
+    push wire (:func:`scitex_todo._push.deliver`).
 
-    Falls back to stdout (with a header) when ``sac`` is not installed
-    or its call exits non-zero. Returns the chosen wire as a one-word
-    label for the summary line ("sac" or "stdout").
+    Operator standing direction via lead a2a `8e51b1e07` + `ffc6629c8`
+    (2026-06-12): no `sac` CLI dependency — scitex-todo owns its push
+    delivery. Result label is the wire used (`http` / `dry-run`) or
+    an error tag (`no-turn-url-configured` / `http-error` / etc.).
     """
-    if subprocess.run(
-        ["which", "sac"], capture_output=True
-    ).returncode == 0:
-        proc = subprocess.run(
-            ["sac", "agents", "send", agent, body],
-            capture_output=True,
-            text=True,
-        )
-        if proc.returncode == 0:
-            return "sac"
-    # Fallback — print to stdout so the operator at least sees the
-    # body when sac isn't reachable (env-bounded `sac` missing, dev
-    # box, container without the sac wire, etc.).
-    print(f"\n=== notify → {agent} (sac unavailable, stdout fallback) ===")
-    print(body)
-    print(f"=== end {agent} ===\n")
-    return "stdout"
+    from .._push import deliver
+
+    result = deliver(agent, body, kind="notify")
+    if result.get("ok"):
+        return result.get("wire") or "ok"
+    return result.get("reason") or "error"
 
 
 @click.command(name="print-stats")
