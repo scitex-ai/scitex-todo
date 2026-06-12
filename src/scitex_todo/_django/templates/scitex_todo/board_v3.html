@@ -41,17 +41,25 @@
 {# combobox.css (loaded below the page-CSS so its specificity sits ON TOP if needed) #}
 <link rel="stylesheet" href="{% static 'scitex_ui/css/app/combobox.css' %}">
 <script defer src="{% static 'scitex_ui/js/app/combobox.js' %}"></script>
-{# searchQuery.js — GitHub-style qualifier-syntax parser (project:/agent:/
-   status:/...). Exposes window.STX.searchQuery; the page logic below
-   delegates `fuzzyMatch` to it whenever the input contains a recognized
-   qualifier. Operator TG 12315/12316: photographed typing
-   `project: paper-scitex-clew` into the search bar — they already
-   expected GitHub-style syntax. Pure JS module, no DOM deps; unit
-   tests at tests/scitex_todo/test__search_query.js. #}
+{% comment %}
+  searchQuery.js — GitHub-style qualifier-syntax parser (project:/agent:/
+  status:/...). Exposes window.STX.searchQuery; the page logic below
+  delegates `fuzzyMatch` to it whenever the input contains a recognized
+  qualifier. Operator TG 12315/12316: photographed typing
+  `project: paper-scitex-clew` into the search bar — they already
+  expected GitHub-style syntax. Pure JS module, no DOM deps; unit
+  tests at tests/scitex_todo/test__search_query.js.
+
+  NB: Django's `{# … #}` syntax is single-line only — a multi-line
+  block leaks its body into the rendered HTML. Use `{% comment %}` for
+  any multi-line note inside a template (board v0.5.4 fix — PR #105).
+{% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/searchQuery.js' %}"></script>
-{# searchSuggest.js — autocomplete/Tab-completion engine, extends PR #102.
-   Pure module; the inline script in extra_js below wires it to the
-   #f-search input. Exposes window.STX.searchSuggest. Operator TG 12318. #}
+{% comment %}
+  searchSuggest.js — autocomplete/Tab-completion engine, extends PR #102.
+  Pure module; the inline script in extra_js below wires it to the
+  #f-search input. Exposes window.STX.searchSuggest. Operator TG 12318.
+{% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/searchSuggest.js' %}"></script>
 {% endblock extra_css %}
 
