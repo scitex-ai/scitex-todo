@@ -30,11 +30,14 @@ from contextlib import contextmanager
 import pytest
 
 from scitex_todo._push import (
+    DEFAULT_TIMEOUT_S,
     ENV_DRY_RUN,
     ENV_MAP,
+    ENV_PUSH_TIMEOUT_S,
     ENV_SAC_BEARER,
     ENV_SAC_LISTEN,
     PER_AGENT_PREFIX,
+    _default_timeout_s,
     announce_missing_at_boot,
     deliver,
     turn_url_for,
@@ -451,6 +454,74 @@ class TestDeliver:
         r = deliver("alpha", "ping", kind="nudge", timeout=1.0)
         # Assert
         assert r["reason"] == "transport-error"
+
+    def test_read_timeout_treated_as_dispatched_ok(self, monkeypatch):
+        # Receiver's /v1/turn runs the turn synchronously up to ~120 s
+        # but the cron must not block that long. When the client times
+        # out, the request body was already fully sent; the receiver is
+        # mid-turn, not unreachable. deliver() flips this to
+        # ``ok=True, reason="dispatched"`` so the cron's nudge batch
+        # doesn't fail over one slow turn (lead a2a `0b59485f`).
+        # Arrange — a real localhost server that accepts the connect +
+        # request body but never writes a response, forcing a read
+        # timeout on the client side.
+        accept_event = threading.Event()
+
+        class _NeverRespondHandler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802
+                # Drain the request body so the client's send phase
+                # completes — this mirrors the receiver having
+                # accepted the request and started a long turn.
+                length = int(self.headers.get("Content-Length", "0"))
+                self.rfile.read(length)
+                accept_event.set()
+                # Sleep longer than the client timeout — receiver is
+                # "still computing the turn".
+                import time
+                time.sleep(5)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"ok":true}')
+
+            def log_message(self, *a, **kw):
+                return
+
+        port = _free_port()
+        httpd = http.server.HTTPServer(("127.0.0.1", port), _NeverRespondHandler)
+        th = threading.Thread(target=httpd.serve_forever, daemon=True)
+        th.start()
+        monkeypatch.delenv(ENV_DRY_RUN, raising=False)
+        monkeypatch.setenv(
+            ENV_MAP,
+            json.dumps({"alpha": f"http://127.0.0.1:{port}/v1/turn"}),
+        )
+        try:
+            # Act — sub-second timeout to keep the test fast; the handler
+            # sleeps 5 s, so we will time out long before it responds.
+            r = deliver("alpha", "ping", kind="notify", timeout=0.5)
+        finally:
+            httpd.shutdown()
+        # Assert — receiver got the request body, so the cron treats
+        # this as a successful dispatch even though we never read a
+        # response.
+        assert r["reason"] == "dispatched"
+
+    def test_default_timeout_env_override(self, monkeypatch):
+        # Arrange — env value parsed at call-time, not module import.
+        monkeypatch.setenv(ENV_PUSH_TIMEOUT_S, "12.5")
+        # Act
+        v = _default_timeout_s()
+        # Assert
+        assert v == 12.5
+
+    def test_default_timeout_falls_back_to_constant_when_env_unset(self, monkeypatch):
+        # Arrange
+        monkeypatch.delenv(ENV_PUSH_TIMEOUT_S, raising=False)
+        # Act
+        v = _default_timeout_s()
+        # Assert
+        assert v == DEFAULT_TIMEOUT_S
 
 
 # --------------------------------------------------------------------------- #
