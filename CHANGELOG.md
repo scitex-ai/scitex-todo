@@ -4,6 +4,52 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.5] - 2026-06-12 — User lane normalization + tightened left space + card age
+
+Operator-asked, lead-approved second wave after the 0.5.4 display fix:
+
+### Changed — User lane normalization
+
+- **The 360 px "BLOCKING-YOU" right-side aside is REMOVED.** It was the
+  "right-end giant lane" the operator photographed; eating a permanent
+  360 px regardless of whether anything was actually waiting on the
+  operator. Operator-decision-blocked tasks (`status === "blocked" &&
+  blocker === "operator-decision"`) now show up in a synthesized
+  project column called `user`, sitting in the normal columns grid at
+  normal width, with normal drag-reorder / pin / column-context-menu.
+- The synthesized `user` column is a render-time aggregation — tasks
+  still live in their REAL project column too. No schema change. The
+  existing gold `card-blocker--operator-decision` border keeps those
+  cards visually loud no matter which column they appear in.
+- The mobile `#by-fab` drawer toggle + the `toggleByDrawer` /
+  `updateByFabBadge` helpers are removed (dead code once the aside is
+  gone). The filterbar's "🚧 blocking me" toggle (`#t-block`) keeps
+  working — it filters the same predicate fleet-wide.
+
+### Changed — Left space tightened
+
+- Board overrides the scitex-ui standalone shell so the
+  `ws-ai-pane` (console / chat), `ws-worktree-pane` (file tree), and
+  `ws-viewer-pane` (file viewer) are `display: none`. The kanban
+  doesn't need any of those, and the operator was photographed
+  reporting "left empty space" eating the columns area. The
+  `ws-module-pane` (board content) now uses the full viewport width.
+- Implemented in board_v3.html's `{% block extra_css %}` so it
+  applies only to the board page — sibling apps (Writer, Scholar,
+  etc.) keep their IDE-shell layout untouched.
+
+### Added — Card age pill (P12)
+
+- Each card now carries a small `⏳ Nd` pill in the header next to the
+  existing `last <activity>` label. Stale color buckets:
+  `today` mint-green "new" / `fresh 1–6d` muted / `aging 7–29d` amber /
+  `stale 30–89d` orange / `rotten ≥90d` saturated red. Source is
+  `created_at` (preferred) with `last_activity` fallback; if neither
+  is set, the pill simply doesn't render (back-compat: legacy data
+  shows no pill instead of `NaN`).
+- CSS lives in `board_v3/02-card.css` (`.age-pill` + 5 modifiers,
+  same shape as the existing `.date-pill` family).
+
 ## [0.5.4] - 2026-06-12 — Board v0.5.3 display fix (template leak + bundle/template food)
 
 Operator-reported regression after the 0.5.3 release:

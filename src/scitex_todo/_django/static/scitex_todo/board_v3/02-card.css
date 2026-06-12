@@ -276,6 +276,54 @@
   color: var(--text-muted);
 }
 
+/* Age pill (P12, operator-asked 2026-06-12) — inline next to `.card-last`
+ * in the card header. Buckets by days-since-created-or-last-activity so
+ * the operator sees stale cards at a glance without opening the drawer.
+ *   today    : 0 d  -- mint green ("new")
+ *   fresh    : 1-6 d -- neutral muted
+ *   aging    : 7-29 d -- amber
+ *   stale    : 30-89 d -- orange-red, mild glow
+ *   rotten   : >= 90 d -- saturated red, pulse
+ * Tooltip in the JS spells out "N d since created/last activity".
+ */
+.age-pill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0px 7px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+}
+.age-pill--today {
+  color: #000;
+  background: var(--green);
+  border-color: var(--green);
+}
+.age-pill--fresh {
+  color: var(--text-muted);
+}
+.age-pill--aging {
+  color: var(--amber);
+  border-color: var(--amber);
+  background: rgba(255, 179, 0, 0.10);
+}
+.age-pill--stale {
+  color: #ff9442;
+  border-color: #ff9442;
+  background: rgba(255, 148, 66, 0.12);
+}
+.age-pill--rotten {
+  color: #fff;
+  background: var(--red);
+  border-color: var(--red);
+  box-shadow: 0 0 6px 1px rgba(244, 67, 54, 0.45);
+}
+
 /* Right-click CRUD context menu (operator TG 432/433) — fixed-position
  * floating menu anchored to the click point. Single-column item list
  * with section headers + dividers. ESC / click-outside dismisses. */
