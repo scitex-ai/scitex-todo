@@ -474,6 +474,39 @@
     <span class="k">return</span> <span class="n">repeater</span><span class="o">.</span><span class="n">next_occurrence</span><span class="p">(</span><span class="n">dt</span><span class="p">,</span> <span class="n">now</span><span class="o">=</span><span class="n">now</span><span class="p">)</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">is_overdue</span><span class="p">(</span><span class="n">task</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">now</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return True iff ``task`` has a next deadline strictly in the past.</span>
+
+<span class="sd">    A task is **overdue** when:</span>
+<span class="sd">      * it has a `deadline` or `deadlines` field, AND</span>
+<span class="sd">      * the next-occurrence (per :func:`next_deadline_for_task`) is</span>
+<span class="sd">        strictly before today (UTC by default), AND</span>
+<span class="sd">      * the task hasn&#39;t reached a terminal lifecycle state (`done` /</span>
+<span class="sd">        `deferred` / `failed` aren&#39;t overdue — they&#39;re closed).</span>
+
+<span class="sd">    Used by the fleet liveness handler and the CLI&#39;s `list-tasks</span>
+<span class="sd">    --overdue` filter to surface late tasks at a glance (operator</span>
+<span class="sd">    TG12664 &quot;attended an overdue task but no suitable UI to act on it&quot; —</span>
+<span class="sd">    todo-p6-overdue-ui). Pure function (no I/O); deterministic given</span>
+<span class="sd">    ``now``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">_dt</span>
+
+    <span class="n">status</span> <span class="o">=</span> <span class="p">(</span><span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">status</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;done&quot;</span><span class="p">,</span> <span class="s2">&quot;deferred&quot;</span><span class="p">,</span> <span class="s2">&quot;failed&quot;</span><span class="p">,</span> <span class="s2">&quot;goal&quot;</span><span class="p">}:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="n">nxt</span> <span class="o">=</span> <span class="n">next_deadline_for_task</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">now</span><span class="o">=</span><span class="n">now</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">nxt</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="n">cur</span> <span class="o">=</span> <span class="n">now</span> <span class="ow">or</span> <span class="n">_dt</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">tz</span><span class="o">=</span><span class="n">_dt</span><span class="o">.</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">)</span>
+    <span class="n">today</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">date</span><span class="p">()</span> <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">cur</span><span class="p">,</span> <span class="s2">&quot;date&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="n">cur</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">nxt_date</span> <span class="o">=</span> <span class="n">_dt</span><span class="o">.</span><span class="n">date</span><span class="o">.</span><span class="n">fromisoformat</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">nxt</span><span class="p">)[:</span><span class="mi">10</span><span class="p">])</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">return</span> <span class="n">nxt_date</span> <span class="o">&lt;</span> <span class="n">today</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">load_tasks</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Load and validate the task list from a YAML store.</span>
 
