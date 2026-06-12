@@ -87,6 +87,14 @@ def board_v3_page(request):
     except Exception:  # noqa: BLE001
         _version = "?"
     label = f"scitex-todo v{_version}"
+
+    # PR (g) (lead a2a `ffc6629c80e4462a8401fb7e4ebb7240`, 2026-06-12):
+    # one-shot boot announce of agents that have no turn URL configured,
+    # so the operator sees the gap before any nudge / comment-relay
+    # silently returns ok=false. Behind a module-level flag so we only
+    # WARN once per process even if board_v3_page is hit many times.
+    _maybe_announce_missing_turn_urls(request)
+
     try:
         html = render_to_string(
             "scitex_todo/board_v3.html",
@@ -101,6 +109,31 @@ def board_v3_page(request):
     except Exception:
         logger.exception("[scitex-todo] board_v3 render failed; using fallback")
         return HttpResponse(_static_graph_page(request))
+
+
+_TURN_URL_ANNOUNCED = False
+
+
+def _maybe_announce_missing_turn_urls(request) -> None:
+    """Boot-time WARN listing agents without a configured turn URL.
+
+    Fires once per process (the module-level guard). The agent set is
+    read from the live tasks.yaml via :func:`get_board` so the warning
+    reflects whatever store the request resolves to.
+    """
+    global _TURN_URL_ANNOUNCED
+    if _TURN_URL_ANNOUNCED:
+        return
+    _TURN_URL_ANNOUNCED = True
+    try:
+        from scitex_todo._push import announce_missing_at_boot
+
+        board = get_board(_tasks_path_from_request(request))
+        announce_missing_at_boot(list(board.tasks))
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "[scitex-todo] turn-url boot announce failed (non-fatal)"
+        )
 
 
 def _static_graph_page(request) -> str:

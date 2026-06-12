@@ -357,6 +357,27 @@ a {
 .col--pinned .col-pin-btn {
   color: var(--gold);
 }
+/* PR (g) — 催促 (nudge) button on column header (operator TG12608). */
+.col-nudge-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 4px;
+  transition:
+    color 100ms ease,
+    transform 100ms ease;
+}
+.col-nudge-btn:hover {
+  color: var(--gold);
+  transform: scale(1.15);
+}
+.col-nudge-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
 .col-head {
   background: rgba(109, 76, 173, 0.08);
   border-bottom: 1px solid var(--border);

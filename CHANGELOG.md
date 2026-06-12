@@ -4,6 +4,87 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-06-12 — Self-contained push channel + nudge button + comment relay
+
+Operator standing direction (lead a2a `f16b0d2a` + `9e710ab0` +
+`8e51b1e0` + `ffc6629c80e4462a8401fb7e4ebb7240`, 2026-06-12,
+operator TG12608 / TG12611 / TG12617): scitex-todo must NOT depend on
+the `sac` CLI for outbound notifications. The package owns its own
+push delivery, the contract is HTTP (not Python imports), and silent
+fallbacks are forbidden — failures must be loud-but-not-fatal so the
+operator can fix the config without breaking the running board.
+
+### Added — `src/scitex_todo/_push.py` (self-contained HTTP push wire)
+
+- `deliver(agent, body, *, kind=..., task_id=..., store_path=...)` —
+  resolves the agent's turn URL from `SCITEX_TODO_AGENT_TURN_URLS`
+  (JSON map, canonical) or `SCITEX_TODO_TURN_URL_<AGENT_SLUG>` (per-
+  agent fallback, same shape as claude-code-telegrammer's
+  `TURN_URL`). POSTs a JSON envelope (`agent` / `kind` / `body` /
+  `task_id` / `store_path` / `ts` / `source: scitex-todo`) and
+  returns a structured result with `ok`, `wire`, `reason`,
+  `status`. No `sac` dependency.
+- `SCITEX_TODO_PUSH_DRY_RUN=1` short-circuits to stdout; useful in
+  test / dev.
+- `announce_missing_at_boot(tasks)` lists distinct agents in the
+  store that have no turn URL configured; emits a single WARN log
+  at board startup. Operator can iterate the config without a board
+  restart per agent.
+
+### Added — `POST /nudge` Django endpoint + UI button (PR g)
+
+- New handler `_django/handlers/nudge.py` registered as the `nudge`
+  endpoint. Body `{"agent": "<name>"}`. Composes the same per-agent
+  body the `stats --notify` cron uses (`build_notify_body`) + an
+  appended ACTION ask ("push or BLOCKED within 15 min"), then
+  invokes `_push.deliver(agent, body, kind="nudge")`.
+- Per-agent in-process cooldown (`COOLDOWN_SECONDS = 5 * 60`)
+  matches the operator's spec; cooldown hit → HTTP 429 with the
+  remaining seconds.
+- UI: per-column `🔔` button (next to the existing `📌 pin` button).
+  Click resolves the column's PRIMARY agent (modal agent among
+  the column's tasks) and POSTs `/nudge`. Toast surfaces every
+  result branch — success / no-turn-url-configured / http-error /
+  cooldown-active / no-agent-attribution.
+
+### Changed — Comment-relay hook on `POST /comment` (PR g)
+
+- When a comment's `author != task.agent`, `handle_comment` invokes
+  `_push.deliver(target, body, kind="comment-relay", task_id=...)`
+  AFTER the write succeeds. Best-effort; relay failure does NOT fail
+  the comment write. Relay outcome surfaces in the response so the
+  UI can render a toast ("📨 relayed → <agent>" / failure marker).
+- Comment-relay body invites the agent to reply via
+  `scitex-todo comment <task-id>` (CLI) or `add_comment` / `comment_task`
+  (MCP) — both surfaces are already available in v0.5.x.
+
+### Changed — `print-stats --notify` migrated to `_push.deliver`
+
+- `_cli/_stats.py::_push_notify` now calls `_push.deliver(agent,
+  body, kind="notify")` instead of `subprocess.run(["sac",
+  "agents", "send", ...])`. Same per-agent body as before; the wire
+  swap is transparent to callers.
+
+### Changed — Board boot announce (`board_v3_page`)
+
+- Once per process, the board page logs a WARN listing the agents
+  in the store with no turn URL configured. Single-shot via
+  `_TURN_URL_ANNOUNCED` module flag.
+
+### Tests
+
+- `tests/scitex_todo/test__push.py` — 12 tests against a localhost
+  `http.server` capture (no mocks, STX-NM / PA-306). Covers env
+  resolution (JSON map + per-agent fallback + malformed JSON +
+  missing), HTTP 200 / 4xx / transport-error, dry-run, and
+  `announce_missing_at_boot`.
+
+### Out of scope
+
+- Dedicated stdio MCP channel + board-event poller mirroring
+  claude-code-telegrammer's `~/proj/claude-code-telegrammer` shape —
+  operator TG12618 long-term plan. Tracked as PR (j) in the queue.
+
 ## [0.6.0] - 2026-06-12 — `stats` CLI + WIP-validation gate + `sync-github` verb + `--notify` push
 
 Operator standing direction via lead a2a `4b23ebc1` + `7489ac31` +
