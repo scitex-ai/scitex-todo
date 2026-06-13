@@ -811,6 +811,78 @@ def index_info_cmd(as_json: bool) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# migrate <verb> — directory-card enforcement migration (PR-D).               #
+# Operator directive 2026-06-13 (via lead a2a 3cf31901): canonical card =     #
+# tasks/<id>/ directory; flat tasks.yaml writes forbidden. Two-phase rollout: #
+# `migrate plan` is the read-side dry-run scanner; `migrate apply` is the     #
+# operator-blessed mutation (filed but NOT in this commit).                   #
+# --------------------------------------------------------------------------- #
+
+
+@main.group(
+    "migrate",
+    help=(
+        "Directory-card migration verbs (operator directive 2026-06-13).\n\n"
+        "`migrate plan` is the read-side dry-run scanner emitted to the "
+        "operator for review. `migrate apply` (gated, operator-blessed) "
+        "performs the actual flat-to-directory conversion."
+    ),
+)
+def migrate_group() -> None:
+    """The ``migrate`` noun group."""
+
+
+@migrate_group.command(
+    "plan",
+    help=(
+        "Scan every discovered lane + the global store; emit a plan "
+        "classifying each row as CANONICAL or NEEDS_* (DIR / NOTE / TITLE "
+        "/ COMMENT). NO writes. The output is the artifact shown to the "
+        "operator before any real `migrate apply`.\n\n"
+        "Example:\n"
+        "  $ scitex-todo migrate plan --json\n"
+        "  $ scitex-todo migrate plan --markdown"
+    ),
+)
+@click.option(
+    "--json", "as_json", is_flag=True,
+    help="Emit the plan as JSON (machine-readable). Required by SciTeX "
+    "§2 audit on read verbs.",
+)
+@click.option(
+    "--markdown", "as_md", is_flag=True,
+    help="Emit the plan as Markdown (operator-facing review document).",
+)
+def migrate_plan_cmd(as_json: bool, as_md: bool) -> None:
+    """Read-side dry-run scanner.
+
+    Example:
+      $ scitex-todo migrate plan --json
+      $ scitex-todo migrate plan --markdown
+    """
+    import json as _json
+
+    from scitex_todo._migrate import render_markdown, scan_all_lanes
+
+    fleet = scan_all_lanes()
+    if as_md:
+        click.echo(render_markdown(fleet))
+        return
+    if as_json:
+        click.echo(_json.dumps(fleet.to_dict(), indent=2))
+        return
+    # Default: short summary.
+    top = fleet.to_dict()
+    click.echo(
+        f"# migration plan: {top['lane_count']} lane(s), "
+        f"{top['total_rows']} rows — "
+        f"{top['canonical_rows']} canonical, "
+        f"{top['needs_migration_rows']} need migration. "
+        f"Pass --json or --markdown for detail."
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Attach the §1a sub-groups (defined in sibling modules).                     #
 # --------------------------------------------------------------------------- #
 from . import _completion, _introspect, _loop, _mcp, _skills, _stats, _write  # noqa: E402
