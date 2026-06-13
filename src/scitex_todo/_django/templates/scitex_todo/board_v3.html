@@ -962,6 +962,53 @@
       return `<span class="${cls}" title="${days}d since ${src}">⏳ ${label}</span>`;
     }
 
+    // === Activity bucket badge (render side of working-status decay) ====
+    // Board card `scitex-todo-working-status-decay-tg12739`, render half
+    // of PR #122 (backend `_build_fleet` already derives the same buckets
+    // for the fleet strip). Replaces the misleading "manual working color
+    // stays lit indefinitely" pain (operator TG 12739) on a PER-CARD basis:
+    // a small dot badge in the card-top reflects how RECENTLY the task was
+    // touched, derived from `last_activity` freshness — orthogonal to the
+    // age-pill (which buckets in DAYS, this one buckets in HOURS).
+    //
+    //   fresh : <= 1 h    -- bright green  (live activity)
+    //   warm  : 1-24 h    -- amber         (recent but quieting)
+    //   stale : > 24 h    -- muted grey    (decayed)
+    //
+    // Tooltip explains the bucket + relative time. Renders nothing when
+    // `last_activity` is absent / unparseable — back-compat with older
+    // snapshots that pre-date the field.
+    function _activityHoursSince(t) {
+      const ts = t && t.last_activity;
+      if (!ts) return null;
+      const parsed = Date.parse(ts);
+      if (isNaN(parsed)) return null;
+      const h = (Date.now() - parsed) / 3600000;
+      return h >= 0 ? h : null;
+    }
+    function _activityBucket(hours) {
+      if (hours == null) return null;
+      if (hours <= 1)  return "fresh";
+      if (hours <= 24) return "warm";
+      return "stale";
+    }
+    function _activityRelative(hours) {
+      if (hours == null) return "";
+      if (hours < 1)   return `${Math.max(1, Math.round(hours * 60))} min ago`;
+      if (hours < 24)  return `${Math.round(hours)} h ago`;
+      const days = Math.floor(hours / 24);
+      return `${days} d ago`;
+    }
+    function activityBadgeHtml(t) {
+      const hours = _activityHoursSince(t);
+      const bucket = _activityBucket(hours);
+      if (!bucket) return "";
+      const rel = _activityRelative(hours);
+      return `<span class="activity-badge activity-badge--${bucket}"
+        title="activity bucket: ${bucket} (${rel})"
+        aria-label="activity bucket ${bucket}, ${rel}">● ${bucket}</span>`;
+    }
+
     function populateFilters() {
       if (!STATE.graph) return;
       const nodes = STATE.graph.nodes;
@@ -1072,6 +1119,7 @@
         <div class="card-pad">
           <div class="card-top">
             <span class="card-status">${b}</span>
+            ${activityBadgeHtml(t)}
             ${newBadge}
             <span class="card-last">${last}</span>
             ${agePillHtml(t)}
