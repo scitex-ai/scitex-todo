@@ -689,6 +689,128 @@ def board_status_cmd(as_json: bool) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# index <verb> — SQLite derived-index lifecycle (PR-B of Stage 2 plan,        #
+# lead a2a `aa02fb0e`).                                                       #
+# --------------------------------------------------------------------------- #
+
+
+@main.group(
+    "index",
+    help=(
+        "Manage the SQLite derived-index "
+        "(~/.scitex/todo/.tasks.index.sqlite).\n\n"
+        "YAML stays authoritative; the index is a rebuildable read cache."
+    ),
+)
+def index_group() -> None:
+    """The ``index`` noun group — verbs rebuild + info."""
+
+
+@index_group.command(
+    "rebuild",
+    help=(
+        "Drop + repopulate the SQLite index from the YAML source(s) — "
+        "global store + every discovered per-project lane (PR #137 "
+        "union policy).\n\n"
+        "Example:\n"
+        "  $ scitex-todo index rebuild -y"
+    ),
+)
+@click.option(
+    "--dry-run", is_flag=True,
+    help="Print what would be rebuilt (source paths + projected row "
+    "count) without touching the index. Required by SciTeX §2 audit on "
+    "mutating verbs.",
+)
+@click.option(
+    "-y", "--yes", "assume_yes", is_flag=True,
+    help="Skip the interactive confirmation. Required when the planned "
+    "action would mutate the index and stdin is a TTY.",
+)
+def index_rebuild_cmd(dry_run: bool, assume_yes: bool) -> None:
+    """Drop + repopulate the SQLite index from the YAML source(s).
+
+    Example:
+      $ scitex-todo index rebuild -y
+    """
+    import sys as _sys
+
+    from scitex_todo._index import index_path, rebuild_index
+    from scitex_todo._django.services import _discover_lanes
+    from scitex_todo._paths import resolve_tasks_path
+
+    global_path = resolve_tasks_path(None)
+    lane_paths = _discover_lanes()
+    target = index_path()
+
+    if dry_run:
+        click.echo(
+            f"# dry-run: would rebuild {target}\n"
+            f"#   global: {global_path}\n"
+            f"#   lanes ({len(lane_paths)}):"
+        )
+        for lp in lane_paths:
+            click.echo(f"#     - {lp}")
+        return
+
+    if not assume_yes and _sys.stdin.isatty():
+        raise click.ClickException(
+            "`index rebuild` mutates the SQLite index. Pass -y / --yes "
+            "to confirm, or --dry-run to preview."
+        )
+    stats = rebuild_index(global_path, lane_paths)
+    click.echo(
+        f"# rebuilt {target}: {stats['total']} tasks "
+        f"({stats['global']} global + {stats['lanes']} lane, "
+        f"{stats['skipped']} skipped)"
+    )
+
+
+@index_group.command(
+    "info",
+    help=(
+        "Print one-line / JSON status of the SQLite index "
+        "(row count, last_index_at, schema version, lane count).\n\n"
+        "Example:\n"
+        "  $ scitex-todo index info\n"
+        "  $ scitex-todo index info --json"
+    ),
+)
+@click.option(
+    "--json", "as_json", is_flag=True,
+    help="Emit machine-readable JSON. Required by SciTeX §2 audit on "
+    "read verbs.",
+)
+def index_info_cmd(as_json: bool) -> None:
+    """Read-side report on the SQLite index.
+
+    Example:
+      $ scitex-todo index info
+      $ scitex-todo index info --json
+    """
+    import json as _json
+
+    from scitex_todo._index import info
+
+    payload = info()
+    if as_json:
+        click.echo(_json.dumps(payload))
+        return
+    if not payload["exists"]:
+        click.echo(f"# index does not exist yet: {payload['path']}")
+        click.echo("# run `scitex-todo index rebuild -y` to populate.")
+        return
+    click.echo(
+        f"# index: {payload['path']}\n"
+        f"#   rows: {payload['rows']}\n"
+        f"#   schema version: {payload['index_version']}\n"
+        f"#   last index at: {payload['last_index_at']}\n"
+        f"#   yaml mtime: {payload['yaml_mtime']}\n"
+        f"#   lane count: {payload['lane_count']}"
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Attach the §1a sub-groups (defined in sibling modules).                     #
 # --------------------------------------------------------------------------- #
 from . import _completion, _introspect, _loop, _mcp, _skills, _stats, _write  # noqa: E402
