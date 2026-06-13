@@ -1051,6 +1051,39 @@ def _save_tasks_unlocked(tasks: list[dict], path: Path) -> None:
                 # fsync can fail on some FS (overlay / fuse). Best-effort —
                 # the os.replace below is what gives the atomic guarantee.
                 pass
+        # POST-DUMP ROUND-TRIP VALIDATE (lead a2a `d5809cd3`, 2026-06-13 —
+        # the recovered-by-hand corruption episode where the canonical file
+        # ended mid-string at line ~2784). Before we promote the tmp file
+        # into the canonical slot, REPARSE it from disk to confirm the dump
+        # itself produced a syntactically valid + structurally validated
+        # YAML document. The pre-write `_validate_tasks` proves the
+        # in-memory structure is sound; this catches any failure mode
+        # introduced by the dump itself (unterminated scalar, partial
+        # flush, disk-full leaving a truncated file even if fsync didn't
+        # error). If reparse fails OR the reparsed task count doesn't
+        # match the in-memory count, ABORT — never promote suspect bytes
+        # into the canonical SSoT.
+        try:
+            with tmp_path.open(encoding="utf-8") as verify_handle:
+                verify_doc = yaml_rt.load(verify_handle)
+        except Exception as verify_exc:  # noqa: BLE001 — any parse fail = abort
+            raise RuntimeError(
+                f"refusing to replace {path}: tmp file at {tmp_path} did "
+                f"not reparse cleanly after dump ({type(verify_exc).__name__}: "
+                f"{verify_exc}). Canonical file left untouched."
+            ) from verify_exc
+        verify_tasks = (
+            verify_doc.get("tasks") if isinstance(verify_doc, dict) else None
+        )
+        in_memory_count = len(doc.get("tasks") or [])
+        if not isinstance(verify_tasks, list) or len(verify_tasks) != in_memory_count:
+            raise RuntimeError(
+                f"refusing to replace {path}: tmp file at {tmp_path} "
+                f"reparsed with {len(verify_tasks) if isinstance(verify_tasks, list) else '<not-a-list>'} "
+                f"tasks vs in-memory {in_memory_count}. Canonical file "
+                f"left untouched."
+            )
+        # All checks passed — atomic POSIX rename promotes tmp → canonical.
         os.replace(tmp_path, path)
     except Exception:
         # Best-effort tmp cleanup so a crashed dump doesn't leave a
