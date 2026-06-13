@@ -57,6 +57,17 @@ VALID_KINDS: tuple[str, ...] = (
     "task",
     "compute",
     "decision",
+    # ``status`` — a non-actionable status-tracking card (e.g. the q-*
+    # quality-CI status rows, one per fleet package). Carries one-liner
+    # status notes (audit-debt counts, green flags) rather than a real
+    # ToDo body. Per board card ``scitex-todo-relocate-q-status-tracking``
+    # + lead a2a ``60a1a93d`` (operator direction): proceeding with
+    # option (b) — keep the rows on the board but mark them with this
+    # axis so the board's filter UI (separate frontend PR) can hide them
+    # from the actionable default lens. ORTHOGONAL to ``blocker`` /
+    # ``status`` (the row-status enum); the validator does NOT cross-imply
+    # any compute-field constraints — ``kind: status`` is just a flag.
+    "status",
 )
 
 
