@@ -4,6 +4,40 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.6] - 2026-06-13 — board lifecycle verbs (start/stop/restart/status + pidfile)
+
+Operator-direct TG12949/12950/12951 (via lead a2a `b5726672`).
+`scitex-todo board` was a bare NOUN that directly LAUNCHED — CLI
+noun-verb violation, AND no clean way to restart after a card/source
+change (`port already in use` was the trap).
+
+### Added
+
+- **`scitex-todo board <verb>` lifecycle CLI** (PR #139):
+  - `board start [--port --tasks --no-browser] [--dry-run] [-y]` —
+    foreground launch, writes `~/.scitex/todo/board.pid` (env-
+    overridable via `SCITEX_TODO_BOARD_PIDFILE`).
+  - `board stop [--timeout] [--dry-run] [-y]` — SIGTERM the pidfile
+    PID; escalate to SIGKILL on timeout.
+  - `board restart [--port --tasks --no-browser] [--dry-run] [-y]` —
+    stop + start. THIS is the operator's "reload after a source
+    change" shape.
+  - `board status [--json]` — one-line / JSON read of the pidfile +
+    liveness probe.
+- SciTeX audit-cli §2 (mutating-verb `--dry-run` + `--yes/-y`) and §4
+  (concrete Example blocks) compliance landed in the same PR.
+
+### Changed
+
+- Bare `scitex-todo board` (no verb) stays back-compat: forwards to
+  `board start` with a stderr DEPRECATION line. Operator's muscle
+  memory survives; the alias will be removed in a future minor bump.
+
+### Provenance
+
+PR #139 (`feat/board-lifecycle-verbs`), lead a2a `b5726672`,
+operator-direct TG12949/12950/12951.
+
 ## [0.7.5] - 2026-06-13 — per-project lane UNION + board UX rescue + /graph perf
 
 Three operator-visible improvements landed via the overnight
