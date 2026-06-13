@@ -4,6 +4,45 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.5] - 2026-06-13 — per-project lane UNION + board UX rescue + /graph perf
+
+Three operator-visible improvements landed via the overnight
+Stage 0-1 chain:
+
+### Added
+
+- **`services.get_board()` UNIONS the global store + every per-project
+  lane** (`~/proj/*/.scitex/todo/tasks.yaml`, comma-sep override via
+  `SCITEX_TODO_LANE_GLOBS`). Skill 30's two-tier rollup is finally
+  delivered; the operator's hand-curated `nv-lessons` + 31 other
+  neurovista cards become visible on the board (lead a2a
+  `1ceec0ef` / `40c0a42d`). Collision policy: project-lane wins on
+  id, logged at WARNING. Malformed lane is SKIPPED + logged — the
+  board renders the rest. (PR #137)
+- **Empty-state banner on the board** when active filters narrow the
+  result set to 0 cards (operator TG12911 — "filtering by nv-lessons
+  does NOT work at all"). The banner offers a one-click "Clear all
+  filters" so a 0-match state can't read as a broken filter. (PR #135)
+- **mtime-keyed in-process cache on `/graph` payload** — skips the
+  full `_build_graph` rebuild (mermaid + nodes + edges + fleet +
+  groups) on cache hits, ~50-100 ms saved per /graph request on a
+  500-task store. Cache invalidates on any source mtime change
+  (PR #136, plays naturally with the new lane-union mtime = MAX).
+
+### Internal
+
+- `BoardState.lane_paths` exposes the successfully-consumed per-project
+  lanes so the FE / tests / future indexer can see what was unioned.
+- Suite-wide test isolation: `tests/scitex_todo/conftest.py` autouse
+  fixture pins `SCITEX_TODO_LANE_GLOBS=""` by default so existing
+  fixture-pure tests don't pick up the test runner's host lanes.
+
+### Provenance
+
+PRs #135, #136, #137. Lead a2a `aa02fb0e` (Stage 2 design ACK) +
+`1ceec0ef` / `40c0a42d` (lane-union ACK). YAML SSoT invariant
+preserved throughout: read-side union only, no writes.
+
 ## [0.7.4] - 2026-06-12 — `_push.deliver` semantics: 30 s timeout + dispatched-on-read-timeout
 
 Third (and likely last) cron-pilot hotfix. The 0.7.3 fix made the
