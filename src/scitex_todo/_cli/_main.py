@@ -455,7 +455,9 @@ def board_group(
         "Launch the board server (blocking, foreground). Writes a "
         "pidfile at ~/.scitex/todo/board.pid so other terminals can "
         "`board stop` / `board restart`. Requires the web extra: "
-        "pip install scitex-todo[web]"
+        "pip install scitex-todo[web]\n\n"
+        "Example:\n"
+        "  $ scitex-todo board start --port 8051"
     ),
 )
 @click.option(
@@ -471,10 +473,27 @@ def board_group(
     "--no-browser", is_flag=True,
     help="Don't open a browser automatically.",
 )
+@click.option(
+    "--dry-run", is_flag=True,
+    help="Print the planned launch (port + tasks + browser flag) "
+    "without starting the server. Required by SciTeX §2 audit on "
+    "mutating verbs.",
+)
+@click.option(
+    "-y", "--yes", "assume_yes", is_flag=True,
+    help="Skip the interactive confirmation (no-op today; `start` is "
+    "non-interactive). Accepted per SciTeX §2 audit on mutating verbs.",
+)
 def board_start_cmd(
     tasks_path: str | None, port: int, no_browser: bool,
+    dry_run: bool, assume_yes: bool,
 ) -> None:
-    """Foreground start. Pidfile written; removed on clean shutdown."""
+    """Foreground start. Pidfile written; removed on clean shutdown.
+
+    Example:
+      $ scitex-todo board start --port 8051
+    """
+    _ = assume_yes  # accepted for §2 compliance; non-interactive verb.
     # Guard rail: refuse to start if another board is already up so we
     # don't fight over the pidfile or the port.
     existing = _board_read_pid()
@@ -483,19 +502,56 @@ def board_start_cmd(
             f"board is already running (pid {existing}). Use "
             "`scitex-todo board stop` or `restart`."
         )
+    if dry_run:
+        click.echo(
+            f"# dry-run: would start board on port {port}, "
+            f"tasks={tasks_path or '<default-resolution>'}, "
+            f"no-browser={bool(no_browser)} "
+            f"(pidfile: {_board_pidfile()})",
+        )
+        return
     _board_run_server(tasks_path, port, no_browser)
 
 
 @board_group.command(
     "stop",
-    help="Stop the running board via the pidfile (SIGTERM).",
+    help=(
+        "Stop the running board via the pidfile (SIGTERM).\n\n"
+        "Example:\n"
+        "  $ scitex-todo board stop"
+    ),
 )
 @click.option(
     "--timeout", type=float, default=5.0, show_default=True,
     help="Seconds to wait for graceful exit before SIGKILL.",
 )
-def board_stop_cmd(timeout: float) -> None:
-    """Read the pidfile, SIGTERM, wait, escalate to SIGKILL if needed."""
+@click.option(
+    "--dry-run", is_flag=True,
+    help="Print the planned action without sending SIGTERM. Required "
+    "by SciTeX §2 audit on mutating verbs.",
+)
+@click.option(
+    "-y", "--yes", "assume_yes", is_flag=True,
+    help="Skip the interactive confirmation (no-op today; `stop` is "
+    "non-interactive). Accepted per SciTeX §2 audit on mutating verbs.",
+)
+def board_stop_cmd(timeout: float, dry_run: bool, assume_yes: bool) -> None:
+    """Read the pidfile, SIGTERM, wait, escalate to SIGKILL if needed.
+
+    Example:
+      $ scitex-todo board stop
+    """
+    _ = assume_yes  # accepted for §2 compliance; non-interactive verb.
+    if dry_run:
+        pid = _board_read_pid()
+        if pid is None:
+            click.echo("# dry-run: board is not running (no pidfile / stale).")
+        else:
+            click.echo(
+                f"# dry-run: would SIGTERM pid {pid} "
+                f"(timeout {timeout}s, then SIGKILL).",
+            )
+        return
     import os as _os
     import signal as _signal
     import time as _time
@@ -545,6 +601,7 @@ def board_stop_cmd(timeout: float) -> None:
     help=(
         "Stop the running board (if any) + start a fresh one. The shape "
         "the operator + lead need to reload after a card/source change."
+        "\n\nExample:\n  $ scitex-todo board restart"
     ),
 )
 @click.option("--tasks", "tasks_path", default=None,
@@ -553,29 +610,79 @@ def board_stop_cmd(timeout: float) -> None:
               help="Server port.")
 @click.option("--no-browser", is_flag=True,
               help="Don't open a browser automatically.")
+@click.option(
+    "--dry-run", is_flag=True,
+    help="Print the planned stop+start without acting. Required by "
+    "SciTeX §2 audit on mutating verbs.",
+)
+@click.option(
+    "-y", "--yes", "assume_yes", is_flag=True,
+    help="Skip the interactive confirmation (no-op; `restart` is "
+    "non-interactive). Accepted per SciTeX §2 audit on mutating verbs.",
+)
 @click.pass_context
 def board_restart_cmd(
     ctx: click.Context,
     tasks_path: str | None, port: int, no_browser: bool,
+    dry_run: bool, assume_yes: bool,
 ) -> None:
-    """Stop then start. Both go through the same pidfile contract."""
+    """Stop then start. Both go through the same pidfile contract.
+
+    Example:
+      $ scitex-todo board restart
+    """
+    _ = assume_yes  # accepted for §2 compliance; non-interactive verb.
+    if dry_run:
+        pid = _board_read_pid()
+        prefix = "running" if pid else "not running"
+        click.echo(
+            f"# dry-run: would stop (currently {prefix}) then start "
+            f"on port {port}, "
+            f"tasks={tasks_path or '<default-resolution>'}, "
+            f"no-browser={bool(no_browser)}",
+        )
+        return
     # `stop` is a no-op if nothing's running — that's fine.
-    ctx.invoke(board_stop_cmd, timeout=5.0)
+    ctx.invoke(board_stop_cmd, timeout=5.0, dry_run=False, assume_yes=True)
     ctx.invoke(
         board_start_cmd,
         tasks_path=tasks_path, port=port, no_browser=no_browser,
+        dry_run=False, assume_yes=True,
     )
 
 
 @board_group.command(
     "status",
-    help="Print whether the board is running + its pid + the pidfile path.",
+    help=(
+        "Print whether the board is running + its pid + the pidfile path."
+        "\n\nExample:\n  $ scitex-todo board status\n"
+        "  $ scitex-todo board status --json"
+    ),
 )
-def board_status_cmd() -> None:
-    """One-line status read off the pidfile."""
+@click.option(
+    "--json", "as_json", is_flag=True,
+    help="Emit a JSON object (machine-readable). Required by SciTeX "
+    "§2 audit on read verbs.",
+)
+def board_status_cmd(as_json: bool) -> None:
+    """One-line status read off the pidfile.
+
+    Example:
+      $ scitex-todo board status
+      $ scitex-todo board status --json
+    """
+    import json as _json
     pid = _board_read_pid()
     pf = _board_pidfile()
-    if pid is None:
+    running = pid is not None
+    if as_json:
+        click.echo(_json.dumps({
+            "running": running,
+            "pid": pid,
+            "pidfile": str(pf),
+        }))
+        return
+    if not running:
         click.echo(f"# board is NOT running (pidfile: {pf})")
         return
     click.echo(f"# board is running (pid {pid}, pidfile: {pf})")
