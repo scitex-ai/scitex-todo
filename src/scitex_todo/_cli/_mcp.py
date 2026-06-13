@@ -204,7 +204,12 @@ def _fallback_mcp_group() -> click.Group:
             "  scitex-todo mcp install --apply --dry-run\n"
             "  scitex-todo mcp install --apply -y\n\n"
             "Example (project-scope .mcp.json):\n"
-            "  scitex-todo mcp install --apply --to ./.mcp.json"
+            "  scitex-todo mcp install --apply --to ./.mcp.json\n\n"
+            "Example (fleet host-store pin — P3a wire-up so containerized\n"
+            "agents resolve the shared host tasks.yaml regardless of\n"
+            "$HOME / symlink state):\n"
+            "  scitex-todo mcp install --apply --to to_home/.mcp.json \\\n"
+            "    --env-tasks-path /home/agent/.scitex/todo/tasks.yaml -y"
         ),
     )
     @click.option(
@@ -234,6 +239,22 @@ def _fallback_mcp_group() -> click.Group:
         ),
     )
     @click.option(
+        "--env-tasks-path",
+        "env_tasks_path",
+        type=str,
+        default=None,
+        help=(
+            "Pin SCITEX_TODO_TASKS in the snippet's `env` block — the MCP\n"
+            "subprocess uses this path as the task-store via the normal\n"
+            "resolution chain (explicit env > project > user > example).\n"
+            "Fleet P3a use case: when this CLI is run by agent-container\n"
+            "to seed every container's ``to_home/.mcp.json``, the pinned\n"
+            "path makes the wire-up self-documenting and immune to $HOME\n"
+            "or symlink drift in any container. Omit to leave the entry\n"
+            "without an env block (back-compat default)."
+        ),
+    )
+    @click.option(
         "--dry-run",
         is_flag=True,
         help=(
@@ -250,15 +271,21 @@ def _fallback_mcp_group() -> click.Group:
             " --apply: no-op (print-only path needs no confirmation)."
         ),
     )
-    def install(fmt, do_apply, target_path, dry_run, yes) -> None:
-        snippet = {
-            "mcpServers": {
-                _CLI_NAME: {
-                    "command": _CLI_NAME,
-                    "args": ["mcp", "start"],
-                }
-            }
+    def install(fmt, do_apply, target_path, env_tasks_path, dry_run, yes) -> None:
+        entry: dict = {
+            "command": _CLI_NAME,
+            "args": ["mcp", "start"],
         }
+        # P3a host-store wire-up: when an explicit task-store path is
+        # provided, pin it in the MCP entry's `env` block. The MCP server
+        # subprocess picks up SCITEX_TODO_TASKS via the normal resolution
+        # chain (env beats project/user scopes), so a containerized agent
+        # ends up reading the shared host store regardless of its $HOME or
+        # symlink state. Keeping this OPT-IN preserves back-compat with
+        # the existing snippet shape.
+        if env_tasks_path:
+            entry["env"] = {"SCITEX_TODO_TASKS": env_tasks_path}
+        snippet = {"mcpServers": {_CLI_NAME: entry}}
 
         if not do_apply:
             # Print-only path (back-compat).

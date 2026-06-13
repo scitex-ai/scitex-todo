@@ -58,6 +58,146 @@ def test_apply_writes_correct_command_args(tmp_path):
     assert entry == {"command": "scitex-todo", "args": ["mcp", "start"]}
 
 
+# === --env-tasks-path pins the store path (P3a host-store wire-up) ==========
+#
+# When the fleet operator (typically agent-container at to_home/.mcp.json
+# generation time) passes --env-tasks-path, the MCP entry gets an `env`
+# block with SCITEX_TODO_TASKS pinned to that absolute path. This makes the
+# wire-up self-documenting in the generated config AND immune to $HOME /
+# symlink drift in any container that loads the .mcp.json.
+
+
+def test_apply_env_tasks_path_pins_env_block(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    target = tmp_path / ".mcp.json"
+    pinned = "/home/agent/.scitex/todo/tasks.yaml"
+    # Act
+    runner.invoke(
+        main,
+        [
+            "mcp",
+            "install",
+            "--apply",
+            "--to",
+            str(target),
+            "--env-tasks-path",
+            pinned,
+            "-y",
+        ],
+    )
+    # Assert
+    entry = _read_json(target)["mcpServers"]["scitex-todo"]
+    assert entry.get("env") == {"SCITEX_TODO_TASKS": pinned}
+
+
+def test_apply_env_tasks_path_preserves_command_args(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    target = tmp_path / ".mcp.json"
+    pinned = "/home/agent/.scitex/todo/tasks.yaml"
+    # Act
+    runner.invoke(
+        main,
+        [
+            "mcp",
+            "install",
+            "--apply",
+            "--to",
+            str(target),
+            "--env-tasks-path",
+            pinned,
+            "-y",
+        ],
+    )
+    # Assert — command + args still present alongside the new env block.
+    entry = _read_json(target)["mcpServers"]["scitex-todo"]
+    assert entry["command"] == "scitex-todo" and entry["args"] == ["mcp", "start"]
+
+
+def test_apply_without_env_tasks_path_omits_env_block(tmp_path):
+    # Arrange — back-compat default: no env block when the flag is absent.
+    runner = CliRunner()
+    target = tmp_path / ".mcp.json"
+    # Act
+    runner.invoke(main, ["mcp", "install", "--apply", "--to", str(target), "-y"])
+    # Assert
+    entry = _read_json(target)["mcpServers"]["scitex-todo"]
+    assert "env" not in entry
+
+
+def test_apply_env_tasks_path_idempotent_when_repeated(tmp_path):
+    # Arrange — applying twice with the same pin is a noop the second time.
+    runner = CliRunner()
+    target = tmp_path / ".mcp.json"
+    pinned = "/home/agent/.scitex/todo/tasks.yaml"
+    args = [
+        "mcp",
+        "install",
+        "--apply",
+        "--to",
+        str(target),
+        "--env-tasks-path",
+        pinned,
+        "-y",
+    ]
+    runner.invoke(main, args)
+    # Act
+    result = runner.invoke(main, args)
+    # Assert
+    assert "noop" in result.output
+
+
+def test_apply_env_tasks_path_updates_when_pin_changes(tmp_path):
+    # Arrange — repinning to a new path overwrites the env block in place
+    # (not "noop"); idempotency is keyed on the full entry shape.
+    runner = CliRunner()
+    target = tmp_path / ".mcp.json"
+    runner.invoke(
+        main,
+        [
+            "mcp",
+            "install",
+            "--apply",
+            "--to",
+            str(target),
+            "--env-tasks-path",
+            "/old/tasks.yaml",
+            "-y",
+        ],
+    )
+    # Act
+    runner.invoke(
+        main,
+        [
+            "mcp",
+            "install",
+            "--apply",
+            "--to",
+            str(target),
+            "--env-tasks-path",
+            "/new/tasks.yaml",
+            "-y",
+        ],
+    )
+    # Assert
+    entry = _read_json(target)["mcpServers"]["scitex-todo"]
+    assert entry["env"]["SCITEX_TODO_TASKS"] == "/new/tasks.yaml"
+
+
+def test_print_only_env_tasks_path_emits_env_block(tmp_path):
+    # Arrange — the print path (no --apply) honours the same flag so a
+    # user can preview the pinned snippet before writing.
+    runner = CliRunner()
+    pinned = "/home/agent/.scitex/todo/tasks.yaml"
+    # Act
+    result = runner.invoke(
+        main, ["mcp", "install", "--env-tasks-path", pinned]
+    )
+    # Assert
+    assert pinned in result.output
+
+
 # === apply preserves sibling entries (fleet-friendly) =======================
 
 
