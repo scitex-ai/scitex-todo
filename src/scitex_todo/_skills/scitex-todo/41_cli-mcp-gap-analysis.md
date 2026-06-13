@@ -217,3 +217,27 @@ scitex-todo==N.M.K`); editing one skill leaf does NOT propagate via
 spec.yaml until the consumer pip-bumps. That gives the lead a
 deterministic rollout: pin the version on one agent at a time, watch
 it adopt, broaden once stable.
+
+---
+
+## Addendum — `kind: status` axis (board card `scitex-todo-relocate-q-status-tracking`)
+
+Per lead a2a `60a1a93d` (operator direction): the `q-*` family
+(~66 cards, one per fleet package: `q-gen` / `q-io` / `q-ml` / ...)
+carries quality-CI status as one-liner notes (audit-debt counts,
+green flags). That's a status DB — not a ToDo list — so surfacing
+those rows on the actionable board generates noise.
+
+**Resolution (option b):** keep the rows on the board, but graduate
+them with a new closed-enum value `kind: status`. The board's
+filter UI (separate frontend PR) can then default-hide
+`kind: status` from the actionable lens.
+
+- Schema: `VALID_KINDS` now includes `"status"` (orthogonal — no
+  compute-fields constraint; just a flag).
+- CLI: `add` / `update --kind status` accept it; `list-tasks
+  --kind status` selects only the flagged rows.
+- Default `list-tasks` behavior is UNCHANGED — hiding by default
+  is a board-frontend decision, not a CLI policy.
+- Bulk re-flagging the existing ~47 `q-*` cards is an operator-
+  driven data migration, NOT part of this schema PR.
