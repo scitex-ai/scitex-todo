@@ -1307,4 +1307,76 @@ def test_load_tasks_raises_on_empty_goal_string(tmp_path):
     with ctx:
         load_tasks(store)
 
+
+# ---------------------------------------------------------------------------
+# kind="status" — non-actionable status-tracking rows (e.g. q-* quality-CI
+# cards). Per board card `scitex-todo-relocate-q-status-tracking` + lead
+# a2a `60a1a93d`: option (b) — flag the rows with this axis so the board
+# can filter them out of the actionable default lens (separate frontend
+# PR). Just a flag — no compute-fields constraint, no cross-imply.
+# ---------------------------------------------------------------------------
+
+def test_load_tasks_accepts_kind_status(tmp_path):
+    """`kind: status` is a valid kind alongside task / compute / decision."""
+    # Arrange
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - id: q-gen\n"
+        "    title: 'q-gen quality status'\n"
+        "    status: pending\n"
+        "    kind: status\n",
+    )
+    # Act
+    tasks = load_tasks(store)
+    # Assert
+    assert tasks[0]["kind"] == "status"
+
+
+def test_load_tasks_kind_status_requires_no_compute_fields(tmp_path):
+    """`kind: status` rows carry NO compute fields and load cleanly."""
+    # Arrange — only the bare flag, no job_id / command / *_at.
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: q-io, title: 'q-io status', status: pending, kind: status}\n",
+    )
+    # Act
+    tasks = load_tasks(store)
+    # Assert
+    assert "job_id" not in tasks[0]
+
+
+def test_load_tasks_kind_status_rejects_compute_fields(tmp_path):
+    """A `kind: status` row with a compute-only field fails-loud."""
+    # Arrange — job_id is compute-only; pairing it with kind=status is a typo.
+    store = _write(
+        tmp_path,
+        "tasks:\n"
+        "  - id: q-ml\n"
+        "    title: 'q-ml status'\n"
+        "    status: pending\n"
+        "    kind: status\n"
+        "    job_id: '42'\n",
+    )
+    # Act
+    ctx = pytest.raises(TaskValidationError, match=r"job_id.*kind: compute")
+    # Assert
+    with ctx:
+        load_tasks(store)
+
+
+def test_save_tasks_round_trip_preserves_kind_status(tmp_path):
+    """`kind: status` survives a save → reload round-trip."""
+    # Arrange
+    store = _write(
+        tmp_path,
+        "tasks:\n  - {id: q-plt, title: 'q-plt status', status: pending, kind: status}\n",
+    )
+    tasks = load_tasks(store)
+    # Act
+    save_tasks(tasks, store)
+    reloaded = load_tasks(store)[0]
+    # Assert
+    assert reloaded["kind"] == "status"
+
 # EOF

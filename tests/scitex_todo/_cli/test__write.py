@@ -983,4 +983,54 @@ def test_mcp_doctor_tool_count_when_fastmcp_installed():
     assert count == len(TOOL_NAMES)
 
 
+# --------------------------------------------------------------------------- #
+# kind=status — board card scitex-todo-relocate-q-status-tracking + lead a2a  #
+# 60a1a93d. Per option (b): the CLI surface accepts the new kind and the     #
+# list-tasks --kind filter selects it. Default list behavior UNCHANGED — the #
+# board's default-hide is a separate frontend PR.                             #
+# --------------------------------------------------------------------------- #
+def test_update_kind_status_exits_zero(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "q-gen", "q-gen quality status", "--tasks", store])
+    # Act
+    result = runner.invoke(
+        main, ["update", "q-gen", "--tasks", store, "--kind", "status"]
+    )
+    # Assert
+    assert result.exit_code == 0, result.output
+
+
+def test_update_kind_status_persists(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "q-io", "q-io quality status", "--tasks", store])
+    runner.invoke(
+        main, ["update", "q-io", "--tasks", store, "--kind", "status"]
+    )
+    # Act
+    on_disk = _model.load_tasks(store)[0]
+    # Assert
+    assert on_disk["kind"] == "status"
+
+
+def test_list_filter_by_kind_status_returns_only_status_rows(tmp_path):
+    # Arrange — two rows, only one tagged kind=status.
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "real-task", "Real work", "--tasks", store])
+    runner.invoke(
+        main, ["add", "q-ml", "q-ml status", "--tasks", store, "--kind", "status"]
+    )
+    # Act
+    result = runner.invoke(
+        main, ["list-tasks", "--tasks", store, "--json", "--kind", "status"]
+    )
+    rows = json.loads(result.output.strip())
+    # Assert
+    assert {r["id"] for r in rows} == {"q-ml"}
+
+
 # EOF
