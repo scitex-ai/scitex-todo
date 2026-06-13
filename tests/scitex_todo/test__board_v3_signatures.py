@@ -289,4 +289,97 @@ class TestSearchQualifierSyntax:
         assert ".filt-qhint" in css_text
 
 
+# -----------------------------------------------------------------------------
+# PR(h) Stage 1 — multi-select + bulk status change
+# (board card todo-multiselect-batch-ops, lead a2a 1ebc792c)
+# -----------------------------------------------------------------------------
+
+
+class TestMultiselectBatchOpsStage1:
+    """Pins for the PR(h) Stage 1 per-row multi-select + bulk status feature.
+
+    Stage 1 ships ONE bulk op (status change). The other 4 (project
+    re-assign / agent re-assign / bulk nudge / bulk hide) come in
+    follow-up PRs — this class deliberately does NOT pin them.
+    """
+
+    def test_card_select_checkbox_in_card_html(self, board_text):
+        # cardHtml(t) must render a per-row checkbox with the
+        # `card-select` class so the toolbar can detect / batch-toggle.
+        assert 'class="card-select"' in board_text
+
+    def test_card_select_carries_data_task_id(self, board_text):
+        # The bulk-action loop walks selected ids — without
+        # data-task-id, select-all has nothing to read.
+        assert "data-task-id=" in board_text
+
+    def test_multiselect_state_is_a_set(self, board_text):
+        # Selection state is client-side only in window.MULTISELECT.
+        # The `new Set()` literal is the load-bearing primitive.
+        assert "window.MULTISELECT" in board_text
+        assert "new Set()" in board_text
+
+    def test_toggle_card_selected_helper_defined(self, board_text):
+        assert "function toggleCardSelected" in board_text
+
+    def test_toggle_select_all_helper_defined(self, board_text):
+        assert "function toggleSelectAll" in board_text
+
+    def test_clear_multiselect_helper_defined(self, board_text):
+        assert "function clearMultiselect" in board_text
+
+    def test_bulk_set_status_helper_defined(self, board_text):
+        assert "async function bulkSetStatus" in board_text
+
+    def test_bulk_set_status_hits_update_endpoint(self, board_text):
+        # v1 reuses the existing single-card /update endpoint in a
+        # per-task loop. A future /bulk endpoint can swap in without
+        # touching this pin (which only guards against the loop being
+        # accidentally dropped).
+        assert '"/update"' in board_text
+
+    def test_board_toolbar_mount_present(self, board_text):
+        # The toolbar mounts above the columns grid (next to
+        # group-spans-all). The id is what renderBoardToolbar() reads.
+        assert 'id="board-toolbar"' in board_text
+
+    def test_board_toolbar_select_all_input_present(self, board_text):
+        assert 'id="board-toolbar-select-all"' in board_text
+
+    def test_board_toolbar_count_span_present(self, board_text):
+        assert 'id="board-toolbar-count"' in board_text
+
+    def test_board_toolbar_status_dropdown_present(self, board_text):
+        assert 'id="board-toolbar-status"' in board_text
+
+    def test_board_toolbar_status_options_cover_valid_statuses(self, board_text):
+        # The 7-status enum used by the right-click ctx menu —
+        # bulk should offer the same set so the operator sees parity.
+        for status in (
+            "pending",
+            "in_progress",
+            "blocked",
+            "done",
+            "deferred",
+            "failed",
+            "goal",
+        ):
+            assert f'value="{status}"' in board_text
+
+    def test_toolbar_followup_ops_left_as_commented_hooks(self, board_text):
+        # The card asks for 5 bulk ops. Stage 1 ships ONE; the other 4
+        # are deliberately left as a TODO sentinel for the follow-up
+        # PR. The pin guarantees the next PR has a discoverable
+        # landing site.
+        assert "TODO(PR-h+1)" in board_text
+
+    def test_board_toolbar_css_class_defined(self, css_text):
+        # CSS pin — `.board-toolbar` lives in the extracted layout
+        # stylesheet alongside the other board-level chrome.
+        assert ".board-toolbar" in css_text
+
+    def test_card_select_css_class_defined(self, css_text):
+        assert ".card-select" in css_text
+
+
 # EOF
