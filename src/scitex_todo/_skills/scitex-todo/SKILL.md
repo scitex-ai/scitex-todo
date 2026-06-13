@@ -61,10 +61,30 @@ binding rule:
   update; a missing entry is invisible (operator + lead + every other
   agent can't react to what isn't on the board).
 
-The full rationale + write-protocol table (who writes what, when, with
-what attribution) lives in
+### SSoT write-here rule (short form)
+
+Same content, distilled to the one-screen lookup most agents need on
+wake. Authoritative copy in HANDOFF.md `## SSoT DATA LAYOUT` and the
+full write-protocol table in
 [30_two-tier-conventions-and-write-protocol.md](30_two-tier-conventions-and-write-protocol.md).
-Read that one before designing any new fleet workflow that would touch
+
+| Actor          | Writes to                                                    | When                                                |
+| -------------- | ------------------------------------------------------------ | --------------------------------------------------- |
+| project agent  | project tier (`<repo>/.scitex/todo/tasks.yaml`)              | own tasks: create / status flip / blocker / comment |
+| lead           | global tier (`~/.scitex/todo/tasks.yaml`)                    | fleet-coordination rows; cross-project decisions    |
+| aggregator     | global tier (rolls up project tiers continuously, every 5 s) | merged read-out for the operator's board            |
+| operator (UI)  | global tier (Resolve button / re-priority / tag edits)       | unblocks `BLOCKING YOU`; sets `priority`            |
+| sac-status-writer | `agents.json` (fleet liveness) — NEVER `tasks.yaml`       | every 5 s on operator's host                        |
+
+Three rules to internalize: (a) you own rows where `task.agent ==
+<you>`; never edit another agent's fields — append a `comments[]`
+entry instead. (b) Status flips on your own rows go via
+`scitex-todo update --status` (or `comment_task` for activity-only).
+(c) When in doubt, write to scitex-todo — a stale row is cheap to
+update; a missing row is invisible to operator + lead + peers.
+
+Read [30_two-tier-conventions-and-write-protocol.md](30_two-tier-conventions-and-write-protocol.md)
+in full before designing any new fleet workflow that would touch
 task state.
 
 ### Using scitex-todo (CLI + MCP) — concrete how-to
@@ -88,9 +108,18 @@ scitex-todo update todo-pXX --status done \
   --pr-url https://github.com/.../pull/123 \
   --add-comment "merged; tests green"
 
+# Append a comment without changing any other field (PR #144).
+scitex-todo comment todo-pXX "lead a2a: please rebase before merging" \
+  --author proj-scitex-todo
+
 # List the tasks for a project / agent.
 scitex-todo list-tasks --agent proj-scitex-todo
 scitex-todo list-tasks --status pending --project scitex-todo
+
+# Filter by kind — e.g. hide non-actionable status-tracking cards
+# (q-* quality flags etc., PR #146 `kind: status`).
+scitex-todo list-tasks --kind task          # actionable only
+scitex-todo list-tasks --kind status        # status-tracking only
 
 # Set / clear an edge (depends_on).
 scitex-todo update todo-pYY --depends-on todo-pXX
