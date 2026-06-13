@@ -2,6 +2,7 @@
  * filter toolbar) and the React Flow canvas. */
 
 import { useEffect, useMemo } from "react";
+import { CalendarView } from "./CalendarView";
 import { GraphView } from "./GraphView";
 import { RecentView } from "./RecentView";
 import { TableView } from "./TableView";
@@ -60,6 +61,17 @@ function ViewToggle() {
         title="Recent — newest-first triage (operator TG 513)"
       >
         Recent
+      </button>
+      <button
+        type="button"
+        className={`stx-todo-viewtoggle__btn${
+          view === "calendar" ? " stx-todo-viewtoggle__btn--on" : ""
+        }`}
+        onClick={() => setView("calendar")}
+        aria-pressed={view === "calendar"}
+        title="Calendar — month grid by deadline / last_activity (operator TG 13295)"
+      >
+        📅 Calendar
       </button>
     </div>
   );
@@ -519,6 +531,8 @@ export function TodoBoard() {
           <GraphView graph={graph} />
         ) : view === "recent" ? (
           <RecentView graph={graph} />
+        ) : view === "calendar" ? (
+          <CalendarView graph={graph} />
         ) : (
           <TableView graph={graph} />
         )}
