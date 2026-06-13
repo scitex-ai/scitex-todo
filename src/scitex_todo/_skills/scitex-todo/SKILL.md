@@ -61,6 +61,55 @@ binding rule:
   update; a missing entry is invisible (operator + lead + every other
   agent can't react to what isn't on the board).
 
+## ⚑ MANDATE — NEVER hand-edit `tasks.yaml` (lead a2a `02c8a4ae`, 2026-06-13)
+
+Real corruption episode: on 2026-06-13 the shared
+`~/.scitex/todo/tasks.yaml` was found **truncated mid-string** at
+line ~2784 (unterminated double-quoted `note:` scalar). The board
+render broke, the throughput script broke, AND every agent's
+read/write through scitex-todo broke until the lead repaired it by
+hand. The PR-#166 post-dump round-trip-validate layer makes the
+WRITER side safer going forward — but **only for writes that go
+through scitex-todo's API**. A hand-edit (vim / sed / `Edit` tool /
+GUI save) bypasses every safety net the package provides.
+
+The binding rule:
+
+- **NEVER hand-edit `~/.scitex/todo/tasks.yaml` directly.** No vim
+  save. No `sed -i`. No editor "find-and-replace". No `git commit
+  -m` on a hand-modified copy. The file is a binary-style asset
+  from your point of view: read via the API, mutate via the API,
+  write via the API. The flock + atomic-rename + post-dump-validate
+  in `_save_tasks_unlocked` are the ONLY safe write path.
+- **Always use one of**: the `scitex-todo` CLI verbs (`add`,
+  `update`, `done`, `comment`, `close`, `delete`, `sync-github`,
+  `migrate-*`), the MCP tools (`add_task`, `update_task`,
+  `comment_task`, `complete_task`, `delete_task`, …), or the
+  Python API (`from scitex_todo._store import add_task,
+  update_task, …`). The MCP wire is preferred from inside an
+  agent container — P3a wired it into every container's
+  `.mcp.json` precisely so no agent needs to hand-edit.
+- **Emergency repair exception**: a file that is ALREADY broken
+  (won't parse via `load_tasks`) cannot be repaired through the
+  API. In that single case a hand-edit is justified — but you MUST
+  (a) back up the broken file first, (b) verify the repaired file
+  parses cleanly via `load_tasks` before declaring done, (c) report
+  the episode to the lead so the API-side safety net can be hardened
+  against whatever caused the breakage. The lead's
+  2026-06-13 repair followed this exact protocol.
+
+Rationale: the file is the fleet's single ledger. Hand-edits don't
+just risk corruption — they also race with concurrent agent writes
+(no flock), bypass `_validate_tasks` (so a typo lands as accepted
+schema), and skip the git auto-commit (so the operator loses
+time-travel recovery on the bad version). Use the API.
+
+Enforcement: cultural for now (this skill is propagated to every
+agent via `scitex-todo skills propagate` per PR #161, so every
+agent reads it on boot). A PostToolUse hook flagging direct edits
+to `*/.scitex/todo/tasks.yaml` paths is the documented follow-up
+(`rec-no-hand-edit-tasks-yaml-hook`, recommended file when needed).
+
 ## ⚑ MANDATE — record evidence at PR-merge / issue-close time (op-2026-06-13, lead a2a `0cdca03a`)
 
 This is the load-bearing rule that closes the **board-recording gap**
