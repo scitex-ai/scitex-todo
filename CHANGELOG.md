@@ -4,6 +4,33 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.9] - 2026-06-13 — Fleet-adoption multiplier #3: PR-merge recording mandate
+
+Closes the **board-recording gap** surfaced by the 2026-06-13 reconciliation
+pass (199 PRs merged in 24h vs ~5 board completions — structural, not a
+hygiene problem). Adds a LOAD-BEARING mandate to the canonical scitex-todo
+skill that propagates to every fleet agent via `skills propagate` (#161).
+
+### Added
+
+- **PR-merge recording mandate** (PR #163) — new `## ⚑ MANDATE — record
+  evidence at PR-merge / issue-close time` section in `SKILL.md` + a
+  sister leaf `60_pr-merge-recording-mandate.md` with the CLI/API/MCP
+  verb table, no-PR alternative, bulk catch-up verb (`sync-github
+  --since <date> -y`), anti-pattern list, and provenance. Hard rule:
+  `scitex-todo done <card-id> --pr-url <merged-PR-URL>` IMMEDIATELY at
+  PR-merge time; bare `done` without `--pr-url` is the recording-gap.
+  8 mock-free file-content tests pin the load-bearing phrases so they
+  can't drift silently. Lead a2a `0cdca03a` approved as fleet-adoption
+  multiplier #3, sister to #160 (TaskCreate-redirect hook) and #161
+  (skill propagation manifest).
+
+### Provenance
+
+PR #163 (`feat/skill-pr-url-mandate`). Diagnostic source:
+`/work/GITIGNORED/RECONCILE_TRACE.json` — the 2026-06-13 reconciliation
+pass.
+
 ## [0.7.8] - 2026-06-13 — Fleet-adoption multipliers (PreToolUse hook + skill propagation)
 
 Ships the two **fleet-adoption multipliers** so every other agent in the
