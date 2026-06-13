@@ -1160,6 +1160,39 @@
                 <span class="c1"># fsync can fail on some FS (overlay / fuse). Best-effort —</span>
                 <span class="c1"># the os.replace below is what gives the atomic guarantee.</span>
                 <span class="k">pass</span>
+        <span class="c1"># POST-DUMP ROUND-TRIP VALIDATE (lead a2a `d5809cd3`, 2026-06-13 —</span>
+        <span class="c1"># the recovered-by-hand corruption episode where the canonical file</span>
+        <span class="c1"># ended mid-string at line ~2784). Before we promote the tmp file</span>
+        <span class="c1"># into the canonical slot, REPARSE it from disk to confirm the dump</span>
+        <span class="c1"># itself produced a syntactically valid + structurally validated</span>
+        <span class="c1"># YAML document. The pre-write `_validate_tasks` proves the</span>
+        <span class="c1"># in-memory structure is sound; this catches any failure mode</span>
+        <span class="c1"># introduced by the dump itself (unterminated scalar, partial</span>
+        <span class="c1"># flush, disk-full leaving a truncated file even if fsync didn&#39;t</span>
+        <span class="c1"># error). If reparse fails OR the reparsed task count doesn&#39;t</span>
+        <span class="c1"># match the in-memory count, ABORT — never promote suspect bytes</span>
+        <span class="c1"># into the canonical SSoT.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">tmp_path</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">verify_handle</span><span class="p">:</span>
+                <span class="n">verify_doc</span> <span class="o">=</span> <span class="n">yaml_rt</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">verify_handle</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">verify_exc</span><span class="p">:</span>  <span class="c1"># noqa: BLE001 — any parse fail = abort</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;refusing to replace </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">: tmp file at </span><span class="si">{</span><span class="n">tmp_path</span><span class="si">}</span><span class="s2"> did &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;not reparse cleanly after dump (</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">verify_exc</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">verify_exc</span><span class="si">}</span><span class="s2">). Canonical file left untouched.&quot;</span>
+            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">verify_exc</span>
+        <span class="n">verify_tasks</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">verify_doc</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;tasks&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">verify_doc</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">)</span>
+        <span class="n">in_memory_count</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">doc</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;tasks&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[])</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">verify_tasks</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">verify_tasks</span><span class="p">)</span> <span class="o">!=</span> <span class="n">in_memory_count</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;refusing to replace </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">: tmp file at </span><span class="si">{</span><span class="n">tmp_path</span><span class="si">}</span><span class="s2"> &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;reparsed with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">verify_tasks</span><span class="p">)</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nb">isinstance</span><span class="p">(</span><span class="n">verify_tasks</span><span class="p">,</span><span class="w"> </span><span class="nb">list</span><span class="p">)</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&lt;not-a-list&gt;&#39;</span><span class="si">}</span><span class="s2"> &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;tasks vs in-memory </span><span class="si">{</span><span class="n">in_memory_count</span><span class="si">}</span><span class="s2">. Canonical file &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;left untouched.&quot;</span>
+            <span class="p">)</span>
+        <span class="c1"># All checks passed — atomic POSIX rename promotes tmp → canonical.</span>
         <span class="n">os</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
     <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
         <span class="c1"># Best-effort tmp cleanup so a crashed dump doesn&#39;t leave a</span>
