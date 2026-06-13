@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.11] - 2026-06-13 — Skill mandate: never hand-edit tasks.yaml
+
+### Added
+
+- **Canonical skill mandate: NEVER hand-edit `tasks.yaml`** (PR #168,
+  lead a2a `02c8a4ae`). Folds into the bundled `scitex-todo` skill
+  alongside the SSoT MANDATE and the multiplier-#3 PR-merge recording
+  mandate. The 2026-06-13 corruption episode traced to a hand-edit
+  bypassing the API. Rule: always use the CLI / MCP / Python API; the
+  flock + atomic-rename + post-dump-validate path is the only safe
+  write. Emergency-repair exception documented (already-broken file
+  with backup-first / parse-verify-after / report-to-lead protocol).
+  Propagates to every agent's required_skills via `scitex-todo skills
+  propagate` (PR #161 mechanism), so every fleet agent reads it on
+  boot. 4 mock-free file-content tests pin the load-bearing phrases.
+
 ## [0.7.10] - 2026-06-13 — Durable writer safety + CLI: --blocker '' clear
 
 ### Fixed
