@@ -811,37 +811,38 @@ def index_info_cmd(as_json: bool) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# migrate <verb> — directory-card enforcement migration (PR-D).               #
+# migration <verb> — directory-card enforcement migration (PR-D).             #
 # Operator directive 2026-06-13 (via lead a2a 3cf31901): canonical card =     #
 # tasks/<id>/ directory; flat tasks.yaml writes forbidden. Two-phase rollout: #
-# `migrate plan` is the read-side dry-run scanner; `migrate apply` is the     #
-# operator-blessed mutation (filed but NOT in this commit).                   #
+# `migration plan` is the read-side dry-run scanner; `migration apply` is the #
+# operator-blessed mutation. The group token is a NOUN (`migration`) per the  #
+# SciTeX noun-verb CLI convention (audit-cli §1, non-leaf nodes are nouns).   #
 # --------------------------------------------------------------------------- #
 
 
 @main.group(
-    "migrate",
+    "migration",
     help=(
         "Directory-card migration verbs (operator directive 2026-06-13).\n\n"
-        "`migrate plan` is the read-side dry-run scanner emitted to the "
-        "operator for review. `migrate apply` (gated, operator-blessed) "
+        "`migration plan` is the read-side dry-run scanner emitted to the "
+        "operator for review. `migration apply` (gated, operator-blessed) "
         "performs the actual flat-to-directory conversion."
     ),
 )
-def migrate_group() -> None:
-    """The ``migrate`` noun group."""
+def migration_group() -> None:
+    """The ``migration`` noun group."""
 
 
-@migrate_group.command(
+@migration_group.command(
     "plan",
     help=(
         "Scan every discovered lane + the global store; emit a plan "
         "classifying each row as CANONICAL or NEEDS_* (DIR / NOTE / TITLE "
         "/ COMMENT). NO writes. The output is the artifact shown to the "
-        "operator before any real `migrate apply`.\n\n"
+        "operator before any real `migration apply`.\n\n"
         "Example:\n"
-        "  $ scitex-todo migrate plan --json\n"
-        "  $ scitex-todo migrate plan --markdown"
+        "  $ scitex-todo migration plan --json\n"
+        "  $ scitex-todo migration plan --markdown"
     ),
 )
 @click.option(
@@ -853,12 +854,12 @@ def migrate_group() -> None:
     "--markdown", "as_md", is_flag=True,
     help="Emit the plan as Markdown (operator-facing review document).",
 )
-def migrate_plan_cmd(as_json: bool, as_md: bool) -> None:
+def migration_plan_cmd(as_json: bool, as_md: bool) -> None:
     """Read-side dry-run scanner.
 
     Example:
-      $ scitex-todo migrate plan --json
-      $ scitex-todo migrate plan --markdown
+      $ scitex-todo migration plan --json
+      $ scitex-todo migration plan --markdown
     """
     import json as _json
 
@@ -882,7 +883,7 @@ def migrate_plan_cmd(as_json: bool, as_md: bool) -> None:
     )
 
 
-@migrate_group.command(
+@migration_group.command(
     "apply",
     help=(
         "Run the directory-card migration: for every row that needs it, "
@@ -890,8 +891,8 @@ def migrate_plan_cmd(as_json: bool, as_md: bool) -> None:
         "THEN strip the migrated fields from tasks.yaml. Per-lane git "
         "commit at end. Operator-blessed for ALL 7 lanes (2026-06-13).\n\n"
         "Example:\n"
-        "  $ scitex-todo migrate apply --dry-run\n"
-        "  $ scitex-todo migrate apply -y"
+        "  $ scitex-todo migration apply --dry-run\n"
+        "  $ scitex-todo migration apply -y"
     ),
 )
 @click.option(
@@ -908,14 +909,14 @@ def migrate_plan_cmd(as_json: bool, as_md: bool) -> None:
     "--json", "as_json", is_flag=True,
     help="Emit per-lane counts + per-row outcomes as JSON.",
 )
-def migrate_apply_cmd(
+def migration_apply_cmd(
     dry_run: bool, assume_yes: bool, as_json: bool,
 ) -> None:
     """Run the migration across every discovered lane + global store.
 
     Example:
-      $ scitex-todo migrate apply --dry-run
-      $ scitex-todo migrate apply -y
+      $ scitex-todo migration apply --dry-run
+      $ scitex-todo migration apply -y
     """
     import json as _json
     import sys as _sys
@@ -924,7 +925,7 @@ def migrate_apply_cmd(
 
     if not dry_run and not assume_yes and _sys.stdin.isatty():
         raise click.ClickException(
-            "`migrate apply` mutates lane YAMLs + writes README.md files. "
+            "`migration apply` mutates lane YAMLs + writes README.md files. "
             "Pass -y / --yes to confirm, or --dry-run to preview."
         )
 

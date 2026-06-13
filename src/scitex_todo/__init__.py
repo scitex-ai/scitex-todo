@@ -41,18 +41,54 @@ except ImportError:  # pragma: no cover — only on ancient Pythons
 #:     from scitex_todo._mermaid import build_mermaid, STATUS_STYLE
 #:     from scitex_todo._model   import load_tasks, save_tasks, VALID_STATUSES, TaskValidationError
 #:     from scitex_todo._paths   import resolve_tasks_path, bundled_example
-from ._model import TaskValidationError
-from ._store import (
-    ENV_AGENT,
-    ENV_SCOPE,
-    TaskNotFoundError,
-    add_task,
-    complete_task,
-    list_tasks,
-    resolve_store,
-    summarize_tasks,
-    update_task,
-)
+
+# PEP 562 lazy attribute resolution — keeps `import scitex_todo` cold-start
+# well under the audit-cli §10 budget (500 ms) by deferring every submodule
+# load until the attribute is actually touched. Click tab-completion taps
+# `import scitex_todo` once per Tab press, so the savings compound.
+#
+# Public surface stays identical: every name in ``__all__`` resolves on
+# ``scitex_todo.NAME`` access via :func:`__getattr__`, and gets cached in
+# ``globals()`` for O(1) repeat lookups.
+_LAZY_IMPORTS = {
+    "TaskValidationError": ("._model", "TaskValidationError"),
+    "ENV_AGENT": ("._store", "ENV_AGENT"),
+    "ENV_SCOPE": ("._store", "ENV_SCOPE"),
+    "TaskNotFoundError": ("._store", "TaskNotFoundError"),
+    "add_task": ("._store", "add_task"),
+    "complete_task": ("._store", "complete_task"),
+    "list_tasks": ("._store", "list_tasks"),
+    "resolve_store": ("._store", "resolve_store"),
+    "summarize_tasks": ("._store", "summarize_tasks"),
+    "update_task": ("._store", "update_task"),
+}
+
+
+def __getattr__(name: str):
+    """PEP 562 lazy loader — resolve public-API names on first access.
+
+    Imports the source submodule, fetches the attribute, caches it
+    into module ``globals()`` so subsequent accesses skip the lookup.
+    Unknown names raise ``AttributeError`` per the PEP.
+    """
+    target = _LAZY_IMPORTS.get(name)
+    if target is None:
+        raise AttributeError(
+            f"module {__name__!r} has no attribute {name!r}"
+        )
+    import importlib
+
+    mod_path, attr = target
+    value = getattr(importlib.import_module(mod_path, __name__), attr)
+    globals()[name] = value
+    return value
+
+
+def __dir__():
+    """Make tab-completion / ``dir(scitex_todo)`` see the public surface
+    even before any attribute has been touched."""
+    return sorted(set(__all__) | set(globals()))
+
 
 __all__ = [
     "__version__",
