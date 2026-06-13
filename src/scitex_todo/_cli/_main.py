@@ -882,6 +882,81 @@ def migrate_plan_cmd(as_json: bool, as_md: bool) -> None:
     )
 
 
+@migrate_group.command(
+    "apply",
+    help=(
+        "Run the directory-card migration: for every row that needs it, "
+        "write tasks/<id>/README.md (atomic + bytes-equal verified) "
+        "THEN strip the migrated fields from tasks.yaml. Per-lane git "
+        "commit at end. Operator-blessed for ALL 7 lanes (2026-06-13).\n\n"
+        "Example:\n"
+        "  $ scitex-todo migrate apply --dry-run\n"
+        "  $ scitex-todo migrate apply -y"
+    ),
+)
+@click.option(
+    "--dry-run", is_flag=True,
+    help="Print the planned actions without touching disk. Required "
+    "by SciTeX §2 audit on mutating verbs.",
+)
+@click.option(
+    "-y", "--yes", "assume_yes", is_flag=True,
+    help="Skip the interactive confirmation. Required when the planned "
+    "action would mutate the store.",
+)
+@click.option(
+    "--json", "as_json", is_flag=True,
+    help="Emit per-lane counts + per-row outcomes as JSON.",
+)
+def migrate_apply_cmd(
+    dry_run: bool, assume_yes: bool, as_json: bool,
+) -> None:
+    """Run the migration across every discovered lane + global store.
+
+    Example:
+      $ scitex-todo migrate apply --dry-run
+      $ scitex-todo migrate apply -y
+    """
+    import json as _json
+    import sys as _sys
+
+    from scitex_todo._migrate import apply_all_lanes
+
+    if not dry_run and not assume_yes and _sys.stdin.isatty():
+        raise click.ClickException(
+            "`migrate apply` mutates lane YAMLs + writes README.md files. "
+            "Pass -y / --yes to confirm, or --dry-run to preview."
+        )
+
+    results = apply_all_lanes(dry_run=dry_run)
+
+    if as_json:
+        click.echo(_json.dumps(
+            [r.to_dict() for r in results], indent=2,
+        ))
+        return
+
+    # Human summary.
+    total_written = 0
+    total_updated = 0
+    total_skipped = 0
+    for lr in results:
+        click.echo(
+            f"# {lr.lane_path}: written={lr.written_count} "
+            f"updated={lr.updated_count} skipped={lr.skipped_count} "
+            f"git_committed={lr.git_committed} "
+            f"({lr.git_skip_reason or 'ok'})"
+        )
+        total_written += lr.written_count
+        total_updated += lr.updated_count
+        total_skipped += lr.skipped_count
+    click.echo(
+        f"# TOTAL: written={total_written} updated={total_updated} "
+        f"skipped={total_skipped}"
+        + (" (DRY-RUN — no disk changes)" if dry_run else "")
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Attach the §1a sub-groups (defined in sibling modules).                     #
 # --------------------------------------------------------------------------- #
