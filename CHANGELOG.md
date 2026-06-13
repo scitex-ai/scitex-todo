@@ -4,6 +4,72 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.7] - 2026-06-13 — P3a fleet host-store wire-up + board-reconciliation verbs
+
+Cuts the **P3a throughput unlock** (host scitex-todo store reachable from
+every containerized agent, write-safety via flock-scoped RMW) into a
+pull-able PyPI release so agent-container can bake the wire into
+`to_home/.mcp.json`. agent-container a2a `e330b084` confirmed
+`/home/agent/.scitex/todo` bind is fleet-wide; dev a2a
+`dd971b57` + `932ea837` independently verified the host's 632-task
+corpus is visible from their container. Also rolls up the
+board-reconciliation verb sweep landed over 2026-06-13.
+
+### Added
+
+- **`scitex-todo mcp install [--apply] --env-tasks-path <abs/path>`**
+  (PR #158) — when set, pins `SCITEX_TODO_TASKS` in the generated
+  `.mcp.json` entry's `env` block. Belt-and-suspenders for the
+  bind-mount-based host-store resolution; makes the wire-up
+  self-documenting in the generated config. Operator P3a, lead a2a
+  `a579358e` + `d7789963`. agent-container's one-liner:
+  `scitex-todo mcp install --apply --to to_home/.mcp.json --env-tasks-path /home/agent/.scitex/todo/tasks.yaml -y`.
+- **`scitex-todo mcp install --apply`** (PR #155) — idempotent
+  `.mcp.json` merge; the foundation #158 builds on. P3a fleet
+  enablement.
+- **`scitex-todo stale-list`** (PR #157) — terminal twin of the
+  board's `🧹 Stale` panel + `/stale` HTTP endpoint. Lets agents
+  reconcile from the CLI without opening the board.
+- **`/stale` + `/archive` board endpoints + `🧹 Stale` layout +
+  per-row Archive button** (PR #153 backend + #154 frontend) —
+  recurring stale-review surface; 128 / ~218 candidate cards
+  flagged for operator review at landing.
+- **`scitex-todo close <id> --reason ...`** (PR #151) — close-stale-
+  with-reason verb (board-reconciliation gap fix); writes
+  `status=deferred` + a `[CLOSED]` activity comment.
+- **`scitex-todo comment <id> <text>`** (PR #144) — CLI wrapping
+  `_store.comment_task` (the PR #64 replacement).
+- **Per-row multi-select + bulk status change on the board**
+  (PR #150) — PR(h) Stage 1.
+- **`kind=status` axis** (PR #146) — non-actionable quality-tracking
+  cards; renders distinct from `kind=task` on the board.
+- **Activity-bucket badge** (PR #148) — color cards by
+  `last_activity` recency (fresh / warm / stale); pairs with PR #122
+  backend decay.
+- **Directory-card scanner + plan CLI** (PR #142) — PR-D Stage 1,
+  operator-direct.
+
+### Docs
+
+- **Runbook §7.5 — fleet MCP enablement via `mcp install --apply`**
+  (PR #156) — the P3a chain end-to-end recipe.
+- **Board-reconciliation runbook — canonical verbs for fleet sweep**
+  (PR #152) — covers the new close / comment / stale-list verbs.
+- **Skill refresh — comment verb + kind=status + SSoT write-here**
+  (PR #149) — keeps the bundled agent skill in lock-step with the
+  current CLI.
+- **Container/host tasks.yaml divergence audit** (PR #143) — the
+  audit that became the P3a brief.
+
+### Provenance
+
+PR #158 (`feat/mcp-install-apply-env-tasks-path`), lead a2a
+`a579358e` + `d7789963` + `f9c78d48` (the write-safety
+follow-up — model: single shared file + flock-scoped RMW). Co-tested
+with proj-scitex-dev (container end-to-end) and
+proj-scitex-agent-container (fleet bind-mount confirmation,
+canonical path lock-in).
+
 ## [0.7.6] - 2026-06-13 — board lifecycle verbs (start/stop/restart/status + pidfile)
 
 Operator-direct TG12949/12950/12951 (via lead a2a `b5726672`).
