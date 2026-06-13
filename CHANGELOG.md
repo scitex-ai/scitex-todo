@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.12] - 2026-06-13 — Board UI: themed scrollbar+dropdowns + Table-view structural filter
+
+Two operator-direct UI fixes (lead a2a `510a58d4`, op TG screenshot
+of the board's white scrollbar + un-themed dropdowns + cluttered
+Table view). Header declutter + Calendar view follow in v0.7.13.
+
+### Fixed
+
+- **Themed scrollbar + `<select>`/`<option>` dropdowns** (PR #170) —
+  the board's white-in-dark-mode scrollbar and OS-default white
+  dropdowns now bind to scitex-ui shell tokens (`var(--col-bg)` /
+  `var(--text)` / `var(--border)` / `var(--purple)`). Two layers:
+  global `.stx-todo-board, *` fallback in `board.css` + a new
+  `board_v3/00-theme-scrollbar-select.css` loaded FIRST in the
+  template. 13 CSS-contract tests pin the rule set.
+
+### Added
+
+- **Table view: hide structural cards by default** (PR #171) — the
+  `kind=status` quality-axis rows (8 q-*) and `kind=goal` umbrella
+  rows (proj-clew / proj-todo / pool-* / ywatanabe-operator-anchor)
+  are FILTERED OUT of the Table view by default; a "Show structural
+  cards" checkbox in the toolbar flips them back on. Graph + Column
+  views are unchanged — they keep showing every card per the
+  existing dependency-graph contract. New `tableFilter.ts` helper
+  exposes `STRUCTURAL_KINDS` + `isVisibleRow` so the filter is
+  pure-function-testable. 5 new TS+Python tests.
+
+### Provenance
+
+PR #170 + #171 from the lead's a2a `d1af161e` (board UI overhaul)
+triage. Subagent-pair execution model — one PR each, isolated
+worktrees, multiplier-#3 dogfooded (both subagents recorded their
+card with `--pr-url` post-merge).
+
 ## [0.7.11] - 2026-06-13 — Skill mandate: never hand-edit tasks.yaml
 
 ### Added
