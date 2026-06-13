@@ -325,7 +325,7 @@
 .age-pill--aging {
   color: var(--amber);
   border-color: var(--amber);
-  background: rgba(255, 179, 0, 0.10);
+  background: rgba(255, 179, 0, 0.1);
 }
 .age-pill--stale {
   color: #ff9442;
@@ -337,6 +337,56 @@
   background: var(--red);
   border-color: var(--red);
   box-shadow: 0 0 6px 1px rgba(244, 67, 54, 0.45);
+}
+
+/* Activity bucket badge (render side of working-status decay).
+ *
+ * Board card `scitex-todo-working-status-decay-tg12739`, render half of
+ * PR #122 (backend `_build_fleet` derives the same buckets for the
+ * fleet strip). Per-card pill that reflects how recently the task was
+ * touched, derived from `last_activity` freshness. Orthogonal to the
+ * age-pill: age-pill buckets by DAYS since created/last activity (long-
+ * horizon staleness signal); this one buckets by HOURS (short-horizon
+ * live-vs-decayed signal that fixes the operator pain "manual working
+ * color stays lit indefinitely").
+ *
+ *   fresh : <= 1 h    -- bright green  (live activity)
+ *   warm  : 1-24 h    -- amber         (recent but quieting)
+ *   stale : > 24 h    -- muted grey    (decayed)
+ *
+ * Renders only when `last_activity` is present + parseable (back-compat
+ * with older snapshots).
+ */
+.activity-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0px 7px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  text-transform: lowercase;
+}
+.activity-badge--fresh {
+  color: var(--green);
+  border-color: var(--green);
+  background: rgba(76, 175, 80, 0.14);
+  box-shadow: 0 0 4px 0 rgba(76, 175, 80, 0.35);
+}
+.activity-badge--warm {
+  color: var(--amber);
+  border-color: var(--amber);
+  background: rgba(255, 179, 0, 0.12);
+}
+.activity-badge--stale {
+  color: var(--text-muted);
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  opacity: 0.85;
 }
 
 /* Right-click CRUD context menu (operator TG 432/433) — fixed-position
