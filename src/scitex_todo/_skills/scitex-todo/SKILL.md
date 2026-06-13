@@ -61,6 +61,54 @@ binding rule:
   update; a missing entry is invisible (operator + lead + every other
   agent can't react to what isn't on the board).
 
+## ⚑ MANDATE — record evidence at PR-merge / issue-close time (op-2026-06-13, lead a2a `0cdca03a`)
+
+This is the load-bearing rule that closes the **board-recording gap**
+the operator's 完了率 metric depends on. A card is **NOT done** until
+its completion is recorded WITH the evidence link. Without the link,
+the board can't show what consumption actually happened, and the
+operator's view under-reports throughput by a wide margin (sweep
+2026-06-13 found 199 PRs merged in 24 h vs ~5 board completions —
+that gap is structural, this rule closes it).
+
+The hard rule:
+
+- **The moment you MERGE a PR that completes a board card** — or
+  CLOSE an issue that does the same — you MUST IMMEDIATELY call:
+
+  ```bash
+  scitex-todo done <card-id> --pr-url <merged-PR-URL>
+  ```
+
+  (or equivalently, via MCP / Python API:
+  `update_task(task_id=<card-id>, pr_url=<url>, status="done")`).
+
+- **The `--pr-url` is REQUIRED, not optional.** A bare `done <id>`
+  without the evidence link is a recording-gap; the reconciliation
+  pass can't verify completion later, so the card silently lingers
+  as pending on the operator's view. If the work has NO PR (rare —
+  e.g. a config flip on the host), record evidence as a
+  `comment_task --text "no-PR completion: <one-line-evidence>"`
+  immediately before the `done` flip.
+
+- **Do this BEFORE you move on to the next task.** Treat the
+  recording call as part of the merge sequence — not a follow-up
+  TODO. Operator-stated rationale: a missing recording is a missing
+  signal, and the fleet plans on the signal not on the work itself.
+
+- **Bulk catch-up is also OK** when an agent realises a batch of
+  past PRs was never recorded: `scitex-todo sync-github --since
+  <date> -y` walks the agent's recent merged PRs and writes the
+  `pr-<repo>-<num>` done-records in one shot (proj-scitex-todo
+  used this as the overnight backfill mechanism, lead a2a
+  `fbd15187`).
+
+Failure mode: a card whose work landed but never got the
+`--pr-url` flip stays pending forever in the reconcile pass —
+substring-luck is the only thing that catches it, and most cards
+aren't named verbatim in PR titles/bodies. Don't be the gap; record
+evidence at merge time.
+
 ### SSoT write-here rule (short form)
 
 Same content, distilled to the one-screen lookup most agents need on
