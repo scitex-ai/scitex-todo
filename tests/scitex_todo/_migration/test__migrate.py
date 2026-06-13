@@ -16,7 +16,7 @@ import pytest
 from click.testing import CliRunner
 
 from scitex_todo._cli import main
-from scitex_todo import _migrate as _mig
+from scitex_todo import _migration as _mig
 
 
 def _write_lane(lane: Path, body: str) -> None:
@@ -152,7 +152,7 @@ class TestScanLane:
         lane = tmp_path / "tasks.yaml"
         _write_lane(lane, "tasks: [\n  bad: yaml: here\n")
         # Act
-        with caplog.at_level("WARNING", logger="scitex_todo._migrate"):
+        with caplog.at_level("WARNING", logger="scitex_todo._migration._migrate"):
             plan = _mig.scan_lane(lane)
         # Assert — empty plan + log warning.
         assert plan.total == 0 and any(

@@ -862,7 +862,7 @@ def migrate_plan_cmd(as_json: bool, as_md: bool) -> None:
     """
     import json as _json
 
-    from scitex_todo._migrate import render_markdown, scan_all_lanes
+    from scitex_todo._migration import render_markdown, scan_all_lanes
 
     fleet = scan_all_lanes()
     if as_md:
@@ -920,7 +920,7 @@ def migrate_apply_cmd(
     import json as _json
     import sys as _sys
 
-    from scitex_todo._migrate import apply_all_lanes
+    from scitex_todo._migration import apply_all_lanes
 
     if not dry_run and not assume_yes and _sys.stdin.isatty():
         raise click.ClickException(

@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from scitex_todo import _migrate as _mig
+from scitex_todo import _migration as _mig
 
 
 # === Helpers ================================================================
