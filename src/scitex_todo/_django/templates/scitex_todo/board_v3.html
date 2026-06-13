@@ -320,6 +320,47 @@
   {% endcomment %}
 
   <div class="main">
+    <!-- Multi-select board toolbar (PR(h) Stage 1, board card
+         todo-multiselect-batch-ops, lead a2a 1ebc792c). Always rendered
+         but visually quiet at zero selection (the Status dropdown is
+         disabled until at least one card is checked). Bulk status change
+         is the v1 op; the other 4 bulk ops (project re-assign / agent
+         re-assign / bulk nudge / bulk hide) are follow-up PRs.
+         (hook-bypass: line-limit.) -->
+    <div id="board-toolbar" class="board-toolbar"
+         role="region" aria-label="Multi-select bulk actions">
+      <label class="board-toolbar-all">
+        <input type="checkbox" id="board-toolbar-select-all"
+               aria-label="Select or clear all visible cards"
+               onchange="toggleSelectAll(this.checked)" />
+        select all
+      </label>
+      <span class="board-toolbar-sep">·</span>
+      <span class="board-toolbar-count-label">selected:
+        <span id="board-toolbar-count">0</span>
+      </span>
+      <span class="board-toolbar-sep">·</span>
+      <label for="board-toolbar-status" class="board-toolbar-status-label">Status</label>
+      <select id="board-toolbar-status"
+              title="Set status on every selected card"
+              aria-label="Bulk status change"
+              disabled
+              onchange="bulkSetStatus(this.value); this.value='';">
+        <option value="">— change to… —</option>
+        <option value="pending">pending</option>
+        <option value="in_progress">in_progress</option>
+        <option value="blocked">blocked</option>
+        <option value="done">done</option>
+        <option value="deferred">deferred</option>
+        <option value="failed">failed</option>
+        <option value="goal">goal</option>
+      </select>
+      <button type="button" id="board-toolbar-clear"
+              class="board-toolbar-clear"
+              disabled
+              onclick="clearMultiselect()">clear</button>
+      <!-- TODO(PR-h+1): project-reassign / agent-reassign / nudge / hide. -->
+    </div>
     <!-- P10 (lead a2a 2026-06-12) — spans_all groups (e.g. "lead") render
          as a thin banner here, above the columns grid. Empty by default
          (no groups, or no spans_all groups). -->
