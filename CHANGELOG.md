@@ -4,6 +4,44 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.13] - 2026-06-13 — Board UI wave-2: header declutter + Calendar view (4th LAYOUT)
+
+Completes the operator-direct board UI overhaul (lead a2a `d1af161e`
++ `510a58d4`). With the v0.7.12 theme + Table-filter fixes, the
+operator's board screenshot complaints (white scrollbar, white
+dropdowns, cluttered Table view, cluttered toolbar) are end-to-end
+addressed; new Calendar view satisfies op TG 13295.
+
+### Added
+
+- **Toolbar declutter** (PR #173) — the board's overcrowded toolbar
+  is reorganized into 3 logical groups + a primary-action zone:
+  `view` (LAYOUT toggle / Sort / Group), `search` (Search bar +
+  Filters), `status` ("N new" badge / Reload / hide-project), and a
+  brand-accent `+Add Task` primary action separated by a divider.
+  Responsive wrap at ≤780px. All scitex-ui token-bound (no
+  hardcoded colors). Behavior preserved — every original control id
+  survives so existing onclick / event handlers / localStorage keys
+  keep working. 31 mock-free tests pin the CSS contract + structural
+  presence.
+- **Calendar view — 4th LAYOUT** (PR #174, op TG 13295) — month grid
+  (7×6) with task chips placed by `deadline_next` →
+  `deadline` → `last_activity` precedence (pure-function helper
+  `taskDateForCalendar` in `calendarDate.ts` for testability). Today
+  gets accent ring, past days muted, weekends subtle bg-shift, Today
+  pill snaps back to current month, prev/next nav. Chips click-thru
+  to the existing NodeDetailPanel drawer. Token-bound; deferrals
+  flagged for future PRs (drag-reschedule, week/day view, recurring
+  expansion beyond server-provided `deadline_next`, inline edit
+  on cell click, full a11y grid contract). 9 mock-free tests pin
+  the date-assignment logic + grid generation.
+
+### Provenance
+
+PR #173 + #174 from the operator's design-intent directive +
+TG 13295. Subagent-pair execution; both subagents dogfooded
+multiplier-#3 (recorded their cards with `--pr-url` post-merge).
+
 ## [0.7.12] - 2026-06-13 — Board UI: themed scrollbar+dropdowns + Table-view structural filter
 
 Two operator-direct UI fixes (lead a2a `510a58d4`, op TG screenshot
