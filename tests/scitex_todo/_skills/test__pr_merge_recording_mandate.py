@@ -22,8 +22,8 @@ import pytest
 from scitex_todo._cli._skills import _skills_root  # type: ignore[attr-defined]
 
 SKILL_DIR = _skills_root()
-SKILL_MD = SKILL_DIR / "scitex-todo" / "SKILL.md"
-LEAF_MD = SKILL_DIR / "scitex-todo" / "60_pr-merge-recording-mandate.md"
+SKILL_MD = SKILL_DIR / "SKILL.md"
+LEAF_MD = SKILL_DIR / "60_pr-merge-recording-mandate.md"
 
 
 # === SKILL.md contains the load-bearing mandate section ====================
