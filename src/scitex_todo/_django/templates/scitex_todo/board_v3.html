@@ -32,6 +32,12 @@
      (P1 #86, P7 #87) — every UI PR edited the same wall of CSS and the
      merge silently dropped recent additions. See GITIGNORED/REFACTORING.md.
      Each file stays under the 512-line CSS hook limit. -->
+<!-- 00-theme-scrollbar-select.css ships GLOBAL themed scrollbars + <select>
+     dropdowns so neither falls through to OS-default chrome (which paints
+     WHITE in dark mode). Loaded FIRST so per-file `.filt`, `.columns`,
+     `.col-body`, etc. specificity rules in 01-06 still win where they want
+     to. Lead a2a 510a58d4 (2026-06-14) operator complaint. -->
+<link rel="stylesheet" href="{% static 'scitex_todo/board_v3/00-theme-scrollbar-select.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/01-filterbar.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/02-card.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/03-right-and-modal.css' %}">
