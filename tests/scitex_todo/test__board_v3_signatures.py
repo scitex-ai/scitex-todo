@@ -382,4 +382,64 @@ class TestMultiselectBatchOpsStage1:
         assert ".card-select" in css_text
 
 
+# -----------------------------------------------------------------------------
+# Activity bucket badge — render side of working-status decay
+# (board card `scitex-todo-working-status-decay-tg12739`, render half of PR #122)
+# -----------------------------------------------------------------------------
+
+
+class TestActivityBucketBadge:
+    """Pins for the per-card activity-bucket badge.
+
+    Backend half (PR #122) added the working/stale/active/idle decay
+    derivation in ``_build_fleet``. This render-side feature surfaces
+    the same RECENCY signal on each card via a tiny dot badge whose
+    bucket is computed from ``t.last_activity`` freshness (hours):
+
+      fresh : <= 1 h   -- bright green  (live activity)
+      warm  : 1-24 h   -- amber         (recent but quieting)
+      stale : > 24 h   -- muted grey    (decayed)
+
+    Fixes the operator pain "manual working color stays lit
+    indefinitely" (TG 12739) on a per-card basis.
+    """
+
+    def test_activity_badge_html_defined(self, board_text):
+        # The render function must exist.
+        assert "function activityBadgeHtml" in board_text
+
+    def test_activity_bucket_helper_defined(self, board_text):
+        # Bucketing is its own helper so the wired-in call stays clean.
+        assert "function _activityBucket" in board_text
+
+    def test_activity_hours_helper_defined(self, board_text):
+        # Time-since helper reads `t.last_activity` and returns hours.
+        assert "function _activityHoursSince" in board_text
+
+    def test_activity_badge_wired_into_card_top(self, board_text):
+        # The badge must actually render on each card, not just be defined.
+        # A regression that ships only the helper without the call site
+        # silently hides the feature.
+        assert "${activityBadgeHtml(t)}" in board_text
+
+    def test_activity_badge_reads_last_activity_field(self, board_text):
+        # The derivation must read the PR #122 schema field, not invent
+        # a new one. Pinning the field name keeps the FE in sync with
+        # the backend (`_build_fleet` precedence rules).
+        assert "t.last_activity" in board_text
+
+    def test_activity_badge_css_defined(self, css_text):
+        # CSS pin — `.activity-badge` lives in the extracted card stylesheet.
+        assert ".activity-badge" in css_text
+
+    def test_activity_badge_fresh_modifier_present(self, css_text):
+        assert ".activity-badge--fresh" in css_text
+
+    def test_activity_badge_warm_modifier_present(self, css_text):
+        assert ".activity-badge--warm" in css_text
+
+    def test_activity_badge_stale_modifier_present(self, css_text):
+        assert ".activity-badge--stale" in css_text
+
+
 # EOF

@@ -16,26 +16,30 @@ tags:
 
 # CLI / MCP gap analysis — what's missing for fleet adoption
 
-Status: **audited 2026-06-07** against develop @ `6093cf6` for the
-fleet-rollout skill ([40_for-consuming-agents.md](40_for-consuming-agents.md)).
-The "Today via Python API" column captures what an agent can do
-TODAY through `scitex_todo._store.*` while the CLI / MCP catches up.
+Status: **audited 2026-06-07** against develop @ `6093cf6`;
+**re-audited 2026-06-13** — `comment` verb shipped in PR #144;
+`kind: status` axis shipped in PR #146 (board card
+`op-2026-06-12-04`). The "Today via Python API" column captures what
+an agent can do TODAY through `scitex_todo._store.*` while the CLI /
+MCP catches up.
 
 ## A. New verbs (CLI + MCP)
 
-| Verb           | Why                                                                                | Today via Python API                                                | PR slice               |
+| Verb           | Why                                                                                | Status                                                              | PR slice               |
 | -------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ---------------------- |
-| `comment`      | Append to `comments[]` — the append-only fleet activity log; cross-lane patternA   | `_store.update_task(p, id, comments=[...existing..., new_entry])`   | **NEXT** (load-bearing) |
+| `comment`      | Append to `comments[]` — the append-only fleet activity log; cross-lane patternA   | **SHIPPED** PR #144 — `scitex-todo comment TASK_ID TEXT [--author X] [--json] [--dry-run]` wraps `_store.comment_task` | done |
 | `reopen`       | Undo a `done` / resolved row; HTTP `/reopen` exists (PR #61), no CLI parity        | `_store.update_task(p, id, status="pending")`                       | follow-up               |
 | `body init`    | Seed `tasks/<id>/README.md` + `adr.md` with the locked filenames + ADR template    | `mkdir + cat templates` by hand                                     | follow-up               |
 | `validate`     | Run `_validate_tasks` on demand (operator: "fail loud, fail fast") — without write | `_model._validate_tasks(load_tasks(p))`                             | follow-up               |
 
-`comment` is **load-bearing** for fleet adoption: the skill's
-"Coordinating with other agents" patterns B + C explicitly write to
-`comments[]`. Without a CLI verb, every consuming agent has to import
-the Python API + handle `_store.update_task`'s preserve-existing
-contract. That's exactly the "no hand-rolling" the operator's
-SSoT directive (TG 9494) is closing down. Highest priority.
+`comment` was the load-bearing gap for fleet adoption — patterns B +
+C of the consuming-agent skill explicitly write to `comments[]`. PR
+#144 closes it (CLI verb wraps `_store.comment_task`; MCP
+`comment_task` was already live, see
+[21_fleet-mcp-rollout.md](21_fleet-mcp-rollout.md) tool table).
+Consuming agents should drop any `update_task(comments=...)`
+hand-roll on the next touch — the explicit verb is now the canonical
+path the operator's SSoT directive (TG 9494) called for.
 
 ## B. Missing flags on existing verbs
 
@@ -89,7 +93,7 @@ Missing filters:
 | `--project`         | Match `project` exactly.                                                           |
 | `--host`            | Match `host` exactly.                                                              |
 | `--blocker`         | Match `blocker` exactly; `__none` for "no blocker".                                |
-| `--kind`            | Match `kind` exactly; absent ⇒ "task" for filter purposes.                         |
+| `--kind`            | Match `kind` exactly; absent ⇒ "task" for filter purposes. Now includes `status` (PR #146) for non-actionable status-tracking rows (q-* quality flags etc.). |
 | `--blocking-me`     | Predicate: `status == "blocked" AND blocker == "operator-decision"` (BLOCKING YOU). |
 | `--status` (repeat) | Multi-status filter (e.g. `--status pending --status in_progress`).                |
 | `--id-prefix`       | Substring/prefix match on `id` (cheap "find my project's rows").                   |
