@@ -657,7 +657,50 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
  * defaulted to the OS scrollbar, which clashes with the panel — a chunky
  * light bar over a dark pool. Render a thin, theme-following scrollbar so
  * it recedes into the panel in either theme. Firefox uses the standard
- * `scrollbar-*` properties; Chromium/WebKit use the pseudo-elements. */
+ * `scrollbar-*` properties; Chromium/WebKit use the pseudo-elements.
+ *
+ * GLOBAL FALLBACK (operator complaint via lead a2a 510a58d4, 2026-06-14):
+ * `.stx-todo-board, .stx-todo-board *` so any scrollable element inside
+ * the board inherits themed scrollbars — preempts elements we'd otherwise
+ * miss. Per-element rules below remain for explicit specificity, but the
+ * universal selector catches React Flow's panes, picked CodeMirror frames,
+ * the table-wrap, and anything added later without an extra rule. */
+.stx-todo-board,
+.stx-todo-board * {
+  scrollbar-width: thin;
+  scrollbar-color: var(--stx-scrollbar-thumb) var(--stx-canvas-bg);
+}
+
+.stx-todo-board ::-webkit-scrollbar,
+.stx-todo-board::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.stx-todo-board ::-webkit-scrollbar-track,
+.stx-todo-board::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.stx-todo-board ::-webkit-scrollbar-thumb,
+.stx-todo-board::-webkit-scrollbar-thumb {
+  background: var(--stx-scrollbar-thumb);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.stx-todo-board ::-webkit-scrollbar-thumb:hover,
+.stx-todo-board::-webkit-scrollbar-thumb:hover {
+  background: var(--stx-scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+.stx-todo-board ::-webkit-scrollbar-corner,
+.stx-todo-board::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .stx-todo-pool,
 .stx-todo-detail,
 .stx-todo-detail__markdown pre {
@@ -698,6 +741,45 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
 .stx-todo-pool::-webkit-scrollbar-corner,
 .stx-todo-detail::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* ── Themed <select> / dropdowns (operator complaint via lead a2a 510a58d4,
+ *    2026-06-14) ──────────────────────────────────────────────────────────
+ * Vanilla <select> elements fell through to OS-default styling — white in
+ * dark mode (white popover, white track, dark text on dark page → unreadable).
+ * Bind every <select> inside the board to the same token palette the rest
+ * of the toolbar uses. The token chain (`--stx-input-bg`, `--stx-text`,
+ * `--stx-border-strong`) is sourced from scitex-ui shell variables at the
+ * top of this file, so light/dark mode flip automatically.
+ *
+ * `<option>` styling is best-effort — Chrome / Firefox style the popover
+ * via these properties on most platforms, Safari falls back to native. */
+.stx-todo-board select {
+  appearance: auto;
+  padding: 4px 8px;
+  border: 1px solid var(--stx-border-strong);
+  border-radius: 4px;
+  background: var(--stx-input-bg);
+  color: var(--stx-text);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.stx-todo-board select:hover {
+  border-color: var(--stx-accent);
+}
+
+.stx-todo-board select:focus,
+.stx-todo-board select:focus-visible {
+  outline: none;
+  border-color: var(--stx-accent);
+  box-shadow: 0 0 0 2px var(--stx-hover-bg);
+}
+
+.stx-todo-board select option {
+  background: var(--stx-panel-bg);
+  color: var(--stx-text);
 }
 
 /* ── Pool: header row + status groups ────────────────────────────────────
