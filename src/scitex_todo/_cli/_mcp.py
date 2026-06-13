@@ -17,6 +17,7 @@ hand-rolled four-verb group when scitex-dev isn't installed (so a fresh
 from __future__ import annotations
 
 import json
+import pathlib
 import sys
 
 import click
@@ -192,8 +193,18 @@ def _fallback_mcp_group() -> click.Group:
     @mcp_group.command(
         "install",
         help=(
-            "Print the Claude Code MCP install snippet.\n\n"
-            "Example:\n  scitex-todo mcp install --format raw"
+            "Print or apply the Claude Code MCP install snippet.\n\n"
+            "Without --apply this command PRINTS the JSON snippet for\n"
+            "manual paste-in. With --apply, it MERGES the snippet into\n"
+            "the target ``.mcp.json`` file (default ``~/.mcp.json``),\n"
+            "idempotently — re-running is a no-op when the entry is\n"
+            "already present. Other servers' entries are preserved.\n\n"
+            "Example (print):\n  scitex-todo mcp install --format raw\n\n"
+            "Example (fleet P3a — write into the user-scope .mcp.json):\n"
+            "  scitex-todo mcp install --apply --dry-run\n"
+            "  scitex-todo mcp install --apply -y\n\n"
+            "Example (project-scope .mcp.json):\n"
+            "  scitex-todo mcp install --apply --to ./.mcp.json"
         ),
     )
     @click.option(
@@ -204,18 +215,42 @@ def _fallback_mcp_group() -> click.Group:
         show_default=True,
     )
     @click.option(
+        "--apply",
+        "do_apply",
+        is_flag=True,
+        help=(
+            "Write the snippet into the target ``.mcp.json`` file"
+            " (default ``~/.mcp.json``). Idempotent + non-destructive."
+        ),
+    )
+    @click.option(
+        "--to",
+        "target_path",
+        type=click.Path(dir_okay=False, file_okay=True, writable=True, resolve_path=False),
+        default=None,
+        help=(
+            "Override the target file (default ``~/.mcp.json``)."
+            " Only meaningful with --apply."
+        ),
+    )
+    @click.option(
         "--dry-run",
         is_flag=True,
-        help="Print what the snippet would look like (same as default print; explicit flag for §2).",
+        help=(
+            "With --apply: print what would be written WITHOUT touching"
+            " the file. Without --apply: print the snippet (same as default)."
+        ),
     )
     @click.option(
         "-y",
         "--yes",
         is_flag=True,
-        help="Skip confirmation (no-op — install only prints the snippet).",
+        help=(
+            "With --apply: skip the confirmation prompt. Without"
+            " --apply: no-op (print-only path needs no confirmation)."
+        ),
     )
-    def install(fmt, dry_run, yes) -> None:
-        _ = (dry_run, yes)  # accepted for §2 compliance; install is print-only
+    def install(fmt, do_apply, target_path, dry_run, yes) -> None:
         snippet = {
             "mcpServers": {
                 _CLI_NAME: {
@@ -224,10 +259,81 @@ def _fallback_mcp_group() -> click.Group:
                 }
             }
         }
-        if fmt == "raw":
-            click.echo(json.dumps(snippet[_CLI_NAME[:0] + "mcpServers"]))
+
+        if not do_apply:
+            # Print-only path (back-compat).
+            if fmt == "raw":
+                click.echo(json.dumps(snippet["mcpServers"]))
+                return
+            click.echo(json.dumps(snippet, indent=2))
             return
-        click.echo(json.dumps(snippet, indent=2))
+
+        # --apply: MERGE the entry into the target file. Fleet P3a path.
+        target = (
+            pathlib.Path(target_path).expanduser()
+            if target_path
+            else pathlib.Path.home() / ".mcp.json"
+        )
+
+        existing: dict = {}
+        if target.exists():
+            try:
+                existing = json.loads(target.read_text(encoding="utf-8") or "{}")
+            except json.JSONDecodeError as exc:
+                raise click.ClickException(
+                    f"target {target} exists but is not valid JSON: {exc}"
+                ) from None
+            if not isinstance(existing, dict):
+                raise click.ClickException(
+                    f"target {target} root is not a JSON object "
+                    f"(got {type(existing).__name__})"
+                )
+
+        merged = dict(existing)
+        servers = dict(merged.get("mcpServers") or {})
+        before_entry = servers.get(_CLI_NAME)
+        servers[_CLI_NAME] = snippet["mcpServers"][_CLI_NAME]
+        merged["mcpServers"] = servers
+
+        changed = before_entry != servers[_CLI_NAME]
+        action = (
+            "noop (entry already present)"
+            if not changed
+            else ("would update" if before_entry is not None else "would create")
+        )
+
+        new_text = json.dumps(merged, indent=2) + "\n"
+
+        if dry_run:
+            click.echo(f"# dry-run: --apply target={target} action={action}")
+            click.echo(new_text)
+            return
+
+        if not yes and changed:
+            click.confirm(
+                f"Apply scitex-todo MCP entry to {target} ({action})?",
+                abort=True,
+            )
+
+        if not changed:
+            click.echo(f"# noop: {target} already has the scitex-todo entry")
+            return
+
+        # Backup the existing file before write (best-effort; failure to
+        # backup does NOT abort the write — but if the source was unreadable
+        # we already failed above with ClickException).
+        if target.exists():
+            backup = target.with_suffix(target.suffix + ".bak")
+            try:
+                backup.write_text(
+                    target.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+            except OSError:
+                pass
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(new_text, encoding="utf-8")
+        click.echo(f"# applied: {target} updated ({action})")
 
     return mcp_group
 
