@@ -93,7 +93,7 @@ For agent-container's `to_home/_base/.mcp.json` rollout, the per-agent
 `SCITEX_TODO_AGENT` value is templated from the agent's name; see the
 P3a wiring on the agent-container side.
 
-## Tool surface — 15 today, 16 once PR #64 merges
+## Tool surface — 15 today (CLI parity reached via PR #144)
 
 | Tool | Python API | Purpose |
 |---|---|---|
@@ -112,7 +112,7 @@ P3a wiring on the agent-container side.
 | `reopen_task` | `scitex_todo.reopen_task` | Reopen a `done` / `failed` task. |
 | `todo_skills_list` | (skills introspection) | List bundled skills. |
 | `todo_skills_get` | (skills introspection) | Get one bundled skill by name. |
-| `add_comment` *(PR #64)* | `scitex_todo.add_comment` | Convention-A alias for `comment_task` — lands when #64 merges, bringing the doctor count to 16. |
+| `add_comment` *(deferred)* | `scitex_todo.add_comment` | Convention-A alias for `comment_task`. PR #64 not yet merged; CLI parity was reached via PR #144 (`scitex-todo comment`) which wraps the existing `comment_task` MCP tool — agents needing the activity-append do NOT have to wait. |
 
 Discover the live set at runtime:
 
@@ -141,7 +141,8 @@ nudge wire.
 # 1. The CLI resolves + the FastMCP server self-diagnoses.
 scitex-todo --version
 scitex-todo mcp doctor
-# expected: status: ok / fastmcp: 3.x / tools: 15 (or 16 post-PR #64)
+# expected: status: ok / fastmcp: 3.x / tools: 15
+# (PR #64 would add `add_comment` as #16; deferred — CLI parity reached via PR #144)
 
 # 2. The MCP wire reaches the live store.
 SCITEX_TODO_AGENT=proj-<you> scitex-todo list-tasks --by-agent --json | head
