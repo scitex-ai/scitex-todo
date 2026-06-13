@@ -4,6 +4,43 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.8] - 2026-06-13 — Fleet-adoption multipliers (PreToolUse hook + skill propagation)
+
+Ships the two **fleet-adoption multipliers** so every other agent in the
+fleet uses scitex-todo correctly without per-agent buy-in. Lead a2a
+`1b5c3b4d` prioritized both over the UX cards because they move the
+operator's single-shared-store doctrine forward across the WHOLE fleet
+in one bump.
+
+### Added
+
+- **Bundled PreToolUse hook** (PR #160): a bash script in the skill
+  bundle (`_skills/scitex-todo/hooks/pre-tool-use/`) that any agent
+  drops into `~/.claude/hooks/pre-tool-use/` and immediately gets
+  the redirect. Intercepts Claude Code's built-in `TaskCreate`,
+  `TaskUpdate`, `TaskList` — exits non-zero with a clear stderr
+  redirect to the equivalent scitex-todo CLI verb. ENFORCES the
+  doctrine, not just warns. Opt-out: `CC_ALLOW_CLAUDE_TASKLIST=1`
+  for rare legit uses. 8 mock-free subprocess tests.
+- **Canonical skill manifest + `scitex-todo skills propagate`**
+  (PR #161): `_skills/manifest.yaml` lists which scitex-todo skill
+  IDs every fleet agent should require. `scitex-todo skills
+  propagate --agents-dir <DIR>` walks a tree of agent-container
+  `spec.yaml` files and idempotently appends those IDs to each
+  agent's `required_skills` list (ruamel.yaml round-trip preserves
+  comments; SciTeX audit-cli §2 `--dry-run` + `-y`). Supports both
+  `metadata.labels.skills` (v3) and `spec.required_skills` (older)
+  shapes. 16 mock-free CliRunner tests.
+- **Runbook leaf §22 — fleet-wide skill propagation**: documents
+  the canonical manifest path + the agent-container integration.
+
+### Provenance
+
+PR #160 + #161 — fleet-adoption multipliers off the lead a2a
+`1b5c3b4d` triage. Co-located with the existing P3a chain
+(PR #155 / #156 / #158 / #159) so a single PyPI bump unlocks the
+WHOLE single-shared-store + agent-redirect story for agent-container.
+
 ## [0.7.7] - 2026-06-13 — P3a fleet host-store wire-up + board-reconciliation verbs
 
 Cuts the **P3a throughput unlock** (host scitex-todo store reachable from
