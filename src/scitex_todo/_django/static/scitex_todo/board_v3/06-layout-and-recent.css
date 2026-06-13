@@ -69,7 +69,7 @@
   padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid var(--gold);
-  background: rgba(255, 193, 7, 0.10);
+  background: rgba(255, 193, 7, 0.1);
   color: var(--gold);
   font-size: 0.78rem;
   font-weight: 700;
@@ -79,7 +79,7 @@
     transform 100ms ease;
 }
 .filt-recent-count:hover {
-  background: rgba(255, 193, 7, 0.20);
+  background: rgba(255, 193, 7, 0.2);
   transform: scale(1.03);
 }
 .filt-recent-count--on {
@@ -146,7 +146,7 @@
   transition: background 80ms ease;
 }
 .tbl tbody tr.tbl-row:hover {
-  background: rgba(109, 76, 173, 0.10);
+  background: rgba(109, 76, 173, 0.1);
 }
 .tbl-row--working td.tbl-status {
   color: var(--green);
@@ -213,7 +213,7 @@
 .tbl-blocker--operator-decision {
   border-color: var(--gold);
   color: var(--gold);
-  background: rgba(255, 193, 7, 0.10);
+  background: rgba(255, 193, 7, 0.1);
   font-weight: 700;
 }
 
@@ -277,4 +277,68 @@
   margin-top: 12px;
   border-top: 1px dashed var(--border);
   padding-top: 10px;
+}
+
+/* === Multi-select board toolbar (PR(h) Stage 1) ===========================
+   Board card todo-multiselect-batch-ops, lead a2a 1ebc792c. Always
+   rendered; quiet at zero selection (the Status dropdown stays disabled
+   until N>=1). When --active, the toolbar gains a soft accent border so
+   the operator sees "you have a selection" at a glance. */
+.board-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 12px;
+  margin: 4px 12px 6px;
+  font-size: 12px;
+  color: var(--muted, #888);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+.board-toolbar--active {
+  background: var(--accent-soft, #fff7e6);
+  border-color: var(--accent, #d99700);
+  color: var(--accent-strong, #b97400);
+}
+.board-toolbar-all,
+.board-toolbar-status-label,
+.board-toolbar-count-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+.board-toolbar-sep {
+  opacity: 0.4;
+}
+.board-toolbar select#board-toolbar-status {
+  font-size: 12px;
+  padding: 2px 4px;
+}
+.board-toolbar select#board-toolbar-status:disabled,
+.board-toolbar-clear:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.board-toolbar-clear {
+  font-size: 12px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+/* === Per-row card checkbox ===============================================
+   Small selector that sits at the left of the card-top row. Stays
+   un-checked by default so the card visual changes only when the
+   operator opts in. cursor:pointer + a small click target so the
+   affordance is obvious without crowding the existing card chrome. */
+.card-select {
+  margin: 0 4px 0 0;
+  cursor: pointer;
+  flex: 0 0 auto;
 }

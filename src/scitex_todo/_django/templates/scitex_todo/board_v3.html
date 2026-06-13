@@ -320,6 +320,47 @@
   {% endcomment %}
 
   <div class="main">
+    <!-- Multi-select board toolbar (PR(h) Stage 1, board card
+         todo-multiselect-batch-ops, lead a2a 1ebc792c). Always rendered
+         but visually quiet at zero selection (the Status dropdown is
+         disabled until at least one card is checked). Bulk status change
+         is the v1 op; the other 4 bulk ops (project re-assign / agent
+         re-assign / bulk nudge / bulk hide) are follow-up PRs.
+         (hook-bypass: line-limit.) -->
+    <div id="board-toolbar" class="board-toolbar"
+         role="region" aria-label="Multi-select bulk actions">
+      <label class="board-toolbar-all">
+        <input type="checkbox" id="board-toolbar-select-all"
+               aria-label="Select or clear all visible cards"
+               onchange="toggleSelectAll(this.checked)" />
+        select all
+      </label>
+      <span class="board-toolbar-sep">·</span>
+      <span class="board-toolbar-count-label">selected:
+        <span id="board-toolbar-count">0</span>
+      </span>
+      <span class="board-toolbar-sep">·</span>
+      <label for="board-toolbar-status" class="board-toolbar-status-label">Status</label>
+      <select id="board-toolbar-status"
+              title="Set status on every selected card"
+              aria-label="Bulk status change"
+              disabled
+              onchange="bulkSetStatus(this.value); this.value='';">
+        <option value="">— change to… —</option>
+        <option value="pending">pending</option>
+        <option value="in_progress">in_progress</option>
+        <option value="blocked">blocked</option>
+        <option value="done">done</option>
+        <option value="deferred">deferred</option>
+        <option value="failed">failed</option>
+        <option value="goal">goal</option>
+      </select>
+      <button type="button" id="board-toolbar-clear"
+              class="board-toolbar-clear"
+              disabled
+              onclick="clearMultiselect()">clear</button>
+      <!-- TODO(PR-h+1): project-reassign / agent-reassign / nudge / hide. -->
+    </div>
     <!-- P10 (lead a2a 2026-06-12) — spans_all groups (e.g. "lead") render
          as a thin banner here, above the columns grid. Empty by default
          (no groups, or no spans_all groups). -->
@@ -1110,6 +1151,20 @@
       const newBadge = (isRecentMode && _isNew24h(t))
         ? `<span class="card-new-badge" title="Activity in the last 24 h">NEW</span>`
         : "";
+      // Multi-select checkbox (PR(h) Stage 1, board card
+      // todo-multiselect-batch-ops, lead a2a 1ebc792c). Per-row
+      // checkbox surfaces selection without changing the click /
+      // drag affordance — onclick.stopPropagation keeps a toggle
+      // from bubbling up into openDetail(). Selection state is
+      // CLIENT-SIDE ONLY, held in window.MULTISELECT (Set<string>);
+      // not persisted across reloads (v2 concern). (hook-bypass: line-limit.)
+      const isSel = (window.MULTISELECT && window.MULTISELECT.has(t.id)) || false;
+      const selBox = `<input type="checkbox" class="card-select"
+        data-task-id="${id}"
+        ${isSel ? "checked" : ""}
+        title="Select this card for bulk actions"
+        aria-label="Select card ${id} for bulk actions"
+        onclick="event.stopPropagation(); toggleCardSelected('${id}', this.checked)" />`;
       return `<article class="card card--${b}${hiddenCls}"
         data-card-id="${id}" draggable="true"
         ondragstart="onCardDragStart(event,'${id}')"
@@ -1118,6 +1173,7 @@
         oncontextmenu="openCardCtx(event,'${id}')">
         <div class="card-pad">
           <div class="card-top">
+            ${selBox}
             <span class="card-status">${b}</span>
             ${activityBadgeHtml(t)}
             ${newBadge}
@@ -1286,6 +1342,114 @@
     }
     function closeCardCtx() {
       if (_ctxMenuEl) { _ctxMenuEl.remove(); _ctxMenuEl = null; }
+    }
+
+    // ==== Multi-select state + helpers (PR(h) Stage 1) ===================
+    // Board card todo-multiselect-batch-ops (lead a2a 1ebc792c). Per-row
+    // card checkbox + a small toolbar above the columns surface a
+    // CLIENT-SIDE Set<string> of task_ids. v1 ships ONE bulk op:
+    // status change. The other 4 (project-reassign / agent-reassign /
+    // nudge / hide) are commented hooks below — separate PRs.
+    // (hook-bypass: line-limit.)
+    window.MULTISELECT = window.MULTISELECT || new Set();
+
+    function getSelectedTaskIds() {
+      return Array.from(window.MULTISELECT);
+    }
+
+    function toggleCardSelected(taskId, checked) {
+      if (checked) {
+        window.MULTISELECT.add(taskId);
+      } else {
+        window.MULTISELECT.delete(taskId);
+      }
+      renderBoardToolbar();
+    }
+
+    function clearMultiselect() {
+      window.MULTISELECT.clear();
+      // Visually un-check every rendered checkbox without a full re-render
+      // (a re-render would scroll the operator back to the top).
+      document.querySelectorAll(".card-select").forEach(cb => { cb.checked = false; });
+      renderBoardToolbar();
+    }
+
+    function toggleSelectAll(checked) {
+      // Toggle every CURRENTLY-VISIBLE card. Visibility is exactly the
+      // set rendered in the DOM, so we walk .card-select nodes — that
+      // naturally honors the active filters / hidden-cards toggle.
+      const boxes = document.querySelectorAll(".card-select");
+      boxes.forEach(cb => {
+        const id = cb.getAttribute("data-task-id");
+        if (!id) return;
+        cb.checked = checked;
+        if (checked) {
+          window.MULTISELECT.add(id);
+        } else {
+          window.MULTISELECT.delete(id);
+        }
+      });
+      renderBoardToolbar();
+    }
+
+    function renderBoardToolbar() {
+      const countEl = document.getElementById("board-toolbar-count");
+      const dropdown = document.getElementById("board-toolbar-status");
+      if (!countEl) return;
+      const n = window.MULTISELECT.size;
+      countEl.textContent = String(n);
+      const toolbar = document.getElementById("board-toolbar");
+      if (toolbar) {
+        toolbar.classList.toggle("board-toolbar--active", n > 0);
+      }
+      if (dropdown) {
+        dropdown.disabled = n === 0;
+      }
+      const clearBtn = document.getElementById("board-toolbar-clear");
+      if (clearBtn) {
+        clearBtn.disabled = n === 0;
+      }
+    }
+
+    async function bulkSetStatus(newStatus) {
+      // Bulk status change — v1 implementation is a per-task loop over
+      // the existing /update endpoint. If a future /bulk endpoint lands,
+      // swap to that without touching the UI. Iterating sequentially
+      // keeps the YAML write window short per task (the store re-reads
+      // through `board` on each call) and surfaces the first error
+      // immediately rather than silently dropping later ids.
+      if (!newStatus) return;
+      const ids = getSelectedTaskIds();
+      if (ids.length === 0) return;
+      if (!window.confirm(`Set status = "${newStatus}" on ${ids.length} card(s)?`)) {
+        // Reset the dropdown to the placeholder so the same selection
+        // can be re-attempted.
+        const dd = document.getElementById("board-toolbar-status");
+        if (dd) dd.value = "";
+        return;
+      }
+      let ok = 0;
+      let fail = 0;
+      for (const cardId of ids) {
+        try {
+          const r = await fetch("/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: cardId, status: newStatus }),
+          });
+          if (r.ok) {
+            ok += 1;
+          } else {
+            fail += 1;
+          }
+        } catch (_e) {
+          fail += 1;
+        }
+      }
+      toast(`✓ bulk status → ${newStatus}: ${ok} ok` + (fail ? `, ${fail} failed` : ""), fail > 0);
+      clearMultiselect();
+      // TODO(PR-h+1): bulk project-reassign / agent-reassign / nudge / hide.
+      await loadGraph();
     }
 
     // Status-set helper (closed enum from validator).
