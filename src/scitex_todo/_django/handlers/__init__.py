@@ -20,6 +20,7 @@ from .nudge import handle_nudge
 from .priority import handle_priority
 from .reopen import handle_reopen
 from .resolve import handle_resolve
+from .stale import handle_archive, handle_stale
 
 # endpoint string -> handler function
 HANDLERS = {
@@ -37,6 +38,10 @@ HANDLERS = {
     "resolve": handle_resolve,
     "reopen": handle_reopen,
     "nudge": handle_nudge,
+    # Stale-cards review panel + archive button (2026-06-13, operator
+    # via lead a2a). HTTP twin of CLI `close --reason` (PR #151).
+    "stale": handle_stale,
+    "archive": handle_archive,
 }
 
 # Endpoints that work without a loaded board (health checks).
