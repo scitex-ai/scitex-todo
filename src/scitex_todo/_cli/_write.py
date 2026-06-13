@@ -464,13 +464,14 @@ def register(main: click.Group) -> None:
     filter flags from the old `list` verb were folded in there; the `list`
     Click verb was removed per audit §1 — bare transitive verb at top level).
     """
-    from . import _admin, _comment
+    from . import _admin, _close, _comment
 
     main.add_command(add_cmd, name="add")
     main.add_command(update_cmd, name="update")
     main.add_command(done_cmd, name="done")
     main.add_command(summary_cmd, name="summary")
     _comment.register(main)
+    _close.register(main)
     _admin.register(main)
 
 
