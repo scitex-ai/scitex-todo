@@ -349,4 +349,57 @@ class TestActivityBucketBadge:
         assert ".activity-badge--stale" in css_text
 
 
+# -----------------------------------------------------------------------------
+# Stale Review FE panel — operator-requested recurring stale-cards review
+# (operator via lead a2a 2026-06-13; backend half is PR #153)
+# -----------------------------------------------------------------------------
+
+
+class TestStaleReviewPanel:
+    """Pins for the Stale Review layout + Archive button.
+
+    Backend half is PR #153 (/stale + /archive endpoints). This FE
+    half adds a 4th layout button ("🧹 Stale"), a fetch+render
+    function that pulls from /stale, a per-row Archive button that
+    POSTs to /archive (HTTP twin of CLI `close --reason` PR #151),
+    and a small toolbar with the days + include_no_timestamp knobs.
+    """
+
+    def test_stale_layout_button_in_filterbar(self, board_text):
+        assert 'id="f-layout-stale"' in board_text
+
+    def test_stale_layout_button_glyph(self, board_text):
+        assert "🧹 Stale" in board_text
+
+    def test_stale_render_helper_defined(self, board_text):
+        assert "function _renderStaleView" in board_text
+
+    def test_stale_render_dispatched_from_render(self, board_text):
+        assert "_renderStaleView(canvas)" in board_text
+
+    def test_stale_fetch_target_endpoint(self, board_text):
+        assert '"/scitex-todo/stale?"' in board_text
+
+    def test_archive_helper_defined(self, board_text):
+        assert "async function archiveStaleCard" in board_text
+
+    def test_archive_post_target_endpoint(self, board_text):
+        assert '"/scitex-todo/archive"' in board_text
+
+    def test_archive_requires_reason(self, board_text):
+        assert "Archive requires a non-empty reason" in board_text
+
+    def test_stale_toolbar_days_input_present(self, board_text):
+        assert 'id="stale-days"' in board_text
+
+    def test_stale_toolbar_include_no_timestamp_checkbox_present(self, board_text):
+        assert 'id="stale-incnotime"' in board_text
+
+    def test_stale_wrap_css_class_defined(self, css_text):
+        assert ".stale-wrap" in css_text
+
+    def test_stale_archive_btn_css_class_defined(self, css_text):
+        assert ".stale-archive-btn" in css_text
+
+
 # EOF
