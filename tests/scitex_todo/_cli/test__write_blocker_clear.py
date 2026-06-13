@@ -107,6 +107,7 @@ def test_none_sentinel_case_insensitive(store_with_blocked_task):
 def test_setting_blocker_to_valid_enum_value_still_works(tmp_path: Path):
     # Arrange — round-trip a SET (not a clear) to make sure the new
     # ParamType doesn't break the existing closed-enum behavior.
+    # Uses `compute` (a real VALID_BLOCKERS member, see _model.py).
     store = tmp_path / "tasks.yaml"
     add_task(store=store, id="t-set", title="set blocker", status="pending")
     runner = CliRunner()
@@ -116,11 +117,11 @@ def test_setting_blocker_to_valid_enum_value_still_works(tmp_path: Path):
         [
             "update", "t-set", "--tasks", str(store),
             "--status", "blocked",
-            "--blocker", "ci-run", "-y",
+            "--blocker", "compute", "-y",
         ],
     )
     # Assert
-    assert _read_back(store, "t-set").get("blocker") == "ci-run"
+    assert _read_back(store, "t-set").get("blocker") == "compute"
 
 
 # === invalid values STILL rejected (no closed-enum bypass) ==================
