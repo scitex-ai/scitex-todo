@@ -45,6 +45,7 @@
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/04-collapse-and-groups.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/05-responsive.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/06-layout-and-recent.css' %}">
+<link rel="stylesheet" href="{% static 'scitex_todo/board_v3/07-toolbar-groups.css' %}">
 {# combobox.css (loaded below the page-CSS so its specificity sits ON TOP if needed) #}
 <link rel="stylesheet" href="{% static 'scitex_ui/css/app/combobox.css' %}">
 <script defer src="{% static 'scitex_ui/js/app/combobox.js' %}"></script>
@@ -110,8 +111,11 @@
       <span class="small"><span class="live-dot"></span>LIVE</span>
     </div>
 
-    <div class="fb-center">
-      <!-- Search-as-launcher (P1, lead brief 2026-06-12) — the PRIMARY
+    <div class="fb-center stx-todo-filterbar__group stx-todo-filterbar__group--search">
+      <!-- SEARCH/FILTER group (board UI overhaul part 2, 2026-06-14): the
+           search input + Filters popover share the center band so the
+           operator's two query-narrowing tools live next to each other.
+           Search-as-launcher (P1, lead brief 2026-06-12) — the PRIMARY
            filterbar entry point. -->
       <span class="filt-search-wrap" id="f-search-wrap">
         <input class="filt filt-search" id="f-search" type="search"
@@ -126,12 +130,11 @@
         <ul class="search-suggest" id="search-suggest" role="listbox"
             aria-label="Search suggestions" hidden></ul>
       </span>
-    </div>
-
-    <div class="fb-right">
-    <!-- P2 (lead brief 2026-06-12) — filter-UX collapse. Six filter
-         dropdowns live inside a single "🔧 Filters (N active)" popover. -->
-    <details id="filt-popover-wrap" class="filt-popover">
+      <!-- P2 (lead brief 2026-06-12) — filter-UX collapse. Six filter
+           dropdowns live inside a single "🔧 Filters (N active)" popover.
+           Moved into the SEARCH/FILTER center group (board UI overhaul
+           part 2) so query-narrowing controls cluster. -->
+      <details id="filt-popover-wrap" class="filt-popover">
       <summary id="filt-popover-summary"
                title="Open filter popover (project / host / status / blocker / agent / date)">
         🔧 Filters <span id="filt-active-count">(0)</span> ▾
@@ -191,6 +194,20 @@
         </div>
       </div>
     </details>
+    </div>{# end .fb-center / SEARCH-FILTER group #}
+
+    <div class="fb-right">
+    {# board UI overhaul part 2 (2026-06-14, operator complaint via lead
+       a2a `d1af161e`) — explicit subgroups in the right band so the
+       controls stop visually colliding:
+         VIEW    = Layout + Sort + Group
+         STATUS  = recent-count + Reload + hide-project + blocking-me + hidden
+         PRIMARY = + Add Task (separated by a divider, brand-accent)
+       The legacy `.fb-right` keeps its wrap-friendly flex; the new
+       `.stx-todo-filterbar__group--*` wrappers add the breathing room
+       + dividers. #}
+    <div class="stx-todo-filterbar__group stx-todo-filterbar__group--view"
+         role="group" aria-label="View controls — layout, sort, group">
     <!-- P9 (lead brief 2026-06-12) — sort-by control. The headline use
          is "sort by deadline" (pairs with the P4 deadline schema landing
          later). For now the operator can sort by deadline (parsed from
@@ -242,15 +259,6 @@
         <option value="title">title (A→Z)</option>
       </select>
     </span>
-    <!-- 🆕 N new in 24h — visible counter that lights up regardless of
-         the selected sort. Operator TG 12461 (parity with /legacy's
-         Recent tab) — surfaces "how many came in since yesterday" at
-         a glance. Click to set Sort = Recent. -->
-    <span class="filt-recent-count" id="recent-count-pill"
-          title="Click to switch Sort to Recent (newest first)"
-          onclick="setSortRecent()" style="display:none">
-      🆕 <span id="recent-count-value">0</span> new in 24 h
-    </span>
     <!-- P10 (lead a2a 2026-06-12) — group-by toggle. Off = today's flat
          column view. On = columns cluster under group headers (define
          clusters via the new `groups:` top-level in tasks.yaml). Empty
@@ -263,12 +271,22 @@
         <option value="on">by project group</option>
       </select>
     </span>
+    </div>{# end VIEW group #}
+
+    <span class="stx-todo-filterbar__divider" aria-hidden="true"></span>
+
+    <div class="stx-todo-filterbar__group stx-todo-filterbar__group--status"
+         role="group" aria-label="Status controls — new-task badge, reload, visibility">
+    <!-- 🆕 N new in 24h — visible counter that lights up regardless of
+         the selected sort. Operator TG 12461 (parity with /legacy's
+         Recent tab) — surfaces "how many came in since yesterday" at
+         a glance. Click to set Sort = Recent. -->
+    <span class="filt-recent-count" id="recent-count-pill"
+          title="Click to switch Sort to Recent (newest first)"
+          onclick="setSortRecent()" style="display:none">
+      🆕 <span id="recent-count-value">0</span> new in 24 h
+    </span>
     <button id="reload" class="reload-btn" onclick="loadGraph()">Reload</button>
-    <!-- Add Task — operator-CRUD wiring (TG 344): one-click new-task
-         entry from the filterbar. Opens the #add-task-backdrop modal
-         below; POST /create on submit; loadGraph() refresh. -->
-    <button id="add-task-btn" class="add-task-btn" onclick="openAddTaskModal()"
-            title="Add a new task (Cmd/Ctrl-N)">+ Add Task</button>
     <!-- Project-hide — per-project COLUMN hide (operator TG 344
          "プロジェクトの crud/hide"). Soft, client-side, localStorage-
          backed; mirror the per-card hide pattern below so hidden
@@ -297,6 +315,21 @@
         <div class="hidden-list-empty">No hidden cards.</div>
       </div>
     </details>
+    </div>{# end STATUS group #}
+
+    <span class="stx-todo-filterbar__divider" aria-hidden="true"></span>
+
+    <div class="stx-todo-filterbar__primary" role="group"
+         aria-label="Primary action — add a new task">
+    <!-- Add Task — operator-CRUD wiring (TG 344): one-click new-task
+         entry from the filterbar. Opens the #add-task-backdrop modal
+         below; POST /create on submit; loadGraph() refresh.
+         Promoted to the right-most "PRIMARY ACTION" zone (board UI
+         overhaul part 2, 2026-06-14) so the operator's most-used
+         button pops with the brand accent. -->
+    <button id="add-task-btn" class="add-task-btn" onclick="openAddTaskModal()"
+            title="Add a new task (Cmd/Ctrl-N)">+ Add Task</button>
+    </div>{# end PRIMARY action zone #}
     </div>{# end .fb-right #}
   </div>{# end .filterbar #}
 
