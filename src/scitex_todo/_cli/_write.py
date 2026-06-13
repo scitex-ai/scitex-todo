@@ -51,6 +51,47 @@ _KIND_CHOICE = click.Choice(list(VALID_KINDS), case_sensitive=True)
 _BLOCKER_CHOICE = click.Choice(list(VALID_BLOCKERS), case_sensitive=True)
 
 
+class _BlockerOrClearParamType(click.ParamType):
+    """`--blocker` accepting closed enum values + clear-the-field sentinels.
+
+    Dev-flagged gap (lead a2a `f5a54f85`): the strict `_BLOCKER_CHOICE`
+    rejects `""` and `"none"` at parse time, so there was no CLI verb
+    form for "clear this card's blocker field". Cards that needed to
+    FLIP off a blocker (e.g. campaign-* cards once the blocker
+    resolved) couldn't be closed from the CLI without hand-editing.
+
+    Fix: a dedicated ParamType for the UPDATE verb that honours `""`
+    and `"none"` (case-insensitive) as the clear-the-field sentinel —
+    both convert to `""`, which the existing CLI-layer translation
+    (`fields[key] = None if value == "" else value`) turns into
+    `update_task(blocker=None)`, which the Python API treats as field
+    deletion. Closed enum values pass through unchanged.
+
+    Not used on the ADD verb — you cannot clear a field on insert.
+    """
+
+    name = "blocker_or_clear"
+
+    def convert(self, value, param, ctx):
+        if value is None:
+            return None
+        s = str(value)
+        if s == "" or s.lower() == "none":
+            return ""
+        if s in VALID_BLOCKERS:
+            return s
+        self.fail(
+            f"{s!r} is not one of {VALID_BLOCKERS}, '', or 'none'",
+            param, ctx,
+        )
+
+    def get_metavar(self, param):
+        return "[" + "|".join(list(VALID_BLOCKERS) + ["", "none"]) + "]"
+
+
+_BLOCKER_OR_CLEAR = _BlockerOrClearParamType()
+
+
 def _emit(payload, *, as_json: bool, human: str) -> None:
     """Print `payload` as JSON or `human` as text, per the --json flag."""
     if as_json:
@@ -243,7 +284,17 @@ def add_cmd(
 @click.option("--agent", default=None, help="Owning agent (forward-compat alias for --assignee).")
 @click.option("--goal", default=None)
 @click.option("--last-activity", "last_activity", default=None)
-@click.option("--blocker", type=_BLOCKER_CHOICE, default=None)
+@click.option(
+    "--blocker",
+    type=_BLOCKER_OR_CLEAR,
+    default=None,
+    help=(
+        "Closed enum (when status=blocked), OR '' / 'none' to CLEAR an "
+        "existing blocker on the card. Dev-flagged gap fix: previously "
+        "the strict closed-enum rejected '' / 'none' so there was no "
+        "CLI form for clearing the field."
+    ),
+)
 @click.option("--pr-url", "pr_url", default=None)
 @click.option("--issue-url", "issue_url", default=None)
 @click.option("--kind", type=_KIND_CHOICE, default=None)
