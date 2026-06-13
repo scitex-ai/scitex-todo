@@ -162,7 +162,35 @@ CLOSE WITH REASON     scitex-todo close <id> --reason "<short why>"
 ADD COMMENT           scitex-todo comment <id> "<text>"
 DRY-RUN ANY MUTATION  add --dry-run before the real call
 STORE OVERRIDE        --tasks <path>  OR  SCITEX_TODO_TASKS=<path>
+
+# Fleet enablement (P3a, one-shot register the MCP server) ─ PR #155:
+PREVIEW REGISTRATION  scitex-todo mcp install --apply --dry-run
+REGISTER MCP SERVER   scitex-todo mcp install --apply -y
+REGISTER PROJECT MCP  scitex-todo mcp install --apply --to ./.mcp.json -y
 ```
+
+## 7.5. Fleet MCP enablement (P3a, lead-coordinated rollout)
+
+Each agent's `.mcp.json` needs the `scitex-todo` MCP server registered so the 16 board tools (`add_task` / `update_task` / `comment_task` / `list_tasks` / `delete_task` / `restore_task` / `resolve_task` / etc., see `21_fleet-mcp-rollout.md`) appear in its session. **PR #155** shipped a one-command idempotent enabler:
+
+```sh
+# Preview (dry-run; does not touch the file):
+scitex-todo mcp install --apply --dry-run
+
+# Commit (idempotent merge into ~/.mcp.json; preserves sibling servers):
+scitex-todo mcp install --apply -y
+
+# Project-scope target (when the agent works inside a repo with its own .mcp.json):
+scitex-todo mcp install --apply --to ./.mcp.json -y
+```
+
+Behavior guarantees:
+- **Idempotent** — re-running prints `# noop: target already has the scitex-todo entry`.
+- **Non-destructive** — sibling MCP server entries are preserved.
+- **Safe** — a `.mcp.json.bak` backup is created before overwriting an existing file.
+- **Fail-loud** — invalid JSON or a non-object root in the target raises a `ClickException` (clean non-zero exit, no traceback).
+
+Lead-driven coordination (broadcast-rollout shape): the lead a2a's every agent with the dry-run line first (each agent reports the diff back), then the commit line. The skill bundle (PR #149) is already shipped, so consuming agents have `21_fleet-mcp-rollout.md` locally to confirm the verb shape before they run `--apply`.
 
 ---
 
@@ -179,9 +207,12 @@ STORE OVERRIDE        --tasks <path>  OR  SCITEX_TODO_TASKS=<path>
 ## 9. Provenance
 
 - Operator directive 2026-06-13 (via lead a2a) — "make every agent reconcile their project's cards; 85 merges / 56 marked done is the drift signal".
+- Operator "all agents use scitex-todo, no parallel todo formats" → P3a fleet MCP rollout.
 - Verb gap closure: PR #151 (`feat(cli): close verb`).
 - Comment verb: PR #144.
 - Skill bundle refresh: PR #149.
-- Stale-list generator: ad-hoc Python at `proj-scitex-todo` (not yet a CLI verb).
+- Recurring stale-review board panel: PR #153 (backend `/stale` + `/archive`) + PR #154 (FE 🧹 Stale layout + Archive button).
+- Fleet MCP enabler: PR #155 (`mcp install --apply`).
+- Stale-list generator: ad-hoc Python at `proj-scitex-todo` (CLI verb is a follow-up).
 
 End-of-file.
