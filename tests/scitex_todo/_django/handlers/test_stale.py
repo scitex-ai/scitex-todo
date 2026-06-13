@@ -69,7 +69,6 @@ tasks:
   - id: vague-card
     title: 'tbd'
     status: pending
-    project: ''
   - id: done-card
     title: 'completed card should never be flagged'
     status: done
