@@ -177,6 +177,10 @@ monitors. Read 32 before wiring up a new agent's harness.
 - [21_fleet-mcp-rollout.md](21_fleet-mcp-rollout.md) — **canonical
   `.mcp.json` block + binding "MCP-only durable todos" mandate** for
   the fleet-wide P3a rollout (agent-container `to_home/_base/.mcp.json`)
+- [22_skills-propagation.md](22_skills-propagation.md) — **fleet-wide
+  `required_skills` propagation** via the bundled manifest +
+  `scitex-todo skills propagate --agents-dir <DIR>` idempotent sweep.
+  Sister artifact to 21 (which covers the `.mcp.json` side).
 
 ### Architecture (30+)
 - [30_two-tier-conventions-and-write-protocol.md](30_two-tier-conventions-and-write-protocol.md)
