@@ -4,6 +4,39 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.10] - 2026-06-13 — Durable writer safety + CLI: --blocker '' clear
+
+### Fixed
+
+- **Writer: post-dump round-trip validation** (PR #166, lead a2a
+  `d5809cd3`) — after the 2026-06-13 corruption episode where
+  `~/.scitex/todo/tasks.yaml` was found truncated mid-string at line
+  ~2784 and recovered by hand. Audit: the existing writer already had
+  pre-write `_validate_tasks`, atomic-rename (tmp + fsync +
+  `os.replace`), `fcntl.flock`, and tmp-cleanup-on-error. NEW LAYER:
+  before `os.replace`, the writer now REPARSES the just-dumped tmp
+  file from disk via ruamel and verifies both (a) it parses cleanly
+  and (b) the reparsed task count matches the in-memory count. Either
+  failure aborts with a `RuntimeError` and the canonical file is left
+  untouched — never promote suspect bytes into the SSoT. 7 mock-free
+  subprocess-based tests pin the contract (kill-mid-dump leaves
+  canonical byte-identical; failed pre-write doesn't create a
+  canonical file).
+- **CLI: `--blocker ''`/`'none'` clears the field** (PR #165). Dev
+  a2a (via lead `f5a54f85`): the strict `_BLOCKER_CHOICE` rejected
+  `""` and `"none"` at parse time so there was no CLI form for
+  clearing a card's blocker — `campaign-*` cards needing to flip a
+  blocker off couldn't be closed from the CLI. New
+  `_BlockerOrClearParamType` on the UPDATE verb honours both
+  sentinels; ADD verb keeps the strict closed enum (you can't clear
+  on insert). 7 mock-free CliRunner tests.
+
+### Provenance
+
+PR #166 + #165. Lead a2a `d5809cd3` + `f5a54f85`. The writer-safety
+fix is the structural fix for SSoT-write hazard; the CLI clear-gap
+fix closes the dogfooded blocker that surfaced from dev's reconcile.
+
 ## [0.7.9] - 2026-06-13 — Fleet-adoption multiplier #3: PR-merge recording mandate
 
 Closes the **board-recording gap** surfaced by the 2026-06-13 reconciliation
