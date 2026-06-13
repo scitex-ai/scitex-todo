@@ -279,6 +279,100 @@
   padding-top: 10px;
 }
 
+/* ── Stale Review layout (2026-06-13, operator via lead a2a) ───────
+ * Standing-section that surfaces stale/orphaned PENDING cards so the
+ * operator can archive them WITH a reason recorded. Pulls from GET
+ * /stale (PR #153); per-row Archive button posts to /archive (HTTP
+ * twin of CLI close-with-reason verb in PR #151). */
+.stale-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+}
+.stale-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+.stale-tb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}
+.stale-tb-reload {
+  margin-left: auto;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.stale-tb-reload:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.stale-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  padding: 2px 4px;
+}
+.stale-byproj {
+  display: inline-block;
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.82rem;
+}
+.stale-tbl th,
+.stale-tbl td {
+  font-size: 0.88rem;
+}
+.stale-id {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.82rem;
+  color: var(--accent);
+}
+.stale-id a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+}
+.stale-id a:hover {
+  color: var(--text);
+}
+.stale-reasons {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.stale-archive-btn {
+  background: var(--danger, #c33);
+  color: #fff;
+  border: 0;
+  border-radius: 4px;
+  padding: 3px 9px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.stale-archive-btn:hover {
+  filter: brightness(1.1);
+}
+.stale-archive-btn:active {
+  transform: translateY(1px);
+}
+
 /* === Multi-select board toolbar (PR(h) Stage 1) ===========================
    Board card todo-multiselect-batch-ops, lead a2a 1ebc792c. Always
    rendered; quiet at zero selection (the Status dropdown stays disabled

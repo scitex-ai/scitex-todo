@@ -212,6 +212,14 @@
                 data-layout="table" onclick="onLayoutChange('table')"
                 role="radio" aria-checked="false"
                 title="Flat rows view">📑 Table</button>
+        <!-- Stale Review (2026-06-13, operator via lead a2a) — recurring
+             stale-cards review panel. Pulls from GET /stale; per-row
+             [Archive] button posts to /archive (HTTP twin of the CLI
+             `close --reason` verb shipped in PR #151). -->
+        <button type="button" class="filt-layout-btn" id="f-layout-stale"
+                data-layout="stale" onclick="onLayoutChange('stale')"
+                role="radio" aria-checked="false"
+                title="Stale cards review — archive obsolete pending cards with a reason">🧹 Stale</button>
       </div>
     </span>
     <span class="filt-sort">
@@ -1696,6 +1704,11 @@
         _renderTableView(canvas, visible);
       } else if (layout === "graph") {
         _renderGraphView(canvas, visible);
+      } else if (layout === "stale") {
+        // Stale Review layout — pulls its OWN data from /stale (not
+        // the filtered `visible` set) because the criteria are
+        // age/orphan-driven, not the same filter-bar predicates.
+        _renderStaleView(canvas);
       } else {
         _renderColumnView(canvas, visible);
       }
@@ -1884,6 +1897,168 @@
              <tbody>${rows}</tbody>
            </table></div>`
         : `<div class="loading">no tasks match the current filters</div>`;
+    }
+
+    // === Stale Review layout ─────────────────────────────────────────
+    // Operator directive 2026-06-13 (via lead a2a) — a recurring
+    // standing-section that surfaces stale/orphaned PENDING cards so
+    // the operator can archive them WITH a reason recorded (no silent
+    // drops). Pulls from GET /stale (backend PR #153); per-row Archive
+    // button posts to /archive (HTTP twin of CLI `close --reason`
+    // verb in PR #151). Layout-state cache so we don't refetch on
+    // every render() — invalidate via `loadGraph()` reload or after
+    // a successful archive POST.
+    let _STALE_CACHE = null;
+    let _STALE_OPTS = { days: 14, include_no_timestamp: true };
+
+    function _staleFiltersHtml() {
+      const inc = _STALE_OPTS.include_no_timestamp ? "checked" : "";
+      const days = Number(_STALE_OPTS.days || 14);
+      return `<div class="stale-toolbar">
+        <label class="stale-tb-item">Age cutoff (days):
+          <input type="number" id="stale-days" value="${days}" min="0"
+                 style="width:5em" onchange="onStaleDaysChange(event)">
+        </label>
+        <label class="stale-tb-item" title="Hide rows flagged ONLY for missing timestamps (~70% of the default set)">
+          <input type="checkbox" id="stale-incnotime" ${inc}
+                 onchange="onStaleIncNoTimeChange(event)">
+          include rows with no timestamps
+        </label>
+        <button type="button" class="stale-tb-reload" onclick="loadStale()"
+                title="Refetch /stale">↻ refresh</button>
+      </div>`;
+    }
+
+    async function loadStale() {
+      const qs = new URLSearchParams({
+        days: String(_STALE_OPTS.days),
+        include_no_timestamp: String(_STALE_OPTS.include_no_timestamp),
+      });
+      try {
+        const r = await fetch("/scitex-todo/stale?" + qs.toString());
+        if (!r.ok) {
+          _STALE_CACHE = { error: `/stale returned ${r.status}` };
+        } else {
+          _STALE_CACHE = await r.json();
+        }
+      } catch (exc) {
+        _STALE_CACHE = { error: String(exc) };
+      }
+      // Re-render if the operator is currently viewing the stale layout.
+      if ((STATE.layout || "column") === "stale") render();
+    }
+
+    function onStaleDaysChange(ev) {
+      const n = Number(ev.target.value);
+      if (Number.isFinite(n) && n >= 0) {
+        _STALE_OPTS.days = n;
+        loadStale();
+      }
+    }
+
+    function onStaleIncNoTimeChange(ev) {
+      _STALE_OPTS.include_no_timestamp = !!ev.target.checked;
+      loadStale();
+    }
+
+    function _renderStaleView(canvas) {
+      const cache = _STALE_CACHE;
+      // First time hitting this layout — kick off the fetch + show a
+      // loading state. loadStale() will re-render once the data lands.
+      if (cache === null) {
+        canvas.innerHTML = `<div class="stale-wrap">
+          ${_staleFiltersHtml()}
+          <div class="loading">loading stale cards…</div>
+        </div>`;
+        loadStale();
+        return;
+      }
+      if (cache.error) {
+        canvas.innerHTML = `<div class="stale-wrap">
+          ${_staleFiltersHtml()}
+          <div class="loading">stale fetch failed: ${escapeHtml(cache.error)}</div>
+        </div>`;
+        return;
+      }
+      const rows = (cache.stale || []).map(r => {
+        const age = (r.age_days == null) ? "—" : (r.age_days + "d");
+        const reasons = (r.reasons || []).join("; ");
+        return `<tr class="stale-row" data-card-id="${escapeHtml(r.id)}">
+          <td class="stale-id">
+            <a href="#" onclick="event.preventDefault(); openDetail('${escapeHtml(r.id)}')">${escapeHtml(r.id)}</a>
+          </td>
+          <td class="stale-title">${escapeHtml(r.title || "(untitled)")}</td>
+          <td class="stale-project">${escapeHtml(r.project || "—")}</td>
+          <td class="stale-age">${age}</td>
+          <td class="stale-reasons">${escapeHtml(reasons)}</td>
+          <td class="stale-action">
+            <button type="button" class="stale-archive-btn"
+                    onclick="archiveStaleCard('${escapeHtml(r.id)}', '${escapeHtml((r.title||'').replace(/'/g, '&#39;'))}')"
+                    title="Archive this card WITH a reason (close-with-reason — PR #151 verb)">
+              🗄 Archive
+            </button>
+          </td>
+        </tr>`;
+      }).join("");
+      const summary = `<div class="stale-summary">
+        ${cache.total || 0} stale candidates
+        ${Object.entries(cache.by_project || {})
+          .sort((a,b) => b[1]-a[1])
+          .map(([p,c]) => `<span class="stale-byproj">${escapeHtml(p)}: ${c}</span>`)
+          .join("")}
+      </div>`;
+      canvas.innerHTML = `<div class="stale-wrap">
+        ${_staleFiltersHtml()}
+        ${summary}
+        ${(cache.stale && cache.stale.length)
+          ? `<div class="tbl-wrap"><table class="tbl stale-tbl">
+              <thead><tr>
+                <th>id</th><th>title</th><th>project</th>
+                <th>age</th><th>reasons</th><th>action</th>
+              </tr></thead>
+              <tbody>${rows}</tbody>
+            </table></div>`
+          : `<div class="loading">no stale cards match the current criteria 🎉</div>`}
+      </div>`;
+    }
+
+    async function archiveStaleCard(id, title) {
+      // Operator confirm + reason. Verb: scitex-todo close TASK_ID
+      // --reason TEXT (PR #151) — same behavior server-side here.
+      // For v1 we use the browser-native window.prompt; a styled modal
+      // is a follow-up. The reason is REQUIRED (server returns 400 on
+      // empty), so we re-prompt if blank.
+      const reason = window.prompt(
+        `Archive (close with reason) — "${title || id}"\n\n` +
+        `This appends [CLOSED] <reason> to comments[], flips status to deferred,\n` +
+        `and stamps _log_meta.closed_{at,by}. The row stays for audit.\n\n` +
+        `Enter a short reason (REQUIRED):`,
+        ""
+      );
+      if (reason == null) return;
+      const trimmed = String(reason).trim();
+      if (!trimmed) {
+        alert("Archive requires a non-empty reason. No action taken.");
+        return;
+      }
+      try {
+        const r = await fetch("/scitex-todo/archive", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, reason: trimmed }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          alert(`Archive failed (${r.status}): ${j.error || "unknown"}`);
+          return;
+        }
+        // Refresh both the stale list AND the main graph cache so the
+        // archived card disappears from every layout.
+        await loadStale();
+        await loadGraph();
+      } catch (exc) {
+        alert(`Archive request errored: ${exc}`);
+      }
     }
 
     // === Graph layout (mermaid dependency map) ───────────────────────
