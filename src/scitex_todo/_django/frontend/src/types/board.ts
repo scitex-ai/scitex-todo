@@ -87,6 +87,21 @@ export interface GraphNode {
    *  been named yet (soft-degrade — FE renders the generic 🚧 with no
    *  extra badge in that case). ADR-0004. */
   blocker: BlockerKind | null;
+
+  /** ISO-8601 explicit deadline (YYYY-MM-DD or full ts). Drives the
+   *  Calendar view's primary date assignment (operator TG 13295). Already
+   *  emitted by handlers/graph.py — declared here so the FE can consume
+   *  it without ad-hoc `as never` casts. May be absent. */
+  deadline?: string | null;
+  /** Server-computed next occurrence (recurring + multi expanded). Calendar
+   *  prefers this over `deadline` when present, since it already encodes
+   *  "closest upcoming occurrence". Emitted by handlers/graph.py via
+   *  `_compute_deadline_next`. May be absent. */
+  deadline_next?: string | null;
+  /** ISO-8601 last-activity ts (date portion drives the Calendar view's
+   *  fallback bucket when no deadline is set). Emitted by handlers/
+   *  graph.py. May be absent. */
+  last_activity?: string | null;
 }
 
 export type EdgeKind = "depends_on" | "blocks";
