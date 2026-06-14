@@ -126,6 +126,16 @@ def _emit(payload, *, as_json: bool, human: str) -> None:
 @click.option("--project", default=None, help="Project / repo basename (e.g. 'scitex-todo').")
 @click.option("--host", default=None, help="Where the work happens (hostname).")
 @click.option("--agent", default=None, help="Owning agent (forward-compat alias for --assignee).")
+@click.option(
+    "--group", default=None,
+    help=(
+        "TRACK-1 dispatch cluster (lead a2a `74db4f2d`). Free-form "
+        "non-empty string. The parallelism dispatcher queries "
+        "`runnable(group=<G>)` so independent tasks in <G> run "
+        "concurrently. Distinct from _groups.py's project Group "
+        "(viewer aggregation)."
+    ),
+)
 @click.option("--goal", default=None, help="WHY (parent-goal text); 🎯 line on the card.")
 @click.option("--last-activity", "last_activity", default=None, help="ISO-8601 UTC; drives recency color.")
 @click.option(
@@ -189,6 +199,7 @@ def add_cmd(
     project,
     host,
     agent,
+    group,
     goal,
     last_activity,
     blocker,
@@ -239,6 +250,7 @@ def add_cmd(
             project=project,
             host=host,
             agent=agent,
+            group=group,
             goal=goal,
             last_activity=last_activity,
             blocker=blocker,
@@ -282,6 +294,10 @@ def add_cmd(
 @click.option("--project", default=None)
 @click.option("--host", default=None)
 @click.option("--agent", default=None, help="Owning agent (forward-compat alias for --assignee).")
+@click.option(
+    "--group", default=None,
+    help="TRACK-1 dispatch cluster. Use '' to CLEAR.",
+)
 @click.option("--goal", default=None)
 @click.option("--last-activity", "last_activity", default=None)
 @click.option(
@@ -344,6 +360,7 @@ def update_cmd(
     project,
     host,
     agent,
+    group,
     goal,
     last_activity,
     blocker,
@@ -393,6 +410,7 @@ def update_cmd(
         ("finished_at", finished_at),
         ("scope", scope),
         ("assignee", assignee),
+        ("group", group),
         ("priority", priority),
         ("parent", parent),
         ("note", note),

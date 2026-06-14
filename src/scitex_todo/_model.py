@@ -238,6 +238,16 @@ class Task:
                                 # schema. See ADR-0007 Consequences for the
                                 # deferred 7→4 schema migration.
     agent: str | None = None     # owning agent (distinct from `assignee` legacy field)
+    # `group` is the logical CLUSTER OF AGENTS this task belongs to —
+    # the parallelism-engine dispatcher (TRACK 1, lead a2a `74db4f2d`,
+    # 2026-06-14) uses it to ask "what's runnable now in group <G>"
+    # so the operator's "independent (dep-free) tasks run concurrently
+    # across groups" model works. Free-form non-empty string when
+    # present; absent = ungrouped. Distinct concept from `_groups.py`'s
+    # project-cluster `Group` dataclass (that's a VIEWER aggregation
+    # for the board's column collapser; this is a DISPATCH concept on
+    # the task itself).
+    group: str | None = None
     last_activity: str | None = None  # ISO-8601 UTC; recency drives green/amber/red coloring
     blocker: str | None = None        # one of VALID_BLOCKERS or absent; only on status=blocked
     pr_url: str | None = None         # optional GH/Gitea PR link
@@ -819,7 +829,13 @@ def _validate_tasks(tasks: object, source: str) -> None:
         # non-empty strings — no enum, no referential integrity. Convention is
         # `agent:<name>` / `project:<name>` / `private` but that's a
         # docs/skills convention, not enforced here (Req 8: be generic).
-        for label in ("scope", "assignee"):
+        # `group` is the TRACK-1 dispatch-cluster field (lead a2a
+        # `74db4f2d`, 2026-06-14). Same shape as `scope`/`assignee` —
+        # free-form non-empty string, no closed enum, no referential
+        # integrity. Drives the `runnable(group=...)` query that the
+        # parallelism dispatcher consumes. Distinct from `_groups.py`'s
+        # project-cluster concept (which is a viewer aggregation).
+        for label in ("scope", "assignee", "group"):
             value = task.get(label)
             if value is not None and not (isinstance(value, str) and value):
                 raise TaskValidationError(
