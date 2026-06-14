@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.18] - 2026-06-14 — Phase 3: agent mesh + ACL graph
+
+### Added
+
+- **Phase 3 — Agent mesh + ACL graph** (PR #189). New
+  `_django/handlers/fleet/sac_mesh.py` adapter reads `sac a2a list
+  --json` (peer registry) + `sac a2a grants --json` (comms_grants
+  ACL). New `/fleet/mesh` Django endpoint. New `FleetMeshPanel.tsx`
+  with an inline-SVG radial graph: nodes = agents, edges = grants,
+  allow=`--status-success` green, deny=`--status-error` muted red.
+  Mounted in the toolbar STATUS group. 26 new mock-free tests (10
+  adapter + 4 view + 12 FE CSS/helper) + 119-test broader fleet
+  suite green.
+- **Phase 3.b TODOs captured inline** (will land in a follow-up):
+  - `comms_blocks` has no listing CLI yet → deny edges not wired
+    (the shape already supports `allow: false`).
+  - No heartbeat-freshness threshold in `sac a2a list` → status is
+    `online` / `unknown`, never `offline`.
+  - `state.db` path not surfaced → `config_path` returns null.
+
+### Provenance
+
+PR #189. Lead a2a `74db4f2d`. 3/6 TRACK-2 dashboard surfaces shipped
+(CI / hosts / mesh). Remaining: timing telemetry + chat surface.
+
 ## [0.7.17] - 2026-06-14 — Hook-consumer contract + Time View + Phase 2 hosts
 
 Wave 2 of the fleet-dashboard mission. The hook-consumer contract
