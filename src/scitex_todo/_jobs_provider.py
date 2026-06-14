@@ -134,6 +134,32 @@ def provide_jobs() -> list[JobSpec]:
             restart_policy="no",
             timeout_sec=60,
         ),
+        # ci-watch (operator decoupled-pollers override, dev msg
+        # `96afacc7` 2026-06-15) — RECORD-ONLY: poll every 5 min,
+        # diff against ci-state.json, log per-repo transitions, update
+        # the cache. No bus emission, no a2a sends — SAC owns the
+        # delivery side via its OWN independent poller. Two pollers,
+        # different cadences, each STANDALONE: todo down → sac still
+        # delivers; sac down → todo still records.
+        JobSpec(
+            name="scitex-todo.ci-watch",
+            kind="cron",
+            # 5-field cron: every 5 min. Matches the cadence dev
+            # locked in the contract; SAC's independent poller can
+            # run slower (10 / 15 / 30) without breaking parity since
+            # the dedupe key (head_sha, overall) is content-keyed.
+            schedule="*/5 * * * *",
+            command="scitex-todo ci-watch --once",
+            description=(
+                "scitex-todo ci-watch — record-only CI poller. Polls "
+                "the configured fleet repos every 5 min, diffs vs "
+                "~/.scitex/todo/ci-state.json, logs per-repo "
+                "transitions (newly-green / newly-red / still-pending). "
+                "Operator decoupled-pollers lane (no SAC dependency)."
+            ),
+            restart_policy="no",
+            timeout_sec=180,
+        ),
     ]
 
 

@@ -956,7 +956,7 @@ def migration_apply_cmd(
 # --------------------------------------------------------------------------- #
 # Attach the §1a sub-groups (defined in sibling modules).                     #
 # --------------------------------------------------------------------------- #
-from . import _completion, _hooks, _introspect, _loop, _mcp, _runnable, _skills, _stats, _write  # noqa: E402
+from . import _ci_watch, _completion, _hooks, _introspect, _loop, _mcp, _runnable, _skills, _stats, _write  # noqa: E402
 
 _introspect.register(main)
 _completion.register(main)
@@ -987,6 +987,12 @@ _runnable.register(main)
 # CLI twins of POST /hooks/push and POST /hooks/done — same canonical
 # event-payload shape, same idempotency. See _hooks.py for the spec.
 _hooks.register(main)
+# ci-watch (record-only, decoupled-pollers lane per operator override
+# via dev msg `96afacc7`, 2026-06-15). Server-side cron-style poller;
+# logs per-repo CI transitions + updates the local state cache. NO
+# bus emission for ci-result (SAC has its own independent poller for
+# the delivery side). See _ci_watch.py.
+_ci_watch.register(main)
 
 
 if __name__ == "__main__":
