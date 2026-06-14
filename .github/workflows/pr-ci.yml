@@ -33,7 +33,7 @@ concurrency:
 jobs:
   import-smoke:
     name: import-smoke-on-ubuntu-py3-12
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, scitex-ci]
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -53,7 +53,7 @@ jobs:
         run: .venv/bin/scitex-todo --help
   dep-hygiene-smoke:
     name: dep-hygiene-smoke
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, scitex-ci]
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -72,7 +72,7 @@ jobs:
 
   tests:
     name: pytest-matrix-on-ubuntu-py${{ matrix.python-version }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, scitex-ci]
     strategy:
       fail-fast: false
       matrix:
@@ -112,7 +112,7 @@ jobs:
 
   audit:
     name: audit
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, scitex-ci]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
