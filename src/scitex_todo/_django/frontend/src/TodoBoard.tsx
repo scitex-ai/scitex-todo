@@ -6,6 +6,7 @@ import { CalendarView } from "./CalendarView";
 import { FleetCiPills } from "./FleetCiPills";
 import { FleetHostsPanel } from "./FleetHostsPanel";
 import { FleetMeshPanel } from "./FleetMeshPanel";
+import { FleetTimingPanel } from "./FleetTimingPanel";
 import { GraphView } from "./GraphView";
 import { RecentView } from "./RecentView";
 import { TableView } from "./TableView";
@@ -562,6 +563,15 @@ export function TodoBoard() {
          * the STATUS group next to the hosts panel — the operator's
          * one-glance answer to "who can message whom right now". */}
         <FleetMeshPanel />
+        {/* Fleet timing-chart panel (Phase 5 of FLEET DASHBOARD — lead
+         * a2a `74db4f2d` + `10afa799`, operator ask 2026-06-14:
+         * "record what took how long → self-improvement"). Polls
+         * `/fleet/timing?window_days=<state>` every 60s (timing
+         * changes slowly). Default collapsed pill in the STATUS group;
+         * click to expand into the bar chart sorted by p95 desc
+         * (bottleneck-at-top). Same registry-reader pattern as the
+         * mesh / hosts panels. */}
+        <FleetTimingPanel />
         <ViewToggle />
         <Legend colors={graph.status_colors} />
       </header>

@@ -1,0 +1,253 @@
+/* Fleet timing-chart panel — Phase 5 surface of the FLEET DASHBOARD.
+ *
+ * Visual contract:
+ *   - Collapsed default: ONE compact pill rendering the row count.
+ *     Sits next to the mesh pill in the board header's STATUS group.
+ *     Click expands the chart inline.
+ *   - Expanded: a header (label + window dropdown + group-by dropdown
+ *     + close button) atop a vertically-stacked bar chart, plus a
+ *     diagnostic footer.
+ *   - Bars escalate green → warn → error as duration grows: an
+ *     operator's "this is slow" signal at a glance. The threshold
+ *     mapping lives in TS (``barColorToken``) — the CSS only owns the
+ *     swatch.
+ *   - On adapter error, the pill renders a red ring + ``!`` marker
+ *     and the back-end error is in the tooltip.
+ *
+ * All colors come from scitex-ui design tokens declared on the board
+ * root (see board.css `.stx-todo-board`):
+ *   --status-success / --status-warning / --status-error / --stx-danger
+ *   plus board-local --stx-text / --stx-text-muted / --stx-border /
+ *   --stx-panel-bg / --stx-input-bg / --stx-accent.
+ * No literal hex codes here — that would break dark/light theming.
+ */
+
+.stx-todo-fleet-timing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--stx-border);
+  background: var(--stx-panel-bg);
+  color: var(--stx-text);
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: default;
+  transition: border-color 120ms ease;
+}
+
+.stx-todo-fleet-timing--loading {
+  /* Reserve a tiny placeholder so the toolbar doesn't reflow on first
+   * paint while the initial fetch is in flight. */
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.stx-todo-fleet-timing__label {
+  font-weight: 500;
+}
+
+.stx-todo-fleet-timing__dot {
+  display: inline-block;
+  font-size: 0.85rem;
+  line-height: 1;
+  margin-left: 4px;
+}
+
+/* ── collapsed pill (default state) ───────────────────────────────── */
+
+.stx-todo-fleet-timing--collapsed {
+  cursor: pointer;
+  border-color: var(--status-success);
+  background: var(--stx-panel-bg);
+  color: var(--stx-text);
+}
+
+.stx-todo-fleet-timing--collapsed:hover {
+  border-color: var(--stx-accent);
+}
+
+/* ── expanded chart panel ─────────────────────────────────────────── */
+
+.stx-todo-fleet-timing--expanded {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px 12px;
+  min-width: 280px;
+  max-width: 480px;
+  border-radius: 8px;
+  border-color: var(--stx-border-strong);
+  background: var(--stx-panel-bg);
+  white-space: normal;
+}
+
+.stx-todo-fleet-timing__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--stx-text);
+}
+
+.stx-todo-fleet-timing__control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  color: var(--stx-text-muted);
+}
+
+.stx-todo-fleet-timing__select {
+  font-size: 0.72rem;
+  color: var(--stx-text);
+  background: var(--stx-input-bg);
+  border: 1px solid var(--stx-border);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.stx-todo-fleet-timing__select:focus {
+  outline: 1px solid var(--stx-accent);
+}
+
+.stx-todo-fleet-timing__close {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--stx-text-muted);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.stx-todo-fleet-timing__close:hover {
+  color: var(--stx-text);
+  background: var(--stx-hover-bg);
+}
+
+/* ── chart body ───────────────────────────────────────────────────── */
+
+.stx-todo-fleet-timing__chart {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.stx-todo-fleet-timing__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--stx-text);
+}
+
+.stx-todo-fleet-timing__rowlabel {
+  flex: 0 0 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--stx-text-muted);
+}
+
+.stx-todo-fleet-timing__bars {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.stx-todo-fleet-timing__bar {
+  display: inline-flex;
+  align-items: center;
+  height: 10px;
+  min-width: 1px;
+  border-radius: 2px;
+  padding: 0 3px;
+  font-size: 0.65rem;
+  color: var(--stx-text);
+  overflow: hidden;
+  transition:
+    width 200ms ease,
+    background 120ms ease;
+}
+
+.stx-todo-fleet-timing__bar--median {
+  opacity: 0.85;
+}
+
+.stx-todo-fleet-timing__bar--p95 {
+  opacity: 0.6;
+}
+
+.stx-todo-fleet-timing__bartext {
+  font-size: 0.6rem;
+  color: var(--stx-text);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ── bar color tokens (the single point where magnitude → pixels) ──
+ *
+ * The TS ``barColorToken`` helper picks ONE of these three classes
+ * based on the bar's width-percentage. The actual color resolves
+ * against the scitex-ui design tokens so a future swap of
+ * success / warning / error flows through automatically.
+ */
+.stx-todo-fleet-timing__bar--ok {
+  background: var(--status-success);
+}
+
+.stx-todo-fleet-timing__bar--warn {
+  background: var(--status-warning);
+}
+
+.stx-todo-fleet-timing__bar--slow {
+  background: var(--status-error);
+}
+
+/* ── empty state ──────────────────────────────────────────────────── */
+
+.stx-todo-fleet-timing__empty {
+  display: inline-block;
+  font-size: 0.72rem;
+  color: var(--stx-text-muted);
+  font-style: italic;
+  padding: 8px 4px;
+}
+
+/* ── footer (diagnostic line) ─────────────────────────────────────── */
+
+.stx-todo-fleet-timing__footer {
+  font-size: 0.68rem;
+  color: var(--stx-text-muted);
+  font-style: italic;
+}
+
+/* ── adapter error: muted text + red ring + ``!`` marker ──────────── */
+.stx-todo-fleet-timing--error {
+  color: var(--stx-text-muted);
+  border-color: var(--stx-danger);
+  box-shadow: 0 0 0 1px var(--stx-danger);
+}
+
+.stx-todo-fleet-timing--error .stx-todo-fleet-timing__dot {
+  color: var(--stx-danger);
+  font-weight: 700;
+}
+
+/* EOF */
