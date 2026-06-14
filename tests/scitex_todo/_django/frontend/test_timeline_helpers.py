@@ -153,14 +153,16 @@ def _run(snippet: str):
 
 
 def test_parse_timeline_ts_basic_iso() -> None:
-    """An ISO-8601 string parses into a finite ms epoch."""
+    """An ISO-8601 string parses into a finite ms epoch — round-trips
+    via ``new Date().getTime()`` (sidesteps any local-tz math)."""
     out = _run(
         "console.log(JSON.stringify({"
         "v: parseTimelineTs('2026-06-14T12:00:00Z'),"
+        "ref: new Date('2026-06-14T12:00:00Z').getTime(),"
         "}));"
     )
-    # 2026-06-14T12:00:00Z = 1781784000000
-    assert out["v"] == 1781784000000
+    assert out["v"] == out["ref"]
+    assert isinstance(out["v"], int)
 
 
 def test_parse_timeline_ts_null_on_empty() -> None:
