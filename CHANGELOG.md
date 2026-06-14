@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.24] - 2026-06-14 — `scitex-todo mcp install-fleet` (P3a one-liner)
+
+### Added
+
+- **`scitex-todo mcp install-fleet --agents-dir <DIR>`** (PR #204,
+  lead a2a `1ab212f3`). One-shot fleet sweep — walks every
+  ``<agents-dir>/*/to_home/.mcp.json`` (the agent-container spec
+  convention) and idempotently applies the scitex-todo MCP entry to
+  each. Sibling MCP server entries preserved; per-agent corrupt JSON
+  reported + sweep continues; final summary line carries
+  ``agents=N updated=K noop=M errors=E``. Closes the missing-MCP gap
+  that ripple-wm hit (had to a2a-relay through me for card add
+  because their container's `.mcp.json` was bare). 12 mock-free
+  CliRunner tests.
+
+  Sweep one-liner for agent-container:
+
+      scitex-todo mcp install-fleet \\
+          --agents-dir ~/.dotfiles/src/.scitex/agent-container/agents \\
+          --env-tasks-path /home/agent/.scitex/todo/tasks.yaml -y
+
+  Mirrors the single-file ``install --apply`` semantics (PR #155 +
+  #158) — same backup, same idempotency, same env-pin.
+
 ## [0.7.23] - 2026-06-14 — Board v3: time-based view (sort + group by time)
 
 ### Added
