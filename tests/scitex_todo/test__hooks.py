@@ -35,8 +35,9 @@ def test_entry_point_group_name_is_canonical():
 
 
 def test_valid_event_kinds_set():
-    # Arrange / Act / Assert
-    assert VALID_EVENT_KINDS == frozenset({"push", "done"})
+    # Arrange / Act / Assert — `card-message` added in the Phase-6
+    # chat-channel PR (lead a2a `1e8e33d0`, 2026-06-14).
+    assert VALID_EVENT_KINDS == frozenset({"push", "done", "card-message"})
 
 
 # === event_validate — fail-loud on shape violations ========================

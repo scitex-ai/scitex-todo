@@ -718,8 +718,51 @@ def comment_task(
         if target is None:
             raise TaskNotFoundError(f"task id {task_id!r} not found in {tasks_path}")
         comments = target.setdefault("comments", [])
+        # Pre-append snapshot of comment authors — forms the
+        # `collaborators` list of the card-message event below.
+        prior_authors = [
+            c.get("author")
+            for c in comments
+            if isinstance(c, dict) and isinstance(c.get("author"), str)
+        ]
         comments.append(entry)
         _model._save_tasks_unlocked(tasks, tasks_path)
+        owner = target.get("agent") or target.get("assignee")
+
+    # card-message bus emit (lead a2a `1e8e33d0`, 2026-06-14) — done
+    # OUTSIDE the file lock so a slow bus handler can't extend the
+    # lock-hold and starve other writers. Comment is already on disk;
+    # bus errors are caught + logged so an external handler failure
+    # (e.g. SAC unreachable) never bubbles up to the producer.
+    try:
+        from . import _hooks
+
+        collaborators: list[str] = []
+        seen: set[str] = set()
+        if owner:
+            seen.add(owner)
+        seen.add(author)
+        for a in prior_authors:
+            if a and a not in seen:
+                collaborators.append(a)
+                seen.add(a)
+
+        _hooks.dispatch_event({
+            "kind": "card-message",
+            "card_id": task_id,
+            "author": author,
+            "body": str(text),
+            "owner": owner,
+            "collaborators": collaborators,
+            "created_at": entry["ts"],
+        })
+    except Exception:  # noqa: BLE001 — bus must not break comment_task
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "comment_task: card-message bus dispatch failed for %r",
+            task_id, exc_info=True,
+        )
     return {"task_id": task_id, "comment": entry}
 
 
