@@ -4,6 +4,44 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.19] - 2026-06-14 — Phase 4 + 5: timing telemetry (backend + chart UI)
+
+5 / 6 TRACK-2 dashboard surfaces shipped. Last remaining: Phase 6
+chat. Operator's "record what took how long → self-improvement"
+intent now visible end-to-end on the board.
+
+### Added
+
+- **Phase 4 — Timing telemetry backend** (PR #191). New
+  `_django/handlers/fleet/timing.py`: pure
+  `compute_timing(tasks, *, window_days=30)` derives three durations
+  per task (`created_to_started` / `started_to_done` /
+  `created_to_done`) from existing card timestamps (no state
+  duplication), then aggregates per agent / project / group with
+  median + p95 + median-queue. `_django/handlers/fleet/timing_view.py`
+  exposes `GET /fleet/timing?window_days=N` (200 OK; 405 on POST;
+  500 on store-read failure — fail-loud). `<ungrouped>` sentinel for
+  null groups; `n_tasks_missing_timestamps` diagnostic surfaces
+  done cards with broken `_log_meta`. 23 mock-free tests (16 pure +
+  7 view). Phase 4.b gaps flagged inline: a2a-log scraping for
+  per-turn agent durations, histograms / CDF arrays, p50/p75/p99
+  knobs.
+- **Phase 5 — Timing chart UI** (PR #192). New
+  `FleetTimingPanel.tsx`: collapsed `📊 timing` pill in the STATUS
+  toolbar group; click to expand. WINDOW (7d/30d/90d) + GROUP-BY
+  (Agent/Project/Group) controls + inline SVG bar chart, one row
+  per key with median + p95 bars. Sort by p95 desc so the
+  bottleneck rides at the top. Tooltip carries `n_tasks_done` +
+  `median_queue_s`. Footer carries `n_tasks_in_window` +
+  `n_tasks_missing_timestamps`. 60s poll. Fail-loud on adapter
+  error. 17 mock-free CSS/helper tests.
+
+### Provenance
+
+PR #191 + #192. Lead a2a `74db4f2d` + `10afa799`. Subagent execution
+on both phases; Phase 5 subagent terminated mid-flight + the parent
+agent finished the commit/push/PR.
+
 ## [0.7.18] - 2026-06-14 — Phase 3: agent mesh + ACL graph
 
 ### Added
