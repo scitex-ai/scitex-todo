@@ -29,6 +29,35 @@ The callable signature is::
 Plugin failures are caught + logged but never propagate — one bad
 plugin must NOT silently break the board's own record-keeping.
 
+## Handler ordering + criticality (dev coordination 2026-06-14)
+
+Handlers MAY declare two optional function attributes to influence
+dispatch:
+
+.. code-block:: python
+
+    def on_event(event: dict) -> None:
+        ...
+
+    on_event.priority = 10     # int, default 100. LOWER = runs FIRST.
+    on_event.critical = True   # bool, default False. If True and the
+                               # handler RAISES, the dispatcher aborts
+                               # the chain and re-raises so the
+                               # producer (HTTP/CLI) sees a 500 /
+                               # non-zero exit.
+
+Sort order is ``(priority asc, entry-point-name asc)`` — stable
+across packaging-metadata implementations.
+
+The `ci-result` event chain uses both attributes: dev's owner-map
+handler (priority=10, critical=True) mutates ``event["owner"]``
+BEFORE SAC's a2a-delivery handler (priority=200) reads it.
+Delivering a verdict to a wrong-or-no agent is worse than no
+delivery, hence the critical attribute on the owner-map.
+
+The event dict is passed BY REFERENCE through every handler — early
+handlers may mutate it for later handlers to consume.
+
 ## Canonical event kinds
 
 Two event kinds drive the inbound-write contract today. New kinds
@@ -313,16 +342,59 @@ def _run_plugins(event: dict) -> tuple[int, list[dict]]:
     """Discover + invoke every plugin registered under
     :data:`ENTRY_POINT_GROUP`. Failures are caught + logged."""
     plugin_errors: list[dict] = []
-    count = 0
+    # Materialize the entry-point list FIRST so we can sort by the
+    # handler's declared (priority, name) before dispatch. Lead a2a
+    # `0ab1d9fd` + dev coordination 2026-06-14 — the ci-result event
+    # chain needs dev's owner-map handler (priority=10) to mutate
+    # event["owner"] BEFORE SAC's delivery handler (priority=200)
+    # reads it.
+    #
+    # Handlers declare ordering via two OPTIONAL function attributes:
+    #
+    #   on_event.priority = <int>     # default 100; lower = runs earlier
+    #   on_event.critical = True      # default False; if True and the
+    #                                 # handler raises, ABORT the chain
+    #                                 # and re-raise (the producer's
+    #                                 # HTTP/CLI wrapper translates to
+    #                                 # 500 / non-zero exit). For
+    #                                 # ci-result the owner-map MUST be
+    #                                 # critical — delivering a verdict
+    #                                 # to a wrong-or-no agent is worse
+    #                                 # than no delivery.
+    #
+    # Tie-break is the entry-point name (lex asc) so the order is
+    # stable across packaging-metadata implementations.
+    handlers: list[tuple[int, str, Callable[[dict], None]]] = []
     for ep in _iter_entry_points():
-        count += 1
         name = ep.name
         try:
             fn: Callable[[dict], None] = ep.load()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "scitex_todo.hooks plugin %r failed to load: %s", name, exc,
+            )
+            plugin_errors.append({"plugin": name, "error": f"load: {exc}"})
+            continue
+        prio = int(getattr(fn, "priority", 100))
+        handlers.append((prio, name, fn))
+    handlers.sort(key=lambda triple: (triple[0], triple[1]))
+    count = len(handlers)
+    for prio, name, fn in handlers:
+        critical = bool(getattr(fn, "critical", False))
+        try:
             fn(event)
-        except Exception as exc:  # noqa: BLE001 — plugin failures must not propagate
-            logger.warning("scitex_todo.hooks plugin %r raised: %s", name, exc)
-            plugin_errors.append({"plugin": name, "error": str(exc)})
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "scitex_todo.hooks plugin %r (priority=%d critical=%s) "
+                "raised: %s", name, prio, critical, exc,
+            )
+            plugin_errors.append({
+                "plugin": name, "priority": prio,
+                "critical": critical, "error": str(exc),
+            })
+            if critical:
+                # Abort the chain — downstream handlers don't run.
+                raise
     return count, plugin_errors
 
 
