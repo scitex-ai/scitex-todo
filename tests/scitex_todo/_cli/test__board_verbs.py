@@ -13,7 +13,8 @@ The tests cover:
     exception)
   - `board stop` SIGTERMs the pid recorded in the pidfile (sub-process)
   - `board start` refuses to start when a live pidfile already exists
-  - bare ``board`` emits the deprecation warning to stderr
+  - bare ``board`` HARD-ERRORS with exit 2 + redirect message (operator
+    directive TG 13316, lead a2a ``c36b0d1e``)
   - stale pidfile (PID dead) is cleaned up + treated as "not running"
 
 No mocks (STX-NM / PA-306): real subprocesses (Python `time.sleep` loop)
@@ -171,25 +172,51 @@ class TestStartRefusesWhenAlreadyRunning:
         assert result.exit_code != 0
 
 
-# === bare `board` emits the deprecation warning =============================
+# === bare `board` HARD-ERRORS (operator TG 13316, lead a2a c36b0d1e) ========
 
 
-class TestBareBoardDeprecation:
-    """Bare ``scitex-todo board`` (no verb) still works but emits a
-    deprecation line to stderr."""
+class TestBareBoardHardError:
+    """Bare ``scitex-todo board`` (no verb) is no longer back-compat — it
+    HARD-ERRORS with a redirect message + exit 2 so existing call sites
+    get an immediate, actionable signal (operator directive TG 13316:
+    noun-verb CLI convention, no bare-noun forwarding)."""
 
-    def test_bare_board_emits_deprecation_when_already_running(
-        self, pidfile_path,
-    ):
-        # Arrange — pidfile claims a live process so the dispatched
-        # `board start` short-circuits with the "already running" error,
-        # without actually launching a Django server (which we don't
-        # want to do from a unit test).
-        _board_write_pid(os.getpid())
+    def test_bare_board_exits_with_code_2(self):
+        # Arrange
+        runner = CliRunner()
         # Act
-        result = CliRunner().invoke(main, ["board"])
-        # Assert — the deprecation line is on stderr / output.
-        assert "deprecation" in result.output.lower()
+        result = runner.invoke(main, ["board"])
+        # Assert — exit 2 is Click's standard usage-error code.
+        assert result.exit_code == 2
+
+    def test_bare_board_emits_redirect_message(self):
+        # Arrange
+        runner = CliRunner()
+        # Act — CliRunner mixes stderr into result.output by default;
+        # we check the redirect message landed in the combined stream.
+        result = runner.invoke(main, ["board"])
+        # Assert — the redirect message names the canonical replacement.
+        assert "scitex-todo board start" in result.output
+
+    def test_bare_board_does_not_invoke_start(self, pidfile_path):
+        # Arrange — set up a state that `board start` would normally
+        # mutate (writing the pidfile) so we can verify it WASN'T called.
+        runner = CliRunner()
+        # Act
+        runner.invoke(main, ["board"])
+        # Assert — pidfile was not created (start path never ran).
+        assert not pidfile_path.exists()
+
+    def test_bare_board_does_not_forward_when_a_flag_is_passed(self):
+        # Arrange — historically `--port 8051` made click forward to
+        # `start` via the back-compat handler. The hard-error path now
+        # rejects ANY bare invocation regardless of flags.
+        runner = CliRunner()
+        # Act
+        result = runner.invoke(main, ["board", "--port", "9999"])
+        # Assert — non-zero exit (the option no longer exists on the
+        # group; either click usage-error or our explicit ctx.exit(2)).
+        assert result.exit_code != 0
 
 
 # === stale pidfile cleanup ==================================================

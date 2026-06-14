@@ -71,10 +71,10 @@ def provide_jobs() -> list[JobSpec]:
             name="scitex-todo.dashboard",
             kind="service",
             schedule="",
-            command="scitex-todo board --port 8051",
+            command="scitex-todo board start --port 8051",
             description=(
-                "scitex-todo board — read-only live view of the shared "
-                "~/.scitex/todo/tasks.yaml at http://127.0.0.1:8051/"
+                "scitex-todo board start — read-only live view of the "
+                "shared ~/.scitex/todo/tasks.yaml at http://127.0.0.1:8051/"
             ),
             on_boot_sec="15s",
             restart_policy="on-failure",

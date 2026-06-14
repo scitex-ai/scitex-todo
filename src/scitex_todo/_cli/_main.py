@@ -397,8 +397,10 @@ def _board_run_server(
     invoke_without_command=True,
     help=(
         "Manage the dependency-graph board (start/stop/restart/status).\n\n"
-        "Bare ``scitex-todo board`` is back-compat for ``board start`` "
-        "but emits a deprecation warning — prefer the explicit verb.\n\n"
+        "The ``board`` noun REQUIRES an explicit verb — bare "
+        "``scitex-todo board`` hard-errors with a redirect (operator "
+        "directive TG 13316: noun-verb CLI convention, no bare-noun "
+        "back-compat).\n\n"
         "Examples:\n"
         "  scitex-todo board start --port 8051\n"
         "  scitex-todo board restart\n"
@@ -406,47 +408,40 @@ def _board_run_server(
         "  scitex-todo board stop"
     ),
 )
-@click.option(
-    "--tasks", "tasks_path", default=None,
-    help="(start back-compat) Path to tasks.yaml.",
-)
-@click.option(
-    "--port", type=int, default=8051, show_default=True,
-    help="(start back-compat) Server port.",
-)
-@click.option(
-    "--no-browser", is_flag=True,
-    help="(start back-compat) Don't open a browser automatically.",
-)
 @click.pass_context
-def board_group(
-    ctx: click.Context,
-    tasks_path: str | None, port: int, no_browser: bool,
-) -> None:
-    """The ``board`` noun group. Bare invocation = ``start`` (deprecated).
+def board_group(ctx: click.Context) -> None:
+    """The ``board`` noun group — REQUIRES an explicit verb.
 
     Click runs the group function FIRST, then dispatches the subcommand
-    if one is named. When no subcommand is named (`invoke_without_command
-    =True`) we treat it as the legacy `scitex-todo board` and forward to
-    `start` with a stderr deprecation warning.
+    if one is named. When no subcommand is named, we HARD-ERROR with a
+    redirect message + exit 2 (Click's standard usage-error code) so
+    every existing call site is forced to migrate.
+
+    Operator-direct directive TG 13316 (relayed by lead a2a
+    ``c36b0d1e``): the previous deprecation-warn-and-forward path
+    (PR #139, v0.7.6) hid the violation from audit tools — replacing it
+    with a hard error makes the noun-verb convention enforceable across
+    the fleet.
+
+    In-tree call sites updated in this same PR: ``_jobs_provider.py``.
+    Host-side systemd unit ``scitex-todo.dashboard.service`` ExecStart
+    also needs the same migration — flagged for lead's host-side pass.
     """
     if ctx.invoked_subcommand is not None:
         # User typed `scitex-todo board start/stop/...` — let Click route
-        # to the subcommand. The --tasks/--port/--no-browser options on
-        # the group are back-compat only; subcommands re-declare their
-        # own options.
+        # to the subcommand.
         return
-    # Bare `scitex-todo board` — back-compat to `board start`.
+    # Bare `scitex-todo board` — HARD ERROR.
     click.echo(
-        "[deprecation] `scitex-todo board` (no verb) — use "
-        "`scitex-todo board start` instead. Forwarding for now; this "
-        "alias will be removed in a future release.",
+        "ERROR: `scitex-todo board` (no verb) is no longer supported.\n"
+        "Operator directive TG 13316 — noun-verb CLI convention. Use:\n"
+        "  scitex-todo board start [--port N] [--no-browser]\n"
+        "  scitex-todo board stop\n"
+        "  scitex-todo board restart\n"
+        "  scitex-todo board status",
         err=True,
     )
-    ctx.invoke(
-        board_start_cmd,
-        tasks_path=tasks_path, port=port, no_browser=no_browser,
-    )
+    ctx.exit(2)
 
 
 @board_group.command(
