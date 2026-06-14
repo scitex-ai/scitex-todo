@@ -4,6 +4,51 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.20] - 2026-06-14 — 🎯 TRACK 2 dashboard mission COMPLETE (6/6 surfaces)
+
+Closes the operator-mandated fleet-dashboard mission. The board at
+:8051 is now the ONE screen the operator watches: tasks (existing)
++ CI status + host geometry + agent mesh + ACL + timing telemetry
++ chat. All six surfaces honor the same architectural principles:
+fail-loud / registry-sourced / no hardcoded proper nouns / no mocks.
+
+### Added
+
+- **Phase 6 — Chat surface** (PR #194). Operator↔agent thread view
+  over the existing per-card `comments[]` substrate. New
+  `_django/handlers/chat.py` with `GET /chat/<card_id>` (returns
+  comments + title) and `POST /chat/<card_id>` (validates
+  non-empty text, calls `_store.comment_task`, returns the appended
+  comment). 404 on unknown card_id; 400 on empty text; 405 on
+  PUT/DELETE. New `ChatPanel.tsx` mounts inside the existing
+  NodeDetailPanel drawer — bubble layout with author-color hash,
+  30s auto-poll for new comments, fail-loud error pill + toast on
+  write failure. Author default from `SCITEX_TODO_AGENT` env. 45
+  new mock-free tests (16 backend + 8 JS predicate + 21 CSS/wiring).
+  TODOs: RW-perm gating, WebSocket push, markdown rendering,
+  @-mentions / threading / reactions / attachments.
+
+### Mission complete — 6/6 TRACK-2 surfaces
+
+| # | Surface              | PR    | Adapter source                          |
+|---|----------------------|-------|------------------------------------------|
+| 1 | CI status pills      | #178  | `gh api repos/.../check-runs`            |
+| 2 | Host geometry        | #185  | `sac host list --json`                   |
+| 3 | Agent mesh + ACL     | #189  | `sac a2a list --json` + `... grants`     |
+| 4 | Timing backend       | #191  | card `_log_meta` timestamps              |
+| 5 | Timing chart UI      | #192  | `/fleet/timing`                          |
+| 6 | Chat surface         | #194  | per-card `comments[]`                    |
+
+The board reads from authoritative registries; it never duplicates
+state. Every adapter raises `FleetAdapterError` on missing data;
+the UI surfaces a visible error state instead of silently degrading.
+
+### Provenance
+
+PR #194. Lead a2a `74db4f2d` + `10afa799` (vision); operator's
+"one screen, watch the whole fleet, self-improvement" intent
+realized end-to-end.
+
 ## [0.7.19] - 2026-06-14 — Phase 4 + 5: timing telemetry (backend + chart UI)
 
 5 / 6 TRACK-2 dashboard surfaces shipped. Last remaining: Phase 6
