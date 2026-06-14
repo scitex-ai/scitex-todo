@@ -140,7 +140,18 @@ ENTRY_POINT_GROUP = "scitex_todo.hooks"
 
 #: Accepted event kinds. Producers that emit any other ``kind`` are
 #: rejected at the validate step — fail-loud per Phase-0 doctrine.
-VALID_EVENT_KINDS = frozenset({"push", "done"})
+#:
+#:   - ``push``         git push event (SAC's push-hook).
+#:   - ``done``         PR merge event (dev's GitHub Action).
+#:   - ``card-message`` operator/agent comment on a card. Emitted
+#:                      automatically by :func:`scitex_todo._store.comment_task`
+#:                      so any comment landing — via the chat panel,
+#:                      the ``scitex-todo comment`` CLI verb, or the
+#:                      MCP ``comment_task`` tool — fans out through
+#:                      the bus. SAC's consumer a2a-delivers to the
+#:                      card's owner + collaborators (lead a2a
+#:                      ``1e8e33d0``, 2026-06-14).
+VALID_EVENT_KINDS = frozenset({"push", "done", "card-message"})
 
 
 class HookEventError(ValueError):
@@ -196,6 +207,39 @@ def event_validate(event: Any) -> dict:
         out["pr_url"] = _require("pr_url")
         out["author"] = event.get("author")
         out["merged_at"] = event.get("merged_at")
+    elif kind == "card-message":
+        # The card-id of the card the comment landed on. Required.
+        out["card_id"] = _require("card_id")
+        # Required body — the comment text itself. Validator pins
+        # non-empty so a producer can't fan an empty notification.
+        out["body"] = _require("body")
+        out["author"] = event.get("author")  # optional but ~always set
+        # Owner = the agent the card is assigned to. Nullable when the
+        # card has no agent/assignee field — SAC's handler can still
+        # fan to collaborators in that case.
+        out["owner"] = event.get("owner")
+        # Collaborators = everyone else SAC should fan to. Coerce to
+        # list[str] of non-empty strings; empty list is valid.
+        collaborators = event.get("collaborators") or []
+        if not isinstance(collaborators, list):
+            raise HookEventError(
+                f"card-message event: 'collaborators' must be a list "
+                f"(got {type(collaborators).__name__})"
+            )
+        norm_collab: list[str] = []
+        for c in collaborators:
+            if not isinstance(c, str) or not c:
+                raise HookEventError(
+                    f"card-message event: 'collaborators' entry "
+                    f"{c!r} is not a non-empty string"
+                )
+            norm_collab.append(c)
+        out["collaborators"] = norm_collab
+        out["created_at"] = event.get("created_at")
+        # `card-message` does NOT use `card_ids` (singular `card_id`
+        # above); return early so the trailing card_ids normalisation
+        # block doesn't add an empty list to the payload.
+        return out
     # card_ids — optional in both kinds; coerce to list[str] of non-
     # empty strings. Anything else is malformed.
     card_ids = event.get("card_ids") or []
