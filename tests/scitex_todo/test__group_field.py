@@ -70,14 +70,14 @@ def test_task_dataclass_omits_none_group_from_to_dict():
 
 def test_validate_accepts_non_empty_group_string():
     # Arrange
-    tasks = [{"id": "t-a", "title": "x", "group": "paper-portfolio"}]
+    tasks = [{"id": "t-a", "title": "x", "status": "pending", "group": "paper-portfolio"}]
     # Act / Assert — no raise.
     _validate_tasks(tasks, source="<test>")
 
 
 def test_validate_accepts_absent_group():
     # Arrange — absent group is the back-compat default.
-    tasks = [{"id": "t-a", "title": "x"}]
+    tasks = [{"id": "t-a", "title": "x", "status": "pending"}]
     # Act / Assert
     _validate_tasks(tasks, source="<test>")
 
@@ -87,7 +87,7 @@ def test_validate_accepts_absent_group():
 
 def test_validate_rejects_empty_string_group():
     # Arrange
-    tasks = [{"id": "t-a", "title": "x", "group": ""}]
+    tasks = [{"id": "t-a", "title": "x", "status": "pending", "group": ""}]
     # Act / Assert
     with pytest.raises(TaskValidationError):
         _validate_tasks(tasks, source="<test>")
@@ -95,7 +95,7 @@ def test_validate_rejects_empty_string_group():
 
 def test_validate_rejects_non_string_group():
     # Arrange — list, dict, int all rejected (group must be a string).
-    tasks = [{"id": "t-a", "title": "x", "group": ["paper", "ci"]}]
+    tasks = [{"id": "t-a", "title": "x", "status": "pending", "group": ["paper", "ci"]}]
     # Act / Assert
     with pytest.raises(TaskValidationError):
         _validate_tasks(tasks, source="<test>")
@@ -103,7 +103,7 @@ def test_validate_rejects_non_string_group():
 
 def test_validate_rejects_integer_group():
     # Arrange
-    tasks = [{"id": "t-a", "title": "x", "group": 42}]
+    tasks = [{"id": "t-a", "title": "x", "status": "pending", "group": 42}]
     # Act / Assert
     with pytest.raises(TaskValidationError):
         _validate_tasks(tasks, source="<test>")
@@ -154,7 +154,7 @@ def test_cli_add_with_group_persists(tmp_path: Path):
     # Act
     result = runner.invoke(
         main,
-        ["add", "--tasks", str(store), "--id", "t-a", "--title", "x",
+        ["add", "t-a", "x", "--tasks", str(store),
          "--group", "paper-portfolio", "-y"],
     )
     # Assert
