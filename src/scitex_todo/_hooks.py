@@ -238,7 +238,14 @@ def _handle_push(event: dict, *, store: Any | None) -> list[dict]:
     msg = event.get("message") or ""
     author = event.get("author") or "<unknown>"
     repo = event["repo"]
-    text = f"[push] {repo} @ {commit_sha[:10]}: {msg}".strip()
+    # Include the FULL commit_sha as a stable token (NOT just the
+    # short prefix) so the idempotency check below can find it via
+    # substring match. The short prefix is for human readability;
+    # the full sha is the dedupe key.
+    text = (
+        f"[push] {repo} @ {commit_sha[:10]}: {msg} "
+        f"[sha={commit_sha}]"
+    ).strip()
     for card_id in event["card_ids"]:
         # Idempotency: if any existing comment text mentions this
         # commit_sha, the push has already been recorded — noop.
