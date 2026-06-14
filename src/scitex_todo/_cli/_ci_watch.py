@@ -97,16 +97,19 @@ def classify_transition(
         return "first-seen"
     prior_overall = prior.get("overall") or "unknown"
     prior_head = prior.get("head_sha") or ""
-    if cur_head == prior_head and cur_overall == prior_overall:
-        return "unchanged"
+    # Definitive verdict landed (current is the FIRST sweep to see it).
     if cur_overall == "success" and prior_overall != "success":
         return "newly-green"
     if cur_overall == "failure" and prior_overall != "failure":
         return "newly-red"
+    # Neither side definitive — still waiting, regardless of head_sha
+    # drift. Operator-clarity choice (vs. "unchanged"): the cron tick
+    # log should say WHY there's no new verdict, not just that nothing
+    # moved. "still-pending" is the more informative label.
     if cur_overall not in _DEFINITIVE and prior_overall not in _DEFINITIVE:
         return "still-pending"
-    # Same head + same definitive verdict already handled above; this
-    # arm catches head-only changes where the overall is unchanged.
+    # Same definitive verdict; head_sha may differ (force-push, etc.)
+    # but the overall verdict is unchanged from the operator's POV.
     return "unchanged"
 
 
