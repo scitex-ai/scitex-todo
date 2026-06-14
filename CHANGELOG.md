@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.22] - 2026-06-14 — Hotfix: operator-visible Django template comment leak
+
+### Fixed
+
+- **board_v3 template comment leaked as literal text** (PR #199,
+  lead a2a `f7a5d37930b9479ca7e53a7e316c132d`). Django's
+  ``{# … #}`` syntax is single-line only — newlines between ``{#``
+  and ``#}`` are NOT stripped, so the multi-line block at
+  ``board_v3.html:200-208`` (introduced in PR #173) rendered as
+  visible text on the board UI. Converted to
+  ``{% comment %}…{% endcomment %}`` (multi-line safe). New
+  regression test (``tests/scitex_todo/_django/test__no_multiline_django_short_comments.py``)
+  walks every ``.html`` under ``_django/templates/`` and asserts
+  every ``{#`` closes with ``#}`` on the same line — bug class
+  pinned. Operator reported live; hotfix-released same hour.
+
 ## [0.7.21] - 2026-06-14 — Hook bus: ordering + card-message feedback channel
 
 Two enhancements that close the **operator↔card↔owner+collaborators
