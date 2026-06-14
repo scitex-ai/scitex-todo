@@ -4,6 +4,46 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.16] - 2026-06-14 — TRACK 1 COMPLETE: parallelism-engine dispatch backbone
+
+Completes the **dependency-aware ticket** track the operator/lead
+vision (a2a `74db4f2d` + `10afa799`) named as the parallelism
+engine. Combined with the v0.7.15 TRACK-2 Phase-1 CI pills, this
+release closes Wave 1 of the fleet-dashboard mission.
+
+### Added — TRACK 1 (parallelism-engine backbone)
+
+- **T1.2 — `runnable_tasks()` API + `scitex-todo runnable` CLI**
+  (PR #181). Batch runnable view (sister to `next_task`'s single
+  pick) respecting `depends_on` + reverse-`blocks` closure +
+  optional agent + group filter. Diagnostic counts
+  (`candidate_count`, `blocked_by_deps_count`) let the dispatcher
+  distinguish "queue empty" from "queue blocked." 22 mock-free
+  tests.
+- **T1.3 — `blocked_tasks()` inverse view + `scitex-todo blocked`
+  CLI** (PR #182). For every NOT-runnable task, name WHY
+  (`explicit-blocker` / `manual-block` / `depends-on` /
+  `reverse-blocks`) + the chain of upstream ids. `by_reason`
+  histogram for observability. 20 mock-free tests.
+- **T1.4 — `/runnable` + `/blocked-batch` Django endpoints**
+  (PR #183). JSON HTTP twins of the CLI verbs so the dispatcher
+  consumes the data over HTTP. POST returns 405; fail-loud on
+  load_tasks errors. 12 mock-free RequestFactory tests.
+
+TRACK 1 wave list:
+- T1.1 #179 (group field, in v0.7.15)
+- T1.2 #181 (runnable API + CLI)
+- T1.3 #182 (blocked inverse + CLI)
+- T1.4 #183 (HTTP endpoints)
+
+The lead-side dispatcher can now drive parallel work across agents
+and groups end-to-end via either CLI or HTTP.
+
+### Provenance
+
+PR #181 + #182 + #183. Lead a2a `74db4f2d`. TRACK 2 (fleet
+dashboard) continues in parallel — Phase 2 host geometry queued.
+
 ## [0.7.15] - 2026-06-14 — Fleet-dashboard Phase 1 (CI pills) + TRACK-1 `group` field
 
 Operator vision (lead a2a `74db4f2d` + `10afa799`): scitex-todo
