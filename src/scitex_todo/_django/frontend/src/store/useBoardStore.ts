@@ -22,6 +22,7 @@
 import { create } from "zustand";
 import { api, type TaskInput } from "../api/client";
 import { loadPersistedView, savePersistedView } from "../persist";
+import { matchesSearchQuery, parseSearchQuery } from "../searchQuery";
 import type { GraphPayload } from "../types/board";
 
 // View state restored from localStorage / URL, used to seed the store below.
@@ -148,9 +149,10 @@ interface BoardStore {
   refreshNow: () => Promise<void>;
 
   // ── View mode ────────────────────────────────────────────────────────────
-  /** Which board view is active: the dependency graph, or a flat table. */
-  view: "graph" | "table";
-  setView: (v: "graph" | "table") => void;
+  /** Which board view is active: the dependency graph, a flat table, or
+   * the newest-first Recent triage surface (operator TG 513, 2026-06-12). */
+  view: "graph" | "table" | "recent" | "calendar" | "timeline";
+  setView: (v: "graph" | "table" | "recent" | "calendar" | "timeline") => void;
 
   // ── Multi-select (Ctrl+click) for bulk copy ──────────────────────────────
   /** Ids of cards marked via Ctrl/⌘+click; right-click → Copy acts on these. */
@@ -369,7 +371,8 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
 
   // ── View mode ────────────────────────────────────────────────────────────
   view: _persisted.view,
-  setView: (v: "graph" | "table") => set({ view: v }),
+  setView: (v: "graph" | "table" | "recent" | "calendar" | "timeline") =>
+    set({ view: v }),
 
   // ── Multi-select ─────────────────────────────────────────────────────────
   selectedIds: [],
@@ -466,6 +469,16 @@ useBoardStore.subscribe((s) =>
  * Text match is case-insensitive across title / id / repo. Shared by the
  * graph (dim non-matches) and the pool (hide non-matches) so the toolbar
  * filters both views consistently.
+ *
+ * When the query contains a GitHub-style qualifier (project:foo,
+ * status:blocked, …) it delegates to ``searchQuery.matchesSearchQuery``
+ * — the same parser shipped to the board_v3 (operator-live) template
+ * via static/scitex_todo/board_v3/searchQuery.js. Operator TG 12315/16
+ * (2026-06-12): the operator typed ``project: paper-scitex-clew`` into
+ * the search bar already expecting GitHub-style behaviour. Pure free-
+ * text queries (no `<key>:` at all) fall through to the original case-
+ * insensitive substring path so PR #80's behaviour is unchanged for the
+ * common case.
  */
 export function taskMatchesFilter(
   task: {
@@ -475,6 +488,14 @@ export function taskMatchesFilter(
     repo?: string | null;
     note?: string | null;
     comments?: { text: string }[];
+    project?: string | null;
+    agent?: string | null;
+    assignee?: string | null;
+    scope?: string | null;
+    kind?: string | null;
+    host?: string | null;
+    parent?: string | null;
+    priority?: number | null;
   },
   query: string,
   activeStatuses: string[],
@@ -486,9 +507,18 @@ export function taskMatchesFilter(
   if (activeRepos.length > 0 && !activeRepos.includes(task.repo ?? "")) {
     return false;
   }
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
+  const raw = query.trim();
+  if (!raw) return true;
+  // Qualifier-syntax path: when the raw query contains a `<key>:` token
+  // we hand the whole thing to the parser. Bare-text matching there
+  // reuses the fzf-style subsequence haystack (title/note/id/etc.).
+  if (/[A-Za-z_][A-Za-z0-9_-]*:/.test(raw)) {
+    const parsed = parseSearchQuery(raw);
+    return matchesSearchQuery(task, parsed);
+  }
+  // Legacy fast path — preserved verbatim so PR #80's behaviour is intact.
   // Deep search: title / id / repo + note body + comment text.
+  const q = raw.toLowerCase();
   const comments = (task.comments ?? []).map((c) => c.text).join(" ");
   const hay =
     `${task.title} ${task.id} ${task.repo ?? ""} ${task.note ?? ""} ${comments}`.toLowerCase();

@@ -13,7 +13,7 @@ export interface PersistedView {
   query: string;
   activeStatuses: string[];
   activeRepos: string[];
-  view: "graph" | "table";
+  view: "graph" | "table" | "recent" | "calendar" | "timeline";
   drillPath: string[];
 }
 
@@ -39,7 +39,16 @@ export function loadPersistedView(): PersistedView {
       out.query = typeof p.query === "string" ? p.query : "";
       out.activeStatuses = strings(p.activeStatuses);
       out.activeRepos = strings(p.activeRepos);
-      out.view = p.view === "table" ? "table" : "graph";
+      out.view =
+        p.view === "table"
+          ? "table"
+          : p.view === "recent"
+            ? "recent"
+            : p.view === "calendar"
+              ? "calendar"
+              : p.view === "timeline"
+                ? "timeline"
+                : "graph";
       out.drillPath = strings(p.drillPath);
     }
   } catch {

@@ -63,6 +63,79 @@ def board_page(request):
     return HttpResponse(_static_graph_page(request))
 
 
+def board_v3_page(request):
+    """Serve the live board-v3 layout — operator's visual deliverable.
+
+    Parallel to ``board_page`` (per lead a2a `62094366` — isolable, screen-
+    shottable, A/B-comparable against the static :8052 prototype). Renders
+    a self-contained HTML page that fetches ``/graph`` for real tasks.yaml
+    data + renders the operator-co-designed layout (project columns +
+    BLOCKING YOU panel + Resolve→``/resolve`` button per ADR-0006/0007).
+
+    Server-rendered + inline-everything so it works regardless of Vite
+    build state. The future React-SPA equivalent can re-render the same
+    shape at the same URL when the FE rewrite lands.
+    """
+    from django.template.loader import render_to_string
+
+    # Operator UX (TG 407): show the actual scitex-todo package version
+    # in the page title AND the in-page header so the operator can verify
+    # at a glance which release the board is running. Read __version__
+    # straight off the package import — no second source of truth to drift.
+    try:
+        from scitex_todo import __version__ as _version
+    except Exception:  # noqa: BLE001
+        _version = "?"
+    label = f"scitex-todo v{_version}"
+
+    # PR (g) (lead a2a `ffc6629c80e4462a8401fb7e4ebb7240`, 2026-06-12):
+    # one-shot boot announce of agents that have no turn URL configured,
+    # so the operator sees the gap before any nudge / comment-relay
+    # silently returns ok=false. Behind a module-level flag so we only
+    # WARN once per process even if board_v3_page is hit many times.
+    _maybe_announce_missing_turn_urls(request)
+
+    try:
+        html = render_to_string(
+            "scitex_todo/board_v3.html",
+            {
+                "app_name": "scitex-todo",
+                "app_label": label,
+                "scitex_todo_version": _version,
+            },
+            request=request,
+        )
+        return HttpResponse(html)
+    except Exception:
+        logger.exception("[scitex-todo] board_v3 render failed; using fallback")
+        return HttpResponse(_static_graph_page(request))
+
+
+_TURN_URL_ANNOUNCED = False
+
+
+def _maybe_announce_missing_turn_urls(request) -> None:
+    """Boot-time WARN listing agents without a configured turn URL.
+
+    Fires once per process (the module-level guard). The agent set is
+    read from the live tasks.yaml via :func:`get_board` so the warning
+    reflects whatever store the request resolves to.
+    """
+    global _TURN_URL_ANNOUNCED
+    if _TURN_URL_ANNOUNCED:
+        return
+    _TURN_URL_ANNOUNCED = True
+    try:
+        from scitex_todo._push import announce_missing_at_boot
+
+        board = get_board(_tasks_path_from_request(request))
+        announce_missing_at_boot(list(board.tasks))
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "[scitex-todo] turn-url boot announce failed (non-fatal)"
+        )
+
+
 def _static_graph_page(request) -> str:
     """Render a self-contained mermaid graph page (no React build needed).
 
@@ -70,7 +143,7 @@ def _static_graph_page(request) -> str:
     PNG export uses, so the operator can view the graph even when the frontend
     toolchain has not produced a Vite bundle.
     """
-    from scitex_todo import build_mermaid
+    from scitex_todo._mermaid import build_mermaid
 
     try:
         board = get_board(_tasks_path_from_request(request))

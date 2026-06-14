@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "scitex-todo"
-version = "0.2.0"
+version = "0.7.22"
 description = "Canonical YAML task store with pluggable adapters (mermaid dependency graphs)"
 readme = "README.md"
 license = "AGPL-3.0-only"
@@ -31,7 +31,10 @@ dependencies = ["pyyaml", "click", "ruamel.yaml"]
 dev = [
     "pytest",
     "pytest-cov",
-    "scitex-dev>=0.11.7",
+    # >=0.17.11 for the JobSpec service|timer|cron taxonomy + new
+    # restart_policy field used by _jobs_provider.provide_jobs(). Older
+    # versions don't have the kwarg and the leaf TypeErrors on import.
+    "scitex-dev>=0.17.11",
     # Web-extra deps are imported (guarded) by the Django board source and its
     # tests; include them so a fresh `pip install -e .[dev]` runs the full
     # suite rather than silently skipping the board tests (PS-210).
@@ -51,8 +54,15 @@ web = [
     "scitex-app",
     "scitex-ui",
 ]
+mcp = [
+    # FastMCP is the canonical SciTeX MCP SDK (general skill §1). The MCP
+    # tools live in `scitex_todo._mcp_server`; the CLI `mcp` subgroup
+    # guards the import so the rest of the package keeps working without
+    # this extra installed.
+    "fastmcp>=2.0",
+]
 all = [
-    "scitex-todo[dev,docs,web]",
+    "scitex-todo[dev,docs,mcp,web]",
 ]
 
 [project.scripts]
@@ -69,6 +79,29 @@ scitex-todo = "scitex_todo"
 
 [project.entry-points."scitex_dev.skills"]
 scitex-todo = "scitex_todo"
+
+# Federated scheduled-job aggregation. scitex-dev `ecosystem up`
+# discovers this entry point and brings the declared JobSpec(s) up
+# via `systemctl --user` (kind="service" / "timer") or the managed
+# crontab block (kind="cron"). See src/scitex_todo/_jobs_provider.py.
+[project.entry-points."scitex_dev.jobs"]
+scitex-todo = "scitex_todo._jobs_provider:provide_jobs"
+
+# Hook-consumer entry-point contract (lead a2a `6fff33d6` +
+# `fbffb879`, 2026-06-14, operator-mandated). External producers
+# (SAC's push-hook, dev's merge-Action, future federated producers)
+# register a callable plugin under this group. The dispatcher in
+# `scitex_todo._hooks.dispatch_event` invokes every plugin for every
+# event. Plugin signature:
+#
+#     def on_event(event: dict) -> None: ...
+#
+# See `scitex_todo._hooks` for the canonical event-payload spec and
+# the built-in handlers (which run regardless of plugins).
+[project.entry-points."scitex_todo.hooks"]
+# scitex-todo's built-in handler is invoked DIRECTLY by
+# dispatch_event (not via the plugin loop). External producers add
+# their plugins under this group in their own pyproject.toml.
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/scitex_todo"]

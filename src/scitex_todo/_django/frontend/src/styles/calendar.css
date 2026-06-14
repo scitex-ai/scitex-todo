@@ -1,0 +1,312 @@
+/* Calendar layout — operator TG 13295 (relayed by lead a2a 510a58d4).
+ *
+ * Themed via scitex-ui tokens already exposed by board.css's
+ * `.stx-todo-board` block (--stx-text, --stx-text-muted, --stx-panel-bg,
+ * --stx-canvas-bg, --stx-border, --stx-border-strong, --stx-accent, …).
+ * No hardcoded literals here — light/dark mode flips ride entirely on the
+ * shell's data-theme switch.
+ *
+ * Floor scope (see ../CalendarView.tsx for the matching contract):
+ *   - Month grid (7 cols × 6 rows), Sunday-first.
+ *   - Day cells: date number + up to 4 chips + "+N more".
+ *   - Today cell: subtle accent border.
+ *   - Past in-month days: muted text.
+ *   - Weekend days: slight bg shift.
+ *   - Prev / Next month buttons + "Today" pill in the toolbar row above
+ *     the weekday header. */
+
+.stx-todo-cal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--stx-canvas-bg);
+  color: var(--stx-text);
+  overflow: hidden;
+}
+
+/* Top bar — month-nav (prev/next + title) on the left, count + today on
+ * the right. Same gutter / token treatment as the toolbar above so the
+ * calendar reads as one block with the rest of the board chrome. */
+.stx-todo-cal__bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--stx-border);
+  background: var(--stx-panel-bg);
+}
+
+.stx-todo-cal__nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stx-todo-cal__navbtn {
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--stx-border-strong);
+  border-radius: 6px;
+  background: var(--stx-input-bg);
+  color: var(--stx-text);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stx-todo-cal__navbtn:hover,
+.stx-todo-cal__navbtn:focus-visible {
+  border-color: var(--stx-accent);
+  color: var(--stx-accent);
+  outline: none;
+  background: var(--stx-hover-bg);
+}
+
+.stx-todo-cal__title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--stx-text);
+  letter-spacing: 0.01em;
+}
+
+.stx-todo-cal__bar-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stx-todo-cal__count {
+  font-size: 0.75rem;
+  color: var(--stx-text-muted);
+  white-space: nowrap;
+}
+
+.stx-todo-cal__undated {
+  font-size: 0.72rem;
+  padding: 1px 8px;
+  border: 1px solid var(--stx-border-strong);
+  border-radius: 999px;
+  color: var(--stx-text-muted);
+  background: var(--stx-code-bg);
+  white-space: nowrap;
+}
+
+.stx-todo-cal__today-pill {
+  appearance: none;
+  padding: 3px 12px;
+  border: 1px solid var(--stx-accent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--stx-accent);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.stx-todo-cal__today-pill:hover,
+.stx-todo-cal__today-pill:focus-visible {
+  background: var(--stx-accent);
+  color: var(--stx-accent-on);
+  outline: none;
+}
+
+/* Weekday header — 7-column row above the day grid. Sun + Sat are tinted
+ * with the muted token so the weekend reads at a glance. */
+.stx-todo-cal__weekdays {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  padding: 8px 14px 4px;
+  background: var(--stx-canvas-bg);
+}
+
+.stx-todo-cal__weekday {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--stx-text-muted);
+  text-align: center;
+  padding: 4px 0;
+}
+
+.stx-todo-cal__weekday--weekend {
+  color: var(--stx-accent);
+  opacity: 0.85;
+}
+
+/* The grid itself — 7 × 6 cells in a CSS grid. Cells size with the
+ * viewport (`minmax(0,1fr)` so they shrink without overflow); each cell
+ * has a min-height so the chips have room to render. */
+.stx-todo-cal__grid {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-auto-rows: minmax(96px, 1fr);
+  gap: 1px;
+  padding: 0 14px 14px;
+  background: var(--stx-border);
+  /* `background: var(--stx-border)` + `gap: 1px` paints the grid lines
+   * cheaply (each cell has its own opaque background; the border shows
+   * through the gap). Avoids per-cell border-collapse complications. */
+  overflow: auto;
+}
+
+.stx-todo-cal__cell {
+  background: var(--stx-panel-bg);
+  padding: 4px 6px 6px;
+  display: flex;
+  flex-direction: column;
+  min-height: 96px;
+  position: relative;
+}
+
+/* Neighbour-month cells (the leading + trailing days that fill out the
+ * 6-row grid) — render but mute so the operator still sees the rhythm of
+ * the calendar without confusing dates from another month for "live"
+ * tasks. */
+.stx-todo-cal__cell--out {
+  background: var(--stx-canvas-bg);
+  color: var(--stx-text-faint);
+  opacity: 0.55;
+}
+
+/* Weekend cells — subtle bg shift (uses the muted token, not a literal). */
+.stx-todo-cal__cell--weekend {
+  background: var(--stx-code-bg);
+}
+
+.stx-todo-cal__cell--weekend.stx-todo-cal__cell--out {
+  background: var(--stx-canvas-bg);
+}
+
+/* Past in-month days — muted text so the operator's eye prioritises the
+ * upcoming days. Past chips still render (history matters), just dimmer. */
+.stx-todo-cal__cell--past .stx-todo-cal__cell-day {
+  color: var(--stx-text-muted);
+}
+
+/* TODAY — accent border (var(--stx-accent)). The accent already
+ * brand-switches between dark + light theme via the board's
+ * `[data-theme="light"]` override, so a single rule covers both. */
+.stx-todo-cal__cell--today {
+  box-shadow: inset 0 0 0 2px var(--stx-accent);
+  background: var(--stx-hover-bg);
+}
+
+.stx-todo-cal__cell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.stx-todo-cal__cell-day {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--stx-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.stx-todo-cal__cell-today {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--stx-accent-on);
+  background: var(--stx-accent);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.stx-todo-cal__chips {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+/* Task chip — [<dot> <truncated title>]. Buttons (not divs) so the
+ * click target is announced to assistive tech. Background uses
+ * `--stx-input-bg` for the chip itself; status is conveyed by the dot
+ * (its border/fill are the per-status tokens from `graph.status_colors`). */
+.stx-todo-cal__chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--stx-border);
+  border-radius: 4px;
+  background: var(--stx-input-bg);
+  color: var(--stx-text);
+  font: inherit;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  padding: 2px 6px;
+  cursor: pointer;
+  /* Truncate long titles to a single line — clipping is preferable to
+   * wrapping inside an 80-pixel-wide day cell. The hover title attribute
+   * carries the full string. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stx-todo-cal__chip:hover,
+.stx-todo-cal__chip:focus-visible {
+  border-color: var(--stx-accent);
+  color: var(--stx-accent);
+  outline: none;
+  background: var(--stx-hover-bg);
+}
+
+.stx-todo-cal__chip-title {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stx-todo-cal__dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid;
+}
+
+/* Overflow indicator — "+N more" when a day has more tasks than fit. Not
+ * a button in v1 — operator opens individual tasks via the chips that ARE
+ * visible, or switches the layout to Table / Recent if they want a flat
+ * scan. */
+.stx-todo-cal__more {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--stx-text-muted);
+  padding: 1px 6px;
+}
+
+/* Responsive — on narrow viewports the chips become very tight; bump the
+ * minimum row height down a notch so 6 rows still fit vertically. */
+@media (max-width: 900px) {
+  .stx-todo-cal__grid {
+    grid-auto-rows: minmax(72px, 1fr);
+  }
+  .stx-todo-cal__cell {
+    min-height: 72px;
+    padding: 3px 4px 4px;
+  }
+  .stx-todo-cal__chip {
+    font-size: 0.68rem;
+    padding: 1px 4px;
+  }
+}

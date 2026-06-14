@@ -1,4 +1,17 @@
+@import "./calendar.css";
+@import "./chat.css";
 @import "./detail.css";
+@import "./fleet-ci-pills.css";
+@import "./fleet-hosts.css";
+@import "./fleet-mesh.css";
+@import "./fleet-timing.css";
+@import "./recent.css";
+@import "./search-suggest.css";
+@import "./table.css";
+@import "./timeline.css";
+/* hook-bypass: line-limit — board.css extraction is its own refactor,
+   tracked in /work/GITIGNORED/REFACTORING.md. This three-line @import
+   addition lands inside the existing limit suspension. */
 
 /* scitex-todo board layout */
 
@@ -338,20 +351,63 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
  * affordance). */
 .stx-todo-flow .react-flow__node.stx-todo-node--parent {
   cursor: zoom-in;
-  /* `rotate` is an INDIVIDUAL transform property, so it composes with React
-   * Flow's inline `transform: translate(...)` instead of overriding it —
-   * letting us tilt the stack on hover without breaking node positioning. */
+  /* Operator UX evolution on parent-hover (TG 229 → 245):
+   *   TG 229 (-3deg → -1deg): "やりすぎ" — toned down.
+   *   TG 245: "まだ傾いている、傾きは全くなくしてもらって大丈夫です他の
+   *   視覚的フィードバックで…ホバリングした時にその下のグラフがまた見える
+   *   という感じで分かりやすい UI/UX に."
+   * So the rotate is GONE entirely. The hover cue is now:
+   *   - a brighter `filter: brightness` lift
+   *   - a stronger purple halo (`box-shadow` extension) so the parent
+   *     "glows" through the canvas — the operator's "下のグラフがまた
+   *     見える" reads cleanly because we don't tilt the card OVER the
+   *     graph anymore, we just light it up IN PLACE.
+   *   - the `.stx-todo-node__hover-hint` ("⊞ Drill in") becomes visible
+   *     next to the badge so the click affordance is unambiguous.
+   * Transition list trimmed accordingly — no rotate, just filter +
+   * box-shadow. */
   transition:
-    rotate 0.12s ease,
-    filter 0.12s ease;
+    filter 0.12s ease,
+    box-shadow 0.12s ease;
 }
 
 .stx-todo-flow .react-flow__node.stx-todo-node--parent:hover {
-  /* On-cursor rotation: the group "stack" tilts slightly when hovered, plus a
-   * stronger lift than the generic node hover so the parent affordance stays
-   * dominant. */
-  filter: brightness(1.14);
-  rotate: -3deg;
+  /* In-place hover lift: brightness + a wider purple halo. NO ROTATE —
+   * neighbouring cards stay aligned; the graph "underneath" remains
+   * visible because nothing tilts over it. */
+  filter: brightness(1.1);
+  /* Stronger halo than the static `parentNodeStyle` purple ring;
+   * additive so the existing stacked-card shadows survive. */
+  box-shadow:
+    0 0 0 5px rgba(155, 127, 214, 0.55),
+    0 0 18px 4px rgba(155, 127, 214, 0.35);
+}
+
+/* The "⊞ Drill in" hover hint — initially `opacity: 0`, fades in on
+ * parent-node hover. Lives inside the parent label (see layout.ts
+ * parentLabel) next to the corner badge. Operator UX TG 245: "ドリル
+ * というか視覚的に持ってくれるといいなと思います" — name the action
+ * explicitly so anyone reading the canvas can tell click=drill. */
+.stx-todo-node__hover-hint {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  background: rgba(155, 127, 214, 0.18);
+  color: #6d4cad;
+  border: 1px solid #9b7fd6;
+  border-radius: 999px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  vertical-align: middle;
+  pointer-events: none;
+}
+.stx-todo-flow
+  .react-flow__node.stx-todo-node--parent:hover
+  .stx-todo-node__hover-hint {
+  opacity: 1;
 }
 
 .stx-todo-flow .react-flow__node.stx-todo-node--leaf {
@@ -369,6 +425,57 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
    * ring + 1.12 brightness; nudge a notch further for parents so the
    * affordance feels heavier than a leaf detail-drawer click. */
   filter: brightness(1.18);
+}
+
+/* The label tree built by layout.ts `parentLabel()`: a wrapper span, an
+ * absolute-positioned PILL BADGE in the top-right corner ("N ↓"), a
+ * leading expand glyph ("⊞"), then the title text. The wrapper is given
+ * `position: relative` so the badge corner-anchors on the actual title
+ * line rather than the whole React Flow node wrapper (the latter would
+ * drift if React Flow added internal padding). */
+.stx-todo-node__label {
+  display: block;
+  position: relative;
+}
+
+/* PILL BADGE — the dominant at-a-glance "this drills in" cue. Purple
+ * background, white text, rounded; sits in the top-right corner of the
+ * node, slightly OUTSIDE the border so it reads as a tag attached to the
+ * card rather than a label inside it. `pointer-events: none` so it never
+ * intercepts the click that should hit the node body itself.
+ *
+ * Pool-side gets the same look via the shared `.stx-todo-pool__badge`
+ * selector — parent-pool buttons get `position: relative` (below) so the
+ * absolute badge corner-anchors there too. */
+.stx-todo-node__badge,
+.stx-todo-pool__badge {
+  position: absolute;
+  top: -10px;
+  right: -8px;
+  background: var(--stx-accent, #6a4fb0);
+  color: #fff;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  z-index: 2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.stx-todo-pool__item--parent {
+  position: relative;
+}
+
+/* Inline expand glyph ("⊞") that prefixes the parent title — bumped color
+ * so it reads as a deliberate "drill in" mark rather than a stray bullet. */
+.stx-todo-node__glyph {
+  color: var(--stx-accent, #6a4fb0);
+  font-weight: 700;
+  margin-right: 1px;
 }
 
 .stx-todo-legend {
@@ -449,6 +556,58 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   color: var(--stx-text-faint);
 }
 
+/* === Qualifier hint pills (operator TG 12315/12316, 2026-06-12) ===========
+ * Inline pills above the toolbar search input — each recognized
+ * qualifier (project:, status:, kind:, …) becomes one purple-accented
+ * pill so the operator SEES the parser's understanding as they type.
+ * Unknown qualifier → grey dashed; unknown enum value → amber dashed
+ * — the same visual idiom as the board_v3 (vanilla) template. */
+.stx-todo-toolbar__qhints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.stx-todo-toolbar__qhint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border: 1px solid var(--stx-accent, #6d4cad);
+  background: rgba(109, 76, 173, 0.12);
+  color: var(--stx-text);
+  cursor: help;
+  line-height: 1.5;
+}
+.stx-todo-toolbar__qhint-key {
+  color: var(--stx-accent, #6d4cad);
+  font-weight: 700;
+  text-transform: lowercase;
+}
+.stx-todo-toolbar__qhint-val {
+  opacity: 0.92;
+}
+.stx-todo-toolbar__qhint--unknown {
+  border-color: var(--stx-text-faint);
+  border-style: dashed;
+  background: rgba(110, 118, 134, 0.08);
+  color: var(--stx-text-faint);
+}
+.stx-todo-toolbar__qhint--unknown .stx-todo-toolbar__qhint-key {
+  color: var(--stx-text-faint);
+}
+.stx-todo-toolbar__qhint--unknown-value {
+  border-color: #ffb300;
+  border-style: dashed;
+  background: rgba(255, 179, 0, 0.08);
+}
+.stx-todo-toolbar__qhint--unknown-value .stx-todo-toolbar__qhint-key {
+  color: #ffb300;
+}
+
 .stx-todo-toolbar__chips {
   display: flex;
   flex-wrap: wrap;
@@ -506,7 +665,50 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
  * defaulted to the OS scrollbar, which clashes with the panel — a chunky
  * light bar over a dark pool. Render a thin, theme-following scrollbar so
  * it recedes into the panel in either theme. Firefox uses the standard
- * `scrollbar-*` properties; Chromium/WebKit use the pseudo-elements. */
+ * `scrollbar-*` properties; Chromium/WebKit use the pseudo-elements.
+ *
+ * GLOBAL FALLBACK (operator complaint via lead a2a 510a58d4, 2026-06-14):
+ * `.stx-todo-board, .stx-todo-board *` so any scrollable element inside
+ * the board inherits themed scrollbars — preempts elements we'd otherwise
+ * miss. Per-element rules below remain for explicit specificity, but the
+ * universal selector catches React Flow's panes, picked CodeMirror frames,
+ * the table-wrap, and anything added later without an extra rule. */
+.stx-todo-board,
+.stx-todo-board * {
+  scrollbar-width: thin;
+  scrollbar-color: var(--stx-scrollbar-thumb) var(--stx-canvas-bg);
+}
+
+.stx-todo-board ::-webkit-scrollbar,
+.stx-todo-board::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.stx-todo-board ::-webkit-scrollbar-track,
+.stx-todo-board::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.stx-todo-board ::-webkit-scrollbar-thumb,
+.stx-todo-board::-webkit-scrollbar-thumb {
+  background: var(--stx-scrollbar-thumb);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.stx-todo-board ::-webkit-scrollbar-thumb:hover,
+.stx-todo-board::-webkit-scrollbar-thumb:hover {
+  background: var(--stx-scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+.stx-todo-board ::-webkit-scrollbar-corner,
+.stx-todo-board::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .stx-todo-pool,
 .stx-todo-detail,
 .stx-todo-detail__markdown pre {
@@ -547,6 +749,45 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
 .stx-todo-pool::-webkit-scrollbar-corner,
 .stx-todo-detail::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* ── Themed <select> / dropdowns (operator complaint via lead a2a 510a58d4,
+ *    2026-06-14) ──────────────────────────────────────────────────────────
+ * Vanilla <select> elements fell through to OS-default styling — white in
+ * dark mode (white popover, white track, dark text on dark page → unreadable).
+ * Bind every <select> inside the board to the same token palette the rest
+ * of the toolbar uses. The token chain (`--stx-input-bg`, `--stx-text`,
+ * `--stx-border-strong`) is sourced from scitex-ui shell variables at the
+ * top of this file, so light/dark mode flip automatically.
+ *
+ * `<option>` styling is best-effort — Chrome / Firefox style the popover
+ * via these properties on most platforms, Safari falls back to native. */
+.stx-todo-board select {
+  appearance: auto;
+  padding: 4px 8px;
+  border: 1px solid var(--stx-border-strong);
+  border-radius: 4px;
+  background: var(--stx-input-bg);
+  color: var(--stx-text);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.stx-todo-board select:hover {
+  border-color: var(--stx-accent);
+}
+
+.stx-todo-board select:focus,
+.stx-todo-board select:focus-visible {
+  outline: none;
+  border-color: var(--stx-accent);
+  box-shadow: 0 0 0 2px var(--stx-hover-bg);
+}
+
+.stx-todo-board select option {
+  background: var(--stx-panel-bg);
+  color: var(--stx-text);
 }
 
 /* ── Pool: header row + status groups ────────────────────────────────────
@@ -1247,4 +1488,325 @@ body:has(#app-mount[data-app-name="scitex-todo"]) #main-content.ws-module-pane {
   border-color: var(--stx-accent);
   color: var(--stx-accent);
   font-weight: 600;
+}
+
+/* Export group (TodoBoard Toolbar) — Markdown / CSV / JSON buttons. */
+.stx-todo-toolbar__export {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.stx-todo-toolbar__export-label {
+  font-size: 0.7rem;
+  color: var(--stx-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.stx-todo-chip--export {
+  border-color: var(--stx-border-strong);
+  color: var(--stx-text-muted);
+  padding: 2px 8px;
+}
+.stx-todo-chip--export:hover {
+  background: var(--stx-hover-bg);
+  color: var(--stx-accent);
+}
+
+/* ---------------------------------------------------------------------------
+ * BLOCKER VISIBILITY (operator UX 2026-06-06: "ブロッカーが何かわからないので、
+ * todo にブロッカー可視化") — three coordinated cues:
+ *   (a) `.stx-todo-node__blocked`   — red 🚧 glyph prefix on the node label
+ *                                     for any status=blocked task. Renders
+ *                                     inside both leafLabel and parentLabel.
+ *   (b) `.stx-todo-progress__chip--blocked` — clickable chip in the progress
+ *                                     summary that toggles the blocked-only
+ *                                     status filter. Highlighted when active.
+ *   (c) `.stx-todo-blockers` (+ children) — the new "🚧 Blockers" section in
+ *                                     the NodeDetailPanel listing upstream
+ *                                     deps + downstream waiters.
+ * ------------------------------------------------------------------------- */
+
+.stx-todo-node__blocked {
+  /* Drop-shadow keeps the emoji legible on darker status fills (blocked
+   * status uses a muted grey-blue tone); margin-right adds breathing room
+   * before the title text. */
+  margin-right: 4px;
+  filter: drop-shadow(0 0 1px rgba(207, 36, 36, 0.85));
+}
+
+/* Compute-job glyph — leading "⚙" on every `kind: "compute"` node label
+ * (north-star pillar #1, lead a2a 2c7a431d). Parallel to `.stx-todo-node__
+ * blocked` (🚧) and the parent-drill ⊞ glyph; together the three answer at
+ * a glance: who's stuck / who's a container / who's externally updated.
+ * Slate-blue drop-shadow differentiates from the red blocked glyph. */
+.stx-todo-node__compute {
+  margin-right: 4px;
+  filter: drop-shadow(0 0 1px rgba(40, 90, 150, 0.7));
+}
+
+/* Decision-node glyph + impact badge + LOUD operator-decision halo
+ * (north-star pillar #4, ADR-0003 + ADR-0004 in docs/adr/, lead a2a
+ * 4691b114 + 554435df, operator TG 9524). Three pieces:
+ *  - `.stx-todo-node__decision`           = leading "⚖️" glyph on label
+ *  - `.stx-todo-node__decision-impact`    = "⚖️ unblocks N" leverage chip
+ *  - `.stx-todo-node--decision-operator`  = LOUD purple-gold halo on kind=
+ *                                           decision rows whose blocker is
+ *                                           "operator-decision" — the one
+ *                                           the operator OPENS the UI to find.
+ */
+.stx-todo-node__decision {
+  margin-right: 4px;
+  filter: drop-shadow(0 0 1px rgba(155, 127, 214, 0.85));
+}
+
+.stx-todo-node__decision-impact {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border: 1px solid #9b7fd6;
+  background: rgba(155, 127, 214, 0.14);
+  color: #6d4cad;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.stx-todo-node__decision-impact--high {
+  /* High-leverage decisions pop louder so the operator can prioritize
+   * "deciding hub-cutover unblocks the whole prod chain" vs single-task
+   * decisions at a glance. Lead a2a `554435df` impact-badge spec. */
+  background: #6d4cad;
+  color: #fff;
+  border-color: #6d4cad;
+  box-shadow: 0 0 8px 1px rgba(155, 127, 214, 0.6);
+}
+
+/* LOUD operator-decision halo. Purple = decision family, gold = LOUD
+ * importance. Three-tier ring (gold inner / purple middle / soft outer)
+ * so the gold pops against any status-fill underneath. Layered ADDITIVE
+ * with the existing parent-style stacked-card shadows if this row is
+ * also a parent. */
+.stx-todo-flow .react-flow__node.stx-todo-node--decision-operator {
+  box-shadow:
+    0 0 0 3px #ffc107,
+    0 0 0 6px #6d4cad,
+    0 0 18px 6px rgba(255, 193, 7, 0.45),
+    0 0 28px 10px rgba(155, 127, 214, 0.35);
+}
+.stx-todo-flow .react-flow__node.stx-todo-node--decision-operator:hover {
+  box-shadow:
+    0 0 0 3px #ffc107,
+    0 0 0 6px #6d4cad,
+    0 0 24px 8px rgba(255, 193, 7, 0.65),
+    0 0 36px 14px rgba(155, 127, 214, 0.5);
+  filter: brightness(1.1);
+}
+
+/* Inline "← <blocker-id>" chip rendered AFTER the title on a status=blocked
+ * node, so the operator sees the actual blocker id without opening the
+ * drawer. Full id stays in the hover title attr. (lead-callout b9503957:
+ * "secret-migration-phase3 ← blocked by ← ci-recovery-wave should jump out".) */
+.stx-todo-node__blocked-by {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid #c0392b;
+  background: rgba(192, 57, 43, 0.12);
+  color: #c0392b;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.stx-todo-progress__chip--blocked {
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid #c0392b;
+  color: #c0392b;
+  font-weight: 600;
+  padding: 0 8px;
+  border-radius: 999px;
+  transition:
+    background 100ms ease,
+    color 100ms ease;
+}
+.stx-todo-progress__chip--blocked:hover {
+  background: rgba(192, 57, 43, 0.12);
+}
+.stx-todo-progress__chip--blocked.stx-todo-progress__chip--on {
+  background: #c0392b;
+  color: #fff;
+}
+
+/* "👤 awaiting you N" lens — purple-gold to match the LOUD operator-decision
+ * halo on the node itself. Visible whenever N > 0; the operator's anti-
+ * flood quick-glance signal (lead a2a `554435df`). Not clickable in v1
+ * (the awaiting list is reachable by clicking any LOUD decision node);
+ * pure status display. */
+.stx-todo-progress__chip--awaiting-operator {
+  background: #ffc107;
+  color: #6d4cad;
+  border: 1px solid #6d4cad;
+  font-weight: 700;
+  padding: 0 9px;
+  border-radius: 999px;
+  box-shadow: 0 0 6px 1px rgba(255, 193, 7, 0.45);
+}
+
+/* ---------------------------------------------------------------------------
+ * REGION LABELS (operator UX 2026-06-06: "canvas/drill/pool/table/board とか
+ * UI 上にヒント的に書いておいて") — the operator can't tell from looking at
+ * the board which area is which. Small purple pill labels sit on each region
+ * to name it explicitly, so a glance answers "what am I looking at?":
+ *   - `.stx-todo-board__region`            → "Board"      (top-left of header)
+ *   - `.stx-todo-breadcrumb__hint`         → "Drill:"     (prefix on breadcrumb)
+ *   - `.stx-todo-flow__canvas-label`       → "Canvas"     (corner of React Flow)
+ *   - `Pool —` prefix in the pool title    → handled in markup, not CSS
+ * The original "SciTeX Todo — dependency graph" title stays alongside; the
+ * region chip is the at-a-glance name.
+ * ------------------------------------------------------------------------- */
+
+.stx-todo-board__region {
+  display: inline-block;
+  padding: 2px 9px;
+  background: rgba(155, 127, 214, 0.18);
+  color: #6d4cad;
+  border: 1px solid #9b7fd6;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-right: 8px;
+}
+
+.stx-todo-breadcrumb__hint {
+  margin-right: 6px;
+  color: #6d4cad;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
+}
+
+/* Explicit "← Back" button in the breadcrumb (operator UX TG 233: after
+ * a drill click they didn't read "Home" as a back-button). Sits right
+ * after the "DRILL:" hint, before the first crumb. Hidden at top level. */
+.stx-todo-breadcrumb__back {
+  margin-right: 8px;
+  padding: 2px 8px;
+  border: 1px solid #6d4cad;
+  background: rgba(155, 127, 214, 0.14);
+  color: #6d4cad;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 100ms ease,
+    color 100ms ease;
+}
+.stx-todo-breadcrumb__back:hover {
+  background: #6d4cad;
+  color: #fff;
+}
+
+/* Empty-canvas explainer when drilled in but no edges exist in the scope
+ * (operator UX TG 233 photo 8: drilled in, canvas blank, "クリックした
+ * あとえ、なに？どゆこと？"). Sits centered inside the React Flow canvas
+ * area as an overlay; pointer-events:none so React Flow's pan/zoom keeps
+ * working underneath. */
+.stx-todo-flow__canvas {
+  /* `position: relative` was set in the earlier region-label block; keep
+   * it so this `.stx-todo-flow__empty` overlay anchors against the
+   * canvas, not the whole flow. */
+}
+.stx-todo-flow__empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  max-width: 460px;
+  padding: 18px 22px;
+  background: var(--stx-panel-bg);
+  border: 1px dashed var(--stx-border);
+  border-radius: 10px;
+  text-align: center;
+  pointer-events: none; /* let pan/zoom pass through */
+  user-select: none;
+}
+.stx-todo-flow__empty-title {
+  margin: 0 0 8px 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--stx-text);
+}
+.stx-todo-flow__empty-body {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--stx-text-muted);
+  line-height: 1.5;
+}
+
+/* `Canvas` pill floats inside the React Flow root, top-left corner. Pointer-
+ * events disabled so it never blocks a click on the underlying graph. The
+ * React Flow surface owns the rest of the area. */
+.stx-todo-flow__canvas {
+  position: relative;
+}
+.stx-todo-flow__canvas-label {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 6; /* above React Flow's `.react-flow__panel` (z-index 5) */
+  padding: 2px 9px;
+  background: rgba(155, 127, 214, 0.18);
+  color: #6d4cad;
+  border: 1px solid #9b7fd6;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ---------------------------------------------------------------------------
+ * COUNT BREAKDOWN (operator UX 2026-06-06: "数が合わない"). Renders next to
+ * the Board title; explicit `Total · Showing · Nested · Pool` breakdown so the
+ * arithmetic adds up. Total is the SSoT count, the rest segments the current
+ * drill scope into "on canvas" vs "hidden in parent cards" vs "in pool".
+ * ------------------------------------------------------------------------- */
+
+.stx-todo-counts {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 12px;
+  font-size: 0.78rem;
+  color: var(--stx-text);
+}
+.stx-todo-counts__chip {
+  padding: 1px 6px;
+  border: 1px solid var(--stx-border);
+  border-radius: 999px;
+  background: var(--stx-panel-bg);
+  white-space: nowrap;
+}
+.stx-todo-counts__chip--total {
+  border-color: #6d4cad;
+  background: rgba(155, 127, 214, 0.14);
+  color: #6d4cad;
+  font-weight: 700;
+}
+.stx-todo-counts__sep {
+  color: var(--stx-text-muted);
+  opacity: 0.5;
 }

@@ -215,3 +215,186 @@
   border: 1px solid var(--stx-border);
   padding: 4px 8px;
 }
+
+/* ---------------------------------------------------------------------------
+ * BLOCKER SECTION inside NodeDetailPanel — see BlockersSection() in
+ * NodeDetailPanel.tsx. The whole section sits ABOVE the markdown note body so
+ * the answer to "what is blocking this?" is the first thing the operator sees
+ * when they open the drawer (operator UX 2026-06-06).
+ * ------------------------------------------------------------------------- */
+
+.stx-todo-blockers {
+  margin: 0 0 14px 0;
+  padding: 10px 12px;
+  background: var(--stx-panel-bg);
+  border: 1px solid var(--stx-border);
+  border-left: 3px solid #c0392b;
+  border-radius: 6px;
+}
+
+.stx-todo-blockers__title {
+  margin: 0 0 6px 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--stx-text);
+}
+
+.stx-todo-blockers__subtitle {
+  margin: 10px 0 4px 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--stx-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stx-todo-blockers__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stx-todo-blockers__empty,
+.stx-todo-blockers__hint {
+  margin: 4px 0 0 0;
+  color: var(--stx-text-muted);
+  font-size: 0.85rem;
+}
+
+.stx-todo-blocker {
+  margin: 0;
+}
+
+.stx-todo-blocker__link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--stx-border);
+  border-radius: 4px;
+  background: var(--stx-input-bg);
+  color: var(--stx-text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  transition: background 100ms ease, border-color 100ms ease;
+}
+.stx-todo-blocker__link:hover {
+  background: var(--stx-hover-bg);
+  border-color: var(--stx-accent);
+}
+
+.stx-todo-blocker__title {
+  flex: 1 1 auto;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stx-todo-blocker__why {
+  flex: 0 0 auto;
+  color: var(--stx-text-muted);
+  font-size: 0.75rem;
+  font-style: italic;
+}
+
+.stx-todo-blockers__satisfied {
+  margin-top: 8px;
+  font-size: 0.85rem;
+}
+.stx-todo-blockers__satisfied summary {
+  cursor: pointer;
+  color: var(--stx-text-muted);
+}
+.stx-todo-blockers__satisfied[open] summary {
+  margin-bottom: 6px;
+}
+
+/* ---------------------------------------------------------------------------
+ * COMPUTE METADATA — kind: "compute" rows render a KV table at the top of
+ * the NodeDetailPanel body, before the Blockers section (north-star pillar
+ * #1, lead a2a 2c7a431d "opening a compute card answers 'what is this and
+ * where does it run' immediately"). Visually paired with `.stx-todo-blockers`
+ * via the matching left-border accent (here: slate-blue vs blockers' red),
+ * so the two sections read as the same "structural cards" shape.
+ * ------------------------------------------------------------------------- */
+
+.stx-todo-compute {
+  margin: 0 0 14px 0;
+  padding: 10px 12px;
+  background: var(--stx-panel-bg);
+  border: 1px solid var(--stx-border);
+  border-left: 3px solid #285a96;
+  border-radius: 6px;
+}
+.stx-todo-compute__title {
+  margin: 0 0 6px 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--stx-text);
+}
+.stx-todo-compute__kv {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(80px, max-content) 1fr;
+  gap: 4px 12px;
+}
+.stx-todo-compute__row {
+  display: contents;
+}
+.stx-todo-compute__key {
+  margin: 0;
+  color: var(--stx-text-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  align-self: center;
+}
+.stx-todo-compute__val {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--stx-text);
+  word-break: break-all;
+}
+.stx-todo-compute__val code {
+  font-family: var(--stx-mono-font, ui-monospace, SFMono-Regular, Menlo, monospace);
+  background: transparent;
+  padding: 0;
+}
+.stx-todo-compute__cmd {
+  margin-top: 8px;
+}
+.stx-todo-compute__cmd-label {
+  color: var(--stx-text-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.stx-todo-compute__cmd-text {
+  margin: 0;
+  padding: 6px 8px;
+  background: var(--stx-input-bg);
+  border: 1px solid var(--stx-border);
+  border-radius: 4px;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+  max-height: 180px;
+}
+.stx-todo-compute__cmd-text code {
+  background: transparent;
+  padding: 0;
+}
+.stx-todo-compute__empty {
+  margin: 4px 0 0 0;
+  color: var(--stx-text-muted);
+  font-size: 0.85rem;
+}

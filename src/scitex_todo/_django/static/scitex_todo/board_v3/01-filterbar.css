@@ -1,0 +1,539 @@
+/* board_v3 — filterbar + fleet-strip + main layout
+ *
+ * Extracted from src/scitex_todo/_django/templates/scitex_todo/board_v3.html
+ * (root-cause fix for squash-merge regressions — see GITIGNORED/REFACTORING.md).
+ * Owns: :root vars, base reset, .filterbar, .fleetstrip, .main / .columns / .col.
+ */
+
+:root {
+  --bg: #0f1419;
+  --card-bg: #1a1f29;
+  --col-bg: #131820;
+  --text: #e0e6f0;
+  --text-muted: #8a96a8;
+  --border: #2a3140;
+  --green: #4caf50;
+  --amber: #ffb300;
+  --red: #f44336;
+  --grey: #6e7686;
+  --purple: #6d4cad;
+  --gold: #ffc107;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  font:
+    14px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+a {
+  color: var(--green);
+}
+
+/* === FILTER BAR (top) ===================================================
+ * Reorganized 2026-06-12 (operator TG, lead a2a
+ * `b48f7c2c438b464698183d2e95d3bb04`): three explicit groups end the
+ * flex-wrap chaos that used to bleed the filterbar to ~108 px tall.
+ *
+ *   .fb-left   — identity   (fixed width, never shrinks)
+ *   .fb-center — search     (flex:1, fills the middle)
+ *   .fb-right  — operations (fixed width, wraps internally on narrow
+ *                            viewports without breaking row 1)
+ *
+ * Target main-row height ~50 px. Active filter chips + qualifier hint
+ * pills moved to a second row (`.filterbar-chips`) shown only when
+ * populated.
+ */
+.filterbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: var(--col-bg);
+  border-bottom: 1px solid var(--border);
+  min-height: 48px;
+  /* No flex-wrap on the top-level — the .fb-right group wraps
+   * internally so the identity + search row stays intact. */
+}
+.fb-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.fb-center {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  min-width: 260px;
+  position: relative;  /* search-suggest dropdown anchor */
+}
+.fb-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: wrap;  /* graceful internal wrap on narrow viewports */
+  justify-content: flex-end;
+}
+/* Filterbar second row — chips + qualifier hint pills, hidden when
+ * both children are empty so the default state is a single 48 px row. */
+.filterbar-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px;
+  background: var(--col-bg);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.filterbar-chips:has(#filt-qhints:empty):has(#filt-chips:empty) {
+  display: none;
+}
+.filterbar h1 {
+  margin: 0 4px 0 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+}
+.filterbar .small {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.filt {
+  background: #232a36;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 10px;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+.filt:hover {
+  border-color: var(--purple);
+}
+.filt option {
+  background: #232a36;
+  color: var(--text);
+}
+.toggle-block {
+  padding: 5px 12px;
+  background: rgba(255, 193, 7, 0.16);
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  /* margin-left:auto removed 2026-06-12 — explicit `.fb-right` grouping
+   * now controls position; the auto-margin hack pushed this button to
+   * the right edge in the legacy single-flex layout, which was the
+   * source of the asymmetric wrapping the operator photographed. */
+}
+.toggle-block.on {
+  background: var(--gold);
+  color: #000;
+  box-shadow: 0 0 12px 2px rgba(255, 193, 7, 0.45);
+}
+.reload-btn {
+  padding: 5px 10px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+}
+.reload-btn:hover {
+  color: var(--text);
+  border-color: var(--purple);
+}
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  display: inline-block;
+  margin-right: 5px;
+  animation: pulse-green 2s ease-in-out infinite;
+}
+
+/* === Fleet-liveness dot-strip (ticket proj-scitex-todo-fleet-liveness) ===
+   One colored dot per agent. Lives in the filter bar so the operator
+   sees fleet state at a glance. Click a dot = filter to that agent. */
+.fleetstrip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  min-height: 22px;
+}
+.flt-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  cursor: pointer;
+  flex: 0 0 auto;
+  border: 2px solid transparent;
+  transition:
+    transform 100ms ease,
+    border-color 100ms ease;
+}
+.flt-dot:hover {
+  transform: scale(1.25);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.flt-dot--blocking-operator {
+  background: var(--gold);
+  box-shadow: 0 0 6px 1px rgba(255, 193, 7, 0.65);
+  animation: pulse-gold 1.8s ease-in-out infinite;
+}
+.flt-dot--working {
+  background: var(--green);
+  box-shadow: 0 0 4px 1px rgba(76, 175, 80, 0.55);
+}
+.flt-dot--active {
+  background: #4a90e2;
+  box-shadow: 0 0 4px 1px rgba(74, 144, 226, 0.45);
+}
+.flt-dot--idle {
+  background: var(--grey);
+  opacity: 0.55;
+}
+.flt-dot--selected {
+  border-color: #fff;
+  box-shadow: 0 0 8px 2px rgba(255, 255, 255, 0.55);
+}
+.fleetstrip-empty {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-style: italic;
+  padding: 0 4px;
+}
+@keyframes pulse-gold {
+  0%,
+  100% {
+    box-shadow: 0 0 6px 1px rgba(255, 193, 7, 0.65);
+  }
+  50% {
+    box-shadow: 0 0 14px 4px rgba(255, 193, 7, 0.95);
+  }
+}
+
+/* === MAIN LAYOUT ======================================================== */
+/* height:100% + overflow:hidden bound the board to the (viewport-capped)
+ * .ws-module-pane host. Without it, .main grows to content height and the
+ * module pane scrolls the whole board — which stretches the fixed-width
+ * .right BLOCKING-YOU aside to the tallest column (seen as a ~9000px panel
+ * for projects with many tasks). Bounding .main lets .columns and .right
+ * own their internal scroll, so .right stays a normal column. */
+.main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+/* Operator UX (TG 370): columns were wrapping vertically because
+ * the auto-fit grid runs out of horizontal room with many projects.
+ * Switch to a single-row HORIZONTAL flex strip with horizontal
+ * scroll (kanban/trello convention) so every project column stays
+ * side-by-side and the operator scrolls horizontally to reach the
+ * trailing ones. Each column gets a fixed width; per-column body
+ * keeps its own vertical scroll. */
+.columns {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  padding: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  align-items: stretch;
+  /* Tighter scrollbar styling so the strip doesn't look stuck under
+   * a thick OS scrollbar. */
+  scrollbar-width: thin;
+}
+.columns::-webkit-scrollbar {
+  height: 10px;
+}
+.columns::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}
+.col {
+  background: var(--col-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Fixed column width — kanban convention. min-height removed; the
+   * column stretches to the full strip height via align-items:stretch
+   * on the parent. */
+  flex: 0 0 280px;
+  width: 280px;
+  max-height: 100%;
+  /* Drag affordance: hint the operator they can grab the header to
+   * reorder. JS adds .col--dragging during the drag for visuals. */
+  transition:
+    transform 100ms ease,
+    box-shadow 100ms ease,
+    opacity 100ms ease;
+}
+.col--dragging {
+  opacity: 0.55;
+  transform: rotate(-1deg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+}
+.col--drop-target {
+  box-shadow: -3px 0 0 0 var(--gold) inset;
+}
+/* Card drag-to-move (operator TG 385) — visual cues. */
+.card--dragging {
+  opacity: 0.55;
+  transform: rotate(-1deg);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.col--card-drop-target {
+  background: rgba(76, 175, 80, 0.1);
+  box-shadow: 0 0 0 2px var(--green) inset;
+}
+.card {
+  cursor: grab;
+}
+.card:active {
+  cursor: grabbing;
+}
+/* Pinned columns get a gold accent and stay at the LEFT of the strip
+ * (JS reorders them to the front of the render output before the
+ * drag-order is applied). */
+.col--pinned {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold);
+}
+.col-head {
+  cursor: grab; /* the header is the drag handle */
+  user-select: none;
+}
+.col-head:active {
+  cursor: grabbing;
+}
+.col-pin-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 4px;
+  transition: color 100ms ease;
+}
+.col-pin-btn:hover {
+  color: var(--gold);
+}
+.col--pinned .col-pin-btn {
+  color: var(--gold);
+}
+/* PR (g) — 催促 (nudge) button on column header (operator TG12608). */
+.col-nudge-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 4px;
+  transition:
+    color 100ms ease,
+    transform 100ms ease;
+}
+.col-nudge-btn:hover {
+  color: var(--gold);
+  transform: scale(1.15);
+}
+.col-nudge-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.col-head {
+  background: rgba(109, 76, 173, 0.08);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.col-name {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: #fff;
+}
+.col-count {
+  background: rgba(109, 76, 173, 0.25);
+  color: var(--purple);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--purple);
+}
+.col-body {
+  flex: 1;
+  padding: 8px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+}
+
+/* === Qualifier hint pills (operator TG 12315/12316) =======================
+ * Pills above (or inline with) the search input, rendered by
+ * renderQualifierHints() as the user types `project:foo status:blocked`.
+ * Known qualifier → purple-accented; unknown qualifier or unknown enum
+ * value → grey + dashed border + tooltip ("did you mean: project /
+ * agent / ..."). Reuses the existing filter-chip visual idiom from PR
+ * #80 so the pills feel part of the filterbar without a new component. */
+.filt-qhints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  /* Sits inline in the filterbar grid; empty state collapses to zero
+     width so the filterbar layout is unchanged when no qualifiers
+     are in the query. */
+  min-height: 0;
+}
+.filt-qhint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border: 1px solid var(--purple);
+  background: rgba(109, 76, 173, 0.12);
+  color: var(--text);
+  cursor: help;
+  line-height: 1.5;
+}
+.filt-qhint-key {
+  color: var(--purple);
+  font-weight: 700;
+  text-transform: lowercase;
+}
+.filt-qhint-val {
+  color: var(--text);
+  opacity: 0.92;
+}
+.filt-qhint--unknown {
+  border-color: var(--grey);
+  border-style: dashed;
+  background: rgba(110, 118, 134, 0.08);
+  color: var(--text-muted);
+}
+.filt-qhint--unknown .filt-qhint-key {
+  color: var(--text-muted);
+}
+.filt-qhint--unknown-value {
+  border-color: var(--amber);
+  border-style: dashed;
+  background: rgba(255, 179, 0, 0.08);
+}
+.filt-qhint--unknown-value .filt-qhint-key {
+  color: var(--amber);
+}
+
+/* === Search autocomplete dropdown (operator TG 12318) ====================
+ * Mirrored React-side at
+ * src/scitex_todo/_django/frontend/src/styles/search-suggest.css. Both
+ * surfaces consume the same searchSuggest engine; visual idiom matches
+ * the qualifier-hint pills (purple accent on KEYs, muted hint text). */
+.filt-search-wrap {
+  position: relative;
+  display: inline-block;
+}
+.search-suggest {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin: 4px 0 0 0;
+  padding: 4px 0;
+  min-width: 240px;
+  max-width: 420px;
+  max-height: 256px;
+  overflow-y: auto;
+  list-style: none;
+  z-index: 50;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+  color: var(--text);
+}
+.search-suggest[hidden] {
+  display: none;
+}
+.search-suggest__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 0.86rem;
+  line-height: 1.3;
+}
+.search-suggest__row--active,
+.search-suggest__row:hover {
+  background: rgba(109, 76, 173, 0.18);
+}
+.search-suggest__label {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--purple);
+}
+.search-suggest__row--value .search-suggest__label {
+  color: var(--text);
+  font-weight: 500;
+}
+.search-suggest__badge {
+  margin-left: auto;
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.search-suggest__hint {
+  flex: 1 1 auto;
+  text-align: right;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-style: italic;
+}

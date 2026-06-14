@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""§1a introspection commands: ``list-python-apis`` and ``mcp list-tools``."""
+"""§1a introspection command: ``list-python-apis``.
+
+The ``mcp list-tools`` verb used to live here as a "no MCP yet" stub. Phase 1
+ships a real MCP server (``scitex_todo._mcp_server``); the live ``mcp``
+subgroup is now owned by ``_cli/_mcp.py``."""
 
 from __future__ import annotations
 
@@ -79,46 +83,14 @@ def list_python_apis_cmd(verbose: int, as_json: bool) -> None:
             click.echo(f"    [{entry['source']}]")
 
 
-@click.group("mcp", help="MCP server introspection for scitex-todo.")
-def mcp_grp() -> None:
-    """MCP tool surface (scitex-todo ships no MCP server yet)."""
-
-
-@mcp_grp.command(
-    "list-tools",
-    help=(
-        "List the MCP tools registered by scitex-todo.\n\n"
-        "Example:\n  scitex-todo mcp list-tools --json"
-    ),
-)
-@click.option(
-    "-v",
-    "--verbose",
-    count=True,
-    help="Add detail (repeatable): -v signatures, -vv summaries, -vvv schema.",
-)
-@click.option(
-    "--json",
-    "as_json",
-    is_flag=True,
-    help="Emit the tool list as JSON.",
-)
-def mcp_list_tools_cmd(verbose: int, as_json: bool) -> None:
-    """List MCP tools. scitex-todo has no MCP server yet, so this is empty."""
-    tools: list[dict] = []
-    if as_json:
-        click.echo(json.dumps(tools))
-        return
-    if not tools:
-        click.echo(
-            "scitex-todo ships no MCP tools yet (the MCP surface is on the roadmap).",
-            err=True,
-        )
-
-
 def register(group: click.Group) -> None:
-    """Attach the introspection commands to the root ``group``."""
+    """Attach the introspection commands to the root ``group``.
+
+    Note: the ``mcp`` subgroup that used to live here is now owned by
+    :mod:`scitex_todo._cli._mcp` (real Phase-1 server). Importing this
+    module no longer affects the ``mcp`` command surface.
+    """
     group.add_command(list_python_apis_cmd)
-    group.add_command(mcp_grp)
+
 
 # EOF

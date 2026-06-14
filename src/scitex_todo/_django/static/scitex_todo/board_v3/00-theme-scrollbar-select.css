@@ -1,0 +1,109 @@
+/* board_v3 — themed scrollbars + <select> dropdowns (dark/light mode).
+ *
+ * Operator complaint via lead a2a `510a58d4` (2026-06-14): on the board at
+ * http://127.0.0.1:8051 the SCROLLBAR and DROPDOWNS / SELECTS rendered
+ * WHITE in dark mode (un-themed). The board already loads scitex-ui's
+ * shell CSS and uses tokens like `var(--col-bg)` / `var(--border)`, and
+ * `<body>` carries class `dark-theme`, so the gap was specifically that
+ * scrollable elements and vanilla <select> elements weren't BOUND to the
+ * themed tokens.
+ *
+ * This file is intentionally LOADED FIRST in board_v3.html so individual
+ * file overrides (e.g. `.filt` in 01-filterbar.css, `.col-body` scrollers
+ * in itself) win on specificity where they want to. The rules here form
+ * the GLOBAL FALLBACK contract: any scrollable element or <select> inside
+ * `body:has(.filterbar)` (the board_v3 layout root) gets themed chrome
+ * derived from scitex-ui shell tokens — no hardcoded colors.
+ *
+ * Sibling file: ../../frontend/src/styles/board.css carries the React-side
+ * equivalent rules under `.stx-todo-board`. The two surfaces share the
+ * scitex-ui token system so behaviour matches across both UIs.
+ */
+
+/* ============================================================================
+ * GLOBAL THEMED SCROLLBAR
+ * ============================================================================ */
+
+/* Firefox / modern: thin themed scrollbar everywhere.
+ * Chromium / WebKit: the `::-webkit-scrollbar*` rules below. */
+html,
+body,
+body * {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border, #2a3140) var(--col-bg, #131820);
+}
+
+body ::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+body ::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body ::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  background: var(--border, #2a3140);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+body ::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted, #8a96a8);
+  background-clip: padding-box;
+}
+
+body ::-webkit-scrollbar-corner,
+body::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ============================================================================
+ * GLOBAL THEMED <select> / <option>
+ * ============================================================================
+ *
+ * Vanilla <select> elements (status filter, agent filter, project filter,
+ * sort dropdown, etc.) fell through to OS-default styling — a white popover
+ * + white closed-state track over the dark page. The rule below binds
+ * EVERY <select> in the board layout to the dark-theme tokens.
+ *
+ * `<option>` styling is best-effort — Chrome / Firefox honour these
+ * properties on most platforms; Safari falls back to native colors. */
+
+body select {
+  appearance: auto;
+  padding: 4px 8px;
+  border: 1px solid var(--border, #2a3140);
+  border-radius: 4px;
+  background: var(--col-bg, #131820);
+  color: var(--text, #e0e6f0);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+body select:hover {
+  border-color: var(--purple, #6d4cad);
+}
+
+body select:focus,
+body select:focus-visible {
+  outline: none;
+  border-color: var(--purple, #6d4cad);
+  box-shadow: 0 0 0 2px rgba(109, 76, 173, 0.25);
+}
+
+body select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+body select option {
+  background: var(--card-bg, #1a1f29);
+  color: var(--text, #e0e6f0);
+}

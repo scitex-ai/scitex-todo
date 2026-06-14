@@ -181,7 +181,16 @@ def skills_install_cmd(
 
 
 def register(group: click.Group) -> None:
-    """Attach the ``skills`` group to the root ``group``."""
+    """Attach the ``skills`` group to the root ``group``.
+
+    The ``manifest`` + ``propagate`` subcommands live in
+    :mod:`scitex_todo._cli._skills_propagate` (kept separate so this module
+    stays small + focused on the bundled-skills surface).
+    """
+    from ._skills_propagate import build_manifest_cmd, build_propagate_cmd
+
+    skills_grp.add_command(build_manifest_cmd())
+    skills_grp.add_command(build_propagate_cmd())
     group.add_command(skills_grp)
 
 # EOF

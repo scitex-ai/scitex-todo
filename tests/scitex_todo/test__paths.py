@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from scitex_todo import bundled_example, resolve_tasks_path
+from scitex_todo._paths import bundled_example, resolve_tasks_path
 from scitex_todo._paths import ENV_TASKS
 
 
@@ -88,6 +88,92 @@ def test_bundled_example_file_exists_and_loads():
     text = example.read_text(encoding="utf-8")
     # Assert
     assert "tasks:" in text
+
+
+# === Additional gap-fill coverage (proj-scitex-todo overnight) ==============
+
+
+def test_explicit_missing_path_returned_as_is(tmp_path, clean_tasks_env):
+    """Explicit-but-missing path: function returns the Path verbatim so the
+    LOADER raises the FNF with the user-supplied filename in the message —
+    the docstring contract."""
+    # Arrange
+    explicit = tmp_path / "nope.yaml"  # never created
+    # Act
+    resolved = resolve_tasks_path(explicit)
+    # Assert
+    assert resolved == explicit
+
+
+def test_explicit_path_string_is_expanded(tmp_path, clean_tasks_env):
+    """Explicit path accepts a str, not just Path."""
+    # Arrange
+    target = tmp_path / "mine.yaml"
+    target.write_text("tasks: []\n", encoding="utf-8")
+    # Act
+    resolved = resolve_tasks_path(str(target))
+    # Assert
+    assert resolved == target
+
+
+def test_project_scope_wins_over_user_scope(tmp_path, clean_tasks_env, monkeypatch):
+    """Resolution precedence 3 — project (.git found) beats user scope."""
+    # Arrange — a fake project root with a real .git + tasks.yaml.
+    project = tmp_path / "repo"
+    project.mkdir()
+    (project / ".git").mkdir()
+    proj_store_dir = project / ".scitex" / "todo"
+    proj_store_dir.mkdir(parents=True)
+    proj_store = proj_store_dir / "tasks.yaml"
+    proj_store.write_text("tasks: []\n", encoding="utf-8")
+    # Also create a user-scope candidate so we know the project beats it.
+    user_root = tmp_path / "user-scitex"
+    user_dir = user_root / "todo"
+    user_dir.mkdir(parents=True)
+    user_store = user_dir / "tasks.yaml"
+    user_store.write_text("tasks: []\n", encoding="utf-8")
+    monkeypatch.setenv("SCITEX_DIR", str(user_root))
+    monkeypatch.chdir(project)
+    # Act
+    resolved = resolve_tasks_path(None)
+    # Assert
+    assert resolved == proj_store
+
+
+def test_user_scope_used_when_no_project_store(tmp_path, clean_tasks_env, monkeypatch):
+    """Resolution precedence 4 — user scope when no project scope."""
+    # Arrange — no .git ancestor at cwd; SCITEX_DIR has the store.
+    work = tmp_path / "work"
+    work.mkdir()
+    user_root = tmp_path / "user-scitex"
+    user_dir = user_root / "todo"
+    user_dir.mkdir(parents=True)
+    user_store = user_dir / "tasks.yaml"
+    user_store.write_text("tasks: []\n", encoding="utf-8")
+    monkeypatch.setenv("SCITEX_DIR", str(user_root))
+    monkeypatch.chdir(work)
+    # Act
+    resolved = resolve_tasks_path(None)
+    # Assert
+    assert resolved == user_store
+
+
+def test_find_git_root_walks_up(tmp_path, clean_tasks_env, monkeypatch):
+    """`_find_git_root` ascends parents; runs from a deep subdir of repo."""
+    # Arrange — repo at tmp_path/repo, subdir at tmp_path/repo/a/b/c.
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    proj_store_dir = repo / ".scitex" / "todo"
+    proj_store_dir.mkdir(parents=True)
+    proj_store = proj_store_dir / "tasks.yaml"
+    proj_store.write_text("tasks: []\n", encoding="utf-8")
+    deep = repo / "a" / "b" / "c"
+    deep.mkdir(parents=True)
+    monkeypatch.chdir(deep)
+    # Act
+    resolved = resolve_tasks_path(None)
+    # Assert
+    assert resolved == proj_store
 
 
 # EOF

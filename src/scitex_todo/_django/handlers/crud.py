@@ -43,6 +43,30 @@ _EDITABLE_FIELDS = (
     "parent",
     "depends_on",
     "blocks",
+    # Operator-co-designed fields (Task dataclass, PR #56). Operator was
+    # losing edits silently — `project` (and the rest) were not in this
+    # tuple, so handle_update returned 200 with the field untouched, and
+    # the card-drag (PR #77, TG 385) became a visual no-op (operator TG
+    # 453 reproducer: dragged 学会 GTM card business → calendar, toast
+    # said success, card stayed put). Whitelist now mirrors every
+    # writable field on the Task dataclass.
+    "project",
+    "agent",
+    "task",
+    "host",
+    "goal",
+    "pr_url",
+    "issue_url",
+    "last_activity",
+    "created_at",
+    "scope",
+    "assignee",
+    "blocker",
+    "kind",
+    "job_id",
+    "command",
+    "started_at",
+    "finished_at",
 )
 
 
@@ -76,7 +100,8 @@ def _slug_id(title: str, taken: set[str]) -> str:
 
 def _save(tasks, board):
     """Validate + persist, resetting the cache. Returns an error response or None."""
-    from scitex_todo import TaskValidationError, save_tasks
+    from scitex_todo import TaskValidationError
+    from scitex_todo._model import save_tasks
 
     from ..services import _reset_cache
 
@@ -332,13 +357,67 @@ def handle_comment(request, board):
         author,
         board.store_path,
     )
+
+    # PR (g) comment-relay (lead a2a `9e710ab074ef4bf3a615be41793e0c51`,
+    # operator TG12611 2026-06-12): when the comment author is NOT
+    # the task's owning agent, push the full body to the owner via
+    # the same wire the nudge button uses. Best-effort — relay failure
+    # does NOT fail the comment write. Relay outcome surfaces in the
+    # response so the UI can toast.
+    relay = _maybe_relay_comment(task, comment)
+
     return JsonResponse(
         {
             "comment": comment,
             "count": len(task["comments"]),
             "store_path": str(board.store_path),
+            "relay": relay,
         }
     )
+
+
+def _maybe_relay_comment(task: dict, comment: dict) -> dict:
+    """If ``comment.author != task.agent``, push the comment to the
+    owning agent via the same wire the nudge button uses.
+
+    Returns a dict the JSON response includes so the UI can render a
+    toast: ``{"sent": bool, "wire": "sac"|"stdout"|"skip:<reason>",
+    "target": "<agent>"}``.
+    """
+    target = (task.get("agent") or "").strip()
+    author = (comment.get("author") or "").strip()
+    if not target:
+        return {"sent": False, "wire": "skip:no-agent", "target": ""}
+    if author == target:
+        return {"sent": False, "wire": "skip:self-comment", "target": target}
+
+    body = (
+        f"📝 comment on {task['id']} from {author!r}:\n\n"
+        f"{comment.get('text', '')}\n\n"
+        f"---\nReply via `scitex-todo comment {task['id']} "
+        f"\"<your reply>\" --author {target}` (or MCP `add_comment` / "
+        f"`comment_task`)."
+    )
+
+    from ..._push import deliver
+
+    result = deliver(
+        target, body,
+        kind="comment-relay",
+        task_id=task["id"],
+    )
+    logger.info(
+        "[scitex-todo] comment relay %s → %s wire=%s reason=%s (ok=%s)",
+        task["id"], target, result.get("wire"), result.get("reason"),
+        result.get("ok"),
+    )
+    return {
+        "sent": result.get("ok", False),
+        "wire": result.get("wire"),
+        "reason": result.get("reason"),
+        "target": target,
+    }
+
 
 
 def handle_edge(request, board):

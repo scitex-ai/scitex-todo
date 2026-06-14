@@ -17,6 +17,7 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type { TaskInput } from "./api/client";
+import { ChatPanel } from "./ChatPanel";
 import { STATUSES, useBoardStore } from "./store/useBoardStore";
 import type { GraphNode, GraphPayload, StatusColor } from "./types/board";
 
@@ -272,11 +273,220 @@ function CommentsSection({ node }: { node: GraphNode }) {
   );
 }
 
-function DetailReader({ node }: { node: GraphNode }) {
+/** "What is blocking this task?" + "What does this task block?" section.
+ *
+ * Operator UX 2026-06-06: "ブロッカーが何かわからないので、todo にブロッカー
+ * 可視化". For any selected task X this section enumerates two graph slices
+ * read directly from the loaded edges + nodes:
+ *
+ *   - **Blockers** — concrete things keeping X stuck. Composition:
+ *     (a) `depends_on` deps that are NOT yet `done` (incoming depends_on
+ *         edges where target=X; X needs the source to finish first).
+ *     (b) explicit `blocks` edges into X (source IS keeping X stopped).
+ *     Each row is clickable → switches the drawer to that node, so the
+ *     operator can chase the chain without losing their place.
+ *
+ *   - **Blocks (downstream)** — things X is currently keeping stuck. Mirror
+ *     of (a) + (b): tasks that depend_on X and tasks X explicitly blocks.
+ *
+ * "done" deps are listed separately under a `<details>` toggle ("Satisfied
+ * deps") so they don't clutter the live-blocker view but the trail is still
+ * inspectable. When everything is empty we render a single explicit "Nothing
+ * blocking this — and nothing waiting on it." line so absence is informative
+ * rather than the section silently disappearing.
+ */
+function BlockersSection({
+  node,
+  graph,
+}: {
+  node: GraphNode;
+  graph: GraphPayload;
+}) {
+  const selectNode = useBoardStore((s) => s.selectNode);
+
+  // Index nodes by id once per render so each lookup is O(1).
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+
+  // Upstream blockers — incoming depends_on (source = dep, target = X) where
+  // the dep is not yet `done`, PLUS incoming `blocks` edges (source = blocker,
+  // target = X). "done" deps are not blockers — they're satisfied prereqs.
+  const upstreamDeps = graph.edges
+    .filter((e) => e.kind === "depends_on" && e.target === node.id)
+    .map((e) => byId.get(e.source))
+    .filter((n): n is GraphNode => n != null);
+  const explicitBlockers = graph.edges
+    .filter((e) => e.kind === "blocks" && e.target === node.id)
+    .map((e) => byId.get(e.source))
+    .filter((n): n is GraphNode => n != null);
+  const blockers: { node: GraphNode; why: string }[] = [
+    ...upstreamDeps
+      .filter((n) => n.status !== "done")
+      .map((n) => ({ node: n, why: "depends_on (not done yet)" })),
+    ...explicitBlockers.map((n) => ({
+      node: n,
+      why: "blocks (explicit)",
+    })),
+  ];
+  const satisfiedDeps = upstreamDeps.filter((n) => n.status === "done");
+
+  // Downstream — things waiting on X.
+  const dependents = graph.edges
+    .filter((e) => e.kind === "depends_on" && e.source === node.id)
+    .map((e) => byId.get(e.target))
+    .filter((n): n is GraphNode => n != null);
+  const blocksTargets = graph.edges
+    .filter((e) => e.kind === "blocks" && e.source === node.id)
+    .map((e) => byId.get(e.target))
+    .filter((n): n is GraphNode => n != null);
+  const downstream: { node: GraphNode; why: string }[] = [
+    ...dependents.map((n) => ({ node: n, why: "depends on this" })),
+    ...blocksTargets.map((n) => ({
+      node: n,
+      why: "explicitly blocked by this",
+    })),
+  ];
+
+  const empty = blockers.length === 0 && downstream.length === 0;
+
+  const renderRow = (n: GraphNode, why: string, key: string) => {
+    const c = graph.status_colors[n.status];
+    return (
+      <li className="stx-todo-blocker" key={key}>
+        <button
+          type="button"
+          className="stx-todo-blocker__link"
+          onClick={() => selectNode(n.id)}
+          title={`Open details for ${n.title}`}
+        >
+          <StatusBadge status={n.status} color={c} />
+          <span className="stx-todo-blocker__title">{n.title}</span>
+          <span className="stx-todo-blocker__why">{why}</span>
+        </button>
+      </li>
+    );
+  };
+
+  return (
+    <section className="stx-todo-blockers">
+      <h3 className="stx-todo-blockers__title">
+        🚧 Blockers {blockers.length > 0 && `(${blockers.length})`}
+      </h3>
+      {empty && (
+        <p className="stx-todo-blockers__empty">
+          <em>Nothing blocking this — and nothing waiting on it.</em>
+        </p>
+      )}
+      {blockers.length > 0 ? (
+        <ul className="stx-todo-blockers__list">
+          {blockers.map((b, i) =>
+            renderRow(b.node, b.why, `b-${b.node.id}-${i}`),
+          )}
+        </ul>
+      ) : !empty ? (
+        <p className="stx-todo-blockers__hint">
+          <em>Nothing is currently blocking this task.</em>
+        </p>
+      ) : null}
+
+      {satisfiedDeps.length > 0 && (
+        <details className="stx-todo-blockers__satisfied">
+          <summary>✓ Satisfied deps ({satisfiedDeps.length})</summary>
+          <ul className="stx-todo-blockers__list">
+            {satisfiedDeps.map((n, i) =>
+              renderRow(n, "depends_on (done)", `s-${n.id}-${i}`),
+            )}
+          </ul>
+        </details>
+      )}
+
+      {downstream.length > 0 && (
+        <>
+          <h4 className="stx-todo-blockers__subtitle">
+            Blocks (downstream) — {downstream.length}
+          </h4>
+          <ul className="stx-todo-blockers__list">
+            {downstream.map((d, i) =>
+              renderRow(d.node, d.why, `d-${d.node.id}-${i}`),
+            )}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
+/** KV table for the compute-job metadata on a `kind: "compute"` row.
+ *
+ * Lead a2a `2c7a431d` directive: "opening a compute card answers 'what is
+ * this and where does it run' immediately." Renders the validated compute
+ * fields (job_id / host / command / started_at / finished_at) as a small
+ * two-column table at the top of the drawer body, before the Blockers
+ * section. Rows with a null/empty value are omitted so the table stays
+ * compact for in-flight jobs that don't have a finished_at yet.
+ *
+ * The `command` row is special — long shell pipelines are common, so it
+ * gets its own full-width row below the compact KV grid and wraps as
+ * pre-wrap text. The canvas tooltip shows the same command truncated to
+ * ~100 chars; here we show the full string.
+ */
+function ComputeMetaSection({ node }: { node: GraphNode }) {
+  if (node.kind !== "compute") return null;
+
+  const rows: Array<{ label: string; value: string }> = [];
+  if (node.host) rows.push({ label: "host", value: node.host });
+  if (node.job_id) rows.push({ label: "job_id", value: node.job_id });
+  if (node.started_at)
+    rows.push({ label: "started_at", value: node.started_at });
+  if (node.finished_at)
+    rows.push({ label: "finished_at", value: node.finished_at });
+
+  return (
+    <section className="stx-todo-compute" aria-label="Compute job metadata">
+      <h3 className="stx-todo-compute__title">⚙ Compute job</h3>
+      {rows.length > 0 && (
+        <dl className="stx-todo-compute__kv">
+          {rows.map((r) => (
+            <div className="stx-todo-compute__row" key={r.label}>
+              <dt className="stx-todo-compute__key">{r.label}</dt>
+              <dd className="stx-todo-compute__val">
+                <code>{r.value}</code>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {node.command && (
+        <div className="stx-todo-compute__cmd">
+          <div className="stx-todo-compute__cmd-label">command</div>
+          <pre className="stx-todo-compute__cmd-text">
+            <code>{node.command}</code>
+          </pre>
+        </div>
+      )}
+      {rows.length === 0 && !node.command && (
+        <p className="stx-todo-compute__empty">
+          <em>
+            No compute metadata recorded yet (writer hasn't populated this row).
+          </em>
+        </p>
+      )}
+    </section>
+  );
+}
+
+function DetailReader({
+  node,
+  graph,
+}: {
+  node: GraphNode;
+  graph: GraphPayload;
+}) {
   const note = (node.note ?? "").trim();
   const hasNote = note.length > 0 && note !== "uncategorized";
   return (
     <div className="stx-todo-detail__body">
+      <ComputeMetaSection node={node} />
+      <BlockersSection node={node} graph={graph} />
       {hasNote ? (
         <div className="stx-todo-detail__markdown">
           <ReactMarkdown>{note}</ReactMarkdown>
@@ -287,6 +497,13 @@ function DetailReader({ node }: { node: GraphNode }) {
         </p>
       )}
       <CommentsSection node={node} />
+      {/* Phase-6 CHAT surface — lead a2a `74db4f2d` + `10afa799`.
+          Operator↔agent thread sitting on top of the same per-card
+          `comments[]` substrate the CommentsSection above reads; adds
+          30s auto-poll + write-back via /chat/<id>. The two surfaces
+          render the same data; the chat one is the "live conversation"
+          intent (polling + bubble layout + author colors). */}
+      <ChatPanel cardId={node.id} />
     </div>
   );
 }
@@ -331,10 +548,7 @@ export function NodeDetailPanel({
       aria-label={creating ? "Create task" : `Task detail: ${title}`}
       onClick={onClose}
     >
-      <aside
-        className="stx-todo-detail"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <aside className="stx-todo-detail" onClick={(e) => e.stopPropagation()}>
         <header className="stx-todo-detail__header">
           <div className="stx-todo-detail__title-row">
             <h2 className="stx-todo-detail__title">{title || "Untitled"}</h2>
@@ -387,7 +601,7 @@ export function NodeDetailPanel({
             onCancel={endEdit}
           />
         ) : node ? (
-          <DetailReader node={node} />
+          <DetailReader node={node} graph={graph} />
         ) : null}
       </aside>
     </div>

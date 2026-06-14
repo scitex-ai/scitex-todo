@@ -93,8 +93,41 @@ locations (project-local wins; both optional):
 
 | Path                              | Scope         | Purpose                        |
 |-----------------------------------|---------------|--------------------------------|
-| `~/.scitex/todo/tasks.yaml`       | user-global   | your personal task store       |
+| `~/.scitex/todo/tasks.yaml`       | user-global   | your personal task store (the shared-fleet default) |
 | `<proj-root>/.scitex/todo/tasks.yaml` | project-local | overrides for the current repo |
+
+</details>
+
+<details>
+<summary><strong>Shared-fleet TODO across agents</strong></summary>
+
+<br>
+
+The user-global store (`~/.scitex/todo/tasks.yaml`) is the **centralized**
+list shared between you and every agent that runs on this host. Each task
+carries an optional `scope:` label so an agent (or you, via the board) can
+filter to only the slice that's relevant.
+
+Convention (not enforced — `scope` is a free-form string):
+
+- `agent:<name>` — "for this agent's eyes" (e.g. `agent:proj-scitex-todo`).
+- `project:<name>` — "tied to this project" (e.g. `project:scitex-clew`).
+- `private` — operator-only.
+
+Each agent in the SciTeX agent container picks up its slice by setting:
+
+```bash
+export SCITEX_TODO_SCOPE='agent:<name>'   # default filter for `list`/`summary`
+export SCITEX_TODO_AGENT='agent:<name>'   # stamps `completed_by` on `done`
+```
+
+The list-side filter ALSO has a per-call `--scope LABEL` flag. Pass
+`--scope ''` (empty string) to opt out of the env default and see the
+full store.
+
+See `GITIGNORED/ARCHITECTURE.md` (in the repo working tree) for the
+9-requirement → mechanism map and the deferred-but-designed seams
+(cross-host sync, operator↔agent chat).
 
 </details>
 
@@ -184,6 +217,12 @@ A YAML document with a top-level `tasks:` list. Each task:
 | `note`       | no       | free-text annotation, shown under the title                      |
 | `priority`   | no       | integer rank (lower = higher); document order if absent          |
 | `parent`     | no       | id of the task this nests under (drill-down view)                |
+| `kind`       | no       | `task` (default) \| `compute` — closed enum; `compute` marks a row whose status is updated by an external writer (Spartan/CI watcher) |
+| `job_id`     | no       | opaque compute-job id (slurm id, GH Actions run, …); only with `kind: compute`  |
+| `host`       | no       | where the compute job runs (`spartan`, `mba`, `github`, …); only with `kind: compute` |
+| `command`    | no       | shell invocation / pipeline for the compute job; only with `kind: compute`     |
+| `started_at` | no       | ISO-8601 timestamp the writer observed start; only with `kind: compute`        |
+| `finished_at`| no       | ISO-8601 timestamp the writer observed completion; only with `kind: compute`   |
 
 ### status -> color
 
@@ -192,9 +231,9 @@ A YAML document with a top-level `tasks:` list. Each task:
 | `goal`        | gold `#ffe082`  | solid         |
 | `done`        | green `#c8e6c9` | solid         |
 | `in_progress` | yellow `#fff9c4`| solid         |
-| `blocked`     | orange `#fff3e0`| solid         |
-| `pending`     | grey `#eceff1`  | solid         |
-| `deferred`    | grey `#f5f5f5`  | dashed border |
+| `blocked`     | bright-orange `#ff8a65` | solid         |
+| `pending`     | grey `#eceff1`          | solid         |
+| `deferred`    | amber `#ffca28`         | dashed border |
 | `failed`      | red `#ffcdd2`   | solid         |
 
 ## Roadmap

@@ -26,6 +26,7 @@ export function ContextMenu() {
   const bulkSetStatus = useBoardStore((s) => s.bulkSetStatus);
   const bulkDelete = useBoardStore((s) => s.bulkDelete);
   const bulkGroupUnder = useBoardStore((s) => s.bulkGroupUnder);
+  const showToast = useBoardStore((s) => s.showToast);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -163,6 +164,26 @@ export function ContextMenu() {
                 );
               })}
             </div>
+            {!bulk && task?.parent && (
+              <>
+                <div className="stx-todo-menu__sep" />
+                <button
+                  type="button"
+                  className="stx-todo-menu__item"
+                  role="menuitem"
+                  onClick={() => {
+                    const id = menu.taskId as string;
+                    const prev = task.parent ?? null;
+                    void updateTask(id, { parent: null });
+                    showToast("Moved to top level", () => {
+                      void updateTask(id, { parent: prev });
+                    });
+                  }}
+                >
+                  ▤ Move to top level
+                </button>
+              </>
+            )}
             <div className="stx-todo-menu__sep" />
             <button
               type="button"

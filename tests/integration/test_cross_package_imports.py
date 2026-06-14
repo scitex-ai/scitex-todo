@@ -24,6 +24,7 @@ import pytest
 # Exactly the cross-package imports found under src/ (PS-140 verifies this set).
 CROSS_PACKAGE_IMPORTS = [
     "scitex_app._django",
+    "scitex_dev._mcp_cli",
     "scitex_ui",
 ]
 

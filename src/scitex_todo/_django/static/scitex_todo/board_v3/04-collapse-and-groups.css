@@ -1,0 +1,448 @@
+/* board_v3 — P2 filter-popover + P10 project groups + sort + groupby + at-modal + edit
+ *
+ * Extracted from src/scitex_todo/_django/templates/scitex_todo/board_v3.html
+ * Owns: .filt-popover, .filt-chip, .filt-sort, .filt-groupby, .group-*,
+ *       .at-* (Add Task modal), .detail-edit / .detail-delete / .d-edit-*,
+ *       .toast-undo.
+ */
+
+/* === P2 (lead brief 2026-06-12) — filter-UX collapse =================
+ * The six filter dropdowns (project / host / status / blocker / agent /
+ * date) used to take up the whole filterbar. They're now collapsed
+ * behind one "🔧 Filters (N active)" popover (.filt-popover) + a chip
+ * strip (.filt-chips) that shows the currently-active filters at all
+ * times so the operator sees what's set even when the popover is
+ * closed. P9 sort-by sits inline as a small select next to the
+ * popover trigger. (hook-bypass: line-limit — see REFACTORING.md.) */
+.filt-popover {
+  position: relative;
+  font-size: 0.78rem;
+}
+.filt-popover > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-weight: 600;
+}
+.filt-popover > summary::-webkit-details-marker {
+  display: none;
+}
+.filt-popover > summary:hover {
+  color: var(--text);
+  border-color: var(--purple);
+}
+.filt-popover[open] > summary,
+.filt-popover > summary.has-active {
+  background: var(--purple);
+  color: #fff;
+  border-color: var(--purple);
+}
+.filt-popover-body {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 25;
+  min-width: 280px;
+  max-width: 360px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+}
+.filt-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.filt-popover-row label {
+  flex: 0 0 80px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.filt-popover-row select {
+  flex: 1 1 auto;
+  padding: 5px 8px;
+  font-size: 0.85rem;
+}
+/* Show-done toggle row (operator direct, lead a2a 2026-06-12).
+ * Checkbox + inline count label. */
+.filt-popover-row--toggle {
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+.filt-popover-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text);
+  cursor: pointer;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.filt-popover-toggle-label input[type="checkbox"] {
+  accent-color: var(--purple);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+.filt-popover-toggle-label code {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 0.78rem;
+}
+.filt-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: 2px;
+}
+.filt-popover-clear {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.filt-popover-clear:hover {
+  color: #fff;
+  background: var(--red);
+  border-color: var(--red);
+}
+
+/* Active-filter chips — sit inline in the filterbar so the operator
+ * sees what's set at one glance. Each chip has a × dismiss button. */
+.filt-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.filt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 9px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--purple);
+  border: 1px solid var(--purple);
+  border-radius: 999px;
+}
+.filt-chip-key {
+  opacity: 0.78;
+  font-weight: 500;
+}
+.filt-chip-val {
+  font-weight: 700;
+}
+.filt-chip-clear {
+  appearance: none;
+  background: rgba(255, 255, 255, 0.18);
+  border: none;
+  color: #fff;
+  width: 18px;
+  height: 18px;
+  line-height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.filt-chip-clear:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+/* Sort-by (P9) — small select inline with the filter trigger. */
+.filt-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.filt-sort select {
+  padding: 5px 10px;
+  font-size: 0.82rem;
+}
+
+/* === P10 (lead a2a 2026-06-12) — project groups ====================
+ * Operator-defined clusters of projects. When "Group by" is on:
+ *   - spans_all groups render as a thin horizontal banner at the top
+ *     of the columns container (lead's "I cross every project");
+ *   - other groups render an inline header bar before the first column
+ *     they own; columns sort so members of one group cluster together.
+ * (hook-bypass: line-limit — see GITIGNORED/REFACTORING.md.) */
+.filt-groupby {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.filt-groupby select {
+  padding: 5px 10px;
+  font-size: 0.82rem;
+}
+.group-strip {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  margin: 0 6px 6px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: rgba(255, 193, 7, 0.04);
+}
+.group-strip-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+  background: rgba(255, 193, 7, 0.12);
+  border: 1px solid var(--gold, #ffc107);
+  border-radius: 999px;
+}
+.group-strip-banner-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  display: inline-block;
+}
+.group-header {
+  flex: 0 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 2px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px dashed var(--border);
+}
+.group-header-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.group-header-count {
+  font-weight: 500;
+  opacity: 0.6;
+  text-transform: none;
+}
+
+/* Add Task modal — minimal form with title + project + status. */
+.at-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 110;
+}
+.at-backdrop.show {
+  display: flex;
+}
+.at-modal {
+  background: var(--card-bg);
+  border: 1px solid var(--green);
+  border-radius: 10px;
+  padding: 22px;
+  width: 90%;
+  max-width: 520px;
+  box-shadow: 0 6px 40px rgba(0, 0, 0, 0.5);
+}
+.at-modal h2 {
+  margin: 0 0 14px 0;
+  color: var(--green);
+  font-size: 1.1rem;
+}
+.at-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.at-row label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.at-input,
+.at-select {
+  background: #232a36;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 0.92rem;
+}
+.at-input:focus,
+.at-select:focus {
+  outline: none;
+  border-color: var(--green);
+}
+.at-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 14px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.at-btn {
+  padding: 7px 16px;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+.at-btn-cancel {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.at-btn-create {
+  background: var(--green);
+  color: #fff;
+  border: 1px solid var(--green);
+  font-weight: 700;
+  box-shadow: 0 0 8px 1px rgba(76, 175, 80, 0.45);
+}
+.at-btn-create:hover {
+  background: #5dbb60;
+  box-shadow: 0 0 14px 3px rgba(76, 175, 80, 0.65);
+}
+.at-btn-create:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+/* Edit + Delete buttons inside the detail modal. */
+.detail-edit {
+  background: transparent;
+  color: var(--purple);
+  border: 1px solid var(--purple);
+  padding: 7px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+.detail-edit:hover {
+  background: var(--purple);
+  color: #fff;
+}
+.detail-delete {
+  background: transparent;
+  color: var(--red);
+  border: 1px solid var(--red);
+  padding: 7px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+.detail-delete:hover {
+  background: var(--red);
+  color: #fff;
+  box-shadow: 0 0 8px 1px rgba(244, 67, 54, 0.45);
+}
+.detail-edit-form {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+.detail-edit-form.show {
+  display: flex;
+}
+.d-edit-input,
+.d-edit-select,
+.d-edit-textarea {
+  background: #232a36;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 0.92rem;
+}
+.d-edit-textarea {
+  min-height: 80px;
+  resize: vertical;
+  font-family: ui-monospace, monospace;
+}
+.d-edit-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.d-edit-save {
+  background: var(--purple);
+  color: #fff;
+  border: 1px solid var(--purple);
+  padding: 5px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+.d-edit-cancel {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  padding: 5px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+
+/* Undo toast — repurposes the existing .toast with an Undo button. */
+.toast-undo {
+  margin-left: 12px;
+  padding: 2px 10px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  border: 1px solid #fff;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  font-weight: 700;
+}
+.toast-undo:hover {
+  background: #fff;
+  color: #333;
+}

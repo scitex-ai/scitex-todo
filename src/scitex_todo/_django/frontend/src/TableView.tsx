@@ -11,6 +11,7 @@
 import { useMemo, useState } from "react";
 import { nodeHasChildren } from "./layout";
 import { taskMatchesFilter, useBoardStore } from "./store/useBoardStore";
+import { isVisibleRow } from "./tableFilter";
 import type { GraphNode, GraphPayload } from "./types/board";
 
 type SortKey = "title" | "status" | "priority" | "repo" | "deps" | "comments";
@@ -44,6 +45,13 @@ export function TableView({ graph }: { graph: GraphPayload }) {
   const clearSelected = useBoardStore((s) => s.clearSelected);
   const [sortKey, setSortKey] = useState<SortKey>("priority");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  // Hide structural umbrella cards (kind=status / kind=goal) by default —
+  // operator pain via lead a2a 510a58d4: the flat Table view is cluttered
+  // by q-* quality-axis rows and goal/umbrella anchors that are not
+  // actionable tasks. The Graph + Column views are UNTOUCHED — they keep
+  // showing every card per the existing dep-graph contract. See
+  // ./tableFilter.ts for the full rationale.
+  const [showStructural, setShowStructural] = useState<boolean>(false);
 
   // Count edges touching each node once, so the Deps column is O(E) not O(N·E).
   const degree = useMemo(() => {
@@ -56,8 +64,10 @@ export function TableView({ graph }: { graph: GraphPayload }) {
   }, [graph.edges]);
 
   const rows = useMemo<Row[]>(() => {
-    const filtered = graph.nodes.filter((n) =>
-      taskMatchesFilter(n, query, activeStatuses, activeRepos),
+    const filtered = graph.nodes.filter(
+      (n) =>
+        taskMatchesFilter(n, query, activeStatuses, activeRepos) &&
+        isVisibleRow(n, showStructural),
     );
     const mapped: Row[] = filtered.map((n) => ({
       node: n,
@@ -90,7 +100,16 @@ export function TableView({ graph }: { graph: GraphPayload }) {
       if (va > vb) return 1 * dir;
       return a.node.title.localeCompare(b.node.title);
     });
-  }, [graph, degree, query, activeStatuses, activeRepos, sortKey, sortDir]);
+  }, [
+    graph,
+    degree,
+    query,
+    activeStatuses,
+    activeRepos,
+    sortKey,
+    sortDir,
+    showStructural,
+  ]);
 
   const onSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -103,6 +122,23 @@ export function TableView({ graph }: { graph: GraphPayload }) {
 
   return (
     <div className="stx-todo-table-wrap">
+      <div className="stx-todo-table__toolbar">
+        <label
+          className="stx-todo-table__toggle"
+          title={
+            "Show structural cards (kind=status, kind=goal) — quality-axis " +
+            "rows and goal/umbrella anchors. Hidden by default; they still " +
+            "show in the Graph + Column views."
+          }
+        >
+          <input
+            type="checkbox"
+            checked={showStructural}
+            onChange={(e) => setShowStructural(e.target.checked)}
+          />
+          <span>Show structural cards</span>
+        </label>
+      </div>
       <table className="stx-todo-table">
         <thead>
           <tr>
@@ -148,7 +184,11 @@ export function TableView({ graph }: { graph: GraphPayload }) {
                   e.preventDefault();
                   openMenu(e.clientX, e.clientY, node.id);
                 }}
-                title={hasChildren ? "Drill in (right-click to edit)" : "Details (right-click to edit)"}
+                title={
+                  hasChildren
+                    ? "Drill in (right-click to edit)"
+                    : "Details (right-click to edit)"
+                }
               >
                 <td className="stx-todo-table__title">
                   {hasChildren ? "▸ " : ""}
@@ -165,9 +205,7 @@ export function TableView({ graph }: { graph: GraphPayload }) {
                     {node.status}
                   </span>
                 </td>
-                <td className="stx-todo-table__num">
-                  {node.priority ?? ""}
-                </td>
+                <td className="stx-todo-table__num">{node.priority ?? ""}</td>
                 <td className="stx-todo-table__repo">{node.repo ?? ""}</td>
                 <td className="stx-todo-table__num">{deps || ""}</td>
                 <td className="stx-todo-table__num">{comments || ""}</td>

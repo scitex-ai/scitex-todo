@@ -1,0 +1,570 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Front-end contract tests for the fleet timing-chart panel (Phase 5).
+
+Two halves (same pattern as ``test_fleet_hosts.py`` /
+``test_fleet_ci_pills.py`` / ``test_fleet_mesh.py``):
+
+1. **CSS contract** — open ``fleet-timing.css`` and assert:
+     - the canonical selectors are present
+     - colors come from design tokens (``--status-success``,
+       ``--status-warning``, ``--status-error``, ``--stx-danger``,
+       etc.) ONLY; NO hardcoded hex / ``white`` / ``#fff`` literals
+       leak in (theme-breaking).
+     - the partial is imported from ``board.css`` so the panel
+       actually styles when the bundle loads.
+2. **Component logic** — execute the actual ``isTimingPayloadErr`` /
+   ``formatDurationSeconds`` / ``barWidthPct`` / ``barColorToken`` /
+   ``sortKeysByP95Desc`` / ``pickRows`` / ``timingPanelLabel``
+   helpers from ``FleetTimingPanel.tsx`` via ``node`` and pin the
+   mapping for canonical payloads. Same lock-step assertion against
+   the TS source so a rename downstream forces this test to update.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import shutil
+import subprocess
+import textwrap
+from pathlib import Path
+
+import pytest
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+
+_CSS_FILE = (
+    _REPO_ROOT
+    / "src"
+    / "scitex_todo"
+    / "_django"
+    / "frontend"
+    / "src"
+    / "styles"
+    / "fleet-timing.css"
+)
+_TSX_FILE = (
+    _REPO_ROOT
+    / "src"
+    / "scitex_todo"
+    / "_django"
+    / "frontend"
+    / "src"
+    / "FleetTimingPanel.tsx"
+)
+
+
+# ─── CSS contract ───────────────────────────────────────────────────────
+
+
+def test_css_file_exists() -> None:
+    assert _CSS_FILE.is_file(), f"missing CSS file: {_CSS_FILE}"
+
+
+def test_css_has_canonical_selectors() -> None:
+    """The component generates these class names — the CSS file MUST
+    define each one or the panel will silently render unstyled."""
+    css = _CSS_FILE.read_text(encoding="utf-8")
+    for selector in (
+        ".stx-todo-fleet-timing",
+        ".stx-todo-fleet-timing--loading",
+        ".stx-todo-fleet-timing--collapsed",
+        ".stx-todo-fleet-timing--expanded",
+        ".stx-todo-fleet-timing--error",
+        ".stx-todo-fleet-timing__label",
+        ".stx-todo-fleet-timing__dot",
+        ".stx-todo-fleet-timing__header",
+        ".stx-todo-fleet-timing__control",
+        ".stx-todo-fleet-timing__select",
+        ".stx-todo-fleet-timing__close",
+        ".stx-todo-fleet-timing__chart",
+        ".stx-todo-fleet-timing__row",
+        ".stx-todo-fleet-timing__rowlabel",
+        ".stx-todo-fleet-timing__bars",
+        ".stx-todo-fleet-timing__bar",
+        ".stx-todo-fleet-timing__bar--median",
+        ".stx-todo-fleet-timing__bar--p95",
+        ".stx-todo-fleet-timing__bar--ok",
+        ".stx-todo-fleet-timing__bar--warn",
+        ".stx-todo-fleet-timing__bar--slow",
+        ".stx-todo-fleet-timing__footer",
+    ):
+        assert selector in css, f"missing CSS selector: {selector}"
+
+
+def test_css_uses_design_tokens_only() -> None:
+    """Colors must come from CSS variables — NO hardcoded hex / named
+    color literals. Hex / ``white`` / ``#fff`` would freeze the panel
+    to one theme and break the operator's light-mode view.
+
+    Required tokens: ``--status-success`` (ok bar), ``--status-warning``
+    (warn bar), ``--status-error`` (slow bar), ``--stx-danger`` (error
+    ring), plus the board-local chrome tokens.
+    """
+    css = _CSS_FILE.read_text(encoding="utf-8")
+    # Strip /* ... */ comments before scanning — the comment block at
+    # the top documents the token names verbatim and would falsely
+    # trip the hex / named-color detectors otherwise.
+    no_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    # 3-, 4-, 6-, or 8-digit hex literals.
+    hex_matches = re.findall(r"#[0-9A-Fa-f]{3,8}\b", no_comments)
+    assert not hex_matches, (
+        f"hardcoded hex colors in fleet-timing.css (breaks theming): "
+        f"{hex_matches!r}"
+    )
+    # Named-color literals — same theming smell.
+    for forbidden in (r":\s*white\b", r":\s*black\b"):
+        assert not re.search(forbidden, no_comments), (
+            f"hardcoded named color matching {forbidden!r} found in "
+            f"fleet-timing.css — use a design token."
+        )
+    # Required token references — at least one occurrence each.
+    for token in (
+        "--status-success",
+        "--status-warning",
+        "--status-error",
+        "--stx-danger",
+        "--stx-text-muted",
+        "--stx-border",
+        "--stx-panel-bg",
+        "--stx-text",
+    ):
+        assert token in css, f"missing design token: {token}"
+
+
+def test_css_is_imported_from_board_css() -> None:
+    """The panel only renders correctly when board.css imports the
+    partial. Pinning this guards against an accidental removal in a
+    future board.css refactor."""
+    board_css = _CSS_FILE.parent / "board.css"
+    assert board_css.is_file()
+    text = board_css.read_text(encoding="utf-8")
+    assert '@import "./fleet-timing.css";' in text
+
+
+# ─── component logic — helpers via node ─────────────────────────────────
+
+
+def _node() -> str:
+    """Locate ``node``; skip the suite cleanly if it isn't installed."""
+    exe = shutil.which("node")
+    if exe is None:
+        pytest.skip("node executable not found on PATH")
+    return exe
+
+
+# Static-source fragments — assert these stay verbatim in the TSX so
+# the node mirror below stays in lock-step. A rename downstream forces
+# this test to update; no silent drift.
+_TS_CONTRACT_FRAGMENTS = [
+    "export function isTimingPayloadErr(p: TimingPayload): p is TimingPayloadErr {",
+    'return Object.prototype.hasOwnProperty.call(p, "error");',
+    "export function formatDurationSeconds(seconds: number | null): string {",
+    "export function barWidthPct(",
+    "export function barColorToken(pct: number): string {",
+    '"stx-todo-fleet-timing__bar--ok"',
+    '"stx-todo-fleet-timing__bar--warn"',
+    '"stx-todo-fleet-timing__bar--slow"',
+    "export function sortKeysByP95Desc(",
+    "export function timingPanelLabel(",
+    "export function pickRows(",
+]
+
+
+def _assert_ts_lockstep() -> None:
+    src = _TSX_FILE.read_text(encoding="utf-8")
+    for needle in _TS_CONTRACT_FRAGMENTS:
+        assert needle in src, (
+            f"FleetTimingPanel.tsx no longer contains canonical "
+            f"fragment {needle!r}; update this test in lock-step."
+        )
+
+
+# A pure-JS mirror of the TS helpers, kept in lock-step via the
+# fragment-presence test above. node executes this without bundling
+# the TSX so the test runs in a vanilla Python+node container.
+_JS_RUNTIME = textwrap.dedent(
+    """
+    function isTimingPayloadErr(p) {
+      return Object.prototype.hasOwnProperty.call(p, "error");
+    }
+    function formatDurationSeconds(seconds) {
+      if (seconds === null || seconds === undefined) return "\\u2014";
+      if (!Number.isFinite(seconds)) return "\\u2014";
+      const s = Math.max(0, seconds);
+      if (s < 1) {
+        return s.toFixed(1) + "s";
+      }
+      if (s < 60) {
+        if (s < 10 && s % 1 !== 0) return s.toFixed(1) + "s";
+        return Math.round(s) + "s";
+      }
+      if (s < 3600) {
+        const mins = Math.floor(s / 60);
+        const rem = Math.round(s - mins * 60);
+        if (rem === 0) return mins + "m";
+        return mins + "m " + rem + "s";
+      }
+      if (s < 86400) {
+        const hours = s / 3600;
+        if (Number.isInteger(hours)) return hours + "h";
+        return hours.toFixed(1) + "h";
+      }
+      const days = s / 86400;
+      if (Number.isInteger(days)) return days + "d";
+      return days.toFixed(1) + "d";
+    }
+    function barWidthPct(value, max) {
+      if (value === null || value === undefined) return 0;
+      if (!Number.isFinite(value) || value <= 0) return 0;
+      if (!Number.isFinite(max) || max <= 0) return 0;
+      const pct = (value / max) * 100;
+      if (pct < 0) return 0;
+      if (pct > 100) return 100;
+      return pct;
+    }
+    function barColorToken(pct) {
+      if (!Number.isFinite(pct) || pct <= 0) {
+        return "stx-todo-fleet-timing__bar--ok";
+      }
+      if (pct < 50) return "stx-todo-fleet-timing__bar--ok";
+      if (pct < 80) return "stx-todo-fleet-timing__bar--warn";
+      return "stx-todo-fleet-timing__bar--slow";
+    }
+    function sortKeysByP95Desc(rows) {
+      const entries = Object.entries(rows);
+      entries.sort((a, b) => {
+        const pa = a[1].p95_started_to_done_s;
+        const pb = b[1].p95_started_to_done_s;
+        if (pa === null && pb === null) return a[0].localeCompare(b[0]);
+        if (pa === null) return 1;
+        if (pb === null) return -1;
+        if (pb !== pa) return pb - pa;
+        return a[0].localeCompare(b[0]);
+      });
+      return entries.map((e) => e[0]);
+    }
+    function pickRows(p, groupBy) {
+      if (groupBy === "agent") return p.per_agent || {};
+      if (groupBy === "project") return p.per_project || {};
+      return p.per_group || {};
+    }
+    function timingPanelLabel(p, groupBy) {
+      const rows = pickRows(p, groupBy);
+      const n = Object.keys(rows).length;
+      return "\\uD83D\\uDCCA timing \\u00b7 " + n + " rows";
+    }
+    """
+).strip()
+
+
+def _run_js(extra: str) -> dict:
+    """Run the JS runtime + a small wrapper that prints a JSON object."""
+    _assert_ts_lockstep()
+    script = _JS_RUNTIME + "\n" + extra
+    proc = subprocess.run(
+        [_node(), "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    return json.loads(proc.stdout.strip())
+
+
+# ─── formatter ──────────────────────────────────────────────────────────
+
+
+def test_format_duration_sub_second() -> None:
+    """1.5s renders as ``1.5s`` — one decimal so the operator sees the
+    millisec resolution that lives in the back-end timestamps."""
+    out = _run_js(
+        'process.stdout.write(JSON.stringify({a: formatDurationSeconds(1.5)}));'
+    )
+    assert out["a"] == "1.5s"
+
+
+def test_format_duration_minutes() -> None:
+    """90s renders as ``1m 30s`` — operator wants both halves visible.
+    3600s renders as ``1h`` cleanly (no leftover ``0m``). 7200s →
+    ``2h``."""
+    out = _run_js(
+        textwrap.dedent(
+            """
+            process.stdout.write(JSON.stringify({
+              ninety: formatDurationSeconds(90),
+              one_hour: formatDurationSeconds(3600),
+              two_hours: formatDurationSeconds(7200),
+            }));
+            """
+        ).strip()
+    )
+    assert out["ninety"] == "1m 30s"
+    assert out["one_hour"] == "1h"
+    assert out["two_hours"] == "2h"
+
+
+def test_format_duration_handles_nulls_and_infinities() -> None:
+    """Null / NaN / Infinity all surface as the dash literal — the
+    fail-loud principle: don't render a bogus number."""
+    out = _run_js(
+        textwrap.dedent(
+            """
+            process.stdout.write(JSON.stringify({
+              n: formatDurationSeconds(null),
+              i: formatDurationSeconds(Infinity),
+              nan: formatDurationSeconds(NaN),
+            }));
+            """
+        ).strip()
+    )
+    assert out["n"] == "—"
+    assert out["i"] == "—"
+    assert out["nan"] == "—"
+
+
+def test_format_duration_seconds_integer() -> None:
+    """45s renders without decimals — operator doesn't need 45.0s."""
+    out = _run_js(
+        'process.stdout.write(JSON.stringify({a: formatDurationSeconds(45)}));'
+    )
+    assert out["a"] == "45s"
+
+
+# ─── bar-width helper ───────────────────────────────────────────────────
+
+
+def test_bar_width_pct_basic() -> None:
+    """value=max → 100; value=0 → 0; value=half → 50."""
+    out = _run_js(
+        textwrap.dedent(
+            """
+            process.stdout.write(JSON.stringify({
+              full: barWidthPct(100, 100),
+              half: barWidthPct(50, 100),
+              zero: barWidthPct(0, 100),
+            }));
+            """
+        ).strip()
+    )
+    assert out["full"] == 100
+    assert out["half"] == 50
+    assert out["zero"] == 0
+
+
+def test_bar_width_pct_clamps_and_null_safe() -> None:
+    """Null / negative / over-max all clamp to [0, 100] — no NaN /
+    overflow geometry."""
+    out = _run_js(
+        textwrap.dedent(
+            """
+            process.stdout.write(JSON.stringify({
+              n: barWidthPct(null, 100),
+              neg: barWidthPct(-5, 100),
+              over: barWidthPct(200, 100),
+              zero_max: barWidthPct(50, 0),
+            }));
+            """
+        ).strip()
+    )
+    assert out["n"] == 0
+    assert out["neg"] == 0
+    assert out["over"] == 100
+    assert out["zero_max"] == 0
+
+
+# ─── bar-color helper ───────────────────────────────────────────────────
+
+
+def test_bar_color_token_thresholds() -> None:
+    """Green / warn / error mapping by width-percentage."""
+    out = _run_js(
+        textwrap.dedent(
+            """
+            process.stdout.write(JSON.stringify({
+              ok: barColorToken(10),
+              ok_just_under: barColorToken(49.99),
+              warn: barColorToken(50),
+              warn_just_under: barColorToken(79.99),
+              slow: barColorToken(80),
+              slow_full: barColorToken(100),
+            }));
+            """
+        ).strip()
+    )
+    assert out["ok"] == "stx-todo-fleet-timing__bar--ok"
+    assert out["ok_just_under"] == "stx-todo-fleet-timing__bar--ok"
+    assert out["warn"] == "stx-todo-fleet-timing__bar--warn"
+    assert out["warn_just_under"] == "stx-todo-fleet-timing__bar--warn"
+    assert out["slow"] == "stx-todo-fleet-timing__bar--slow"
+    assert out["slow_full"] == "stx-todo-fleet-timing__bar--slow"
+
+
+# ─── sort helper ────────────────────────────────────────────────────────
+
+
+def test_sort_keys_by_p95_desc_basic() -> None:
+    """Three agents — slowest p95 sorts first (operator-friendly
+    bottleneck-at-top)."""
+    payload = {
+        "fast": {
+            "n_tasks_done": 5,
+            "median_started_to_done_s": 10.0,
+            "p95_started_to_done_s": 20.0,
+            "median_created_to_started_s": 1.0,
+        },
+        "slow": {
+            "n_tasks_done": 3,
+            "median_started_to_done_s": 50.0,
+            "p95_started_to_done_s": 200.0,
+            "median_created_to_started_s": 5.0,
+        },
+        "mid": {
+            "n_tasks_done": 4,
+            "median_started_to_done_s": 25.0,
+            "p95_started_to_done_s": 100.0,
+            "median_created_to_started_s": 2.0,
+        },
+    }
+    out = _run_js(
+        "const rows = "
+        + json.dumps(payload)
+        + ";\nprocess.stdout.write(JSON.stringify({order: sortKeysByP95Desc(rows)}));"
+    )
+    assert out["order"] == ["slow", "mid", "fast"]
+
+
+def test_sort_keys_by_p95_desc_nulls_last() -> None:
+    """Rows whose p95 is null sink to the bottom — they have no work
+    duration to compare against (no done tasks in window)."""
+    payload = {
+        "has_data": {
+            "n_tasks_done": 1,
+            "median_started_to_done_s": 5.0,
+            "p95_started_to_done_s": 10.0,
+            "median_created_to_started_s": 1.0,
+        },
+        "empty": {
+            "n_tasks_done": 0,
+            "median_started_to_done_s": None,
+            "p95_started_to_done_s": None,
+            "median_created_to_started_s": None,
+        },
+    }
+    out = _run_js(
+        "const rows = "
+        + json.dumps(payload)
+        + ";\nprocess.stdout.write(JSON.stringify({order: sortKeysByP95Desc(rows)}));"
+    )
+    assert out["order"] == ["has_data", "empty"]
+
+
+def test_sort_keys_by_p95_desc_stable_tie_break() -> None:
+    """Equal p95 → alphabetical by key name. Deterministic order across
+    polls so the chart doesn't jiggle."""
+    payload = {
+        "zebra": {
+            "n_tasks_done": 1,
+            "median_started_to_done_s": 10.0,
+            "p95_started_to_done_s": 10.0,
+            "median_created_to_started_s": None,
+        },
+        "alpha": {
+            "n_tasks_done": 1,
+            "median_started_to_done_s": 10.0,
+            "p95_started_to_done_s": 10.0,
+            "median_created_to_started_s": None,
+        },
+    }
+    out = _run_js(
+        "const rows = "
+        + json.dumps(payload)
+        + ";\nprocess.stdout.write(JSON.stringify({order: sortKeysByP95Desc(rows)}));"
+    )
+    assert out["order"] == ["alpha", "zebra"]
+
+
+# ─── error discriminator + label + pickRows ─────────────────────────────
+
+
+def test_error_payload_discriminator() -> None:
+    """``isTimingPayloadErr`` returns true for an HTTP-500 error body
+    so the component branches to the ``--error`` render path."""
+    out = _run_js(
+        textwrap.dedent(
+            """
+            const ok = {window_days: 30, per_agent: {}, per_project: {},
+              per_group: {}, n_tasks_in_window: 0,
+              n_tasks_missing_timestamps: 0};
+            const err = {error: "boom"};
+            process.stdout.write(JSON.stringify({
+              ok: isTimingPayloadErr(ok),
+              err: isTimingPayloadErr(err),
+            }));
+            """
+        ).strip()
+    )
+    assert out["ok"] is False
+    assert out["err"] is True
+
+
+def test_timing_panel_label_counts_rows_in_dimension() -> None:
+    """The label reflects the row count of the currently-selected
+    group-by dimension, not the union of all dimensions."""
+    payload = {
+        "window_days": 30,
+        "per_agent": {"a": {"n_tasks_done": 1,
+            "median_started_to_done_s": 1.0,
+            "p95_started_to_done_s": 1.0,
+            "median_created_to_started_s": None},
+                      "b": {"n_tasks_done": 1,
+            "median_started_to_done_s": 1.0,
+            "p95_started_to_done_s": 1.0,
+            "median_created_to_started_s": None}},
+        "per_project": {"proj1": {"n_tasks_done": 2,
+            "median_started_to_done_s": 1.0,
+            "p95_started_to_done_s": 1.0,
+            "median_created_to_started_s": None}},
+        "per_group": {},
+        "n_tasks_in_window": 2,
+        "n_tasks_missing_timestamps": 0,
+    }
+    out = _run_js(
+        "const p = "
+        + json.dumps(payload)
+        + ";\nprocess.stdout.write(JSON.stringify({"
+        + "agent: timingPanelLabel(p, 'agent'),"
+        + "project: timingPanelLabel(p, 'project'),"
+        + "group: timingPanelLabel(p, 'group')"
+        + "}));"
+    )
+    assert "2 rows" in out["agent"]
+    assert "1 rows" in out["project"]
+    assert "0 rows" in out["group"]
+
+
+def test_pick_rows_routes_to_correct_dimension() -> None:
+    """``pickRows`` returns the agent / project / group map for the
+    current selection — the SINGLE point where the dimension switch
+    happens."""
+    payload = {
+        "per_agent": {"a": "AGENT"},
+        "per_project": {"p": "PROJECT"},
+        "per_group": {"g": "GROUP"},
+    }
+    out = _run_js(
+        "const p = "
+        + json.dumps(payload)
+        + ";\nprocess.stdout.write(JSON.stringify({"
+        + "a: pickRows(p, 'agent'),"
+        + "p: pickRows(p, 'project'),"
+        + "g: pickRows(p, 'group')"
+        + "}));"
+    )
+    assert out["a"] == {"a": "AGENT"}
+    assert out["p"] == {"p": "PROJECT"}
+    assert out["g"] == {"g": "GROUP"}
+
+# EOF

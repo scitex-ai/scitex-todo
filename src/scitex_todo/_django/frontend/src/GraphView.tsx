@@ -28,6 +28,7 @@ import {
   Background,
   Controls,
   MiniMap,
+  PanOnScrollMode,
   ReactFlow,
   applyNodeChanges,
   useReactFlow,
@@ -139,8 +140,38 @@ function Breadcrumb({
   // occupies a fixed strip and the layout never jumps as you drill in/out.
   const atTop = drillPath.length === 0;
 
+  // Explicit "← Back" button when drilled in — operator UX 2026-06-06 msg
+  // 233 ("クリックしたあとえ、なに？どゆこと？"): after a drill-click the
+  // breadcrumb's "Home" crumb IS clickable but the operator didn't read it
+  // as a back-button. Give them an unambiguous arrow they can hit instead
+  // (one level up at a time, parallels the browser back button affordance).
+  // Hidden at top level (atTop) — there's nowhere to go.
+  const onBack = () => drillTo(drillPath.length - 1);
   return (
     <nav className="stx-todo-breadcrumb" aria-label="Drill-down breadcrumb">
+      {/* "Drill:" prefix label (operator UX 2026-06-06: "canvas/drill/pool/
+        * table/board とか UI 上にヒント的に書いておいて") so the user can see
+        * THIS strip = the drill-down state, not a generic title bar. The
+        * label is visually muted so it doesn't fight the breadcrumb crumbs.
+        */}
+      <span
+        className="stx-todo-breadcrumb__hint"
+        aria-hidden="true"
+        title="Drill-down path — click a parent crumb to go back"
+      >
+        Drill:
+      </span>
+      {!atTop && (
+        <button
+          type="button"
+          className="stx-todo-breadcrumb__back"
+          onClick={onBack}
+          title="Go up one level (or click any crumb below)"
+          aria-label="Back one drill level"
+        >
+          ← Back
+        </button>
+      )}
       {atTop ? (
         <span
           className="stx-todo-breadcrumb__crumb stx-todo-breadcrumb__crumb--current"
@@ -290,7 +321,11 @@ function UncategorizedPool({
           e.preventDefault();
           openMenu(e.clientX, e.clientY, n.id);
         }}
-        title={hasChildren ? "Drill in (right-click to edit)" : "Details (right-click to edit)"}
+        title={
+          hasChildren
+            ? "Drill in (right-click to edit)"
+            : "Details (right-click to edit)"
+        }
         aria-label={
           hasChildren
             ? `Drill into ${n.title} (${kids} ${
@@ -299,7 +334,21 @@ function UncategorizedPool({
             : `Open details for ${n.title}`
         }
       >
-        {hasChildren ? `▸ ${n.title}  ▸${kids}` : n.title}
+        {hasChildren && (
+          <span className="stx-todo-pool__badge" aria-hidden="true">
+            {kids} ↓
+          </span>
+        )}
+        {hasChildren ? (
+          <>
+            <span className="stx-todo-node__glyph" aria-hidden="true">
+              ⊞{" "}
+            </span>
+            {n.title}
+          </>
+        ) : (
+          n.title
+        )}
         {n.repo ? ` · ${n.repo}` : ""}
         {prio}
         {n.comments?.length ? `  💬${n.comments.length}` : ""}
@@ -307,35 +356,53 @@ function UncategorizedPool({
     );
   };
 
+  // The sidebar label adapts to the drill scope. At top level it's the
+  // standard "Pool — Uncategorized (N)" (orphan tasks with no dep edges).
+  // When drilled into a parent, the pool actually carries the CHILDREN of
+  // that parent that don't connect to siblings inside the scope — the
+  // operator's confusion (2026-06-06 photo 8 + msg 233): "クリックした
+  // あとえ、なに？どゆこと？" — they saw an EMPTY canvas + "UNCATEGORIZED"
+  // sidebar and didn't realize the tasks they expected ARE in the sidebar,
+  // they're just labelled with the wrong umbrella. So when scope != null,
+  // we say "Children of <parent title>" instead, which truthfully names
+  // what's there.
+  const parentTitle = scope
+    ? (graph.nodes.find((n) => n.id === scope)?.title ?? scope)
+    : null;
+  const label = parentTitle
+    ? `Children of ${parentTitle} (${visible.length})`
+    : `Pool — Uncategorized (${visible.length})`;
+  const ariaLabel = parentTitle
+    ? `Children of ${parentTitle} (${visible.length} tasks)`
+    : `Uncategorized tasks (${visible.length})`;
+
   // Collapsed: a thin rail with just an expand affordance, so the canvas
   // reclaims the full width instead of reserving an empty sidebar column.
   if (!open) {
     return (
       <aside
         className="stx-todo-pool stx-todo-pool--collapsed"
-        aria-label="Uncategorized tasks (collapsed)"
+        aria-label={`${ariaLabel} (collapsed)`}
       >
         <button
           type="button"
           className="stx-todo-pool__expand"
           onClick={() => setOpen(true)}
           aria-expanded={false}
-          title={`Show uncategorized (${visible.length})`}
-          aria-label={`Show uncategorized (${visible.length} tasks)`}
+          title={`Show ${label}`}
+          aria-label={`Show ${ariaLabel}`}
         >
           <span className="stx-todo-pool__expand-glyph" aria-hidden="true">
             ▸
           </span>
-          <span className="stx-todo-pool__expand-label">
-            Uncategorized ({visible.length})
-          </span>
+          <span className="stx-todo-pool__expand-label">{label}</span>
         </button>
       </aside>
     );
   }
 
   return (
-    <aside className="stx-todo-pool" aria-label="Uncategorized tasks">
+    <aside className="stx-todo-pool" aria-label={ariaLabel}>
       <div className="stx-todo-pool__head">
         <button
           type="button"
@@ -344,7 +411,7 @@ function UncategorizedPool({
           aria-expanded={open}
           title="Collapse"
         >
-          ▾ Uncategorized ({visible.length})
+          ▾ {label}
         </button>
         <button
           type="button"
@@ -454,7 +521,9 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
       const task = byId.get(n.id);
       const match =
         !filtering ||
-        (task ? taskMatchesFilter(task, query, activeStatuses, activeRepos) : true);
+        (task
+          ? taskMatchesFilter(task, query, activeStatuses, activeRepos)
+          : true);
       const selected = sel.has(n.id);
       return {
         ...n,
@@ -637,6 +706,45 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
           activeRepos={activeRepos}
         />
         <div className="stx-todo-flow__canvas">
+          {/* Region hint label (operator UX 2026-06-06): floating top-left
+            * pill saying "Canvas" so the user can name what they're looking
+            * at vs the Pool aside and the Breadcrumb strip. Pointer-events
+            * disabled so it never steals clicks from the React Flow surface
+            * underneath. */}
+          <span
+            className="stx-todo-flow__canvas-label"
+            aria-hidden="true"
+            title="Canvas — the connected dependency graph for the current drill scope"
+          >
+            Canvas
+          </span>
+          {/* Empty-canvas explainer (operator UX 2026-06-06 photo 8 + msg
+            * 233 "クリックしたあとえ、なに？どゆこと？"): when the operator
+            * drills into a parent and the canvas comes up blank, it reads
+            * as "nothing happened / nothing here", because the only
+            * children live as un-connected tasks in the Pool sidebar (no
+            * sibling-edges inside the scope). Surface an explicit message
+            * that names exactly what they're seeing + how to leave.
+            * `pointer-events:none` so the underlying React Flow background
+            * still receives pan/zoom interactions through this overlay. */}
+          {viewNodes.length === 0 && (
+            <div
+              className="stx-todo-flow__empty"
+              role="status"
+              aria-live="polite"
+            >
+              <p className="stx-todo-flow__empty-title">
+                {scope
+                  ? "No dependency edges inside this scope."
+                  : "No connected tasks to render."}
+              </p>
+              <p className="stx-todo-flow__empty-body">
+                {scope
+                  ? "The children of this parent live in the sidebar on the left (they don't depend on each other inside this scope yet). Click any sidebar card to open its details, or click ⌀ Home in the breadcrumb above to go back."
+                  : "All tasks are uncategorized — see the Pool sidebar on the left."}
+              </p>
+            </div>
+          )}
           <ReactFlow
             nodes={viewNodes}
             edges={edges}
@@ -654,6 +762,21 @@ export function GraphView({ graph }: { graph: GraphPayload }) {
             nodesDraggable={true}
             nodesConnectable={true}
             elementsSelectable={true}
+            // Operator UX 2026-06-06 Telegram 227: "ドラッグスクロールか
+            // スクロールを上下左右にすると左右がまず動かなくて上下がズーム
+            // アウトになってしまってる. ズームイン OUT は Control を押し
+            // ながらのスクロールでお願いします." Switch to Google-Maps /
+            // Miro / Figma-style scroll behaviour:
+            //   - plain wheel / trackpad two-finger scroll → PAN (free, in
+            //     any direction — panOnScroll:true + panOnScrollMode:"free")
+            //   - Ctrl + wheel → ZOOM (zoomActivationKeyCode:"Control" gates
+            //     the existing zoomOnScroll behaviour so plain scroll no
+            //     longer changes zoom).
+            // Pinch-to-zoom on trackpads keeps working via zoomOnPinch
+            // (default true, left implicit).
+            panOnScroll={true}
+            panOnScrollMode={PanOnScrollMode.Free}
+            zoomActivationKeyCode="Control"
             proOptions={{ hideAttribution: true }}
           >
             <FitOnChange dep={fitKey} focusIds={focusIds} />
