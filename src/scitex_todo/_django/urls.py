@@ -6,6 +6,7 @@ from django.urls import path
 
 from . import views
 from .handlers.fleet import fleet_ci_status_view
+from .handlers.runnable import blocked_batch_view, runnable_view
 
 app_name = "scitex_todo"
 
@@ -19,6 +20,13 @@ urlpatterns = [
     # "fleet/ci-status"). The fleet surfaces are intentionally
     # namespaced under ``/fleet/`` so future panels sit next to it.
     path("fleet/ci-status", fleet_ci_status_view, name="fleet_ci_status"),
+    # T1.4 (lead a2a `74db4f2d`, 2026-06-14) — TRACK-1 dispatch backbone
+    # HTTP surface. /runnable returns the FULL runnable set per the
+    # T1.2 `runnable_tasks` predicate; /blocked-batch returns the
+    # inverse view per T1.3. The lead-side parallelism dispatcher
+    # consumes these instead of shelling out to the CLI verbs.
+    path("runnable", runnable_view, name="runnable"),
+    path("blocked-batch", blocked_batch_view, name="blocked_batch"),
     # ROOT = the operator-approved v3 layout. Operator TG 263 confirmed
     # post-screenshot: "はい、root においてください。http://127.0.0.1:8051/".
     # Lead-coordinated promotion per a2a `62094366` — once v3 was proven
