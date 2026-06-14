@@ -4,6 +4,62 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.17] - 2026-06-14 — Hook-consumer contract + Time View + Phase 2 hosts
+
+Wave 2 of the fleet-dashboard mission. The hook-consumer contract
+is the operator-mandated "green static record pipe" — SAC's
+push-hook + dev's merge-Action will call scitex-todo's API to
+auto-record progress/DONE on the board.
+
+### Added — Hook-consumer (loose-coupling contract)
+
+- **`scitex_todo.hooks` entry-point group** (PR #187, lead a2a
+  `6fff33d6` + `fbffb879`, operator-mandated). External producers
+  register a plugin callable under this group:
+  `def on_event(event: dict) -> None`.
+- **Three converging wire surfaces** (producers pick one):
+  - **HTTP**: `POST /hooks/push`, `POST /hooks/done`. Idempotent.
+    405 on GET, 400 on bad shape / kind-mismatch.
+  - **CLI**: `scitex-todo hook push --payload <FILE|->` /
+    `scitex-todo hook done --payload <FILE|->`.
+  - **Python**: `from scitex_todo._hooks import dispatch_event`.
+- **Canonical event payloads**:
+  - push: `{kind, repo, branch, commit_sha, author?, message?,
+    card_ids?}`
+  - done: `{kind, repo, pr_number, pr_url, author?, merged_at?,
+    card_ids?}`
+- **Built-in handlers run BEFORE plugins**:
+  - push → idempotent comment-append (dedupe via full commit_sha
+    substring match).
+  - done → idempotent `pr_url` stamp + `status=done` flip (noop if
+    already done with matching pr_url).
+- **Plugin failures are caught + logged** — one bad plugin can NOT
+  silently break the board's own record-keeping.
+- 29 mock-free tests (validator fail-loud + handler idempotency +
+  HTTP contract).
+
+### Added — Dashboard surfaces
+
+- **Time View** (PR #186, operator-direct via lead a2a `d0f7a0e3`).
+  Live SVG raster timeline as the 5th LAYOUT toggle. Horizontal
+  axis = TIME (1h/6h/24h/7d window); lanes by agent OR group; bars
+  fade-out on done; depends_on/blocks edges drawn as connecting
+  lines; click-through to the existing NodeDetailPanel. 30s poll.
+  17 backend + 15 frontend mock-free tests. Pan/zoom/WebSocket are
+  flagged TODOs for future iterations.
+- **Phase 2 — Host geometry** (PR #185, lead a2a `74db4f2d` +
+  `10afa799`). `sac host list --json` adapter + `/fleet/hosts`
+  endpoint + `FleetHostsPanel.tsx` mounted next to the CI pills.
+  Fail-loud on missing `sac` CLI (FleetAdapterError → HTTP 500).
+  Phase 2.b cpu/mem/SLURM enrichment landing site marked with
+  `TODO(phase-2.b)`. 14 + 47 = 61 tests green.
+
+### Provenance
+
+PR #185 + #186 + #187. Lead a2a `74db4f2d` (vision) + `6fff33d6`
+(hook-consumer mandate) + `d0f7a0e3` (Time View). Multiplier-#3
+dogfooded on every PR.
+
 ## [0.7.16] - 2026-06-14 — TRACK 1 COMPLETE: parallelism-engine dispatch backbone
 
 Completes the **dependency-aware ticket** track the operator/lead
