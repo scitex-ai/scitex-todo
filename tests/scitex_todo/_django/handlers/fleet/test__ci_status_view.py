@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Django view tests for ``GET /fleet/ci-status``.
+
+No mocks (STX-NM/PA-306) and no monkeypatch (PA-306). Drives the view
+via Django's RequestFactory against the real ``fleet_config_load`` +
+``fetch_repo_ci_status`` path; env / cwd manipulation routes through the
+suite's :func:`env` fixture (``tests/scitex_todo/conftest.py``).
+
+Trick: we don't want CI test runs to call out to GitHub over the wire,
+so we configure the watched-repo list with slugs whose adapter call
+RAISES locally — that exercises the per-repo error trap (the
+operator-facing fail-loud-per-pill contract) without needing network.
+
+Contract pinned here:
+
+  1. Endpoint returns 200 with a JSON object shaped
+     ``{"repos": [...], "config": {"repos": [...]}}``.
+  2. One bad repo becomes ``{"slug": ..., "error": "<msg>"}`` — does
+     NOT blank the whole strip.
+  3. Malformed config returns 500 — the whole strip is unconfigurable,
+     and the FE renders a single "no CI status configured" footnote.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+pytest.importorskip("django")
+
+from django.test import RequestFactory  # noqa: E402
+
+from scitex_todo._django.handlers.fleet import (  # noqa: E402
+    fleet_ci_status_view,
+)
+
+
+def _isolate_home(env, tmp_path: Path) -> None:
+    """Point HOME at tmp_path so we never read the operator's real
+    dashboard.yaml. Also clear any leaked env override from a sibling
+    test."""
+    env.set("HOME", str(tmp_path))
+    env.delete("SCITEX_TODO_FLEET_CI_REPOS")
+
+
+def test_endpoint_returns_200_with_repos_shape(env, tmp_path) -> None:
+    """Configure ONE slug. The adapter will RAISE (invalid slug shape,
+    so no network is touched) — the per-repo error trap converts that
+    into ``{slug, error}``. The OVERALL response is still 200 + a JSON
+    document the FE can render."""
+    _isolate_home(env, tmp_path)
+    # Use an invalid-shape slug so the adapter raises synchronously on
+    # the input check (no network needed). The shape pin is the same
+    # one tested in ``test__gh_ci.py::test_invalid_slug_shape_raises``.
+    env.set("SCITEX_TODO_FLEET_CI_REPOS", "bad-slug-no-slash")
+
+    request = RequestFactory().get("/fleet/ci-status")
+    response = fleet_ci_status_view(request)
+
+    assert response.status_code == 200
+    data = json.loads(response.content)
+    assert set(data.keys()) >= {"repos", "config"}
+    assert data["config"]["repos"] == ["bad-slug-no-slash"]
+    assert isinstance(data["repos"], list)
+    assert len(data["repos"]) == 1
+
+
+def test_per_repo_error_does_not_blank_page(env, tmp_path) -> None:
+    """The headline guarantee: one bad repo becomes ``{slug, error}``
+    rather than killing the whole response. The operator sees the
+    other (hypothetically working) pills next to a single red ``!``."""
+    _isolate_home(env, tmp_path)
+    env.set(
+        "SCITEX_TODO_FLEET_CI_REPOS",
+        "bad-slug-no-slash,also-bad",
+    )
+
+    request = RequestFactory().get("/fleet/ci-status")
+    response = fleet_ci_status_view(request)
+
+    assert response.status_code == 200
+    data = json.loads(response.content)
+    slugs = [r["slug"] for r in data["repos"]]
+    assert slugs == ["bad-slug-no-slash", "also-bad"]
+    for repo in data["repos"]:
+        # Both must carry an ``error`` field (per-repo trap kicked in).
+        assert "error" in repo, f"missing per-repo error: {repo!r}"
+        assert isinstance(repo["error"], str) and repo["error"]
+
+
+def test_empty_config_returns_200_with_empty_list(env, tmp_path) -> None:
+    """No repos configured = empty list + 200 (NOT 500). The FE hides
+    the strip with a "no CI status configured" footnote."""
+    _isolate_home(env, tmp_path)
+    # No env override, no file -> empty list.
+    request = RequestFactory().get("/fleet/ci-status")
+    response = fleet_ci_status_view(request)
+    assert response.status_code == 200
+    data = json.loads(response.content)
+    assert data["config"]["repos"] == []
+    assert data["repos"] == []
+
+
+def test_malformed_config_returns_500(env, tmp_path) -> None:
+    """A broken ``dashboard.yaml`` is the one error that DOES blank the
+    strip — the whole thing is unconfigurable. Fail-loud per harness."""
+    _isolate_home(env, tmp_path)
+    cfg_dir = tmp_path / ".scitex" / "todo"
+    cfg_dir.mkdir(parents=True)
+    (cfg_dir / "dashboard.yaml").write_text(
+        "fleet:\n  ci_status:\n    repos: [a, b,\n",
+        encoding="utf-8",
+    )
+
+    request = RequestFactory().get("/fleet/ci-status")
+    response = fleet_ci_status_view(request)
+
+    assert response.status_code == 500
+    data = json.loads(response.content)
+    assert "error" in data
+    # The message should mention the file so the operator can find it.
+    assert "dashboard.yaml" in data["error"]
