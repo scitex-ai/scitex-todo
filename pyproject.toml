@@ -87,6 +87,22 @@ scitex-todo = "scitex_todo"
 [project.entry-points."scitex_dev.jobs"]
 scitex-todo = "scitex_todo._jobs_provider:provide_jobs"
 
+# Hook-consumer entry-point contract (lead a2a `6fff33d6` +
+# `fbffb879`, 2026-06-14, operator-mandated). External producers
+# (SAC's push-hook, dev's merge-Action, future federated producers)
+# register a callable plugin under this group. The dispatcher in
+# `scitex_todo._hooks.dispatch_event` invokes every plugin for every
+# event. Plugin signature:
+#
+#     def on_event(event: dict) -> None: ...
+#
+# See `scitex_todo._hooks` for the canonical event-payload spec and
+# the built-in handlers (which run regardless of plugins).
+[project.entry-points."scitex_todo.hooks"]
+# scitex-todo's built-in handler is invoked DIRECTLY by
+# dispatch_event (not via the plugin loop). External producers add
+# their plugins under this group in their own pyproject.toml.
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/scitex_todo"]
 # Bundle the Django app's non-Python assets (manifest, templates, built
