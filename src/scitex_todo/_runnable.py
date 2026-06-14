@@ -223,4 +223,174 @@ class _NegStr:
         return isinstance(other, _NegStr) and self.value == other.value
 
 
+# --------------------------------------------------------------------------- #
+# T1.3 — `blocked()` introspection (the inverse view).                        #
+# Lead a2a `74db4f2d`, 2026-06-14. For each task that is NOT runnable,        #
+# explain WHY. The dispatcher uses this to surface "you can unblock K         #
+# tasks by finishing X" insight. Operator UX uses it to know what to do      #
+# next when their queue stalls.                                              #
+# --------------------------------------------------------------------------- #
+
+#: Reasons a task can be NOT runnable.
+BLOCKED_REASONS: frozenset[str] = frozenset({
+    "explicit-blocker",  # status=blocked + blocker field set
+    "manual-block",      # status=blocked + no blocker field
+    "depends-on",        # status=pending/in_progress + unresolved depends_on
+    "reverse-blocks",    # status=pending/in_progress + an upstream Z has "blocks: [me]"
+})
+
+
+@dataclass(frozen=True)
+class BlockedTask:
+    """One not-runnable task + WHY.
+
+    Attributes
+    ----------
+    id : str
+        The blocked task's id.
+    title : str
+        The blocked task's title (operator-friendly).
+    reason : str
+        One of :data:`BLOCKED_REASONS`.
+    chain : tuple[str, ...]
+        Ids of the upstream tasks (or the blocker label for
+        ``explicit-blocker``) keeping this one parked. Empty tuple for
+        ``manual-block``.
+    """
+
+    id: str
+    title: str
+    reason: str
+    chain: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class BlockedSet:
+    """Result of :func:`blocked_tasks` — the list + diagnostic stats.
+
+    Attributes
+    ----------
+    tasks : list[BlockedTask]
+        Every NOT-runnable task in the filtered set.
+    total : int
+        ``len(tasks)`` — the queue depth of "things waiting."
+    by_reason : dict[str, int]
+        Histogram of the blocked-reason values. Useful for an
+        observability dashboard ("38 tasks blocked, 30 by deps").
+    """
+
+    tasks: list[BlockedTask]
+    total: int
+    by_reason: dict[str, int]
+
+
+def blocked_tasks(
+    tasks: Iterable[dict],
+    *,
+    agent: Optional[str] = None,
+    group: Optional[str] = None,
+) -> BlockedSet:
+    """Return the FULL not-runnable set with WHY each is blocked.
+
+    Sister to :func:`runnable_tasks`. Same agent/group filter
+    semantics; the inverse-status filter.
+
+    Notes
+    -----
+    Tasks with ``status`` in {done, deferred, failed, goal} are
+    EXCLUDED from the result — they aren't "blocked," they're
+    finished (or, in `goal`'s case, an umbrella that's blocked-by-
+    design). The dispatcher should care about "things I could pick
+    up if X resolved," not "everything that's not running."
+    """
+    snapshot = [t for t in tasks if isinstance(t, dict)]
+    status_by_id: dict[str, str] = {
+        t.get("id"): t.get("status") for t in snapshot if t.get("id")
+    }
+    blocks_into: dict[str, list[str]] = {}
+    for t in snapshot:
+        z_id = t.get("id")
+        if not z_id:
+            continue
+        for x_id in t.get("blocks") or ():
+            blocks_into.setdefault(x_id, []).append(z_id)
+
+    out: list[BlockedTask] = []
+    by_reason: dict[str, int] = {r: 0 for r in BLOCKED_REASONS}
+
+    for t in snapshot:
+        # Filter the candidate set to "things the dispatcher cares
+        # about" — status must be pending/in_progress/blocked. Done /
+        # deferred / failed / goal are not "blocked," they're finished
+        # or by-design.
+        st = t.get("status")
+        if st not in RUNNABLE_STATUSES and st != "blocked":
+            continue
+        if agent is not None and not _matches_agent(t, agent):
+            continue
+        if group is not None and not _matches_group(t, group):
+            continue
+
+        reason, chain = _diagnose_blocked(t, status_by_id, blocks_into)
+        if reason is None:
+            # Truly runnable — not a blocked task.
+            continue
+        out.append(BlockedTask(
+            id=str(t.get("id") or ""),
+            title=str(t.get("title") or ""),
+            reason=reason,
+            chain=tuple(chain),
+        ))
+        by_reason[reason] = by_reason.get(reason, 0) + 1
+
+    return BlockedSet(tasks=out, total=len(out), by_reason=by_reason)
+
+
+def _diagnose_blocked(
+    task: dict,
+    status_by_id: dict[str, str],
+    blocks_into: dict[str, list[str]],
+) -> tuple[Optional[str], list[str]]:
+    """Return (reason, chain) for a task, or (None, []) if runnable.
+
+    Precedence (return on first hit):
+      1. status=blocked + blocker field → ``explicit-blocker``,
+         chain = [<blocker-kind>].
+      2. status=blocked + no blocker → ``manual-block``, chain = [].
+      3. unresolved depends_on upstream → ``depends-on``, chain =
+         [unresolved ids].
+      4. reverse-blocks upstream → ``reverse-blocks``, chain =
+         [upstream ids that block this].
+      5. Otherwise → (None, []) (the task IS runnable).
+    """
+    st = task.get("status")
+    if st == "blocked":
+        blocker = task.get("blocker")
+        if blocker:
+            return ("explicit-blocker", [str(blocker)])
+        return ("manual-block", [])
+
+    # status ∈ {pending, in_progress}
+    unresolved_deps = [
+        up_id
+        for up_id in (task.get("depends_on") or [])
+        if status_by_id.get(up_id) is not None
+        and status_by_id.get(up_id) not in RESOLVED_STATUSES
+    ]
+    if unresolved_deps:
+        return ("depends-on", unresolved_deps)
+
+    own_id = task.get("id")
+    unresolved_rev = [
+        z_id
+        for z_id in blocks_into.get(own_id or "", [])
+        if status_by_id.get(z_id) is not None
+        and status_by_id.get(z_id) not in RESOLVED_STATUSES
+    ]
+    if unresolved_rev:
+        return ("reverse-blocks", unresolved_rev)
+
+    return (None, [])
+
+
 # EOF
