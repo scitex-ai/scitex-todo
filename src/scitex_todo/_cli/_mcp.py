@@ -362,7 +362,125 @@ def _fallback_mcp_group() -> click.Group:
         target.write_text(new_text, encoding="utf-8")
         click.echo(f"# applied: {target} updated ({action})")
 
+    # ── install-fleet ─────────────────────────────────────────────────── #
+    @mcp_group.command(
+        "install-fleet",
+        help=(
+            "Apply the scitex-todo MCP entry to EVERY agent's "
+            "``to_home/.mcp.json`` under an agents directory.\n\n"
+            "Fleet P3a unblock (lead a2a `1ab212f3`, 2026-06-14). Walks "
+            "``<agents-dir>/*/to_home/.mcp.json`` and runs the idempotent "
+            "merge for each. Files that don't exist yet are CREATED; "
+            "existing files preserve every sibling MCP server entry.\n\n"
+            "Example:\n"
+            "  scitex-todo mcp install-fleet \\\n"
+            "    --agents-dir ~/.dotfiles/src/.scitex/agent-container/agents \\\n"
+            "    --env-tasks-path /home/agent/.scitex/todo/tasks.yaml -y"
+        ),
+    )
+    @click.option(
+        "--agents-dir", "agents_dir",
+        type=click.Path(file_okay=False, dir_okay=True, resolve_path=False),
+        required=True,
+        help="Directory of per-agent subdirs each carrying `to_home/.mcp.json`.",
+    )
+    @click.option(
+        "--env-tasks-path", "env_tasks_path",
+        type=str, default=None,
+        help="Pin SCITEX_TODO_TASKS in every emitted entry's env block.",
+    )
+    @click.option("--dry-run", is_flag=True, help="Print planned per-agent action; no writes.")
+    @click.option("-y", "--yes", "yes", is_flag=True, help="Skip per-agent prompts.")
+    def install_fleet(agents_dir, env_tasks_path, dry_run, yes) -> None:
+        """Apply the scitex-todo MCP entry to every agent's to_home/.mcp.json."""
+        agents_root = pathlib.Path(agents_dir).expanduser()
+        if not agents_root.is_dir():
+            raise click.ClickException(
+                f"agents-dir does not exist or is not a directory: {agents_root}"
+            )
+        entry: dict = {"command": _CLI_NAME, "args": ["mcp", "start"]}
+        if env_tasks_path:
+            entry["env"] = {"SCITEX_TODO_TASKS": env_tasks_path}
+
+        agent_count = applied = noop = 0
+        errors: list[str] = []
+        for agent_dir in sorted(agents_root.iterdir()):
+            if not agent_dir.is_dir():
+                continue
+            agent_count += 1
+            target = agent_dir / "to_home" / ".mcp.json"
+            try:
+                action, changed = _fleet_apply_one(target, entry, dry_run=dry_run)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{agent_dir.name}: {exc}")
+                click.echo(f"# error: {agent_dir.name} — {exc}", err=True)
+                continue
+            prefix = "# dry-run:" if dry_run else "# applied:"
+            click.echo(f"{prefix} {agent_dir.name}/to_home/.mcp.json — {action}")
+            if changed:
+                applied += 1
+            else:
+                noop += 1
+        click.echo(
+            f"# fleet sweep: agents={agent_count} "
+            f"{'would-update' if dry_run else 'updated'}={applied} "
+            f"noop={noop} errors={len(errors)}",
+            err=True,
+        )
+        if errors and not yes:
+            raise click.ClickException(
+                f"install-fleet completed with {len(errors)} error(s)"
+            )
+
     return mcp_group
+
+
+def _fleet_apply_one(target, entry: dict, *, dry_run: bool):
+    """Apply / merge the scitex-todo MCP entry into ONE target file.
+
+    Shared body for ``install-fleet``. Same rules as the single-file
+    ``install --apply``: existing JSON preserved + sibling mcpServers
+    kept; idempotent re-application is a noop; dry-run prints the
+    planned action without touching disk. Returns
+    ``(action_label, changed)``.
+    """
+    existing: dict = {}
+    if target.exists():
+        try:
+            existing = json.loads(target.read_text(encoding="utf-8") or "{}")
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(
+                f"target {target} exists but is not valid JSON: {exc}"
+            ) from None
+        if not isinstance(existing, dict):
+            raise RuntimeError(
+                f"target {target} root is not a JSON object "
+                f"(got {type(existing).__name__})"
+            )
+    merged = dict(existing)
+    servers = dict(merged.get("mcpServers") or {})
+    before_entry = servers.get(_CLI_NAME)
+    servers[_CLI_NAME] = entry
+    merged["mcpServers"] = servers
+    changed = before_entry != entry
+    action = (
+        "noop (entry already present)"
+        if not changed
+        else ("would-update" if before_entry is not None else "would-create")
+    )
+    if dry_run or not changed:
+        return action, changed
+    if target.exists():
+        backup = target.with_suffix(target.suffix + ".bak")
+        try:
+            backup.write_text(
+                target.read_text(encoding="utf-8"), encoding="utf-8",
+            )
+        except OSError:
+            pass
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+    return ("updated" if before_entry is not None else "created"), True
 
 
 def _tools_dict(mcp_obj) -> dict:
