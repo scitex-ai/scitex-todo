@@ -41,9 +41,12 @@ from .hosts_view import fleet_hosts_view
 from .mesh_view import fleet_mesh_view
 from .sac_hosts import fetch_hosts
 from .sac_mesh import fetch_mesh
+from .timing import compute_timing, task_durations
+from .timing_view import fleet_timing_view
 
 __all__ = [
     "FleetAdapterError",
+    "compute_timing",
     "fetch_hosts",
     "fetch_mesh",
     "fetch_repo_ci_status",
@@ -51,6 +54,8 @@ __all__ = [
     "fleet_config_load",
     "fleet_hosts_view",
     "fleet_mesh_view",
+    "fleet_timing_view",
+    "task_durations",
 ]
 
 # EOF

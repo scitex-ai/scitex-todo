@@ -9,6 +9,7 @@ from .handlers.fleet import (
     fleet_ci_status_view,
     fleet_hosts_view,
     fleet_mesh_view,
+    fleet_timing_view,
 )
 from .handlers.hooks import hook_done_view, hook_push_view
 from .handlers.runnable import blocked_batch_view, runnable_view
@@ -43,6 +44,19 @@ urlpatterns = [
     # slashed path is matched cleanly instead of getting routed to
     # ``api_dispatch`` (which would 404).
     path("fleet/mesh", fleet_mesh_view, name="fleet_mesh"),
+    # Fleet dashboard — Phase 4 surface (timing telemetry). Operator
+    # ask (TG, relayed by lead a2a `74db4f2d` + `10afa799`,
+    # 2026-06-14): "record what took how long → self-improvement". The
+    # endpoint derives per-task durations (created_to_started,
+    # started_to_done, created_to_done) from the timestamps the task
+    # store already carries (`created_at` + `_log_meta.started_at` +
+    # `_log_meta.completed_at`) and aggregates them per agent /
+    # project / group (median + p95) over a sliding window
+    # (`?window_days=30` default). The Phase-5 chart UI consumes this
+    # payload. Registered BEFORE the catch-all `<path:endpoint>` route
+    # so the slashed path is matched cleanly instead of getting routed
+    # to `api_dispatch` (which would 404).
+    path("fleet/timing", fleet_timing_view, name="fleet_timing"),
     # T1.4 (lead a2a `74db4f2d`, 2026-06-14) — TRACK-1 dispatch backbone
     # HTTP surface. /runnable returns the FULL runnable set per the
     # T1.2 `runnable_tasks` predicate; /blocked-batch returns the
