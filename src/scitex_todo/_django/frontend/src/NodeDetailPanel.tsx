@@ -17,6 +17,7 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type { TaskInput } from "./api/client";
+import { ChatPanel } from "./ChatPanel";
 import { STATUSES, useBoardStore } from "./store/useBoardStore";
 import type { GraphNode, GraphPayload, StatusColor } from "./types/board";
 
@@ -389,9 +390,7 @@ function BlockersSection({
 
       {satisfiedDeps.length > 0 && (
         <details className="stx-todo-blockers__satisfied">
-          <summary>
-            ✓ Satisfied deps ({satisfiedDeps.length})
-          </summary>
+          <summary>✓ Satisfied deps ({satisfiedDeps.length})</summary>
           <ul className="stx-todo-blockers__list">
             {satisfiedDeps.map((n, i) =>
               renderRow(n, "depends_on (done)", `s-${n.id}-${i}`),
@@ -436,14 +435,13 @@ function ComputeMetaSection({ node }: { node: GraphNode }) {
   const rows: Array<{ label: string; value: string }> = [];
   if (node.host) rows.push({ label: "host", value: node.host });
   if (node.job_id) rows.push({ label: "job_id", value: node.job_id });
-  if (node.started_at) rows.push({ label: "started_at", value: node.started_at });
-  if (node.finished_at) rows.push({ label: "finished_at", value: node.finished_at });
+  if (node.started_at)
+    rows.push({ label: "started_at", value: node.started_at });
+  if (node.finished_at)
+    rows.push({ label: "finished_at", value: node.finished_at });
 
   return (
-    <section
-      className="stx-todo-compute"
-      aria-label="Compute job metadata"
-    >
+    <section className="stx-todo-compute" aria-label="Compute job metadata">
       <h3 className="stx-todo-compute__title">⚙ Compute job</h3>
       {rows.length > 0 && (
         <dl className="stx-todo-compute__kv">
@@ -467,7 +465,9 @@ function ComputeMetaSection({ node }: { node: GraphNode }) {
       )}
       {rows.length === 0 && !node.command && (
         <p className="stx-todo-compute__empty">
-          <em>No compute metadata recorded yet (writer hasn't populated this row).</em>
+          <em>
+            No compute metadata recorded yet (writer hasn't populated this row).
+          </em>
         </p>
       )}
     </section>
@@ -497,6 +497,13 @@ function DetailReader({
         </p>
       )}
       <CommentsSection node={node} />
+      {/* Phase-6 CHAT surface — lead a2a `74db4f2d` + `10afa799`.
+          Operator↔agent thread sitting on top of the same per-card
+          `comments[]` substrate the CommentsSection above reads; adds
+          30s auto-poll + write-back via /chat/<id>. The two surfaces
+          render the same data; the chat one is the "live conversation"
+          intent (polling + bubble layout + author colors). */}
+      <ChatPanel cardId={node.id} />
     </div>
   );
 }
@@ -541,10 +548,7 @@ export function NodeDetailPanel({
       aria-label={creating ? "Create task" : `Task detail: ${title}`}
       onClick={onClose}
     >
-      <aside
-        className="stx-todo-detail"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <aside className="stx-todo-detail" onClick={(e) => e.stopPropagation()}>
         <header className="stx-todo-detail__header">
           <div className="stx-todo-detail__title-row">
             <h2 className="stx-todo-detail__title">{title || "Untitled"}</h2>
