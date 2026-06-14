@@ -4,6 +4,39 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.23] - 2026-06-14 — Board v3: time-based view (sort + group by time)
+
+### Added
+
+- **Sort by time + Group by time on the v3 board** (PR #201
+  cherry-picked via #202; lead a2a `ff1441d7`, operator request
+  「時間でのビュー」). The v3 board at `/` (the operator's home view)
+  now exposes time-based controls in the existing
+  `.stx-todo-filterbar__group--view` group:
+  - Sort dropdown extends with `created_at` + `completed_at` options
+    (newest first) plus the reworked `last_activity` comparator.
+  - New "Group by time" checkbox (`#stx-toggle-group-by-time`) folds
+    each project column's cards under collapsible bucket headers:
+    TODAY / THIS WEEK / THIS MONTH / OLDER. State persists in
+    localStorage (`scitex-todo:group-by-time`,
+    `scitex-todo:time-buckets-collapsed`).
+  - New `board_v3/08-time-grouping.css` with token-only styling
+    (bucket headers, chevrons, collapsed state, body left-rail).
+  - 43 mock-free test cases pin the bucket classifier + sort-key
+    helper + CSS contract.
+
+  The existing Time View raster (PR #186) on `/legacy/` is
+  untouched — this is a complementary control on the v3 board so
+  the operator can sort/group by time WITHOUT switching to the
+  React-SPA route.
+
+### Notes for ops
+
+PR #201 originally landed on `main` (subagent missed `--base develop`).
+#202 cherry-picked the change onto develop and re-fixed the multi-line
+Django comment that the cherry-pick re-introduced (regression caught
+by `test__no_multiline_django_short_comments.py` from PR #199).
+
 ## [0.7.22] - 2026-06-14 — Hotfix: operator-visible Django template comment leak
 
 ### Fixed
