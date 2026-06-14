@@ -4,6 +4,58 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.15] - 2026-06-14 — Fleet-dashboard Phase 1 (CI pills) + TRACK-1 `group` field
+
+Operator vision (lead a2a `74db4f2d` + `10afa799`): scitex-todo
+becomes the ONE fleet dashboard + dependency-aware ticket backbone.
+This is wave 1 of two parallel tracks.
+
+### Added — TRACK 2 (Fleet Dashboard)
+
+- **Phase 1 — CI-status pills + Phase-0 registry-reader harness**
+  (PR #178). New `_django/handlers/fleet/` package: `FleetAdapterError`
+  (fail-loud on missing data, no silent fallback), `fleet_config_load`
+  (reads `~/.scitex/todo/dashboard.yaml` or env
+  `SCITEX_TODO_FLEET_CI_REPOS=owner/name,...`; NO hardcoded slugs),
+  `gh_ci.fetch_repo_ci_status` (`gh repo view` for default branch +
+  `gh api .../check-runs`). New `/fleet/ci-status` Django endpoint
+  with per-repo error trap (200 with `error` field per bad repo, 500
+  on malformed config). Front-end `FleetCiPills.tsx` polls every 30s,
+  per-repo green/red/amber/grey pill bound to scitex-ui status
+  tokens. 33 fleet tests + full 277-task Django suite green. Pattern
+  established for Phases 2-6 (hosts / mesh / timing / chart / chat).
+
+### Added — TRACK 1 (Parallelism-engine backbone)
+
+- **T1.1 — `group` field on Task** (PR #179, lead a2a `74db4f2d`).
+  Optional `group: str | None` on the Task dataclass. The
+  parallelism-engine dispatcher will ask
+  `runnable(group=<G>)` so independent (dep-free) tasks within a
+  group run concurrently per the operator's model. Free-form
+  non-empty string; absent = ungrouped. Validator extends the
+  existing scope/assignee non-empty-string loop. New `--group` CLI
+  flag on `add` + `update` (empty string clears). Distinct from
+  `_groups.py:Group` (project-cluster viewer aggregation). 15
+  mock-free tests pin the dataclass shape, validator, Python API,
+  and CLI wiring. Follow-up chain: T1.2 (`runnable()` API + CLI),
+  T1.3 (`scitex-todo blocked` introspection), T1.4 (`/runnable` +
+  `/blocked-batch` endpoints).
+
+### Architectural principles enforced
+
+- **fail-loud / no-silent-fallback** — adapters RAISE on missing
+  data; no stubs.
+- **registry-sourced** — read from authoritative GitHub via `gh`;
+  scitex-todo doesn't duplicate state.
+- **NO hardcoded proper nouns** — watched-repo list is fully
+  config-driven; no `["scitex-todo","scitex-dev",...]` literals in
+  source.
+
+### Provenance
+
+PR #178 + #179. Lead a2a `74db4f2d` + `10afa799` (refined brief
++ Q&A). Phase-1 subagent execution; T1.1 main-thread.
+
 ## [0.7.14] - 2026-06-13 — CLI: bare `board` hard-errors (noun-verb enforcement)
 
 ### Changed (BREAKING)
