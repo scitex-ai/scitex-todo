@@ -6,6 +6,7 @@ from django.urls import path
 
 from . import views
 from .handlers.fleet import fleet_ci_status_view, fleet_hosts_view
+from .handlers.hooks import hook_done_view, hook_push_view
 from .handlers.runnable import blocked_batch_view, runnable_view
 from .handlers.timeline import timeline_view
 
@@ -42,6 +43,15 @@ urlpatterns = [
     # the catch-all ``<path:endpoint>`` route for the same reason as the
     # other named GET endpoints — otherwise ``api_dispatch`` would 404.
     path("timeline", timeline_view, name="timeline"),
+    # Hook-consumer endpoints (lead a2a `6fff33d6` + `fbffb879`,
+    # 2026-06-14, operator-mandated). Loose-coupling contract for
+    # SAC's push-hook + dev's merge-Action to record progress / DONE
+    # on the board. POST-only, idempotent. Built-in handlers +
+    # entry-point plugin dispatch in
+    # ``scitex_todo._hooks.dispatch_event``. The entry-point group
+    # external producers register under is ``scitex_todo.hooks``.
+    path("hooks/push", hook_push_view, name="hook_push"),
+    path("hooks/done", hook_done_view, name="hook_done"),
     # ROOT = the operator-approved v3 layout. Operator TG 263 confirmed
     # post-screenshot: "はい、root においてください。http://127.0.0.1:8051/".
     # Lead-coordinated promotion per a2a `62094366` — once v3 was proven

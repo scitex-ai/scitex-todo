@@ -956,7 +956,7 @@ def migration_apply_cmd(
 # --------------------------------------------------------------------------- #
 # Attach the §1a sub-groups (defined in sibling modules).                     #
 # --------------------------------------------------------------------------- #
-from . import _completion, _introspect, _loop, _mcp, _runnable, _skills, _stats, _write  # noqa: E402
+from . import _completion, _hooks, _introspect, _loop, _mcp, _runnable, _skills, _stats, _write  # noqa: E402
 
 _introspect.register(main)
 _completion.register(main)
@@ -982,6 +982,11 @@ _loop.register(main)
 # batch runnable view. Sister to `next` (single pick); respects
 # depends_on closure. See _runnable.py for the predicate.
 _runnable.register(main)
+# Hook-consumer wire (lead a2a `6fff33d6` + `fbffb879`, 2026-06-14,
+# operator-mandated). `scitex-todo hook push|done` verbs are the
+# CLI twins of POST /hooks/push and POST /hooks/done — same canonical
+# event-payload shape, same idempotency. See _hooks.py for the spec.
+_hooks.register(main)
 
 
 if __name__ == "__main__":
