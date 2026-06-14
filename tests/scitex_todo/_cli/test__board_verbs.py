@@ -189,13 +189,14 @@ class TestBareBoardHardError:
         # Assert — exit 2 is Click's standard usage-error code.
         assert result.exit_code == 2
 
-    def test_bare_board_emits_redirect_message_to_stderr(self):
+    def test_bare_board_emits_redirect_message(self):
         # Arrange
         runner = CliRunner()
-        # Act
-        result = runner.invoke(main, ["board"], mix_stderr=False)
+        # Act — CliRunner mixes stderr into result.output by default;
+        # we check the redirect message landed in the combined stream.
+        result = runner.invoke(main, ["board"])
         # Assert — the redirect message names the canonical replacement.
-        assert "scitex-todo board start" in (result.stderr or result.output)
+        assert "scitex-todo board start" in result.output
 
     def test_bare_board_does_not_invoke_start(self, pidfile_path):
         # Arrange — set up a state that `board start` would normally
