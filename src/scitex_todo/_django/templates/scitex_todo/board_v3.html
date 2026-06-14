@@ -46,6 +46,7 @@
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/05-responsive.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/06-layout-and-recent.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/07-toolbar-groups.css' %}">
+<link rel="stylesheet" href="{% static 'scitex_todo/board_v3/08-time-grouping.css' %}">{# 08-time-grouping.css: bucket headers TODAY/WEEK/MONTH/OLDER for Group-by-time (a2a `ff1441d7`) #}
 {# combobox.css (loaded below the page-CSS so its specificity sits ON TOP if needed) #}
 <link rel="stylesheet" href="{% static 'scitex_ui/css/app/combobox.css' %}">
 <script defer src="{% static 'scitex_ui/js/app/combobox.js' %}"></script>
@@ -255,7 +256,7 @@
     </span>
     <span class="filt-sort">
       <label for="f-sort">Sort</label>
-      <select id="f-sort" title="Sort cards within each column (Recent applies across all layouts and adds NEW badges to <24h cards)"
+      <select id="f-sort" title="Sort cards within each column (Recent applies across all layouts and adds NEW badges to <24h cards). Time-based sorts (last activity / created / completed) honor the operator's TIME-BASED VIEW request — lead a2a `ff1441d7`, 2026-06-14."
               onchange="onSortChange(event)">
         <option value="default">default (date-aware)</option>
         <option value="recent">Recent (newest first) 🆕</option>
@@ -264,8 +265,28 @@
         <option value="status">status</option>
         <option value="project">project name</option>
         <option value="last_activity">last activity (newest)</option>
+        <option value="created_at">created (newest first)</option>
+        <option value="completed_at">completed (newest first)</option>
         <option value="title">title (A→Z)</option>
       </select>
+    </span>
+    {% comment %}
+      Group-by-time toggle (operator-asked TIME-BASED VIEW — lead a2a
+      `ff1441d7`, 2026-06-14). When ON, the column layout walks each
+      project's visible cards and inserts collapsible bucket headers
+      (TODAY / THIS WEEK / THIS MONTH / OLDER) keyed on `last_activity`.
+      Default OFF — back-compat with the existing flat column view.
+      State persists in localStorage["scitex-todo:group-by-time"].
+      Lives in the existing VIEW group next to Sort so the operator's
+      time controls cluster (board UI overhaul part 2, PR #173).
+    {% endcomment %}
+    <span class="filt-groupby-time">
+      <label class="stx-todo-group-by-time-label"
+             title="Group cards by last_activity bucket (TODAY / WEEK / MONTH / OLDER) within each column">
+        <input type="checkbox" id="stx-toggle-group-by-time"
+               onchange="onGroupByTimeChange(event)">
+        <span>Group by time</span>
+      </label>
     </span>
     <!-- P10 (lead a2a 2026-06-12) — group-by toggle. Off = today's flat
          column view. On = columns cluster under group headers (define
@@ -633,6 +654,26 @@
       if (_sortStored) STATE.sort = _sortStored;
     } catch {}
 
+    // === Group-by-time STATE + persistence ============================
+    // Operator-asked TIME-BASED VIEW (lead a2a `ff1441d7`, 2026-06-14).
+    // When ON, _renderColumnHtml() inserts bucket headers (TODAY / WEEK /
+    // MONTH / OLDER) keyed on `last_activity`. State persists in
+    // localStorage so the operator's preference survives reloads.
+    // Default OFF — back-compat with the existing flat column view.
+    STATE.groupByTime = (function () {
+      try {
+        return localStorage.getItem("scitex-todo:group-by-time") === "1";
+      } catch { return false; }
+    })();
+    // Collapsed-bucket state — per-bucket key ("today" / "week" / "month"
+    // / "older"); persists in localStorage. Default = all expanded.
+    STATE.timeBucketsCollapsed = (function () {
+      try {
+        const raw = localStorage.getItem("scitex-todo:time-buckets-collapsed");
+        return new Set(JSON.parse(raw || "[]"));
+      } catch { return new Set(); }
+    })();
+
     // === Hide (per-user soft-hide, localStorage-backed) ====================
     // Stored as an array of task ids under "scitex-todo:hidden". Per-user/per-
     // browser only — fine for the single-host MBA today; cross-device sync
@@ -684,6 +725,11 @@
         // popover reflects the actual filter state on first paint.
         const _sdBox = document.getElementById("f-showdone");
         if (_sdBox) _sdBox.checked = !!STATE.filters.showDone;
+        // Sync the Group-by-time checkbox (operator TIME-BASED VIEW,
+        // lead a2a `ff1441d7`) to the persisted STATE so the toggle
+        // reflects the actual state on first paint.
+        const _gbtBox = document.getElementById("stx-toggle-group-by-time");
+        if (_gbtBox) _gbtBox.checked = !!STATE.groupByTime;
         render();
       } catch (e) {
         document.getElementById("columns").innerHTML =
@@ -2271,12 +2317,22 @@
     function _renderColumnHtml(p, byProj, pinned) {
       const visibleCards = byProj[p] || [];
       visibleCards.sort(_sortComparator(STATE.sort || "default"));
-      const items = visibleCards.length
-        ? visibleCards.map(cardHtml).join("")
-        : `<div class="col-empty" onclick="openAddTaskModal('${escapeHtml(p)}')"
+      let items;
+      if (!visibleCards.length) {
+        items = `<div class="col-empty" onclick="openAddTaskModal('${escapeHtml(p)}')"
              title="No visible cards in this project. Click to add one.">
              + Add task to ${escapeHtml(p)}
            </div>`;
+      } else if (STATE.groupByTime) {
+        // Group-by-time (operator TIME-BASED VIEW, lead a2a
+        // `ff1441d7`, 2026-06-14). Bucket every visible card under
+        // its time bucket header (TODAY / WEEK / MONTH / OLDER) and
+        // emit each bucket as a collapsible block. Empty buckets
+        // are skipped so the column stays compact.
+        items = _renderTimeBucketedColumn(p, visibleCards);
+      } else {
+        items = visibleCards.map(cardHtml).join("");
+      }
       const isPinned = pinned.has(p);
       return `<section class="col${isPinned ? " col--pinned" : ""}"
         data-project="${escapeHtml(p)}" draggable="true"
@@ -2302,6 +2358,79 @@
         </header>
         <div class="col-body">${items}</div>
       </section>`;
+    }
+
+    // === Group-by-time bucket rendering ================================
+    // Operator TIME-BASED VIEW (lead a2a `ff1441d7`, 2026-06-14). When
+    // STATE.groupByTime is on, render each project's cards under
+    // collapsible TODAY/WEEK/MONTH/OLDER headers. Bucket keying lives in
+    // timeBucketForCard() above. Empty buckets are skipped so the column
+    // stays compact. Collapsed state persists in
+    // localStorage["scitex-todo:time-buckets-collapsed"].
+    function _renderTimeBucketedColumn(project, cards) {
+      const groups = { today: [], week: [], month: [], older: [] };
+      const nowMs = Date.now();
+      for (const t of cards) {
+        const b = timeBucketForCard(t, nowMs);
+        groups[b].push(t);
+      }
+      const collapsed = STATE.timeBucketsCollapsed || new Set();
+      const parts = [];
+      for (const bk of TIME_BUCKETS) {
+        const arr = groups[bk];
+        if (!arr.length) continue;
+        const isCollapsed = collapsed.has(bk);
+        const chevron = isCollapsed ? "▸" : "▾";
+        const innerHtml = isCollapsed
+          ? ""
+          : `<div class="stx-todo-time-bucket-body">${arr.map(cardHtml).join("")}</div>`;
+        parts.push(
+          `<div class="stx-todo-time-bucket stx-todo-time-bucket--${bk}` +
+            (isCollapsed ? " stx-todo-time-bucket--collapsed" : "") + `"
+            data-bucket="${bk}">
+            <button type="button" class="stx-todo-time-bucket-header"
+                    onclick="event.stopPropagation(); toggleTimeBucket('${bk}')"
+                    aria-expanded="${isCollapsed ? "false" : "true"}"
+                    title="Click to ${isCollapsed ? "expand" : "collapse"} ${TIME_BUCKET_LABELS[bk]}">
+              <span class="stx-todo-time-bucket-chevron"
+                    aria-hidden="true">${chevron}</span>
+              <span class="stx-todo-time-bucket-label">${TIME_BUCKET_LABELS[bk]}</span>
+              <span class="stx-todo-time-bucket-count">(${arr.length})</span>
+            </button>
+            ${innerHtml}
+          </div>`
+        );
+      }
+      return parts.join("");
+    }
+
+    // === Group-by-time toggle handler =================================
+    function onGroupByTimeChange(e) {
+      STATE.groupByTime = !!(e && e.target && e.target.checked);
+      try {
+        localStorage.setItem(
+          "scitex-todo:group-by-time",
+          STATE.groupByTime ? "1" : "0",
+        );
+      } catch {}
+      render();
+    }
+
+    // Toggle one bucket's collapsed state + persist.
+    function toggleTimeBucket(bucketKey) {
+      if (!STATE.timeBucketsCollapsed) STATE.timeBucketsCollapsed = new Set();
+      if (STATE.timeBucketsCollapsed.has(bucketKey)) {
+        STATE.timeBucketsCollapsed.delete(bucketKey);
+      } else {
+        STATE.timeBucketsCollapsed.add(bucketKey);
+      }
+      try {
+        localStorage.setItem(
+          "scitex-todo:time-buckets-collapsed",
+          JSON.stringify([...STATE.timeBucketsCollapsed]),
+        );
+      } catch {}
+      render();
     }
 
     // === Column pin + drag-reorder (operator UX TG 370) ====================
@@ -2834,6 +2963,61 @@
       return (Date.now() - ts) < (24 * 3600 * 1000);
     }
 
+    // === Time-bucket classifier (operator TIME-BASED VIEW —
+    // lead a2a `ff1441d7`, 2026-06-14) =================================
+    // Walks the card's `last_activity` and returns one of 4 buckets:
+    //   "today"  — within the last 24 h
+    //   "week"   — 24 h .. 7 d
+    //   "month"  — 7 d .. 30 d
+    //   "older"  — > 30 d (or missing/unparseable last_activity)
+    // Pure function (no DOM); mirrored in the JS-RUNTIME of
+    // tests/scitex_todo/_django/test__sort_by_time.py.
+    const TIME_BUCKETS = ["today", "week", "month", "older"];
+    const TIME_BUCKET_LABELS = {
+      today: "TODAY",
+      week:  "THIS WEEK",
+      month: "THIS MONTH",
+      older: "OLDER",
+    };
+    function timeBucketForCard(task, nowMs) {
+      const ref = (typeof nowMs === "number" && isFinite(nowMs))
+        ? nowMs : Date.now();
+      const ts = task && task.last_activity;
+      if (!ts) return "older";
+      const parsed = Date.parse(ts);
+      if (isNaN(parsed)) return "older";
+      const ageMs = ref - parsed;
+      const ONE_DAY  = 86400000;
+      const ONE_WEEK = 7  * ONE_DAY;
+      const ONE_MONTH = 30 * ONE_DAY;
+      if (ageMs <= ONE_DAY)  return "today";
+      if (ageMs <= ONE_WEEK) return "week";
+      if (ageMs <= ONE_MONTH) return "month";
+      return "older";
+    }
+
+    // === Time-based sort-key helper ====================================
+    // Returns the numeric epoch-ms key for a card under a given sort mode.
+    // Missing/unparseable values return 0 so they sort to the END for
+    // DESC orderings. Pure function (mirrored in tests).
+    function timeSortKey(task, mode) {
+      if (!task) return 0;
+      let raw = null;
+      if (mode === "last_activity") raw = task.last_activity;
+      else if (mode === "created_at") raw = task.created_at;
+      else if (mode === "completed_at") {
+        // completed_at comes from the _log_meta envelope when the card
+        // transitioned to status=done. Falls back to last_activity for
+        // back-compat snapshots that don't carry _log_meta yet.
+        raw = (task._log_meta && task._log_meta.completed_at)
+          || task.completed_at
+          || null;
+      }
+      if (!raw) return 0;
+      const ms = Date.parse(raw);
+      return isNaN(ms) ? 0 : ms;
+    }
+
     function _sortComparator(mode) {
       const STATUS_RANK = { working: 0, waiting: 1, blocked: 2, done: 3 };
       const dateRank = (t) => {
@@ -2872,8 +3056,20 @@
             String(a.project || "Uncategorized")
               .localeCompare(String(b.project || "Uncategorized"));
         case "last_activity":
+          // Numeric (epoch ms) comparator so cards without
+          // last_activity sort to the bottom (key=0) instead of the
+          // string lexicographic top. Operator TIME-BASED VIEW.
           return (a, b) =>
-            String(b.last_activity || "").localeCompare(String(a.last_activity || ""));
+            timeSortKey(b, "last_activity") - timeSortKey(a, "last_activity");
+        case "created_at":
+          // Newest-first by created_at — operator TIME-BASED VIEW.
+          return (a, b) =>
+            timeSortKey(b, "created_at") - timeSortKey(a, "created_at");
+        case "completed_at":
+          // Newest-first by _log_meta.completed_at — operator
+          // TIME-BASED VIEW. Cards never completed sort to the end.
+          return (a, b) =>
+            timeSortKey(b, "completed_at") - timeSortKey(a, "completed_at");
         case "title":
           return (a, b) =>
             String(a.title || "").localeCompare(String(b.title || ""));
