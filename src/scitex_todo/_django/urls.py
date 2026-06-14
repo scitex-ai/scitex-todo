@@ -5,10 +5,20 @@
 from django.urls import path
 
 from . import views
+from .handlers.fleet import fleet_ci_status_view
 
 app_name = "scitex_todo"
 
 urlpatterns = [
+    # Fleet dashboard — Phase 1 surface (CI-status pills strip). The
+    # registry-reader harness lives in ``handlers/fleet/`` and is the
+    # template subsequent waves (hosts, mesh, timing, chat) plug into.
+    # Registered BEFORE the catch-all ``<path:endpoint>`` route so the
+    # slashed path is matched cleanly instead of getting routed to
+    # ``api_dispatch`` (which would 404 — no handler named
+    # "fleet/ci-status"). The fleet surfaces are intentionally
+    # namespaced under ``/fleet/`` so future panels sit next to it.
+    path("fleet/ci-status", fleet_ci_status_view, name="fleet_ci_status"),
     # ROOT = the operator-approved v3 layout. Operator TG 263 confirmed
     # post-screenshot: "はい、root においてください。http://127.0.0.1:8051/".
     # Lead-coordinated promotion per a2a `62094366` — once v3 was proven

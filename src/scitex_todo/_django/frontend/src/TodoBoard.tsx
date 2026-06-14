@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo } from "react";
 import { CalendarView } from "./CalendarView";
+import { FleetCiPills } from "./FleetCiPills";
 import { GraphView } from "./GraphView";
 import { RecentView } from "./RecentView";
 import { TableView } from "./TableView";
@@ -522,6 +523,13 @@ export function TodoBoard() {
         </span>
         <CountBreakdown graph={graph} />
         <Progress graph={graph} />
+        {/* Fleet CI-status pills (Phase 1 of FLEET DASHBOARD vision —
+         * approved via a2a `74db4f2d`). Polls /fleet/ci-status every
+         * 30s; gracefully hides itself when no repos are configured
+         * (showing a small "no CI status configured" footnote). The
+         * registry-reader harness in handlers/fleet/ is the template
+         * subsequent waves (hosts / mesh / timing / chat) plug into. */}
+        <FleetCiPills />
         <ViewToggle />
         <Legend colors={graph.status_colors} />
       </header>
