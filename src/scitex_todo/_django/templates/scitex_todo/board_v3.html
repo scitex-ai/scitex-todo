@@ -197,7 +197,7 @@
     </div>{# end .fb-center / SEARCH-FILTER group #}
 
     <div class="fb-right">
-    {# board UI overhaul part 2 (2026-06-14, operator complaint via lead
+    {% comment %} board UI overhaul part 2 (2026-06-14, operator complaint via lead
        a2a `d1af161e`) — explicit subgroups in the right band so the
        controls stop visually colliding:
          VIEW    = Layout + Sort + Group
@@ -205,7 +205,15 @@
          PRIMARY = + Add Task (separated by a divider, brand-accent)
        The legacy `.fb-right` keeps its wrap-friendly flex; the new
        `.stx-todo-filterbar__group--*` wrappers add the breathing room
-       + dividers. #}
+       + dividers.
+
+       NB: this MUST be a `comment` block, not `{# #}` — Django's `{# #}`
+       syntax is single-line only; newlines between `{#` and `#}` are NOT
+       stripped, so the comment leaks as literal text onto the operator's
+       screen. The leak shipped briefly in PR #173 (the header-declutter
+       PR); fix-forward in this PR per lead a2a
+       `f7a5d37930b9479ca7e53a7e316c132d`, 2026-06-14, after the operator
+       reported it live. {% endcomment %}
     <div class="stx-todo-filterbar__group stx-todo-filterbar__group--view"
          role="group" aria-label="View controls — layout, sort, group">
     <!-- P9 (lead brief 2026-06-12) — sort-by control. The headline use
