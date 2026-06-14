@@ -7,6 +7,7 @@ from django.urls import path
 from . import views
 from .handlers.fleet import fleet_ci_status_view, fleet_hosts_view
 from .handlers.runnable import blocked_batch_view, runnable_view
+from .handlers.timeline import timeline_view
 
 app_name = "scitex_todo"
 
@@ -34,6 +35,13 @@ urlpatterns = [
     # consumes these instead of shelling out to the CLI verbs.
     path("runnable", runnable_view, name="runnable"),
     path("blocked-batch", blocked_batch_view, name="blocked_batch"),
+    # Time View — operator-direct ask (TG, relayed by lead a2a `d0f7a0e3`,
+    # 2026-06-14). Live raster timeline so the operator watches ONE screen
+    # and sees the whole fleet in motion. Polled by the FE TimelineView
+    # every 30s (same cadence as the CI-status pills). Registered BEFORE
+    # the catch-all ``<path:endpoint>`` route for the same reason as the
+    # other named GET endpoints — otherwise ``api_dispatch`` would 404.
+    path("timeline", timeline_view, name="timeline"),
     # ROOT = the operator-approved v3 layout. Operator TG 263 confirmed
     # post-screenshot: "はい、root においてください。http://127.0.0.1:8051/".
     # Lead-coordinated promotion per a2a `62094366` — once v3 was proven

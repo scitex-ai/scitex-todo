@@ -151,8 +151,8 @@ interface BoardStore {
   // ── View mode ────────────────────────────────────────────────────────────
   /** Which board view is active: the dependency graph, a flat table, or
    * the newest-first Recent triage surface (operator TG 513, 2026-06-12). */
-  view: "graph" | "table" | "recent" | "calendar";
-  setView: (v: "graph" | "table" | "recent" | "calendar") => void;
+  view: "graph" | "table" | "recent" | "calendar" | "timeline";
+  setView: (v: "graph" | "table" | "recent" | "calendar" | "timeline") => void;
 
   // ── Multi-select (Ctrl+click) for bulk copy ──────────────────────────────
   /** Ids of cards marked via Ctrl/⌘+click; right-click → Copy acts on these. */
@@ -371,7 +371,8 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
 
   // ── View mode ────────────────────────────────────────────────────────────
   view: _persisted.view,
-  setView: (v: "graph" | "table" | "recent" | "calendar") => set({ view: v }),
+  setView: (v: "graph" | "table" | "recent" | "calendar" | "timeline") =>
+    set({ view: v }),
 
   // ── Multi-select ─────────────────────────────────────────────────────────
   selectedIds: [],
