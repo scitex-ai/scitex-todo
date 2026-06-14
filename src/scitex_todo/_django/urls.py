@@ -5,7 +5,7 @@
 from django.urls import path
 
 from . import views
-from .handlers.fleet import fleet_ci_status_view
+from .handlers.fleet import fleet_ci_status_view, fleet_hosts_view
 from .handlers.runnable import blocked_batch_view, runnable_view
 
 app_name = "scitex_todo"
@@ -20,6 +20,13 @@ urlpatterns = [
     # "fleet/ci-status"). The fleet surfaces are intentionally
     # namespaced under ``/fleet/`` so future panels sit next to it.
     path("fleet/ci-status", fleet_ci_status_view, name="fleet_ci_status"),
+    # Fleet dashboard — Phase 2 surface (host geometry panel). Reads
+    # the local host + peer registry from ``sac host list --json`` via
+    # the same registry-reader pattern as the CI-status pills. Lead
+    # a2a `74db4f2d` + `10afa799` greenlight; mounts next to the CI
+    # pills strip in TodoBoard.tsx. Registered BEFORE the catch-all
+    # ``<path:endpoint>`` route for the same reason as ``/fleet/ci-status``.
+    path("fleet/hosts", fleet_hosts_view, name="fleet_hosts"),
     # T1.4 (lead a2a `74db4f2d`, 2026-06-14) — TRACK-1 dispatch backbone
     # HTTP surface. /runnable returns the FULL runnable set per the
     # T1.2 `runnable_tasks` predicate; /blocked-batch returns the

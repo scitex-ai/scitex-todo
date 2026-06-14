@@ -4,6 +4,7 @@
 import { useEffect, useMemo } from "react";
 import { CalendarView } from "./CalendarView";
 import { FleetCiPills } from "./FleetCiPills";
+import { FleetHostsPanel } from "./FleetHostsPanel";
 import { GraphView } from "./GraphView";
 import { RecentView } from "./RecentView";
 import { TableView } from "./TableView";
@@ -530,6 +531,13 @@ export function TodoBoard() {
          * registry-reader harness in handlers/fleet/ is the template
          * subsequent waves (hosts / mesh / timing / chat) plug into. */}
         <FleetCiPills />
+        {/* Fleet host-geometry panel (Phase 2 of FLEET DASHBOARD —
+         * lead a2a `74db4f2d` + `10afa799`). Polls /fleet/hosts every
+         * 30s; reads the local host + peer registry live from
+         * `sac host list --json` (NEVER duplicates state). Sits next
+         * to the CI-pills strip to give the operator a single glance
+         * at "where am I + who is on the mesh right now". */}
+        <FleetHostsPanel />
         <ViewToggle />
         <Legend colors={graph.status_colors} />
       </header>
