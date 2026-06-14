@@ -1,0 +1,176 @@
+/* Fleet agent-mesh + ACL graph panel — Phase 3 surface of the FLEET
+ * DASHBOARD.
+ *
+ * Visual contract:
+ *   - ONE compact pill rendering the agent + grant count + a small
+ *     inline SVG radial graph. Sits next to the hosts pill in the
+ *     board header's STATUS group.
+ *   - The full mesh summary lives in the ``title`` tooltip so the
+ *     pill itself stays compact.
+ *   - Allow edges = ``--status-success``; deny edges = ``--status-error``.
+ *   - On adapter error, the pill renders a red ring + a ``!`` marker
+ *     and the back-end error message is in the tooltip.
+ *
+ * All colors come from scitex-ui design tokens declared on the board
+ * root (see board.css `.stx-todo-board`):
+ *   --status-success / --status-error / --text-muted plus board-local
+ *   --stx-text / --stx-text-muted / --stx-border / --stx-panel-bg /
+ *   --stx-danger.
+ * No literal hex codes here — that would break dark/light theming.
+ */
+
+.stx-todo-fleet-mesh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--stx-border);
+  background: var(--stx-panel-bg);
+  color: var(--stx-text);
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: default;
+  transition: border-color 120ms ease;
+}
+
+.stx-todo-fleet-mesh--loading {
+  /* Reserve a tiny placeholder so the toolbar doesn't reflow on first
+   * paint while the initial fetch is in flight. */
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.stx-todo-fleet-mesh__label {
+  font-weight: 500;
+}
+
+.stx-todo-fleet-mesh__dot {
+  display: inline-block;
+  font-size: 0.85rem;
+  line-height: 1;
+  margin-left: 4px;
+}
+
+/* ── inline SVG graph ─────────────────────────────────────────────── */
+
+.stx-todo-fleet-mesh__svg {
+  display: inline-block;
+  vertical-align: middle;
+  /* Keep the SVG visually distinct from the label by clipping inside
+   * the pill — radius matches the parent's border-radius so the inset
+   * looks intentional. */
+  border-radius: 8px;
+  background: transparent;
+}
+
+/* Nodes — local agents read 1 token brighter than peer comms-nodes so
+ * the operator's eye lands on what they OWN first. */
+.stx-todo-fleet-mesh__node {
+  stroke: var(--stx-border);
+  stroke-width: 1;
+  fill: var(--stx-text-muted);
+}
+
+.stx-todo-fleet-mesh__node--local {
+  fill: var(--stx-text);
+}
+
+.stx-todo-fleet-mesh__node--peer {
+  fill: var(--stx-text-muted);
+}
+
+/* Edges — colour by allow/deny. The edge color tokens are the SINGLE
+ * point where the allow/deny mapping becomes pixels; the TS
+ * ``edgeColorToken`` helper picks the class name. */
+.stx-todo-fleet-mesh__edge {
+  stroke-width: 1.5;
+  cursor: pointer;
+  pointer-events: stroke;
+  transition: stroke-width 120ms ease;
+}
+
+.stx-todo-fleet-mesh__edge:hover {
+  stroke-width: 2.5;
+}
+
+.stx-todo-fleet-mesh__edge--allow {
+  stroke: var(--status-success);
+}
+
+.stx-todo-fleet-mesh__edge--deny {
+  stroke: var(--status-error);
+}
+
+/* ── legend ───────────────────────────────────────────────────────── */
+
+.stx-todo-fleet-mesh__legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  font-size: 0.72rem;
+  color: var(--stx-text-muted);
+}
+
+.stx-todo-fleet-mesh__legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 2px;
+  vertical-align: middle;
+  border-radius: 1px;
+}
+
+/* The legend swatches re-use the edge color tokens so a future swap of
+ * the success/error tokens flows through automatically — no second
+ * source of truth. We override ``stroke`` (an SVG-only prop) into a
+ * ``background`` so the same class works on a span. */
+.stx-todo-fleet-mesh__legend-swatch.stx-todo-fleet-mesh__edge--allow {
+  background: var(--status-success);
+}
+
+.stx-todo-fleet-mesh__legend-swatch.stx-todo-fleet-mesh__edge--deny {
+  background: var(--status-error);
+}
+
+.stx-todo-fleet-mesh__legend-text {
+  font-size: 0.72rem;
+}
+
+/* ── click-tooltip surface ────────────────────────────────────────── */
+
+.stx-todo-fleet-mesh__edge-tooltip {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--stx-panel-bg);
+  border: 1px solid var(--stx-border);
+  font-size: 0.72rem;
+  color: var(--stx-text);
+}
+
+/* ── ok state (steady success border, matches hosts panel) ────────── */
+.stx-todo-fleet-mesh--ok {
+  border-color: var(--status-success);
+}
+
+/* ── adapter error: muted text + red ring + ``!`` marker ──────────── */
+.stx-todo-fleet-mesh--error {
+  color: var(--stx-text-muted);
+  border-color: var(--stx-danger);
+  box-shadow: 0 0 0 1px var(--stx-danger);
+}
+
+.stx-todo-fleet-mesh--error .stx-todo-fleet-mesh__dot {
+  color: var(--stx-danger);
+  font-weight: 700;
+}
+
+/* EOF */

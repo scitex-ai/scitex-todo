@@ -38,15 +38,19 @@ from ._errors import FleetAdapterError
 from .ci_status_view import fleet_ci_status_view
 from .gh_ci import fetch_repo_ci_status
 from .hosts_view import fleet_hosts_view
+from .mesh_view import fleet_mesh_view
 from .sac_hosts import fetch_hosts
+from .sac_mesh import fetch_mesh
 
 __all__ = [
     "FleetAdapterError",
     "fetch_hosts",
+    "fetch_mesh",
     "fetch_repo_ci_status",
     "fleet_ci_status_view",
     "fleet_config_load",
     "fleet_hosts_view",
+    "fleet_mesh_view",
 ]
 
 # EOF

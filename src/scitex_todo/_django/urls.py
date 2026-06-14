@@ -5,7 +5,11 @@
 from django.urls import path
 
 from . import views
-from .handlers.fleet import fleet_ci_status_view, fleet_hosts_view
+from .handlers.fleet import (
+    fleet_ci_status_view,
+    fleet_hosts_view,
+    fleet_mesh_view,
+)
 from .handlers.hooks import hook_done_view, hook_push_view
 from .handlers.runnable import blocked_batch_view, runnable_view
 from .handlers.timeline import timeline_view
@@ -29,6 +33,16 @@ urlpatterns = [
     # pills strip in TodoBoard.tsx. Registered BEFORE the catch-all
     # ``<path:endpoint>`` route for the same reason as ``/fleet/ci-status``.
     path("fleet/hosts", fleet_hosts_view, name="fleet_hosts"),
+    # Fleet dashboard — Phase 3 surface (agent-mesh + ACL graph). Reads
+    # the registered agents from ``sac a2a list --json`` + the
+    # ``comms_grants`` ACL from ``sac a2a grants --json`` (lead a2a
+    # `74db4f2d` + `10afa799`). The directed mesh graph is rendered by
+    # ``FleetMeshPanel`` next to the hosts panel in the STATUS toolbar
+    # group. Same registry-reader pattern as ``/fleet/hosts``;
+    # registered BEFORE the catch-all ``<path:endpoint>`` route so the
+    # slashed path is matched cleanly instead of getting routed to
+    # ``api_dispatch`` (which would 404).
+    path("fleet/mesh", fleet_mesh_view, name="fleet_mesh"),
     # T1.4 (lead a2a `74db4f2d`, 2026-06-14) — TRACK-1 dispatch backbone
     # HTTP surface. /runnable returns the FULL runnable set per the
     # T1.2 `runnable_tasks` predicate; /blocked-batch returns the

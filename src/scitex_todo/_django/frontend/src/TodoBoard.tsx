@@ -5,6 +5,7 @@ import { useEffect, useMemo } from "react";
 import { CalendarView } from "./CalendarView";
 import { FleetCiPills } from "./FleetCiPills";
 import { FleetHostsPanel } from "./FleetHostsPanel";
+import { FleetMeshPanel } from "./FleetMeshPanel";
 import { GraphView } from "./GraphView";
 import { RecentView } from "./RecentView";
 import { TableView } from "./TableView";
@@ -553,6 +554,14 @@ export function TodoBoard() {
          * to the CI-pills strip to give the operator a single glance
          * at "where am I + who is on the mesh right now". */}
         <FleetHostsPanel />
+        {/* Fleet agent-mesh + ACL graph panel (Phase 3 of FLEET
+         * DASHBOARD — lead a2a `74db4f2d` + `10afa799`). Polls
+         * /fleet/mesh every 30s; reads the registered agents from
+         * `sac a2a list --json` + the ``comms_grants`` ACL from
+         * `sac a2a grants --json` (NEVER duplicates state). Sits in
+         * the STATUS group next to the hosts panel — the operator's
+         * one-glance answer to "who can message whom right now". */}
+        <FleetMeshPanel />
         <ViewToggle />
         <Legend colors={graph.status_colors} />
       </header>
