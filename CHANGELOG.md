@@ -4,6 +4,37 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.14] - 2026-06-13 — CLI: bare `board` hard-errors (noun-verb enforcement)
+
+### Changed (BREAKING)
+
+- **`scitex-todo board` (no verb) HARD-ERRORS** (PR #176, op TG 13316
+  via lead a2a `c36b0d1e`). PR #139 (v0.7.6) had kept it as a
+  deprecation-warn-and-forward to `board start`, but that path HID
+  the noun-verb violation from audit tools. Bare invocation now exits
+  2 + emits a redirect message naming the canonical replacements:
+
+  ```
+  ERROR: `scitex-todo board` (no verb) is no longer supported.
+  Operator directive TG 13316 — noun-verb CLI convention. Use:
+    scitex-todo board start [--port N] [--no-browser]
+    scitex-todo board stop
+    scitex-todo board restart
+    scitex-todo board status
+  ```
+
+  In-tree call site migrated: `_jobs_provider.py`'s
+  `scitex-todo.dashboard` JobSpec command now reads
+  `scitex-todo board start --port 8051`. External call sites (the
+  host systemd unit `scitex-todo.dashboard.service` ExecStart + any
+  launcher script) need the same migration on the host side. Until
+  they do, restarting them will exit 2 + log the redirect — which IS
+  the operator's intended forcing function, but coordinate with the
+  host-side deploy to avoid disruption.
+
+  14 mock-free CliRunner tests pin the contract (exit code 2,
+  redirect message, no forwarding, flags-don't-bypass).
+
 ## [0.7.13] - 2026-06-13 — Board UI wave-2: header declutter + Calendar view (4th LAYOUT)
 
 Completes the operator-direct board UI overhaul (lead a2a `d1af161e`
