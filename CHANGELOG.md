@@ -4,6 +4,50 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.21] - 2026-06-14 — Hook bus: ordering + card-message feedback channel
+
+Two enhancements that close the **operator↔card↔owner+collaborators
+feedback ring** Phase 6 was missing. Cross-package coordination via
+the existing `scitex_todo.hooks` entry-point bus — no new poller, no
+inter-package import.
+
+### Added
+
+- **Handler ordering primitives** (PR #196). Two optional function
+  attributes on hooks-bus handlers:
+  - `on_event.priority = <int>` (default 100; LOWER runs FIRST).
+  - `on_event.critical = True` (default False; if True and the
+    handler raises, dispatcher aborts the chain and re-raises so the
+    producer's HTTP/CLI wrapper translates to 500 / non-zero exit).
+  Sort key is `(priority asc, entry-point-name asc)` — stable.
+  Mutation visible by reference (early handlers' mutations land for
+  late handlers). Plugin LOAD failures (ImportError on `ep.load()`)
+  logged as `"load: <msg>"` in `plugin_errors`; chain continues.
+  Each error entry now carries `priority` + `critical` metadata so
+  the producer can see the failure context. 11 mock-free tests.
+  Designed with dev for the ci-result chain (owner-map priority=10
+  critical=True before SAC's delivery at priority=200).
+- **`card-message` event kind** (PR #197). Every comment landing on
+  a card via `_store.comment_task` fans out a `card-message` event
+  on the bus. Payload: `{kind, card_id, body, author, owner,
+  collaborators, created_at}`. Owner resolution falls back
+  `card.agent → card.assignee → null`. Collaborators is the
+  pre-append snapshot of distinct comment authors, deduped,
+  EXCLUDING owner AND new author (SAC must not echo). Emit happens
+  OUTSIDE the file-lock so slow handlers can't starve writers; bus
+  errors are caught + logged so external handler failure (SAC
+  unreachable, missing entry-point) never breaks the producer's
+  comment-save. 15 mock-free tests.
+  Surfaces emit: `/chat/<card_id>` POST, `scitex-todo comment` CLI,
+  MCP `comment_task` tool, Python API direct calls.
+
+### Provenance
+
+PR #196 + #197. Lead a2a `0ab1d9fd` (ci-result ordering coordination
+with dev) + `1e8e33d0` (card-message feedback channel — Phase 6
+extends to active routing). Both follow the same loose-coupling
+pattern: todo = producer, SAC = consumer, no cross-package import.
+
 ## [0.7.20] - 2026-06-14 — 🎯 TRACK 2 dashboard mission COMPLETE (6/6 surfaces)
 
 Closes the operator-mandated fleet-dashboard mission. The board at
