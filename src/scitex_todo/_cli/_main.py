@@ -956,7 +956,7 @@ def migration_apply_cmd(
 # --------------------------------------------------------------------------- #
 # Attach the §1a sub-groups (defined in sibling modules).                     #
 # --------------------------------------------------------------------------- #
-from . import _completion, _introspect, _loop, _mcp, _skills, _stats, _write  # noqa: E402
+from . import _completion, _introspect, _loop, _mcp, _runnable, _skills, _stats, _write  # noqa: E402
 
 _introspect.register(main)
 _completion.register(main)
@@ -978,6 +978,10 @@ _mcp.register(main)
 # new/commented/changed tasks. See _skills/scitex-todo/32_*.md for the
 # 7-step agent self-consumption pattern.
 _loop.register(main)
+# T1.2 (lead a2a `74db4f2d`, 2026-06-14) — the parallelism dispatcher's
+# batch runnable view. Sister to `next` (single pick); respects
+# depends_on closure. See _runnable.py for the predicate.
+_runnable.register(main)
 
 
 if __name__ == "__main__":
