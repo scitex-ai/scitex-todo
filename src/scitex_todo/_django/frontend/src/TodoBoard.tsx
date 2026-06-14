@@ -8,6 +8,7 @@ import { FleetHostsPanel } from "./FleetHostsPanel";
 import { GraphView } from "./GraphView";
 import { RecentView } from "./RecentView";
 import { TableView } from "./TableView";
+import { TimelineView } from "./TimelineView";
 import { NodeDetailPanelContainer } from "./NodeDetailPanel";
 import { ContextMenu } from "./ContextMenu";
 import { EdgeKindMenu } from "./EdgeKindMenu";
@@ -74,6 +75,20 @@ function ViewToggle() {
         title="Calendar — month grid by deadline / last_activity (operator TG 13295)"
       >
         📅 Calendar
+      </button>
+      {/* Time View — live raster timeline (operator-direct ask, TG;
+       * relayed by lead a2a `d0f7a0e3`, 2026-06-14). 5th LAYOUT
+       * alongside Graph / Table / Recent / Calendar. */}
+      <button
+        type="button"
+        className={`stx-todo-viewtoggle__btn${
+          view === "timeline" ? " stx-todo-viewtoggle__btn--on" : ""
+        }`}
+        onClick={() => setView("timeline")}
+        aria-pressed={view === "timeline"}
+        title="Time View — live raster timeline of the whole fleet (operator-direct ask, lead a2a d0f7a0e3)"
+      >
+        ⏱ Time
       </button>
     </div>
   );
@@ -549,6 +564,8 @@ export function TodoBoard() {
           <RecentView graph={graph} />
         ) : view === "calendar" ? (
           <CalendarView graph={graph} />
+        ) : view === "timeline" ? (
+          <TimelineView statusColors={graph.status_colors} />
         ) : (
           <TableView graph={graph} />
         )}

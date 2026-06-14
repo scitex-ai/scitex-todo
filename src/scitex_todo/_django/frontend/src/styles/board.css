@@ -5,6 +5,7 @@
 @import "./recent.css";
 @import "./search-suggest.css";
 @import "./table.css";
+@import "./timeline.css";
 /* hook-bypass: line-limit — board.css extraction is its own refactor,
    tracked in /work/GITIGNORED/REFACTORING.md. This three-line @import
    addition lands inside the existing limit suspension. */

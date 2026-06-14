@@ -1,0 +1,206 @@
+/* Time View — operator-direct ask (TG, relayed by lead a2a `d0f7a0e3`,
+ * 2026-06-14). Live raster timeline of the whole fleet.
+ *
+ * Themed via scitex-ui tokens already exposed by board.css's
+ * `.stx-todo-board` block (--stx-text, --stx-text-muted, --stx-panel-bg,
+ * --stx-canvas-bg, --stx-border, --stx-border-strong, --stx-accent, …).
+ * No hardcoded literals here — light/dark mode flips ride entirely on
+ * the shell's data-theme switch.
+ *
+ * Floor scope (see ../TimelineView.tsx for the matching contract):
+ *   - Toolbar row: title + window dropdown + lane-by dropdown + error pill.
+ *   - SVG raster below: time-axis ticks across the top; one lane per row.
+ *   - Each event = a colored bar; completed bars fade via opacity 0.55.
+ *   - Dependency edges = thin lines between bar centers.
+ *   - Hover tooltip via the SVG <title> element. */
+
+.stx-todo-timeline {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--stx-canvas-bg);
+  color: var(--stx-text);
+  overflow: hidden;
+}
+
+/* Top bar — title on the left, controls on the right. Same gutter / token
+ * treatment as the calendar / table toolbars so the layout reads as one
+ * block with the rest of the board chrome. */
+.stx-todo-timeline__bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--stx-border);
+  background: var(--stx-panel-bg);
+}
+
+.stx-todo-timeline__title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--stx-text);
+  letter-spacing: 0.01em;
+}
+
+.stx-todo-timeline__controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stx-todo-timeline__ctl-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.74rem;
+  color: var(--stx-text-muted);
+}
+
+.stx-todo-timeline__select {
+  appearance: none;
+  padding: 3px 8px;
+  border: 1px solid var(--stx-border-strong);
+  border-radius: 6px;
+  background: var(--stx-input-bg);
+  color: var(--stx-text);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.stx-todo-timeline__select:hover,
+.stx-todo-timeline__select:focus-visible {
+  border-color: var(--stx-accent);
+  color: var(--stx-accent);
+  outline: none;
+}
+
+/* Error pill — shows next to controls when /timeline returns non-2xx.
+ * Uses the accent token (not a literal red) so the dark/light flip keeps
+ * it legible. The component preserves the last good payload behind the
+ * pill so the operator keeps seeing data while the gap is explained. */
+.stx-todo-timeline__error {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border: 1px solid var(--stx-accent);
+  border-radius: 999px;
+  color: var(--stx-accent);
+  background: transparent;
+  white-space: nowrap;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stx-todo-timeline__loading {
+  padding: 20px 14px;
+  color: var(--stx-text-muted);
+  font-size: 0.82rem;
+}
+
+/* Scroll wrapper — the SVG is sized to (label_width + raster_width); on
+ * narrow viewports the raster scrolls horizontally rather than rescaling
+ * (preserves the operator's time-distance mental model). */
+.stx-todo-timeline__scroll {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 0;
+  background: var(--stx-canvas-bg);
+}
+
+.stx-todo-timeline__svg {
+  display: block;
+  background: var(--stx-canvas-bg);
+}
+
+/* Time-axis ticks. Light vertical guide lines across the whole raster +
+ * a small label at the top so the operator can read "what was happening
+ * at 12:00". */
+.stx-todo-timeline__tickline {
+  stroke: var(--stx-border);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.stx-todo-timeline__ticktext {
+  fill: var(--stx-text-muted);
+  font-size: 0.66rem;
+  font-family: inherit;
+}
+
+/* Lane background — alternating bg so adjacent rows are easy to scan
+ * even when bars are tightly packed. The "even" stripe uses the muted
+ * token; the odd stripe is the canvas bg (no extra rule). */
+.stx-todo-timeline__lane-bg {
+  fill: transparent;
+}
+
+.stx-todo-timeline__lane-bg--even {
+  fill: var(--stx-panel-bg);
+  opacity: 0.5;
+}
+
+.stx-todo-timeline__lane-label {
+  fill: var(--stx-text-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+}
+
+/* Dependency lines — `depends_on` uses the accent token; `blocks` uses
+ * the muted text token so blocking reads as the "softer constraint"
+ * visually. Both are thin (1px) so a busy raster stays readable. */
+.stx-todo-timeline__edge {
+  stroke-width: 1;
+  fill: none;
+  opacity: 0.7;
+}
+
+.stx-todo-timeline__edge--depends_on {
+  stroke: var(--stx-accent);
+}
+
+.stx-todo-timeline__edge--blocks {
+  stroke: var(--stx-text-muted);
+  stroke-dasharray: 3 3;
+}
+
+/* Event bars — colored by status (per-bar fill/stroke from
+ * status_colors via inline style). Completed bars get the
+ * `.stx-todo-timeline__bar--completed` class + opacity 0.55 inline so
+ * they fade visibly without losing the status hue. */
+.stx-todo-timeline__bar {
+  cursor: pointer;
+  transition: filter 0.1s ease-out;
+}
+
+.stx-todo-timeline__bar:hover {
+  filter: brightness(1.18);
+}
+
+.stx-todo-timeline__bar:focus-visible {
+  outline: 2px solid var(--stx-accent);
+  outline-offset: 1px;
+}
+
+.stx-todo-timeline__bar--completed {
+  /* opacity is applied per-rect inline so the hover brighten still
+   * registers (a class-level opacity would compose multiplicatively). */
+}
+
+/* Responsive — on narrow viewports drop the title and tighten the gap
+ * so the controls cluster at the right. */
+@media (max-width: 900px) {
+  .stx-todo-timeline__bar {
+    /* keep bars interactive even on touch */
+    touch-action: manipulation;
+  }
+  .stx-todo-timeline__title {
+    display: none;
+  }
+}
