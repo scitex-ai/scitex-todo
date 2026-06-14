@@ -47,6 +47,10 @@
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/06-layout-and-recent.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/07-toolbar-groups.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/08-time-grouping.css' %}">{# 08-time-grouping.css: bucket headers TODAY/WEEK/MONTH/OLDER for Group-by-time (a2a `ff1441d7`) #}
+{# 09-shell-overrides.css: scitex-ui shell pane overrides so the kanban grid uses the full viewport width.
+   Extracted from inline <style> in PR1 of the board_v3-extract train (lead-authorized 2026-06-15);
+   behaviour unchanged. See Issue #100 tech-debt bullet. #}
+<link rel="stylesheet" href="{% static 'scitex_todo/board_v3/09-shell-overrides.css' %}">
 {# combobox.css (loaded below the page-CSS so its specificity sits ON TOP if needed) #}
 <link rel="stylesheet" href="{% static 'scitex_ui/css/app/combobox.css' %}">
 <script defer src="{% static 'scitex_ui/js/app/combobox.js' %}"></script>
@@ -70,27 +74,6 @@
   #f-search input. Exposes window.STX.searchSuggest. Operator TG 12318.
 {% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/searchSuggest.js' %}"></script>
-<style>
-  /* P12 (operator TG, lead a2a 2026-06-12) — board reclaims the left
-     IDE-style panes. The scitex-ui standalone shell renders an AI
-     console pane + a worktree file tree + a media viewer to the LEFT
-     of the module pane; the kanban board doesn't need any of them, and
-     the operator was photographed reporting "left empty space" eating
-     the columns area. Override the shell defaults here so the kanban
-     grid uses the full viewport width. The shell's resizer/toggle JS
-     still no-ops cleanly when the targets are display:none. */
-  #workspace-three-col > .ws-ai-pane,
-  #workspace-three-col > .ws-worktree-pane,
-  #workspace-three-col > .ws-viewer-pane {
-    display: none !important;
-  }
-  #workspace-three-col > .ws-module-pane,
-  #workspace-three-col > #main-content.ws-module-pane {
-    flex: 1 1 100%;
-    max-width: 100vw;
-    width: 100vw;
-  }
-</style>
 {% endblock extra_css %}
 
 {% block app_content %}
