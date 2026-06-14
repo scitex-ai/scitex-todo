@@ -5,6 +5,7 @@
 from django.urls import path
 
 from . import views
+from .handlers.chat import chat_view
 from .handlers.fleet import (
     fleet_ci_status_view,
     fleet_hosts_view,
@@ -71,6 +72,15 @@ urlpatterns = [
     # the catch-all ``<path:endpoint>`` route for the same reason as the
     # other named GET endpoints — otherwise ``api_dispatch`` would 404.
     path("timeline", timeline_view, name="timeline"),
+    # Fleet dashboard — Phase 6 surface (CHAT). Operator↔agent thread
+    # view sitting on top of the existing per-card ``comments[]``
+    # substrate. Lead a2a `74db4f2d` + `10afa799` greenlight; last of
+    # the 6 TRACK-2 surfaces. GET returns the card's comments[]; POST
+    # appends one (delegates to ``_store.comment_task``). Registered
+    # BEFORE the catch-all ``<path:endpoint>`` route so the slashed
+    # path is matched cleanly instead of getting routed to
+    # ``api_dispatch`` (which would 404 — no handler named "chat/<id>").
+    path("chat/<str:card_id>", chat_view, name="chat"),
     # Hook-consumer endpoints (lead a2a `6fff33d6` + `fbffb879`,
     # 2026-06-14, operator-mandated). Loose-coupling contract for
     # SAC's push-hook + dev's merge-Action to record progress / DONE
