@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.25] - 2026-06-15 — `scitex-todo ci-watch` (record-only CI poller)
+
+### Added
+
+- **`scitex-todo ci-watch`** + **`scitex-todo.ci-watch` cron JobSpec**
+  (PR #206, lead a2a `b4c10158` / operator decoupled-pollers override
+  via dev a2a `96afacc7`). Record-only CI poller — server-side
+  `*/5 * * * *` cron that sweeps every repo in
+  `dashboard.yaml → fleet.ci_status.repos` (or env override
+  `SCITEX_TODO_FLEET_CI_REPOS=owner/a,owner/b`), diffs against the
+  local state cache at `~/.scitex/todo/ci-state.json` (override via
+  `SCITEX_TODO_CI_STATE`), classifies the transition
+  (`first-seen` / `newly-green` / `newly-red` / `still-pending` /
+  `unchanged`), and logs one stderr line per repo.
+
+  Lane: **todo records, SAC delivers** — todo writes no a2a sends
+  and emits no bus events; SAC has its own independent poller for the
+  delivery side. Either side can crash without breaking the other.
+  The dedupe key (`head_sha`, `overall`) is content-keyed so SAC's
+  poller can run at a different cadence (10 / 15 / 30 min) without
+  breaking parity.
+
+  CLI:
+
+      scitex-todo ci-watch --once                # cron mode (one sweep)
+      scitex-todo ci-watch --interval 600        # loop with custom cadence
+      scitex-todo ci-watch --once --dry-run      # plan + summary, no state write
+      SCITEX_TODO_FLEET_CI_REPOS=owner/a scitex-todo ci-watch --once
+
+  Wired into the ecosystem federation via `_jobs_provider.py`; after
+  `scitex-dev ecosystem up`, the `scitex-todo.ci-watch.timer`
+  systemd-user unit fires every 5 min. 18 mock-free tests
+  (classifier purity, state load/save round-trip + atomic-write, CLI
+  dry-run, JobSpec registration).
+
 ## [0.7.24] - 2026-06-14 — `scitex-todo mcp install-fleet` (P3a one-liner)
 
 ### Added
