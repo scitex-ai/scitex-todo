@@ -122,6 +122,105 @@ whichever is closest to the producer's process model:
 
 All three converge on :func:`dispatch_event`, which runs the
 built-in handler + every entry-point plugin in turn.
+
+## card-message plugin contract (for SAC + future fan-out consumers)
+
+Lead a2a ``8f7687ae``, 2026-06-15. The chat surface
+(``POST /chat/<card_id>`` / MCP ``comment_task`` / CLI
+``scitex-todo comment``) emits a ``card-message`` event every time
+a comment lands. SAC's ``on_card_message`` plugin (lives in
+``scitex_agent_container``, NOT this package) a2a-fans the event to
+the card's owner + collaborators. This subsection pins the contract
+the plugin author MUST implement against.
+
+### Event shape
+
+::
+
+    {
+      "kind":               "card-message",
+      "card_id":            "card-x",                # required, non-empty
+      "body":               "the comment text",       # required, non-empty
+      "author":             "agent-a",                # optional, ~always set
+      "owner":              "proj-foo" | None,        # card's assignee/agent
+      "collaborators":      ["op", "agent-b", ...],   # prior commenters
+                                                      #   - owner - new author
+      "created_at":         "2026-06-15T...",         # ISO-8601 UTC
+      "reply_to_event_id":  "card-x#2026-...Z" | None # OPTIONAL loop guard
+    }
+
+``event_id`` convention: ``"{card_id}#{created_at}"``. Deterministic;
+no fresh-id generator required. Match the existing
+``_hooks_processed.py`` ledger-key flavour (``"{repo}#{pr_number}"``).
+
+### Loop-prevention recipe (REQUIRED)
+
+todo CARRIES the wire fields — it does not enforce loops. The
+plugin author MUST short-circuit when the inbound event is a reply
+from a sender the plugin itself fanned out to. Pseudocode::
+
+    def on_card_message(event):
+        # 1. Reject events with our own author as the new commenter
+        #    (we just delivered THIS comment via fan-out; the chat
+        #    panel echoed it back).
+        author = event.get("author") or ""
+        if author in _self_aliases():
+            return
+
+        # 2. Reject events whose reply_to_event_id points at a thread
+        #    we are currently aware of and don't want to re-fan.
+        rt = event.get("reply_to_event_id")
+        if rt and _already_delivered(rt, author):
+            return
+
+        # 3. Compose targets — owner + collaborators, dedup against
+        #    self.
+        targets = {event.get("owner"), *event.get("collaborators", [])}
+        targets.discard(None)
+        targets.discard("")
+        targets.difference_update(_self_aliases())
+
+        # 4. a2a fan-out (best-effort; do not raise — see below).
+        for t in sorted(targets):
+            try:
+                a2a_send(target=t, content=event["body"], ...)
+            except Exception:
+                logger.warning("on_card_message: fan to %s failed", t,
+                               exc_info=True)
+
+### Idempotency expectation
+
+todo emits **exactly-once per `comment_task` call**. The plugin author
+should still treat replays as safe: a restart can re-deliver the same
+event, and the SAME ``event_id`` ``{card_id}#{created_at}`` lets the
+plugin de-dup at its own layer. Recommended ledger: keyed by
+``(event_id, target)`` so a partially-delivered fan-out can resume
+without double-pinging.
+
+### Delivery semantics + failure isolation
+
+* **Best-effort.** Plugin failure is caught + logged on todo's side
+  (see :func:`_run_plugins` ``plugin_errors[]`` capture). One bad
+  plugin must NOT silently break the board's own record-keeping.
+* The bus emit happens OUTSIDE the tasks-yaml lock so a slow plugin
+  cannot starve other writers. The comment is already on disk
+  BEFORE the plugin runs.
+* Plugin priority + criticality semantics apply (see the
+  ``Handler ordering + criticality`` section above). A plugin that
+  MUST not fan partial output can declare ``.critical = True`` and
+  raise; todo will report the failure in ``plugin_errors[]``.
+
+### Registration
+
+Register via the ``scitex_todo.hooks`` entry-point group::
+
+    # consumer-side pyproject.toml
+    [project.entry-points."scitex_todo.hooks"]
+    on-card-message = "my_pkg.hooks:on_card_message"
+
+The plugin loads at the first ``dispatch_event`` call (lazy via
+``importlib.metadata``); a load failure is logged and the plugin
+skipped (the next event re-tries the load).
 """
 
 from __future__ import annotations
