@@ -175,13 +175,38 @@ def chat_view(request: HttpRequest, card_id: str) -> HttpResponse:
     else:
         author = author.strip()
 
+    # Loop-prevention hint (lead a2a `8f7687ae`, 2026-06-15). Carried
+    # through to the card-message event so SAC's plugin can suppress
+    # echoing a reply back to its own author. todo carries the field;
+    # enforcement lives in the consumer plugin. Optional + None
+    # preserves current behaviour for existing producers.
+    reply_to_event_id = (
+        payload.get("reply_to_event_id") if isinstance(payload, dict) else None
+    )
+    if reply_to_event_id is not None and (
+        not isinstance(reply_to_event_id, str) or not reply_to_event_id
+    ):
+        return JsonResponse(
+            {
+                "error": (
+                    "'reply_to_event_id' must be a non-empty string if "
+                    "present"
+                )
+            },
+            status=400,
+        )
+
     # Delegate to the existing store API — registry-sourced write, no
     # parallel schema. ``_store.comment_task`` re-validates the task id +
     # the text, stamps the ts, and persists via the standard YAML writer.
     from ..._store import comment_task
 
     result = comment_task(
-        store=path, task_id=card_id, text=text, by=author,
+        store=path,
+        task_id=card_id,
+        text=text,
+        by=author,
+        reply_to_event_id=reply_to_event_id,
     )
     return JsonResponse(
         {
