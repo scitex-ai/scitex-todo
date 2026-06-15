@@ -202,6 +202,7 @@ def mark_processed(
     matched_cards: list[str] | None = None,
     author: str | None = None,
     processed_at: str | None = None,
+    source: str = "hook",
     store: str | Path | None = None,
 ) -> dict[str, Any]:
     """First-writer-wins record of a processed merge event.
@@ -222,6 +223,12 @@ def mark_processed(
         empty (no-card-match case is still a successful POST).
     processed_at
         ISO-8601 UTC string; defaults to ``utcnow().isoformat() + 'Z'``.
+    source
+        How this entry was discovered — ``"hook"`` (dev's GitHub Action
+        POSTed to ``/hooks/done``, default) or ``"poll"`` (todo's own
+        ``backfill_merged_prs`` poller closed the loop because the hook
+        never arrived). Stored verbatim in the ledger so operators can
+        audit "delivered vs polled" without re-scanning history.
     store
         Override the tasks-store path; the ledger lives next to it.
     """
@@ -235,6 +242,7 @@ def mark_processed(
         "merge_commit": merge_commit,
         "matched_cards": list(matched_cards or []),
         "author": author,
+        "source": source,
     }
     ledger = _ledger_path(store=store)
     with _ledger_lock(ledger):
