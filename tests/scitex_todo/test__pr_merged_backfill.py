@@ -155,7 +155,10 @@ def test_replay_sweep_counts_only_already_processed(store):
 
 
 def test_no_card_match_still_writes_ledger(store):
-    # No card with this PR url.
+    # Need to seed SOMETHING so tasks.yaml exists, but no card with
+    # this PR url — find_cards_by_pr returns [] when the store has
+    # cards but none match.
+    _seed_card(store, card_id="unrelated", pr_number=12345)
     runner = _StubRunner({"owner/repo": [_pr(999)]})
 
     summary = backfill_merged_prs(
