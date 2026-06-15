@@ -236,6 +236,20 @@ def event_validate(event: Any) -> dict:
             norm_collab.append(c)
         out["collaborators"] = norm_collab
         out["created_at"] = event.get("created_at")
+        # reply_to_event_id — optional loop-prevention hint (lead a2a
+        # `8f7687ae`, 2026-06-15). todo CARRIES the field through the
+        # wire; SAC's plugin uses it to suppress echoing a reply back
+        # to its own author. Deterministic event-id format is
+        # ``{card_id}#{created_at}`` so plugins can reconstruct
+        # without a fresh id generator. Wire contract: optional,
+        # string when present, no enum validation.
+        reply_to = event.get("reply_to_event_id")
+        if reply_to is not None and (not isinstance(reply_to, str) or not reply_to):
+            raise HookEventError(
+                f"card-message event: 'reply_to_event_id' must be a "
+                f"non-empty string if present (got {reply_to!r})"
+            )
+        out["reply_to_event_id"] = reply_to
         # `card-message` does NOT use `card_ids` (singular `card_id`
         # above); return early so the trailing card_ids normalisation
         # block doesn't add an empty list to the payload.
