@@ -688,12 +688,20 @@ def comment_task(
     task_id: str | None = None,
     text: str | None = None,
     by: str | None = None,
+    reply_to_event_id: str | None = None,
 ) -> dict:
     """Append an entry to ``task.comments[]`` (the established Issue-
     activity-log shape from skill 30, Gitea-compatible field).
 
     `by` overrides the $SCITEX_TODO_AGENT → $USER precedence used by
     add_task / complete_task.
+
+    `reply_to_event_id` (lead a2a ``8f7687ae``, 2026-06-15) is an
+    optional loop-prevention hint that flows through to the
+    ``card-message`` event emit. SAC's plugin uses it to suppress
+    echoing a reply back to its own author. todo carries the field;
+    enforcement lives in the consumer plugin. Convention:
+    ``event_id = "{card_id}#{created_at}"``.
     """
     from . import _model
 
@@ -702,6 +710,13 @@ def comment_task(
         raise ValueError("comment_task: 'task_id' is required")
     if not text or not str(text).strip():
         raise ValueError("comment_task: 'text' is required")
+    if reply_to_event_id is not None and (
+        not isinstance(reply_to_event_id, str) or not reply_to_event_id
+    ):
+        raise ValueError(
+            "comment_task: 'reply_to_event_id' must be a non-empty string "
+            "if present"
+        )
     author = _default_agent(by)
     entry = {
         "author": author,
@@ -755,6 +770,7 @@ def comment_task(
             "owner": owner,
             "collaborators": collaborators,
             "created_at": entry["ts"],
+            "reply_to_event_id": reply_to_event_id,
         })
     except Exception:  # noqa: BLE001 — bus must not break comment_task
         import logging
