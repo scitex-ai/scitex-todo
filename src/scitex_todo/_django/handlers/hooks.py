@@ -214,8 +214,8 @@ def _handle_pr_merged(
         merge_commit=parsed.get("merge_commit"),
         matched_cards=matched_cards,
         author=parsed.get("author"),
-        processed_at=_dt.datetime.utcnow()
-        .replace(microsecond=0)
+        processed_at=_dt.datetime.now(_dt.timezone.utc)
+        .replace(microsecond=0, tzinfo=None)
         .isoformat()
         + "Z",
     )

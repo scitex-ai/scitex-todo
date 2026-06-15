@@ -228,7 +228,7 @@ def mark_processed(
     key = make_key(repo, pr_number)
     if processed_at is None:
         processed_at = (
-            _dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+            _dt.datetime.now(_dt.timezone.utc).replace(microsecond=0, tzinfo=None).isoformat() + "Z"
         )
     new_entry: dict[str, Any] = {
         "first_processed_at": processed_at,
