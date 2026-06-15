@@ -956,7 +956,7 @@ def migration_apply_cmd(
 # --------------------------------------------------------------------------- #
 # Attach the §1a sub-groups (defined in sibling modules).                     #
 # --------------------------------------------------------------------------- #
-from . import _ci_watch, _completion, _hooks, _introspect, _loop, _mcp, _runnable, _skills, _stats, _write  # noqa: E402
+from . import _backfill, _ci_watch, _completion, _hooks, _introspect, _loop, _mcp, _runnable, _skills, _stats, _write  # noqa: E402
 
 _introspect.register(main)
 _completion.register(main)
@@ -993,6 +993,13 @@ _hooks.register(main)
 # bus emission for ci-result (SAC has its own independent poller for
 # the delivery side). See _ci_watch.py.
 _ci_watch.register(main)
+# backfill-merged-prs (lead a2a `ba90ba35`, 2026-06-15) — fallback
+# DONE bookkeeping. Walks merged PRs across the fleet.ci_status.repos
+# list and reconciles against _hooks_processed.py so a merged PR that
+# never reached /hooks/done (dev emitter throttled / offline) still
+# closes the loop. Decoupled-pollers lane sibling to ci-watch. See
+# _pr_merged_backfill.py for the policy + algorithm.
+_backfill.register(main)
 
 
 if __name__ == "__main__":
