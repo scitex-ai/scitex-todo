@@ -168,10 +168,41 @@ def event_validate(event: Any) -> dict:
     Returns the normalized event dict on success (string-coerces the
     ``card_ids`` entries, defaults missing optional fields to None).
     Raises :class:`HookEventError` on any structural violation.
+
+    Accepts TWO wire shapes (lead+dev schema lock 2026-06-14):
+
+    * **Legacy** — ``{"kind": "done"|"push"|"card-message", ...,
+      "card_ids": [...]}``. The producer supplies the target cards.
+      Used by SAC's push-hook + earlier dev test harnesses.
+
+    * **New (event-driven)** — ``{"event": "pr_merged", "repo",
+      "pr_number", "merged_at", ...}``. The producer does NOT include
+      ``card_ids``; the receiver looks them up via
+      :func:`scitex_todo._pr_lookup.find_cards_by_pr` *after*
+      validation. This validator NORMALISES the payload to the
+      internal ``kind:"done"`` shape so downstream handlers + plugins
+      stay shape-stable. The receiver tags the normalized dict with
+      ``_source:"pr_merged"`` so the view can route the dedup-ledger
+      path.
     """
     if not isinstance(event, dict):
         raise HookEventError(
             f"event must be a JSON object, got {type(event).__name__}"
+        )
+    # New event-driven shape — translate to internal kind:"done"
+    # before the legacy validation runs. The validator lives in a
+    # sibling module (_hooks_pr_merged) so this file stays under the
+    # 512-line refactor limit; lazy import to keep cold-import cheap
+    # for callers that only ever see the legacy shape.
+    if event.get("event") == "pr_merged":
+        from ._hooks_pr_merged import validate as _validate_pr_merged
+
+        return _validate_pr_merged(event)
+    if "event" in event and event.get("event") not in (None, ""):
+        # Unknown event-driven kind — fail loud per Phase-0 doctrine.
+        raise HookEventError(
+            f"unknown event {event.get('event')!r}; supported event-driven "
+            f"kinds: 'pr_merged'"
         )
     kind = event.get("kind")
     if kind not in VALID_EVENT_KINDS:
