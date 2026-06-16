@@ -111,9 +111,7 @@ def test_config_env_override_without_file(env, tmp_path) -> None:
     assert out["fleet"]["ci_status"]["repos"] == ["owner/x", "owner/y"]
 
 
-def test_config_env_override_empty_string_means_no_repos(
-    env, tmp_path
-) -> None:
+def test_config_env_override_empty_string_means_no_repos(env, tmp_path) -> None:
     """Empty env override yields an empty list (not a one-item ``""``)
     — the operator can intentionally disable the strip with an empty
     env value."""
@@ -163,9 +161,7 @@ def _gh_authed() -> bool:
 _AUTHED = _gh_authed()
 
 
-@pytest.mark.skipif(
-    not _AUTHED, reason="gh CLI not installed or not authenticated"
-)
+@pytest.mark.skipif(not _AUTHED, reason="gh CLI not installed or not authenticated")
 def test_nonexistent_repo_raises() -> None:
     """Calling the adapter on a slug that does not exist on GitHub
     must surface as ``FleetAdapterError`` — the fail-loud contract."""
@@ -173,9 +169,7 @@ def test_nonexistent_repo_raises() -> None:
         # A slug that almost-certainly resolves to 404. We avoid using a
         # name that COULD be claimed later by namespacing it under a
         # uuid-like path.
-        fetch_repo_ci_status(
-            "ywatanabe1989/scitex-todo-test-does-not-exist-xyz123"
-        )
+        fetch_repo_ci_status("ywatanabe1989/scitex-todo-test-does-not-exist-xyz123")
 
 
 def test_invalid_slug_shape_raises_without_gh() -> None:
@@ -271,6 +265,233 @@ def test_module_has_documented_attrs() -> None:
         "FleetAdapterError",
         "fleet_config_load",
         "fetch_repo_ci_status",
+        "fetch_many_ci_status",
         "fleet_ci_status_view",
     ):
         assert hasattr(fleet_pkg, attr), f"missing public name: {attr}"
+
+
+# ─── bulk GraphQL adapter — fetch_many_ci_status ────────────────────────
+
+
+@pytest.mark.parametrize(
+    "state,expected",
+    [
+        ("SUCCESS", "success"),
+        ("FAILURE", "failure"),
+        ("ERROR", "failure"),
+        ("PENDING", "pending"),
+        ("EXPECTED", "pending"),
+        (None, "unknown"),
+        ("", "unknown"),
+        ("WEIRD", "unknown"),
+    ],
+)
+def test_overall_from_rollup_maps_state_to_color(state, expected) -> None:
+    """The GraphQL rollup-state → pill-color mapping mirrors the REST
+    reducer (FAILURE/ERROR red, PENDING/EXPECTED amber, SUCCESS green,
+    else grey) so both fetch paths feed the FE identical colors."""
+    # Arrange
+    from scitex_todo._django.handlers.fleet.gh_ci import _overall_from_rollup
+
+    # Act
+    result = _overall_from_rollup(state)
+
+    # Assert
+    assert result == expected
+
+
+@pytest.mark.parametrize(
+    "slug,is_valid",
+    [
+        ("owner/name", True),
+        ("ywatanabe1989/scitex-todo", True),
+        ("dotted.owner/dot.repo-1", True),
+        ("no-slash", False),
+        ("too/many/slashes", False),
+        ("owner/", False),
+        ("/name", False),
+        ('owner/na"me', False),
+        ("owner/na me", False),
+    ],
+)
+def test_split_slug_accepts_only_safe_tokens(slug, is_valid) -> None:
+    """A slug splits only when BOTH halves are safe GitHub tokens, so a
+    stray config line can never be interpolated into the GraphQL query."""
+    # Arrange
+    from scitex_todo._django.handlers.fleet.gh_ci import _split_slug
+
+    # Act
+    parsed = _split_slug(slug)
+
+    # Assert
+    assert (parsed is not None) is is_valid
+
+
+def test_build_graphql_query_aliases_each_repo() -> None:
+    """Each repo becomes its own ``r<i>`` alias so ONE request resolves
+    the whole batch; owner + name land as literal string args."""
+    # Arrange
+    from scitex_todo._django.handlers.fleet.gh_ci import _build_graphql_query
+
+    # Act
+    query = _build_graphql_query(["a/b", "c/d"])
+
+    # Assert
+    assert all(
+        token in query
+        for token in (
+            'r0: repository(owner: "a", name: "b")',
+            'r1: repository(owner: "c", name: "d")',
+            "statusCheckRollup",
+        )
+    )
+
+
+def test_parse_graphql_repo_null_node_becomes_error_entry() -> None:
+    """A null repository node (not found / no access) maps to a per-repo
+    error entry — never a silent success."""
+    # Arrange
+    from scitex_todo._django.handlers.fleet.gh_ci import _parse_graphql_repo
+
+    # Act
+    out = _parse_graphql_repo(None, "owner/missing")
+
+    # Assert
+    assert "error" in out
+
+
+def test_parse_graphql_repo_missing_branch_is_unknown() -> None:
+    """An empty repo (no default branch) is a legitimate steady state —
+    grey/unknown, not an error."""
+    # Arrange
+    from scitex_todo._django.handlers.fleet.gh_ci import _parse_graphql_repo
+
+    # Act
+    out = _parse_graphql_repo({"defaultBranchRef": None}, "owner/empty")
+
+    # Assert
+    assert out["overall"] == "unknown"
+
+
+def test_parse_graphql_repo_full_node_maps_failure() -> None:
+    """A fully-resolved node maps the rollup state into the pill overall."""
+    # Arrange
+    from scitex_todo._django.handlers.fleet.gh_ci import _parse_graphql_repo
+
+    node = {
+        "defaultBranchRef": {
+            "name": "main",
+            "target": {
+                "oid": "deadbeef",
+                "statusCheckRollup": {"state": "FAILURE"},
+            },
+        }
+    }
+
+    # Act
+    out = _parse_graphql_repo(node, "owner/repo")
+
+    # Assert
+    assert out["overall"] == "failure"
+
+
+def test_fetch_many_invalid_slugs_preserve_order_as_errors() -> None:
+    """Malformed slugs short-circuit to error entries WITHOUT touching the
+    network, and the result preserves input order + coverage so the FE
+    strip stays aligned with the configured list."""
+    # Arrange
+    from scitex_todo._django.handlers.fleet.gh_ci import fetch_many_ci_status
+
+    # Act
+    out = fetch_many_ci_status(["bad-no-slash", "also/bad/extra"])
+
+    # Assert
+    assert [r["slug"] for r in out] == ["bad-no-slash", "also/bad/extra"]
+
+
+def test_fetch_many_empty_input_returns_empty_list() -> None:
+    """No repos configured → empty result and no gh call."""
+    # Arrange
+    from scitex_todo._django.handlers.fleet.gh_ci import fetch_many_ci_status
+
+    # Act
+    out = fetch_many_ci_status([])
+
+    # Assert
+    assert out == []
+
+
+# ─── ecosystem spin-out — fleet_config_load `ecosystem` flag ────────────
+
+
+def _scitex_dev_available() -> bool:
+    """True iff ``scitex-dev`` is on PATH (the ecosystem registry source).
+    Mirrors the gh-auth self-skip so CI without scitex-dev stays green."""
+    return shutil.which("scitex-dev") is not None
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (True, True),
+        ("true", True),
+        ("1", True),
+        ("yes", True),
+        ("on", True),
+        (False, False),
+        ("false", False),
+        ("0", False),
+        ("", False),
+        (None, False),
+    ],
+)
+def test_truthy_accepts_common_flag_spellings(value, expected) -> None:
+    """The ecosystem flag accepts the usual YAML / env truthy spellings."""
+    # Arrange
+    truthy = fleet_config_mod._truthy
+
+    # Act
+    result = truthy(value)
+
+    # Assert
+    assert result is expected
+
+
+def test_ecosystem_flag_off_keeps_only_explicit_repos(env, tmp_path) -> None:
+    """Without the flag the watch-list is EXACTLY the explicit repos — the
+    ecosystem union is strictly opt-in."""
+    # Arrange
+    _isolate_home(env, tmp_path)
+    env.delete("SCITEX_TODO_FLEET_CI_ECOSYSTEM")
+    env.set("SCITEX_TODO_FLEET_CI_REPOS", "owner/x,owner/y")
+
+    # Act
+    out = fleet_config_load()
+
+    # Assert
+    assert out["fleet"]["ci_status"]["repos"] == ["owner/x", "owner/y"]
+
+
+@pytest.mark.skipif(
+    not _scitex_dev_available(),
+    reason="scitex-dev not on PATH (ecosystem registry source)",
+)
+def test_ecosystem_flag_unions_registry_keeping_pin(env, tmp_path) -> None:
+    """With the flag ON the explicit repo leads the list and the live
+    ecosystem registry is unioned in (de-duped) — the pills 'spin out'
+    across the ecosystem without dropping the operator's pin."""
+    # Arrange
+    _isolate_home(env, tmp_path)
+    fleet_config_mod._eco_cache["ts"] = 0.0
+    fleet_config_mod._eco_cache["repos"] = []
+    env.set("SCITEX_TODO_FLEET_CI_REPOS", "owner/pinned")
+    env.set("SCITEX_TODO_FLEET_CI_ECOSYSTEM", "1")
+
+    # Act
+    repos = fleet_config_load()["fleet"]["ci_status"]["repos"]
+
+    # Assert
+    assert (
+        repos[0] == "owner/pinned" and len(repos) > 1 and len(repos) == len(set(repos))
+    )
