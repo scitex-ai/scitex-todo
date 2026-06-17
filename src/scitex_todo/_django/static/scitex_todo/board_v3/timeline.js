@@ -215,20 +215,23 @@
       if (byLane[ev.lane]) byLane[ev.lane].push(ev);
     });
 
-    var bars = [];
-    var barById = {};
+    // SCATTER: ONE dot per task (operator 2026-06-17) at its start time
+    // within its lane — hover a dot to see which task it is / is processing.
+    var dots = [];
+    var dotById = {};
     lanes.forEach(function (lane, li) {
       (byLane[lane] || []).forEach(function (ev) {
+        // barGeo still does the window-overlap filter; we take only its
+        // (clamped) start x as the dot centre.
         var g = barGeo(ms(ev.started_at), ms(ev.ended_at), ws, we, now, width);
         if (!g) return;
-        var bar = {
-          x: g.x,
-          y: AXIS_H + li * LANE_H + BAR_INSET,
-          w: Math.max(g.width, 2),
+        var dot = {
+          cx: LABEL_W + g.x,
+          cy: AXIS_H + li * LANE_H + LANE_H / 2,
           ev: ev,
         };
-        bars.push(bar);
-        barById[ev.id] = bar;
+        dots.push(dot);
+        dotById[ev.id] = dot;
       });
     });
     var ticks = makeTicks(ws, we, width, TICKS);
@@ -278,55 +281,51 @@
         "</text>";
     });
     svg += "</g>";
-    // dependency lines (drawn before bars)
+    // dependency lines (drawn before the dots) — connect dot centres
     svg += '<g class="tl-edges">';
     (p.edges || []).forEach(function (e) {
-      var s = barById[e.source];
-      var t = barById[e.target];
+      var s = dotById[e.source];
+      var t = dotById[e.target];
       if (!s || !t) return;
-      var y1 = s.y + (LANE_H - BAR_INSET * 2) / 2;
-      var y2 = t.y + (LANE_H - BAR_INSET * 2) / 2;
       svg +=
         '<line class="tl-edge tl-edge--' +
         (e.kind === "blocks" ? "blocks" : "depends") +
         '" x1="' +
-        (LABEL_W + s.x + s.w) +
+        s.cx +
         '" y1="' +
-        y1 +
+        s.cy +
         '" x2="' +
-        (LABEL_W + t.x) +
+        t.cx +
         '" y2="' +
-        y2 +
+        t.cy +
         '"></line>';
     });
     svg += "</g>";
-    // bars
-    svg += '<g class="tl-bars">';
-    bars.forEach(function (b) {
-      var done = b.ev.ended_at != null;
+    // dots — ONE per task (the scatter). Click → detail drawer; hover →
+    // the <title> tooltip. Completed dots fade; live (still-running) ones
+    // keep a bright ring so you can spot what's being processed.
+    svg += '<g class="tl-dots">';
+    dots.forEach(function (d) {
+      var done = d.ev.ended_at != null;
       var title =
-        b.ev.title +
+        d.ev.title +
         "\nstatus: " +
-        b.ev.status +
-        (b.ev.started_at ? "\nstarted: " + b.ev.started_at : "") +
-        (b.ev.ended_at ? "\ncompleted: " + b.ev.ended_at : "");
+        d.ev.status +
+        (d.ev.started_at ? "\nstarted: " + d.ev.started_at : "") +
+        (d.ev.ended_at ? "\ncompleted: " + d.ev.ended_at : "");
       svg +=
-        '<rect class="tl-bar tl-bar--' +
-        bucket(b.ev.status) +
-        (done ? " tl-bar--done-fade" : "") +
-        '" x="' +
-        (LABEL_W + b.x) +
-        '" y="' +
-        b.y +
-        '" width="' +
-        b.w +
-        '" height="' +
-        (LANE_H - BAR_INSET * 2) +
-        '" rx="3" ry="3" onclick="openDetail(\'' +
-        escapeHtml(String(b.ev.id)) +
+        '<circle class="tl-dot tl-dot--' +
+        bucket(d.ev.status) +
+        (done ? " tl-dot--done" : " tl-dot--live") +
+        '" cx="' +
+        d.cx +
+        '" cy="' +
+        d.cy +
+        '" r="5" onclick="openDetail(\'' +
+        escapeHtml(String(d.ev.id)) +
         "')\"><title>" +
         escapeHtml(title) +
-        "</title></rect>";
+        "</title></circle>";
     });
     svg += "</g>";
 
@@ -460,6 +459,21 @@
   function timelineOnStoreChange() {
     if (STATE.layout === "timeline" && TL.view !== "simple") loadTimeline();
   }
+
+  // Auto dynamic update (operator 2026-06-17): keep the timeline fresh +
+  // FLOWING as time passes. A self-gating timer re-fetches the raster (its
+  // window is now-relative, so dots drift leftward each tick) or re-renders
+  // the simple list — ONLY while the Timeline layout is active. On by
+  // default, no toggle. Skips while a dot/card is hovered so the tooltip the
+  // operator is reading isn't yanked out from under them.
+  var TL_LIVE_MS = 5000;
+  setInterval(function () {
+    if (typeof STATE === "undefined" || !STATE || STATE.layout !== "timeline")
+      return;
+    if (document.querySelector(".tl-dot:hover, .tl-card:hover")) return;
+    if (TL.view === "simple") render();
+    else loadTimeline();
+  }, TL_LIVE_MS);
 
   // Publish the entry points the inline board code + onclick handlers use.
   window._renderTimelineView = renderTimeline;

@@ -92,31 +92,37 @@
 .tl-edge--blocks {
   stroke: var(--red, #e5484d);
 }
-.tl-bar {
+.tl-dot {
   cursor: pointer;
-  stroke-width: 1;
+  stroke-width: 1.5;
+  transition: r 0.08s ease;
 }
-.tl-bar:hover {
-  filter: brightness(1.18);
+.tl-dot:hover {
+  r: 8;
+  filter: brightness(1.2);
 }
-.tl-bar--working {
+.tl-dot--working {
   fill: var(--green, #30a46c);
   stroke: var(--green, #30a46c);
 }
-.tl-bar--waiting {
+.tl-dot--waiting {
   fill: var(--amber, #f5a524);
   stroke: var(--amber, #f5a524);
 }
-.tl-bar--blocked {
+.tl-dot--blocked {
   fill: var(--red, #e5484d);
   stroke: var(--red, #e5484d);
 }
-.tl-bar--done {
+.tl-dot--done {
   fill: var(--grey, #6b7280);
   stroke: var(--grey, #6b7280);
+  opacity: 0.5;
 }
-.tl-bar--done-fade {
-  opacity: 0.55;
+/* Live (still-running) tasks get a bright ring so the operator can spot
+   what's being processed at a glance. */
+.tl-dot--live {
+  stroke: var(--text, #e0e6f0);
+  stroke-width: 2;
 }
 
 /* ── simple per-task cards ─────────────────────────────────────────── */
