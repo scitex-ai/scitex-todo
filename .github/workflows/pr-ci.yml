@@ -1,17 +1,24 @@
 name: pr-ci
 
 # Consolidated PR-only CI gate. Runs the per-PR validation suite as a
-# single workflow so the cancel-in-progress concurrency group, path
-# filters, and uv cache apply uniformly. Post-merge validation lives
-# in release-ci.yml.
+# single workflow so the cancel-in-progress concurrency group + path
+# filters apply uniformly. Post-merge validation lives in release-ci.yml.
+#
+# SIF-based self-hosted CI (operator standardization 2026-06-18). Every job
+# runs INSIDE the pre-built, reused scitex-ci SIF (`apptainer exec
+# ci-cpu.sif`) on the Spartan CPU runner, instead of the old bare-runner
+# `setup-uv@v3 + uv python install` steps (which failed at job init,
+# steps=0, on the self-hosted runner). The shared SIF bakes
+# scitex-dev[all,dev] + python 3.11/3.12/3.13 + uv; each job layers THIS
+# checkout + its extras into a writable --target dir inside the SIF (see
+# .github/ci/*.sh). fail-loud: a missing SIF/shim is a HARD error.
+#
+# runs-on driven by repo Actions Variable CI_RUNS_ON; SIF + apptainer
+# paths come from SCITEX_CI_SIF / SCITEX_CI_APPTAINER.
 #
 # L1 concurrency — cancel superseded PR runs.
 # L3 path filters — skip docs/skills/examples/markdown-only PRs.
-# L4 conditional matrix — full ["3.11", "3.12", "3.13"] on PR (this trigger).
-# L5a uv-managed Python (`uv python install` + `uv venv --python`) so the
-#     matrix leg is not bound to the runner's system Python.
-# L5b .venv/bin on PATH (and explicit `.venv/bin/python` for clarity) so
-#     console scripts resolve without needing `uv run`.
+# L4 conditional matrix — full ["3.11","3.12","3.13"] on PR.
 
 on:
   pull_request:
@@ -30,78 +37,41 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  SCITEX_CI_APPTAINER: ${{ vars.SCITEX_CI_APPTAINER }}
+  SCITEX_CI_SIF: ${{ vars.SCITEX_CI_SIF }}
+
 jobs:
   import-smoke:
     name: import-smoke-on-ubuntu-py3-12
-    runs-on: [self-hosted, scitex-ci]
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '["self-hosted","Linux","X64","scitex-ci"]') }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          enable-cache: true
-          cache-dependency-glob: pyproject.toml
-      - name: Set up Python 3.12 (uv-managed)
-        run: uv python install 3.12
-      - name: Install (no extras) in uv venv
-        run: |
-          uv venv --python 3.12 .venv
-          uv pip install --python .venv/bin/python -e .
-      - name: Import smoke
-        run: .venv/bin/python -c "import scitex_todo; print(getattr(scitex_todo, '__version__', 'unversioned'))"
-      - name: smoke scitex-todo --help
-        run: .venv/bin/scitex-todo --help
+      - name: Import smoke in the reused CI SIF (bare install + import + --help)
+        run: bash .github/ci/exec-in-sif.sh import-smoke.sh 3.12
+
   dep-hygiene-smoke:
     name: dep-hygiene-smoke
-    runs-on: [self-hosted, scitex-ci]
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '["self-hosted","Linux","X64","scitex-ci"]') }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          enable-cache: true
-          cache-dependency-glob: pyproject.toml
-      - name: Set up Python 3.11 (uv-managed)
-        run: uv python install 3.11
-      - name: Bare install (no extras) in uv venv
-        run: |
-          uv venv --python 3.11 .venv
-          uv pip install --python .venv/bin/python .
-      - name: Import package
-        run: .venv/bin/python -c "import scitex_todo; print(scitex_todo.__name__)"
+      - name: Bare install + import on py3.11 in the reused CI SIF
+        run: bash .github/ci/exec-in-sif.sh import-smoke.sh 3.11
 
   tests:
     name: pytest-matrix-on-ubuntu-py${{ matrix.python-version }}
-    runs-on: [self-hosted, scitex-ci]
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '["self-hosted","Linux","X64","scitex-ci"]') }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         python-version: ${{ github.event_name == 'pull_request' && fromJson('["3.11", "3.12", "3.13"]') || fromJson('["3.12"]') }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          enable-cache: true
-          cache-dependency-glob: pyproject.toml
-      - name: Set up Python ${{ matrix.python-version }} (uv-managed)
-        run: uv python install ${{ matrix.python-version }}
-      - name: Create uv venv on this matrix Python
-        run: uv venv --python ${{ matrix.python-version }} .venv
-      - name: Install dependencies
-        # Fallback chain: prefer [all,dev] so optional-dep code paths
-        # get exercised. Falls back to [dev] then plain editable so a
-        # packaging hiccup doesn't strand CI.
-        run: |
-          uv pip install --python .venv/bin/python -e ".[all,dev]" \
-            || uv pip install --python .venv/bin/python -e ".[dev]" \
-            || uv pip install --python .venv/bin/python -e .
-      - name: Run tests
-        # PATH prepend so any test that subprocess-calls a console script
-        # finds it in .venv/bin/.
-        run: |
-          export PATH="$PWD/.venv/bin:$PATH"
-          .venv/bin/pytest tests/ --cov=src/scitex_todo --cov-report=xml --cov-report=term
+      - name: Run tests in the reused CI SIF (apptainer exec — deps layered, not on the bare runner)
+        run: bash .github/ci/exec-in-sif.sh run-in-sif.sh ${{ matrix.python-version }}
       - name: Upload coverage to Codecov
         if: always() && matrix.python-version == '3.12'
         continue-on-error: true  # codecov-action can fail on the self-hosted runner; coverage upload must never gate CI
@@ -113,37 +83,13 @@ jobs:
 
   audit:
     name: audit
-    runs-on: [self-hosted, scitex-ci]
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '["self-hosted","Linux","X64","scitex-ci"]') }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          enable-cache: true
-          cache-dependency-glob: pyproject.toml
-      - name: Set up Python 3.12 (uv-managed)
-        run: uv python install 3.12
-      - name: Install package + audit tooling
-        run: |
-          uv venv --python 3.12 .venv
-          uv pip install --python .venv/bin/python -e ".[dev]"
-          uv pip install --python .venv/bin/python "scitex-dev[cli-audit]"
-      - name: Run scitex-dev audits (scope-down, drift backlogged)
-        # PR #110 fix-forward (lead a2a `fb413fb038da49d1b18262b237385c33`,
-        # 2026-06-12). See release-ci.yml's audit step for the full
-        # rationale. Same divergence from main: skip audit-python-apis
-        # until the AAA-marker sweep lands; treat audit-skills as
-        # warn-only until SK-301/401 cleanup.
-        run: |
-          export PATH="$PWD/.venv/bin:$PATH"
-          set -e
-          scitex-dev ecosystem audit-cli       scitex-todo
-          scitex-dev ecosystem audit-mcp-tools scitex-todo
-          scitex-dev ecosystem audit-skills    scitex-todo || true
-          # --path <abs> audits THIS checkout; without it audit-project resolves
-          # the ecosystem-registry local_path (the runner's stale ~/proj checkout)
-          # and spuriously fails PS-101/133/134. MUST be ABSOLUTE: a relative
-          # `--path .` crashes audit-project's PS-204 mirror check (relative_to
-          # mixes rel/abs paths). Both relayed to scitex-dev.
-          scitex-dev ecosystem audit-project   scitex-todo --path "$GITHUB_WORKSPACE"
+      - name: Run scitex-dev audits in the reused CI SIF (scope-down, drift backlogged)
+        # PR #110 fix-forward. See release-ci.yml's audit step for the full
+        # rationale. Same divergence from main: skip audit-python-apis until
+        # the AAA-marker sweep lands; treat audit-skills as warn-only until the
+        # SK-301/401 cleanup. The scope-down logic lives in .github/ci/audit.sh.
+        run: bash .github/ci/exec-in-sif.sh audit.sh 3.12
