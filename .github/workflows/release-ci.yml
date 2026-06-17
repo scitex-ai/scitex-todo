@@ -126,7 +126,9 @@ jobs:
           # (scitex-dev/_cli/audit/_skills/_audit.py:558,583). Echo the
           # findings so they stay visible in the log, then continue.
           scitex-dev ecosystem audit-skills    scitex-todo || true
-          # --path . audits THIS checkout; without it audit-project resolves the
-          # ecosystem-registry local_path (the runner's stale ~/proj checkout) and
-          # spuriously fails on PS-101/133/134. (Relayed to scitex-dev.)
-          scitex-dev ecosystem audit-project   scitex-todo --path .
+          # --path <abs> audits THIS checkout; without it audit-project resolves
+          # the ecosystem-registry local_path (the runner's stale ~/proj checkout)
+          # and spuriously fails PS-101/133/134. MUST be ABSOLUTE: a relative
+          # `--path .` crashes audit-project's PS-204 mirror check (relative_to
+          # mixes rel/abs paths). Both relayed to scitex-dev.
+          scitex-dev ecosystem audit-project   scitex-todo --path "$GITHUB_WORKSPACE"
