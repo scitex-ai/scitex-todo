@@ -33,7 +33,7 @@ concurrency:
 jobs:
   import-smoke:
     name: import-smoke-on-ubuntu-py3-12
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, scitex-ci]
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -53,7 +53,7 @@ jobs:
         run: .venv/bin/scitex-todo --help
   dep-hygiene-smoke:
     name: dep-hygiene-smoke
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, scitex-ci]
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -72,7 +72,7 @@ jobs:
 
   tests:
     name: pytest-matrix-on-ubuntu-py${{ matrix.python-version }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, scitex-ci]
     strategy:
       fail-fast: false
       matrix:
@@ -104,6 +104,7 @@ jobs:
           .venv/bin/pytest tests/ --cov=src/scitex_todo --cov-report=xml --cov-report=term
       - name: Upload coverage to Codecov
         if: always() && matrix.python-version == '3.12'
+        continue-on-error: true  # codecov-action can fail on the self-hosted runner; coverage upload must never gate CI
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -112,7 +113,7 @@ jobs:
 
   audit:
     name: audit
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, scitex-ci]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
