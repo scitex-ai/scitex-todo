@@ -72,9 +72,16 @@
 <li class="toctree-l2"><a class="reference internal" href="#scitex_todo.TaskNotFoundError"><code class="docutils literal notranslate"><span class="pre">TaskNotFoundError</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="#scitex_todo.TaskValidationError"><code class="docutils literal notranslate"><span class="pre">TaskValidationError</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="#scitex_todo.add_task"><code class="docutils literal notranslate"><span class="pre">add_task()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#scitex_todo.comment_task"><code class="docutils literal notranslate"><span class="pre">comment_task()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="#scitex_todo.complete_task"><code class="docutils literal notranslate"><span class="pre">complete_task()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#scitex_todo.delete_task"><code class="docutils literal notranslate"><span class="pre">delete_task()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#scitex_todo.get_task"><code class="docutils literal notranslate"><span class="pre">get_task()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="#scitex_todo.list_tasks"><code class="docutils literal notranslate"><span class="pre">list_tasks()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#scitex_todo.reopen_task"><code class="docutils literal notranslate"><span class="pre">reopen_task()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="#scitex_todo.resolve_store"><code class="docutils literal notranslate"><span class="pre">resolve_store()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#scitex_todo.resolve_task"><code class="docutils literal notranslate"><span class="pre">resolve_task()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#scitex_todo.restore_task"><code class="docutils literal notranslate"><span class="pre">restore_task()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#scitex_todo.set_edge"><code class="docutils literal notranslate"><span class="pre">set_edge()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="#scitex_todo.summarize_tasks"><code class="docutils literal notranslate"><span class="pre">summarize_tasks()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="#scitex_todo.update_task"><code class="docutils literal notranslate"><span class="pre">update_task()</span></code></a></li>
 </ul>
@@ -164,6 +171,24 @@ value and the valid set. Unknown keys are accepted at this layer
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="scitex_todo.comment_task">
+<span class="sig-prename descclassname"><span class="pre">scitex_todo.</span></span><span class="sig-name descname"><span class="pre">comment_task</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">task_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">text</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">by</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kind</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/scitex_todo/_store.html#comment_task"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scitex_todo.comment_task" title="Link to this definition"></a></dt>
+<dd><p>Append an entry to <code class="docutils literal notranslate"><span class="pre">task.comments[]</span></code> (the established Issue-
+activity-log shape from skill 30, Gitea-compatible field).</p>
+<p><cite>by</cite> overrides the $SCITEX_TODO_AGENT → $USER precedence used by
+add_task / complete_task.</p>
+<p><cite>kind</cite> is an optional feedback-ring / event tag (e.g. <code class="docutils literal notranslate"><span class="pre">push</span></code> /
+<code class="docutils literal notranslate"><span class="pre">done</span></code> / <code class="docutils literal notranslate"><span class="pre">card-message</span></code>) stamped onto the entry so the board can
+render “how the card was routed” (operator 2026-06-17). Lenient: the
+model only requires <code class="docutils literal notranslate"><span class="pre">text</span></code>, so the extra key round-trips cleanly.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="scitex_todo.complete_task">
 <span class="sig-prename descclassname"><span class="pre">scitex_todo.</span></span><span class="sig-name descname"><span class="pre">complete_task</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">task_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">by</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/scitex_todo/_store.html#complete_task"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scitex_todo.complete_task" title="Link to this definition"></a></dt>
 <dd><p>Mark <code class="docutils literal notranslate"><span class="pre">task_id</span></code> as <code class="docutils literal notranslate"><span class="pre">done</span></code> and stamp <code class="docutils literal notranslate"><span class="pre">_log_meta.completed_{at,by}</span></code>.</p>
@@ -178,6 +203,40 @@ completion). Pass <code class="docutils literal notranslate"><span class="pre">b
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="scitex_todo.delete_task">
+<span class="sig-prename descclassname"><span class="pre">scitex_todo.</span></span><span class="sig-name descname"><span class="pre">delete_task</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">task_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/scitex_todo/_store.html#delete_task"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scitex_todo.delete_task" title="Link to this definition"></a></dt>
+<dd><p>Remove a task + scrub references to it. Returns the lossless
+payload the client can pass to <code class="docutils literal notranslate"><span class="pre">restore_task</span></code> for Undo.</p>
+<p>The board v3 Delete-with-Undo flow uses this via <code class="docutils literal notranslate"><span class="pre">handlers/crud.py</span></code>;
+exposing the same operation here lets MCP agents do the same delete +
+later undo without round-tripping HTTP.</p>
+<p>Returns <code class="docutils literal notranslate"><span class="pre">{&quot;removed&quot;:</span> <span class="pre">&lt;full</span> <span class="pre">task</span> <span class="pre">dict&gt;,</span> <span class="pre">&quot;refs&quot;:</span> <span class="pre">[&lt;refs</span> <span class="pre">scrubbed&gt;]}</span></code>
+where each ref is the id of another task whose depends_on / blocks /
+parent pointed at the deleted task (the client passes this back to
+restore_task to lossless-revert).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="scitex_todo.get_task">
+<span class="sig-prename descclassname"><span class="pre">scitex_todo.</span></span><span class="sig-name descname"><span class="pre">get_task</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">task_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/scitex_todo/_store.html#get_task"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scitex_todo.get_task" title="Link to this definition"></a></dt>
+<dd><p>Return a single task by id, or raise <code class="docutils literal notranslate"><span class="pre">TaskNotFoundError</span></code>.</p>
+<p>Companion to <code class="docutils literal notranslate"><span class="pre">add_task</span></code> / <code class="docutils literal notranslate"><span class="pre">update_task</span></code> / <code class="docutils literal notranslate"><span class="pre">list_tasks</span></code> — the
+natural “read one” verb every CRUD surface expects but the Python
+API was missing (PR #56 audit gap). The MCP wrapper exposes this as
+<code class="docutils literal notranslate"><span class="pre">get_task</span></code> per Convention A.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
 </dd>
 </dl>
 </dd></dl>
@@ -216,6 +275,19 @@ affecting the on-disk store (no save here).</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="scitex_todo.reopen_task">
+<span class="sig-prename descclassname"><span class="pre">scitex_todo.</span></span><span class="sig-name descname"><span class="pre">reopen_task</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">task_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">by</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/scitex_todo/_store.html#reopen_task"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scitex_todo.reopen_task" title="Link to this definition"></a></dt>
+<dd><p>Un-resolve a task — flip <code class="docutils literal notranslate"><span class="pre">status=done</span></code> back to <code class="docutils literal notranslate"><span class="pre">blocked</span></code> with
+<code class="docutils literal notranslate"><span class="pre">blocker=operator-decision</span></code> (the original LOUD halo state). Used
+by the board v3 Resolve→Undo loop.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="scitex_todo.resolve_store">
 <span class="sig-prename descclassname"><span class="pre">scitex_todo.</span></span><span class="sig-name descname"><span class="pre">resolve_store</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/scitex_todo/_store.html#resolve_store"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scitex_todo.resolve_store" title="Link to this definition"></a></dt>
 <dd><p>Return the resolved task store path and the precedence chain.</p>
@@ -234,6 +306,48 @@ as the MCP tool satisfies audit §6 (Convention A: tool_name == api_name).</p>
 }
 </pre></div>
 </div>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="scitex_todo.resolve_task">
+<span class="sig-prename descclassname"><span class="pre">scitex_todo.</span></span><span class="sig-name descname"><span class="pre">resolve_task</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">task_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">actor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/scitex_todo/_store.html#resolve_task"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scitex_todo.resolve_task" title="Link to this definition"></a></dt>
+<dd><p>Flip a task from <code class="docutils literal notranslate"><span class="pre">status=blocked</span></code> (typically <code class="docutils literal notranslate"><span class="pre">blocker=operator-</span>
+<span class="pre">decision</span></code>) to <code class="docutils literal notranslate"><span class="pre">done</span></code> and clear the blocker. Appends an audit
+comment naming the actor.</p>
+<p>Idempotent on already-resolved tasks (re-resolves are no-ops, just
+log a “noop” comment).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="scitex_todo.restore_task">
+<span class="sig-prename descclassname"><span class="pre">scitex_todo.</span></span><span class="sig-name descname"><span class="pre">restore_task</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">task</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">refs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/scitex_todo/_store.html#restore_task"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scitex_todo.restore_task" title="Link to this definition"></a></dt>
+<dd><p>Undo a <code class="docutils literal notranslate"><span class="pre">delete_task</span></code>: re-insert the task at its original id.</p>
+<p>Idempotent on duplicate id — raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> if the id is
+already present (use <code class="docutils literal notranslate"><span class="pre">update_task</span></code> to mutate; this verb is the
+Delete-Undo partner only).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="scitex_todo.set_edge">
+<span class="sig-prename descclassname"><span class="pre">scitex_todo.</span></span><span class="sig-name descname"><span class="pre">set_edge</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">action</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kind</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/scitex_todo/_store.html#set_edge"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#scitex_todo.set_edge" title="Link to this definition"></a></dt>
+<dd><p>Add or remove a depends_on / blocks edge.</p>
+<p><code class="docutils literal notranslate"><span class="pre">action</span></code> in {“add”, “remove”}. <code class="docutils literal notranslate"><span class="pre">kind</span></code> in {“depends_on”, “blocks”}.
+Mutates <code class="docutils literal notranslate"><span class="pre">tasks[source][kind]</span></code> (adding/removing <code class="docutils literal notranslate"><span class="pre">target</span></code>).</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
