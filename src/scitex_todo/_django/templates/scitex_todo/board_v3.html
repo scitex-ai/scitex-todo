@@ -47,6 +47,7 @@
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/06-layout-and-recent.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/07-toolbar-groups.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/08-time-grouping.css' %}">{# 08-time-grouping.css: bucket headers TODAY/WEEK/MONTH/OLDER for Group-by-time (a2a `ff1441d7`) #}
+<link rel="stylesheet" href="{% static 'scitex_todo/board_v3/09-timeline.css' %}">{# 09-timeline.css: Timeline layout — raster + per-task simple cards (operator TODO 2026-06-17) #}
 {# combobox.css (loaded below the page-CSS so its specificity sits ON TOP if needed) #}
 <link rel="stylesheet" href="{% static 'scitex_ui/css/app/combobox.css' %}">
 <script defer src="{% static 'scitex_ui/js/app/combobox.js' %}"></script>
@@ -70,6 +71,14 @@
   #f-search input. Exposes window.STX.searchSuggest. Operator TG 12318.
 {% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/searchSuggest.js' %}"></script>
+{% comment %}
+  timeline.js — the Timeline layout renderer (raster by agent/project +
+  a rich per-task "simple" list). Classic <script defer> so it shares the
+  page globals (STATE / escapeHtml / openDetail / bucket / render); it
+  exposes its entry points on window for the inline render() dispatch.
+  Operator TODO 2026-06-17.
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/timeline.js' %}"></script>
 <style>
   /* P12 (operator TG, lead a2a 2026-06-12) — board reclaims the left
      IDE-style panes. The scitex-ui standalone shell renders an AI
@@ -252,6 +261,14 @@
                 data-layout="stale" onclick="onLayoutChange('stale')"
                 role="radio" aria-checked="false"
                 title="Stale cards review — archive obsolete pending cards with a reason">🧹 Stale</button>
+        <!-- Timeline (operator TODO 2026-06-17) — live time raster (by
+             agent / by project) + a rich per-task "simple" list. Own-data
+             layout, sibling of Stale: agent/project rasters pull /timeline;
+             the simple list projects STATE.graph by time. -->
+        <button type="button" class="filt-layout-btn" id="f-layout-timeline"
+                data-layout="timeline" onclick="onLayoutChange('timeline')"
+                role="radio" aria-checked="false"
+                title="Timeline — time raster by agent/project, or a per-task simple list (day/week/month windows)">⏱ Timeline</button>
       </div>
     </span>
     <span class="filt-sort">
@@ -1802,6 +1819,11 @@
         // the filtered `visible` set) because the criteria are
         // age/orphan-driven, not the same filter-bar predicates.
         _renderStaleView(canvas);
+      } else if (layout === "timeline") {
+        // Timeline layout — own-data like Stale. agent/project rasters
+        // pull /timeline; the per-task "simple" list projects STATE.graph
+        // by time. Ignores the kanban `visible` filter set by design.
+        _renderTimelineView(canvas);
       } else {
         _renderColumnView(canvas, visible);
       }
@@ -2817,7 +2839,11 @@
     // selected layout is persisted in localStorage so the operator's
     // choice survives reloads. (hook-bypass: line-limit.)
     function onLayoutChange(mode) {
-      const m = (mode === "graph" || mode === "table") ? mode : "column";
+      // Whitelist every real layout. The old `graph||table` guard silently
+      // coerced `stale` AND `timeline` → `column` (a latent bug that broke
+      // the Stale button); unknown values still fall back to the kanban.
+      const VALID_LAYOUTS = ["graph", "table", "column", "stale", "timeline"];
+      const m = VALID_LAYOUTS.includes(mode) ? mode : "column";
       STATE.layout = m;
       try { localStorage.setItem("scitex-todo:layout", m); } catch {}
       // Repaint the segment buttons' active state without a full render.
@@ -3464,6 +3490,11 @@
         if (key !== STATE.lastMtime) {
           STATE.lastMtime = key;
           await loadGraph();
+          // Keep the Timeline raster live on a store change (the simple
+          // view already re-rendered from STATE.graph inside loadGraph).
+          if (typeof window.timelineOnStoreChange === "function") {
+            window.timelineOnStoreChange();
+          }
         }
       } catch { /* transient; try next tick */ }
     }
