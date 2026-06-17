@@ -21,6 +21,7 @@ through the suite's :func:`env` fixture (``tests/scitex_todo/conftest.py``).
 from __future__ import annotations
 
 import shutil
+import subprocess
 
 import pytest
 
@@ -49,11 +50,35 @@ def test_fetch_mesh_missing_binary_raises(env) -> None:
 # ─── happy path (gated on sac availability) ─────────────────────────────
 
 
-_SAC_AVAILABLE = shutil.which("sac") is not None
+def _sac_mesh_functional() -> bool:
+    """True iff ``sac a2a list --json`` actually SUCCEEDS in this env.
+
+    ``shutil.which("sac")`` only proves the binary is on PATH — on the
+    self-hosted CI runner sac IS installed but ``sac a2a list`` exits 1
+    ("no listen bearer token"), so a presence check let these tests run
+    and fail. Probe the real command (the one ``_fetch_peers`` shells)
+    and skip unless it returns 0. Mirrors test__mesh_view.py (#218)."""
+    exe = shutil.which("sac")
+    if exe is None:
+        return False
+    try:
+        proc = subprocess.run(
+            [exe, "a2a", "list", "--json"],
+            check=False,
+            capture_output=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
+
+
+_SAC_FUNCTIONAL = _sac_mesh_functional()
 
 
 @pytest.mark.skipif(
-    not _SAC_AVAILABLE, reason="sac CLI not installed on PATH"
+    not _SAC_FUNCTIONAL,
+    reason="sac a2a list --json non-functional here (not installed / no listen bearer token)",
 )
 def test_fetch_mesh_returns_load_bearing_keys() -> None:
     """When sac IS available, the adapter returns a dict with the
@@ -80,7 +105,8 @@ def test_fetch_mesh_returns_load_bearing_keys() -> None:
 
 
 @pytest.mark.skipif(
-    not _SAC_AVAILABLE, reason="sac CLI not installed on PATH"
+    not _SAC_FUNCTIONAL,
+    reason="sac a2a list --json non-functional here (not installed / no listen bearer token)",
 )
 def test_fetch_mesh_agent_rows_have_required_fields() -> None:
     """Each agent row must carry ``name`` (string) + ``scope`` (one of
@@ -97,7 +123,8 @@ def test_fetch_mesh_agent_rows_have_required_fields() -> None:
 
 
 @pytest.mark.skipif(
-    not _SAC_AVAILABLE, reason="sac CLI not installed on PATH"
+    not _SAC_FUNCTIONAL,
+    reason="sac a2a list --json non-functional here (not installed / no listen bearer token)",
 )
 def test_fetch_mesh_edge_rows_have_required_fields() -> None:
     """Each edge row must carry ``source`` + ``target`` (both strings)
@@ -214,5 +241,6 @@ def test_normalise_edges_skips_malformed_rows() -> None:
     assert len(out) == 1
     assert out[0]["source"] == "ok"
     assert out[0]["target"] == "fine"
+
 
 # EOF
