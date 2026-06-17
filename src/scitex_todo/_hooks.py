@@ -170,22 +170,18 @@ def event_validate(event: Any) -> dict:
     Raises :class:`HookEventError` on any structural violation.
     """
     if not isinstance(event, dict):
-        raise HookEventError(
-            f"event must be a JSON object, got {type(event).__name__}"
-        )
+        raise HookEventError(f"event must be a JSON object, got {type(event).__name__}")
     kind = event.get("kind")
     if kind not in VALID_EVENT_KINDS:
         raise HookEventError(
-            f"unknown event kind {kind!r}; must be one of "
-            f"{sorted(VALID_EVENT_KINDS)}"
+            f"unknown event kind {kind!r}; must be one of {sorted(VALID_EVENT_KINDS)}"
         )
 
     def _require(field: str) -> str:
         val = event.get(field)
         if not isinstance(val, str) or not val:
             raise HookEventError(
-                f"{kind} event: {field!r} must be a non-empty string "
-                f"(got {val!r})"
+                f"{kind} event: {field!r} must be a non-empty string (got {val!r})"
             )
         return val
 
@@ -245,15 +241,13 @@ def event_validate(event: Any) -> dict:
     card_ids = event.get("card_ids") or []
     if not isinstance(card_ids, list):
         raise HookEventError(
-            f"{kind} event: 'card_ids' must be a list (got "
-            f"{type(card_ids).__name__})"
+            f"{kind} event: 'card_ids' must be a list (got {type(card_ids).__name__})"
         )
     norm_cards: list[str] = []
     for c in card_ids:
         if not isinstance(c, str) or not c:
             raise HookEventError(
-                f"{kind} event: 'card_ids' entry {c!r} is not a "
-                f"non-empty string"
+                f"{kind} event: 'card_ids' entry {c!r} is not a non-empty string"
             )
         norm_cards.append(c)
     out["card_ids"] = norm_cards
@@ -315,10 +309,7 @@ def _handle_push(event: dict, *, store: Any | None) -> list[dict]:
     # short prefix) so the idempotency check below can find it via
     # substring match. The short prefix is for human readability;
     # the full sha is the dedupe key.
-    text = (
-        f"[push] {repo} @ {commit_sha[:10]}: {msg} "
-        f"[sha={commit_sha}]"
-    ).strip()
+    text = (f"[push] {repo} @ {commit_sha[:10]}: {msg} [sha={commit_sha}]").strip()
     for card_id in event["card_ids"]:
         # Idempotency: if any existing comment text mentions this
         # commit_sha, the push has already been recorded — noop.
@@ -326,7 +317,9 @@ def _handle_push(event: dict, *, store: Any | None) -> list[dict]:
             out.append({"card_id": card_id, "action": "already-recorded"})
             continue
         try:
-            _store.comment_task(store=store, task_id=card_id, text=text, by=author)
+            _store.comment_task(
+                store=store, task_id=card_id, text=text, by=author, kind="push"
+            )
             out.append({"card_id": card_id, "action": "comment-appended"})
         except _store.TaskNotFoundError:
             # An unknown card id is NOT a producer error (the producer
@@ -365,7 +358,10 @@ def _handle_done(event: dict, *, store: Any | None) -> list[dict]:
 
 
 def _push_already_recorded(
-    card_id: str, commit_sha: str, *, store: Any | None,
+    card_id: str,
+    commit_sha: str,
+    *,
+    store: Any | None,
 ) -> bool:
     try:
         existing = _store.get_task(store=store, task_id=card_id)
@@ -415,7 +411,9 @@ def _run_plugins(event: dict) -> tuple[int, list[dict]]:
             fn: Callable[[dict], None] = ep.load()
         except Exception as exc:  # noqa: BLE001
             logger.warning(
-                "scitex_todo.hooks plugin %r failed to load: %s", name, exc,
+                "scitex_todo.hooks plugin %r failed to load: %s",
+                name,
+                exc,
             )
             plugin_errors.append({"plugin": name, "error": f"load: {exc}"})
             continue
@@ -429,13 +427,20 @@ def _run_plugins(event: dict) -> tuple[int, list[dict]]:
             fn(event)
         except Exception as exc:  # noqa: BLE001
             logger.warning(
-                "scitex_todo.hooks plugin %r (priority=%d critical=%s) "
-                "raised: %s", name, prio, critical, exc,
+                "scitex_todo.hooks plugin %r (priority=%d critical=%s) raised: %s",
+                name,
+                prio,
+                critical,
+                exc,
             )
-            plugin_errors.append({
-                "plugin": name, "priority": prio,
-                "critical": critical, "error": str(exc),
-            })
+            plugin_errors.append(
+                {
+                    "plugin": name,
+                    "priority": prio,
+                    "critical": critical,
+                    "error": str(exc),
+                }
+            )
             if critical:
                 # Abort the chain — downstream handlers don't run.
                 raise

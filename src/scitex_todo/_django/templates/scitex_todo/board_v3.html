@@ -493,7 +493,7 @@
            per lead a2a a7e53184). All comments[] entries render here;
            Post appends via /comment + refreshes. -->
       <div class="d-comments-section">
-        <h3>💬 Comments</h3>
+        <h3>🛤 Route <span class="route-hint">— how this card was handled (newest last)</span></h3>
         <div class="comment-list" id="d-comment-list">
           <div class="comment-empty">…</div>
         </div>
@@ -3359,36 +3359,62 @@
     // ─────────────────────────────────────────────────────────────────────
     // Renders all comments[] chronologically (oldest first like a chat),
     // colors operator/system trails distinctly, scrolls newest into view.
+    // Route trace (operator 2026-06-17): render the card's event stream as
+    // a chronological journey — "how it was routed". Built from created_at +
+    // comments[] (each carrying an optional `kind` ring tag the hooks stamp)
+    // + a synthetic done hop from status/completed_at. Derived from the event
+    // stream, so it adapts automatically as the workflow's rings change.
+    const ROUTE_RING = {
+      created: { label: "✦ created", cls: "created" },
+      push: { label: "⬆ push", cls: "push" },
+      "ci-result": { label: "✓ CI", cls: "ci" },
+      ci: { label: "✓ CI", cls: "ci" },
+      done: { label: "✅ done", cls: "done" },
+      "card-message": { label: "💬 message", cls: "message" },
+      message: { label: "💬 message", cls: "message" },
+      system: { label: "⚙ system", cls: "system" },
+      escalate: { label: "⚠ escalate", cls: "escalate" },
+    };
+    function _routeHops(task) {
+      const hops = [];
+      if (task.created_at) {
+        hops.push({ ts: String(task.created_at), actor: task.agent || task.assignee || "—", kind: "created", text: "card created" });
+      }
+      (Array.isArray(task.comments) ? task.comments : []).forEach(c => {
+        let kind = c.kind || "";
+        if (!kind) {
+          // untagged legacy entries: [RESOLVED]/[CLOSED]/… are system trail;
+          // everything else is a board-card message (operator/agent).
+          kind = /^\[(RESOLVED|UNDONE|re-opened|CLOSED)/i.test(String(c.text || "")) ? "system" : "message";
+        }
+        hops.push({ ts: String(c.ts || ""), actor: String(c.author || "?"), kind, text: String(c.text || "") });
+      });
+      if (task.status === "done") {
+        const dts = (task._log_meta && task._log_meta.completed_at) || task.last_activity || "";
+        hops.push({ ts: String(dts), actor: "—", kind: "done", text: task.pr_url ? ("merged " + task.pr_url) : "marked done" });
+      }
+      hops.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+      return hops;
+    }
     function renderComments(task) {
       const list = document.getElementById("d-comment-list");
       if (!list) return;
-      const comments = Array.isArray(task.comments) ? task.comments : [];
-      if (!comments.length) {
-        list.innerHTML = `<div class="comment-empty">No comments yet — be the first.</div>`;
+      const hops = _routeHops(task);
+      if (!hops.length) {
+        list.innerHTML = `<div class="comment-empty">No route activity yet.</div>`;
         return;
       }
-      const sorted = [...comments].sort((a, b) => {
-        const ta = String(a.ts || ""), tb = String(b.ts || "");
-        return ta < tb ? -1 : ta > tb ? 1 : 0;
-      });
-      list.innerHTML = sorted.map(c => {
-        const author = String(c.author || "?");
-        const ts = String(c.ts || "");
-        const text = String(c.text || "");
-        const isOperator = author === "operator";
-        // System-trail comments are the [RESOLVED]/[UNDONE]/[re-opened]
-        // entries the resolve/reopen handlers append. They render in
-        // monospace + amber so they read as machine-history, not chat.
-        const isSystem = /^\[(RESOLVED|UNDONE|re-opened)/i.test(text);
-        const cls = "comment-bubble" +
-          (isOperator ? " comment-bubble--operator" : "") +
-          (isSystem ? " comment-bubble--system" : "");
-        return `<div class="${cls}">
-          <div class="comment-meta">
-            <span class="comment-author">${escapeHtml(author)}</span>
-            <span class="comment-ts">${escapeHtml(ts)}</span>
+      list.innerHTML = hops.map(h => {
+        const r = ROUTE_RING[h.kind] || { label: String(h.kind || "·"), cls: "message" };
+        return `<div class="route-hop route-hop--${r.cls}">
+          <span class="route-badge route-badge--${r.cls}">${escapeHtml(r.label)}</span>
+          <div class="route-body">
+            <div class="route-meta">
+              <span class="route-actor">${escapeHtml(h.actor)}</span>
+              <span class="route-ts">${escapeHtml(h.ts)}</span>
+            </div>
+            <div class="route-text">${escapeHtml(h.text)}</div>
           </div>
-          <div class="comment-text">${escapeHtml(text)}</div>
         </div>`;
       }).join("");
       list.scrollTop = list.scrollHeight;
