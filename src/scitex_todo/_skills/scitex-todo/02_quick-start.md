@@ -16,8 +16,8 @@ tags: [scitex-todo-quick-start]
 # summarize_tasks/resolve_store). The mermaid + render + model helpers
 # remain available via submodule imports.
 from scitex_todo._model   import load_tasks
-from scitex_todo._mermaid import build_mermaid
-from scitex_todo._render  import render
+from scitex_todo._diagram import build_mermaid
+from scitex_todo._diagram  import render
 
 tasks = load_tasks("tasks.yaml")           # validates id / title / status
 mermaid_src = build_mermaid(tasks)         # YAML -> flowchart TB

@@ -17,8 +17,8 @@ Audit §6 narrows the top-level surface (`scitex_todo.__all__`) to the six
 task-store APIs that match a Convention A MCP tool name 1:1: `add_task` /
 `update_task` / `complete_task` / `list_tasks` / `summarize_tasks` /
 `resolve_store`. The rendering / model / paths helpers below remain
-importable from their submodules (`scitex_todo._mermaid`,
-`scitex_todo._render`, `scitex_todo._model`, `scitex_todo._paths`). Run
+importable from their submodules (`scitex_todo._diagram`,
+`scitex_todo._diagram`, `scitex_todo._model`, `scitex_todo._paths`). Run
 `scitex-todo list-python-apis -v` for live signatures of the public surface.
 
 ## Loading and saving

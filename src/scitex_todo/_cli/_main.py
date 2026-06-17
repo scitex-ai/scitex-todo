@@ -14,10 +14,9 @@ import sys
 import click
 
 from .. import __version__
-from .._mermaid import build_mermaid
+from .._diagram import build_mermaid, render
 from .._model import load_tasks
 from .._paths import resolve_tasks_path
-from .._render import render
 
 _ROOT_EPILOG = (
     "Task store resolution (first existing wins): an explicit --tasks path, "
@@ -170,7 +169,11 @@ def render_graph_cmd(tasks_path: str | None, output: str, print_mermaid: bool) -
     default=None,
     help="Match `scope` exactly (use '' to ignore $SCITEX_TODO_SCOPE).",
 )
-@click.option("--assignee", default=None, help="Match `assignee` exactly (PRIMARY linking field today).")
+@click.option(
+    "--assignee",
+    default=None,
+    help="Match `assignee` exactly (PRIMARY linking field today).",
+)
 @click.option(
     "--agent",
     default=None,
@@ -242,11 +245,24 @@ def list_tasks_cmd(
     # signature takes a list[str] | None. Empty tuple = no constraint.
     statuses_list: list[str] | None = list(statuses) if statuses else None
     # Did the caller pass ANY filter? Drive the dispatch off this.
-    has_filter = any(
-        v is not None for v in (
-            scope, assignee, agent, project, host, blocker, kind, id_prefix,
+    has_filter = (
+        any(
+            v is not None
+            for v in (
+                scope,
+                assignee,
+                agent,
+                project,
+                host,
+                blocker,
+                kind,
+                id_prefix,
+            )
         )
-    ) or bool(statuses_list) or blocking_me or overdue
+        or bool(statuses_list)
+        or blocking_me
+        or overdue
+    )
 
     if has_filter:
         from ._admin import list_tasks_filtered
@@ -304,6 +320,7 @@ BOARD_PIDFILE = _Path.home() / ".scitex" / "todo" / "board.pid"
 def _board_pidfile() -> _Path:
     """Return the pidfile path (function so tests can override via env)."""
     import os as _os
+
     override = _os.environ.get("SCITEX_TODO_BOARD_PIDFILE")
     if override:
         return _Path(override)
@@ -313,6 +330,7 @@ def _board_pidfile() -> _Path:
 def _board_pid_alive(pid: int) -> bool:
     """``os.kill(pid, 0)`` is the POSIX 'is this PID up?' probe."""
     import os as _os
+
     try:
         _os.kill(pid, 0)
     except (ProcessLookupError, PermissionError):
@@ -349,7 +367,9 @@ def _board_write_pid(pid: int) -> None:
 
 
 def _board_run_server(
-    tasks_path: str | None, port: int, no_browser: bool,
+    tasks_path: str | None,
+    port: int,
+    no_browser: bool,
 ) -> None:
     """Foreground-blocking server start (the historical board_cmd body).
 
@@ -368,9 +388,11 @@ def _board_run_server(
         ) from None
 
     _os.environ.setdefault(
-        "DJANGO_SETTINGS_MODULE", "scitex_todo._django.settings",
+        "DJANGO_SETTINGS_MODULE",
+        "scitex_todo._django.settings",
     )
     import django as _dj
+
     _dj.setup()
     from django.core.management import call_command
 
@@ -456,32 +478,45 @@ def board_group(ctx: click.Context) -> None:
     ),
 )
 @click.option(
-    "--tasks", "tasks_path", default=None,
+    "--tasks",
+    "tasks_path",
+    default=None,
     help="Path to tasks.yaml (default: project -> user -> bundled, "
     "or $SCITEX_TODO_TASKS).",
 )
 @click.option(
-    "--port", type=int, default=8051, show_default=True,
+    "--port",
+    type=int,
+    default=8051,
+    show_default=True,
     help="Server port.",
 )
 @click.option(
-    "--no-browser", is_flag=True,
+    "--no-browser",
+    is_flag=True,
     help="Don't open a browser automatically.",
 )
 @click.option(
-    "--dry-run", is_flag=True,
+    "--dry-run",
+    is_flag=True,
     help="Print the planned launch (port + tasks + browser flag) "
     "without starting the server. Required by SciTeX §2 audit on "
     "mutating verbs.",
 )
 @click.option(
-    "-y", "--yes", "assume_yes", is_flag=True,
+    "-y",
+    "--yes",
+    "assume_yes",
+    is_flag=True,
     help="Skip the interactive confirmation (no-op today; `start` is "
     "non-interactive). Accepted per SciTeX §2 audit on mutating verbs.",
 )
 def board_start_cmd(
-    tasks_path: str | None, port: int, no_browser: bool,
-    dry_run: bool, assume_yes: bool,
+    tasks_path: str | None,
+    port: int,
+    no_browser: bool,
+    dry_run: bool,
+    assume_yes: bool,
 ) -> None:
     """Foreground start. Pidfile written; removed on clean shutdown.
 
@@ -517,16 +552,23 @@ def board_start_cmd(
     ),
 )
 @click.option(
-    "--timeout", type=float, default=5.0, show_default=True,
+    "--timeout",
+    type=float,
+    default=5.0,
+    show_default=True,
     help="Seconds to wait for graceful exit before SIGKILL.",
 )
 @click.option(
-    "--dry-run", is_flag=True,
+    "--dry-run",
+    is_flag=True,
     help="Print the planned action without sending SIGTERM. Required "
     "by SciTeX §2 audit on mutating verbs.",
 )
 @click.option(
-    "-y", "--yes", "assume_yes", is_flag=True,
+    "-y",
+    "--yes",
+    "assume_yes",
+    is_flag=True,
     help="Skip the interactive confirmation (no-op today; `stop` is "
     "non-interactive). Accepted per SciTeX §2 audit on mutating verbs.",
 )
@@ -599,27 +641,31 @@ def board_stop_cmd(timeout: float, dry_run: bool, assume_yes: bool) -> None:
         "\n\nExample:\n  $ scitex-todo board restart"
     ),
 )
-@click.option("--tasks", "tasks_path", default=None,
-              help="Path to tasks.yaml.")
-@click.option("--port", type=int, default=8051, show_default=True,
-              help="Server port.")
-@click.option("--no-browser", is_flag=True,
-              help="Don't open a browser automatically.")
+@click.option("--tasks", "tasks_path", default=None, help="Path to tasks.yaml.")
+@click.option("--port", type=int, default=8051, show_default=True, help="Server port.")
+@click.option("--no-browser", is_flag=True, help="Don't open a browser automatically.")
 @click.option(
-    "--dry-run", is_flag=True,
+    "--dry-run",
+    is_flag=True,
     help="Print the planned stop+start without acting. Required by "
     "SciTeX §2 audit on mutating verbs.",
 )
 @click.option(
-    "-y", "--yes", "assume_yes", is_flag=True,
+    "-y",
+    "--yes",
+    "assume_yes",
+    is_flag=True,
     help="Skip the interactive confirmation (no-op; `restart` is "
     "non-interactive). Accepted per SciTeX §2 audit on mutating verbs.",
 )
 @click.pass_context
 def board_restart_cmd(
     ctx: click.Context,
-    tasks_path: str | None, port: int, no_browser: bool,
-    dry_run: bool, assume_yes: bool,
+    tasks_path: str | None,
+    port: int,
+    no_browser: bool,
+    dry_run: bool,
+    assume_yes: bool,
 ) -> None:
     """Stop then start. Both go through the same pidfile contract.
 
@@ -641,8 +687,11 @@ def board_restart_cmd(
     ctx.invoke(board_stop_cmd, timeout=5.0, dry_run=False, assume_yes=True)
     ctx.invoke(
         board_start_cmd,
-        tasks_path=tasks_path, port=port, no_browser=no_browser,
-        dry_run=False, assume_yes=True,
+        tasks_path=tasks_path,
+        port=port,
+        no_browser=no_browser,
+        dry_run=False,
+        assume_yes=True,
     )
 
 
@@ -655,7 +704,9 @@ def board_restart_cmd(
     ),
 )
 @click.option(
-    "--json", "as_json", is_flag=True,
+    "--json",
+    "as_json",
+    is_flag=True,
     help="Emit a JSON object (machine-readable). Required by SciTeX "
     "§2 audit on read verbs.",
 )
@@ -667,15 +718,20 @@ def board_status_cmd(as_json: bool) -> None:
       $ scitex-todo board status --json
     """
     import json as _json
+
     pid = _board_read_pid()
     pf = _board_pidfile()
     running = pid is not None
     if as_json:
-        click.echo(_json.dumps({
-            "running": running,
-            "pid": pid,
-            "pidfile": str(pf),
-        }))
+        click.echo(
+            _json.dumps(
+                {
+                    "running": running,
+                    "pid": pid,
+                    "pidfile": str(pf),
+                }
+            )
+        )
         return
     if not running:
         click.echo(f"# board is NOT running (pidfile: {pf})")
@@ -712,13 +768,17 @@ def index_group() -> None:
     ),
 )
 @click.option(
-    "--dry-run", is_flag=True,
+    "--dry-run",
+    is_flag=True,
     help="Print what would be rebuilt (source paths + projected row "
     "count) without touching the index. Required by SciTeX §2 audit on "
     "mutating verbs.",
 )
 @click.option(
-    "-y", "--yes", "assume_yes", is_flag=True,
+    "-y",
+    "--yes",
+    "assume_yes",
+    is_flag=True,
     help="Skip the interactive confirmation. Required when the planned "
     "action would mutate the index and stdin is a TTY.",
 )
@@ -730,8 +790,8 @@ def index_rebuild_cmd(dry_run: bool, assume_yes: bool) -> None:
     """
     import sys as _sys
 
-    from scitex_todo._index import index_path, rebuild_index
     from scitex_todo._django.services import _discover_lanes
+    from scitex_todo._index import index_path, rebuild_index
     from scitex_todo._paths import resolve_tasks_path
 
     global_path = resolve_tasks_path(None)
@@ -772,9 +832,10 @@ def index_rebuild_cmd(dry_run: bool, assume_yes: bool) -> None:
     ),
 )
 @click.option(
-    "--json", "as_json", is_flag=True,
-    help="Emit machine-readable JSON. Required by SciTeX §2 audit on "
-    "read verbs.",
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Emit machine-readable JSON. Required by SciTeX §2 audit on read verbs.",
 )
 def index_info_cmd(as_json: bool) -> None:
     """Read-side report on the SQLite index.
@@ -841,12 +902,16 @@ def migration_group() -> None:
     ),
 )
 @click.option(
-    "--json", "as_json", is_flag=True,
+    "--json",
+    "as_json",
+    is_flag=True,
     help="Emit the plan as JSON (machine-readable). Required by SciTeX "
     "§2 audit on read verbs.",
 )
 @click.option(
-    "--markdown", "as_md", is_flag=True,
+    "--markdown",
+    "as_md",
+    is_flag=True,
     help="Emit the plan as Markdown (operator-facing review document).",
 )
 def migration_plan_cmd(as_json: bool, as_md: bool) -> None:
@@ -891,21 +956,29 @@ def migration_plan_cmd(as_json: bool, as_md: bool) -> None:
     ),
 )
 @click.option(
-    "--dry-run", is_flag=True,
+    "--dry-run",
+    is_flag=True,
     help="Print the planned actions without touching disk. Required "
     "by SciTeX §2 audit on mutating verbs.",
 )
 @click.option(
-    "-y", "--yes", "assume_yes", is_flag=True,
+    "-y",
+    "--yes",
+    "assume_yes",
+    is_flag=True,
     help="Skip the interactive confirmation. Required when the planned "
     "action would mutate the store.",
 )
 @click.option(
-    "--json", "as_json", is_flag=True,
+    "--json",
+    "as_json",
+    is_flag=True,
     help="Emit per-lane counts + per-row outcomes as JSON.",
 )
 def migration_apply_cmd(
-    dry_run: bool, assume_yes: bool, as_json: bool,
+    dry_run: bool,
+    assume_yes: bool,
+    as_json: bool,
 ) -> None:
     """Run the migration across every discovered lane + global store.
 
@@ -927,9 +1000,12 @@ def migration_apply_cmd(
     results = apply_all_lanes(dry_run=dry_run)
 
     if as_json:
-        click.echo(_json.dumps(
-            [r.to_dict() for r in results], indent=2,
-        ))
+        click.echo(
+            _json.dumps(
+                [r.to_dict() for r in results],
+                indent=2,
+            )
+        )
         return
 
     # Human summary.
@@ -948,15 +1024,25 @@ def migration_apply_cmd(
         total_skipped += lr.skipped_count
     click.echo(
         f"# TOTAL: written={total_written} updated={total_updated} "
-        f"skipped={total_skipped}"
-        + (" (DRY-RUN — no disk changes)" if dry_run else "")
+        f"skipped={total_skipped}" + (" (DRY-RUN — no disk changes)" if dry_run else "")
     )
 
 
 # --------------------------------------------------------------------------- #
 # Attach the §1a sub-groups (defined in sibling modules).                     #
 # --------------------------------------------------------------------------- #
-from . import _ci_watch, _completion, _hooks, _introspect, _loop, _mcp, _runnable, _skills, _stats, _write  # noqa: E402
+from . import (
+    _ci_watch,
+    _completion,
+    _hooks,
+    _introspect,
+    _loop,
+    _mcp,
+    _runnable,
+    _skills,
+    _stats,
+    _write,
+)  # noqa: E402
 
 _introspect.register(main)
 _completion.register(main)
