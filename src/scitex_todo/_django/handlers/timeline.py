@@ -62,7 +62,6 @@ import datetime as _dt
 
 from django.http import HttpRequest, HttpResponse, JsonResponse
 
-
 # ---------------------------------------------------------------------------
 # Defaults — operator-stated floor.
 # ---------------------------------------------------------------------------
@@ -78,8 +77,10 @@ _UNGROUPED_LANE: str = "(ungrouped)"
 
 #: Closed set of accepted ``lane_by`` values. ``agent`` is the operator default
 #: (raster plot per agent — the brief's anchor visual). ``group`` rasters by
-#: the T1.1 group field.
-_VALID_LANE_BY: frozenset[str] = frozenset({"agent", "group"})
+#: the T1.1 group field; ``project`` by the task's project (operator TODO
+#: 2026-06-17 by-project view); ``task`` gives ONE lane per task (the basis
+#: of the "simple" per-task view).
+_VALID_LANE_BY: frozenset[str] = frozenset({"agent", "group", "project", "task"})
 
 
 # ---------------------------------------------------------------------------
@@ -142,12 +143,20 @@ def _lane_for(task: dict, lane_by: str) -> str:
 
     For ``lane_by=agent`` the value is ``task["agent"] or task["assignee"]``
     (the legacy fallback mirrors ``handlers/graph._build_fleet``). For
-    ``lane_by=group`` it's the T1.1 ``group`` field. An empty / missing
-    value maps to :data:`_UNGROUPED_LANE` — never duplicated as a hard-
-    coded list anywhere.
+    ``lane_by=group`` it's the T1.1 ``group`` field; ``lane_by=project`` the
+    task's ``project``; ``lane_by=task`` the task title (ONE lane per task —
+    the "simple" view). An empty / missing value maps to
+    :data:`_UNGROUPED_LANE` — never duplicated as a hard-coded list anywhere.
     """
     if lane_by == "group":
         val = task.get("group")
+    elif lane_by == "project":
+        val = task.get("project")
+    elif lane_by == "task":
+        # ONE lane per task — the "simple" per-task view. The title is the
+        # lane label (falls back to task/id). Distinct titles → distinct
+        # rows; a rare title collision just shares a row, which is fine.
+        val = task.get("title") or task.get("task") or task.get("id")
     else:
         val = task.get("agent") or task.get("assignee")
     if val is None or str(val).strip() == "":
@@ -184,7 +193,8 @@ def _parse_window_hours(raw: str | None) -> float:
 
     Floor: never raise on a bad value — the FE may pass "" or a stale token;
     fall back to :data:`_DEFAULT_WINDOW_HOURS` so the operator always sees
-    something. Cap at one week to bound the response size.
+    something. Cap at ~3 months to bound the response size while still
+    covering the FE's day / week / month window selector.
     """
     if raw is None or str(raw).strip() == "":
         return _DEFAULT_WINDOW_HOURS
@@ -194,9 +204,10 @@ def _parse_window_hours(raw: str | None) -> float:
         return _DEFAULT_WINDOW_HOURS
     if v <= 0:
         return _DEFAULT_WINDOW_HOURS
-    # Cap at 7 days to keep the response bounded; the FE dropdown's max is
-    # ``7d`` which lands exactly on 168 h.
-    return min(v, 168.0)
+    # Cap at ~3 months (92 d) to keep the response bounded; the FE window
+    # selector tops out at "month" (720 h), so this leaves headroom without
+    # ever returning an unbounded sweep.
+    return min(v, 2208.0)
 
 
 def _build_payload(
@@ -256,9 +267,7 @@ def _build_payload(
             sd = str(dep)
             st = str(tid) if tid is not None else ""
             if sd in event_ids and st in event_ids:
-                edges.append(
-                    {"source": sd, "target": st, "kind": "depends_on"}
-                )
+                edges.append({"source": sd, "target": st, "kind": "depends_on"})
         for target in t.get("blocks", []) or []:
             sd = str(tid) if tid is not None else ""
             st = str(target)
@@ -317,9 +326,7 @@ def timeline_view(request: HttpRequest) -> HttpResponse:
     path = resolve_tasks_path(None)
     tasks = load_tasks(path)
 
-    payload = _build_payload(
-        tasks, window_hours=window_hours, lane_by=lane_by
-    )
+    payload = _build_payload(tasks, window_hours=window_hours, lane_by=lane_by)
     payload["store_path"] = str(path)
     return JsonResponse(payload, json_dumps_params={"default": str})
 
