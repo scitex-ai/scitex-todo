@@ -141,4 +141,7 @@ jobs:
           scitex-dev ecosystem audit-cli       scitex-todo
           scitex-dev ecosystem audit-mcp-tools scitex-todo
           scitex-dev ecosystem audit-skills    scitex-todo || true
-          scitex-dev ecosystem audit-project   scitex-todo
+          # --path . audits THIS checkout; without it audit-project resolves the
+          # ecosystem-registry local_path (the runner's stale ~/proj checkout) and
+          # spuriously fails on PS-101/133/134. (Relayed to scitex-dev.)
+          scitex-dev ecosystem audit-project   scitex-todo --path .

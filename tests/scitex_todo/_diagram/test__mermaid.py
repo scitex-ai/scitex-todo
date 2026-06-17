@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from scitex_todo._mermaid import build_mermaid
+from scitex_todo._diagram import build_mermaid
 
 
 def test_build_mermaid_starts_with_flowchart_header():

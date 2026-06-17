@@ -37,8 +37,8 @@ except ImportError:  # pragma: no cover — only on ancient Pythons
 #: They were moved off the top level (audit §6) but remain importable from
 #: their submodules:
 #:
-#:     from scitex_todo._render  import render, render_with_kroki, render_with_mmdc, find_chromium, RenderError
-#:     from scitex_todo._mermaid import build_mermaid, STATUS_STYLE
+#:     from scitex_todo._diagram  import render, render_with_kroki, render_with_mmdc, find_chromium, RenderError
+#:     from scitex_todo._diagram import build_mermaid, STATUS_STYLE
 #:     from scitex_todo._model   import load_tasks, save_tasks, VALID_STATUSES, TaskValidationError
 #:     from scitex_todo._paths   import resolve_tasks_path, bundled_example
 
@@ -56,9 +56,16 @@ _LAZY_IMPORTS = {
     "ENV_SCOPE": ("._store", "ENV_SCOPE"),
     "TaskNotFoundError": ("._store", "TaskNotFoundError"),
     "add_task": ("._store", "add_task"),
+    "comment_task": ("._store", "comment_task"),
     "complete_task": ("._store", "complete_task"),
+    "delete_task": ("._store", "delete_task"),
+    "get_task": ("._store", "get_task"),
     "list_tasks": ("._store", "list_tasks"),
+    "reopen_task": ("._store", "reopen_task"),
     "resolve_store": ("._store", "resolve_store"),
+    "resolve_task": ("._store", "resolve_task"),
+    "restore_task": ("._store", "restore_task"),
+    "set_edge": ("._store", "set_edge"),
     "summarize_tasks": ("._store", "summarize_tasks"),
     "update_task": ("._store", "update_task"),
 }
@@ -73,9 +80,7 @@ def __getattr__(name: str):
     """
     target = _LAZY_IMPORTS.get(name)
     if target is None:
-        raise AttributeError(
-            f"module {__name__!r} has no attribute {name!r}"
-        )
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     import importlib
 
     mod_path, attr = target
@@ -97,9 +102,16 @@ __all__ = [
     "TaskNotFoundError",
     "TaskValidationError",
     "add_task",
+    "comment_task",
     "complete_task",
+    "delete_task",
+    "get_task",
     "list_tasks",
+    "reopen_task",
     "resolve_store",
+    "resolve_task",
+    "restore_task",
+    "set_edge",
     "summarize_tasks",
     "update_task",
 ]

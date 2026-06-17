@@ -1482,7 +1482,7 @@ conventions (Convention A: tool_name == python_api_name).
   task-store functions (plus errors / env constants) to satisfy audit §6
   (Convention A: tool_name == python_api_name). The mermaid / render /
   model / paths helpers remain importable from their submodules
-  (`scitex_todo._mermaid`, `scitex_todo._render`, `scitex_todo._model`,
+  (`scitex_todo._diagram`, `scitex_todo._diagram`, `scitex_todo._model`,
   `scitex_todo._paths`).
 - **CLI write / admin verbs**: `add`, `update`, `done`, `summary`, plus
   `list-tasks` (extended with `--scope` / `--assignee` / `--status`
