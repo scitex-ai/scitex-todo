@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>scitex_todo._store &mdash; scitex-todo v0.7.10</title>
+  <title>scitex_todo._store &mdash; scitex-todo v0.7.25</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -13,7 +13,7 @@
   
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../_static/documentation_options.js?v=d46e566c"></script>
+      <script src="../../_static/documentation_options.js?v=2137b81e"></script>
       <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -304,12 +304,12 @@
     <span class="k">if</span> <span class="n">allowed</span> <span class="ow">and</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">allowed</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">False</span>
     <span class="k">if</span> <span class="n">blocking_me</span> <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span>
-        <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;blocked&quot;</span>
-        <span class="ow">and</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;blocker&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;operator-decision&quot;</span>
+        <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;blocked&quot;</span> <span class="ow">and</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;blocker&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;operator-decision&quot;</span>
     <span class="p">):</span>
         <span class="k">return</span> <span class="kc">False</span>
     <span class="k">if</span> <span class="n">overdue</span><span class="p">:</span>
         <span class="kn">from</span><span class="w"> </span><span class="nn">._model</span><span class="w"> </span><span class="kn">import</span> <span class="n">is_overdue</span> <span class="k">as</span> <span class="n">_is_overdue</span>
+
         <span class="k">if</span> <span class="ow">not</span> <span class="n">_is_overdue</span><span class="p">(</span><span class="n">task</span><span class="p">):</span>
             <span class="k">return</span> <span class="kc">False</span>
     <span class="k">return</span> <span class="kc">True</span>
@@ -690,7 +690,9 @@
         <span class="n">resolve_tasks_path</span><span class="p">,</span>
     <span class="p">)</span>
 
-    <span class="n">resolved</span> <span class="o">=</span> <span class="n">resolve_tasks_path</span><span class="p">(</span><span class="n">store</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">store</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="kc">None</span><span class="p">)))</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">store</span><span class="p">))</span>
+    <span class="n">resolved</span> <span class="o">=</span> <span class="n">resolve_tasks_path</span><span class="p">(</span>
+        <span class="n">store</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">store</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="kc">None</span><span class="p">)))</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>
+    <span class="p">)</span>
     <span class="k">return</span> <span class="p">{</span>
         <span class="s2">&quot;resolved&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">resolved</span><span class="p">),</span>
         <span class="s2">&quot;explicit&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">store</span><span class="p">)</span> <span class="k">if</span> <span class="n">store</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
@@ -815,12 +817,18 @@
     <span class="n">task_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">text</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">by</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">kind</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Append an entry to ``task.comments[]`` (the established Issue-</span>
 <span class="sd">    activity-log shape from skill 30, Gitea-compatible field).</span>
 
 <span class="sd">    `by` overrides the $SCITEX_TODO_AGENT → $USER precedence used by</span>
 <span class="sd">    add_task / complete_task.</span>
+
+<span class="sd">    `kind` is an optional feedback-ring / event tag (e.g. ``push`` /</span>
+<span class="sd">    ``done`` / ``card-message``) stamped onto the entry so the board can</span>
+<span class="sd">    render &quot;how the card was routed&quot; (operator 2026-06-17). Lenient: the</span>
+<span class="sd">    model only requires ``text``, so the extra key round-trips cleanly.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">_model</span>
 
@@ -835,6 +843,8 @@
         <span class="s2">&quot;ts&quot;</span><span class="p">:</span> <span class="n">_utc_now_iso</span><span class="p">(),</span>
         <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">text</span><span class="p">),</span>
     <span class="p">}</span>
+    <span class="k">if</span> <span class="n">kind</span><span class="p">:</span>
+        <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;kind&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">kind</span><span class="p">)</span>
     <span class="k">with</span> <span class="n">_model</span><span class="o">.</span><span class="n">_store_lock</span><span class="p">(</span><span class="n">tasks_path</span><span class="p">):</span>
         <span class="n">tasks</span> <span class="o">=</span> <span class="n">_model</span><span class="o">.</span><span class="n">load_tasks</span><span class="p">(</span><span class="n">tasks_path</span><span class="p">)</span>
         <span class="n">target</span> <span class="o">=</span> <span class="kc">None</span>
@@ -845,8 +855,54 @@
         <span class="k">if</span> <span class="n">target</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">TaskNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;task id </span><span class="si">{</span><span class="n">task_id</span><span class="si">!r}</span><span class="s2"> not found in </span><span class="si">{</span><span class="n">tasks_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
         <span class="n">comments</span> <span class="o">=</span> <span class="n">target</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;comments&quot;</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="c1"># Pre-append snapshot of comment authors — forms the</span>
+        <span class="c1"># `collaborators` list of the card-message event below.</span>
+        <span class="n">prior_authors</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">c</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;author&quot;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">comments</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;author&quot;</span><span class="p">),</span> <span class="nb">str</span><span class="p">)</span>
+        <span class="p">]</span>
         <span class="n">comments</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
         <span class="n">_model</span><span class="o">.</span><span class="n">_save_tasks_unlocked</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">tasks_path</span><span class="p">)</span>
+        <span class="n">owner</span> <span class="o">=</span> <span class="n">target</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;agent&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">target</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;assignee&quot;</span><span class="p">)</span>
+
+    <span class="c1"># card-message bus emit (lead a2a `1e8e33d0`, 2026-06-14) — done</span>
+    <span class="c1"># OUTSIDE the file lock so a slow bus handler can&#39;t extend the</span>
+    <span class="c1"># lock-hold and starve other writers. Comment is already on disk;</span>
+    <span class="c1"># bus errors are caught + logged so an external handler failure</span>
+    <span class="c1"># (e.g. SAC unreachable) never bubbles up to the producer.</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">_hooks</span>
+
+        <span class="n">collaborators</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">seen</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">owner</span><span class="p">:</span>
+            <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">owner</span><span class="p">)</span>
+        <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">author</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">prior_authors</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">a</span> <span class="ow">and</span> <span class="n">a</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
+                <span class="n">collaborators</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+                <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+        <span class="n">_hooks</span><span class="o">.</span><span class="n">dispatch_event</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;kind&quot;</span><span class="p">:</span> <span class="s2">&quot;card-message&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;card_id&quot;</span><span class="p">:</span> <span class="n">task_id</span><span class="p">,</span>
+                <span class="s2">&quot;author&quot;</span><span class="p">:</span> <span class="n">author</span><span class="p">,</span>
+                <span class="s2">&quot;body&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">text</span><span class="p">),</span>
+                <span class="s2">&quot;owner&quot;</span><span class="p">:</span> <span class="n">owner</span><span class="p">,</span>
+                <span class="s2">&quot;collaborators&quot;</span><span class="p">:</span> <span class="n">collaborators</span><span class="p">,</span>
+                <span class="s2">&quot;created_at&quot;</span><span class="p">:</span> <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;ts&quot;</span><span class="p">],</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># noqa: BLE001 — bus must not break comment_task</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+
+        <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+            <span class="s2">&quot;comment_task: card-message bus dispatch failed for </span><span class="si">%r</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="n">task_id</span><span class="p">,</span>
+            <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
     <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;task_id&quot;</span><span class="p">:</span> <span class="n">task_id</span><span class="p">,</span> <span class="s2">&quot;comment&quot;</span><span class="p">:</span> <span class="n">entry</span><span class="p">}</span>
 
 
