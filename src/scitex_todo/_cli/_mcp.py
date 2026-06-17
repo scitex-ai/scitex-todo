@@ -199,6 +199,7 @@ def _fallback_mcp_group() -> click.Group:
             "the target ``.mcp.json`` file (default ``~/.mcp.json``),\n"
             "idempotently — re-running is a no-op when the entry is\n"
             "already present. Other servers' entries are preserved.\n\n"
+            "Examples:\n\n"
             "Example (print):\n  scitex-todo mcp install --format raw\n\n"
             "Example (fleet P3a — write into the user-scope .mcp.json):\n"
             "  scitex-todo mcp install --apply --dry-run\n"
@@ -231,7 +232,9 @@ def _fallback_mcp_group() -> click.Group:
     @click.option(
         "--to",
         "target_path",
-        type=click.Path(dir_okay=False, file_okay=True, writable=True, resolve_path=False),
+        type=click.Path(
+            dir_okay=False, file_okay=True, writable=True, resolve_path=False
+        ),
         default=None,
         help=(
             "Override the target file (default ``~/.mcp.json``)."
@@ -337,9 +340,11 @@ def _fallback_mcp_group() -> click.Group:
             return
 
         if not yes and changed:
-            click.confirm(
-                f"Apply scitex-todo MCP entry to {target} ({action})?",
-                abort=True,
+            # Refuse non-interactively rather than prompting — CLI convention:
+            # a mutating verb must not block on stdin; require explicit --yes.
+            raise click.ClickException(
+                f"Refusing to modify {target} ({action}) without confirmation"
+                " — re-run with --yes/-y to apply."
             )
 
         if not changed:
@@ -352,9 +357,7 @@ def _fallback_mcp_group() -> click.Group:
         if target.exists():
             backup = target.with_suffix(target.suffix + ".bak")
             try:
-                backup.write_text(
-                    target.read_text(encoding="utf-8"), encoding="utf-8"
-                )
+                backup.write_text(target.read_text(encoding="utf-8"), encoding="utf-8")
             except OSError:
                 pass
 
@@ -379,17 +382,22 @@ def _fallback_mcp_group() -> click.Group:
         ),
     )
     @click.option(
-        "--agents-dir", "agents_dir",
+        "--agents-dir",
+        "agents_dir",
         type=click.Path(file_okay=False, dir_okay=True, resolve_path=False),
         required=True,
         help="Directory of per-agent subdirs each carrying `to_home/.mcp.json`.",
     )
     @click.option(
-        "--env-tasks-path", "env_tasks_path",
-        type=str, default=None,
+        "--env-tasks-path",
+        "env_tasks_path",
+        type=str,
+        default=None,
         help="Pin SCITEX_TODO_TASKS in every emitted entry's env block.",
     )
-    @click.option("--dry-run", is_flag=True, help="Print planned per-agent action; no writes.")
+    @click.option(
+        "--dry-run", is_flag=True, help="Print planned per-agent action; no writes."
+    )
     @click.option("-y", "--yes", "yes", is_flag=True, help="Skip per-agent prompts.")
     def install_fleet(agents_dir, env_tasks_path, dry_run, yes) -> None:
         """Apply the scitex-todo MCP entry to every agent's to_home/.mcp.json."""
@@ -474,7 +482,8 @@ def _fleet_apply_one(target, entry: dict, *, dry_run: bool):
         backup = target.with_suffix(target.suffix + ".bak")
         try:
             backup.write_text(
-                target.read_text(encoding="utf-8"), encoding="utf-8",
+                target.read_text(encoding="utf-8"),
+                encoding="utf-8",
             )
         except OSError:
             pass
