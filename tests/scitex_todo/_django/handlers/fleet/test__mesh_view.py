@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 
 import pytest
 
@@ -69,11 +70,38 @@ def test_mesh_view_rejects_post_with_405() -> None:
 # ─── happy path (gated on sac availability) ─────────────────────────────
 
 
-_SAC_AVAILABLE = shutil.which("sac") is not None
+def _sac_mesh_functional() -> bool:
+    """True iff ``sac a2a list --json`` actually SUCCEEDS — not merely that
+    the ``sac`` binary is on PATH.
+
+    A present-but-broken sac (e.g. a CI runner where ``sac`` is installed but
+    ``sac a2a list --json`` exits non-zero with a traceback) must SKIP this
+    happy-path test, not FAIL it: the 500-on-adapter-error contract is already
+    pinned by ``test_mesh_view_returns_500_when_sac_missing``, and a broken sac
+    is an ENVIRONMENT gap, not a mesh-view regression. Mirrors
+    ``test__gh_ci._gh_authed`` (which runs ``gh auth status``, not just
+    ``which gh``)."""
+    exe = shutil.which("sac")
+    if exe is None:
+        return False
+    try:
+        proc = subprocess.run(
+            [exe, "a2a", "list", "--json"],
+            check=False,
+            capture_output=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
+
+
+_SAC_FUNCTIONAL = _sac_mesh_functional()
 
 
 @pytest.mark.skipif(
-    not _SAC_AVAILABLE, reason="sac CLI not installed on PATH"
+    not _SAC_FUNCTIONAL,
+    reason="sac not installed or `sac a2a list --json` non-functional",
 )
 def test_mesh_view_returns_200_with_load_bearing_keys() -> None:
     """When sac is available, the view returns 200 with the adapter
@@ -95,5 +123,6 @@ def test_mesh_view_returns_200_with_load_bearing_keys() -> None:
     assert isinstance(data["source_versions"], dict)
     assert "peers" in data["source_versions"]
     assert "grants" in data["source_versions"]
+
 
 # EOF
