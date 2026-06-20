@@ -434,6 +434,13 @@ def _scrollbar_or_select_rules(css: str) -> list[str]:
     return rules
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        _BOARD_REACT_CSS,
+        _BOARD_V3_THEME_CSS,
+    ],
+)
 def test_scrollbar_or_select_rules_are_extracted(path: Path) -> None:
     """At least one scrollbar/select rule body is found to scan."""
     # Arrange
@@ -443,6 +450,13 @@ def test_scrollbar_or_select_rules_are_extracted(path: Path) -> None:
     assert rules, f"no scrollbar/select rules extracted from {path}"
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        _BOARD_REACT_CSS,
+        _BOARD_V3_THEME_CSS,
+    ],
+)
 def test_no_hardcoded_white_in_scrollbar_or_select_rules(path: Path) -> None:
     """No `#fff` / `#ffffff` / bare `white` keyword in scrollbar / select /
     option rule bodies — every color must be a `var(--…)` token (with a
