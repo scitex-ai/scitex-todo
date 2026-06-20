@@ -271,9 +271,7 @@ class TestRegistryLookup:
         env.delete(ENV_SAC_BEARER)
         # Point at an unbound port: if we DID reach out, we'd get a
         # transport error; the short-circuit means we never try.
-        env.set(
-            ENV_SAC_LISTEN, f"http://127.0.0.1:{_free_port()}"
-        )
+        env.set(ENV_SAC_LISTEN, f"http://127.0.0.1:{_free_port()}")
         # Act
         url = turn_url_for("proj-alpha")
         # Assert
@@ -283,9 +281,7 @@ class TestRegistryLookup:
         # Arrange — bearer set, listen URL points at no server.
         self._clear_env(env)
         env.set(ENV_SAC_BEARER, "any-token")
-        env.set(
-            ENV_SAC_LISTEN, f"http://127.0.0.1:{_free_port()}"
-        )
+        env.set(ENV_SAC_LISTEN, f"http://127.0.0.1:{_free_port()}")
         # Act
         url = turn_url_for("proj-alpha")
         # Assert
@@ -294,7 +290,8 @@ class TestRegistryLookup:
     def test_env_precedence_wins_over_registry(self, env):
         # Arrange — both env map AND registry would resolve; env wins.
         env.set(
-            ENV_MAP, json.dumps({"proj-alpha": "https://env-pin/turn"}),
+            ENV_MAP,
+            json.dumps({"proj-alpha": "https://env-pin/turn"}),
         )
         env.set(ENV_SAC_BEARER, "any-token")
         payload = {
@@ -400,9 +397,7 @@ class TestDeliver:
                     self.send_response(400)
                     self.send_header("Content-Type", "application/json")
                     self.end_headers()
-                    self.wfile.write(
-                        b'{"error":"missing or empty text field"}'
-                    )
+                    self.wfile.write(b'{"error":"missing or empty text field"}')
                     return
                 received["text"] = text
                 self.send_response(200)
@@ -478,6 +473,7 @@ class TestDeliver:
                 # Sleep longer than the client timeout — receiver is
                 # "still computing the turn".
                 import time
+
                 time.sleep(5)
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -539,8 +535,8 @@ class TestAnnounceMissing:
             {"agent": "alpha"},
             {"agent": "beta"},
             {"agent": "alpha"},  # dedup
-            {"agent": ""},        # ignored
-            {"agent": None},      # ignored
+            {"agent": ""},  # ignored
+            {"agent": None},  # ignored
         ]
         # Act
         missing = announce_missing_at_boot(tasks)
@@ -549,9 +545,7 @@ class TestAnnounceMissing:
 
     def test_configured_agents_dropped_from_missing(self, env):
         # Arrange
-        env.set(
-            ENV_MAP, json.dumps({"alpha": "http://x/"})
-        )
+        env.set(ENV_MAP, json.dumps({"alpha": "http://x/"}))
         tasks = [{"agent": "alpha"}, {"agent": "beta"}]
         # Act
         missing = announce_missing_at_boot(tasks)

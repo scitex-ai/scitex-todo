@@ -128,6 +128,7 @@ def test_author_color_token_empty_input_uses_muted_slot_tokens() -> None:
     # Assert
     assert tokens[0] == "var(--stx-text-muted)"
 
+
 def test_author_color_token_empty_input_uses_muted_slot_tokens_2() -> None:
     """Empty / null input lands in the muted slot (index 2) so
     unlabeled comments still render legibly. The exact slot is the
@@ -144,6 +145,7 @@ def test_author_color_token_empty_input_uses_muted_slot_tokens_2() -> None:
     tokens = json.loads(out)
     # Assert
     assert tokens[1] == "var(--stx-text-muted)"
+
 
 def test_author_color_token_empty_input_uses_muted_slot_tokens_3() -> None:
     """Empty / null input lands in the muted slot (index 2) so
@@ -167,9 +169,7 @@ def test_author_color_token_returns_known_token() -> None:
     """The returned string is one of the AUTHOR_COLOR_TOKENS — closed
     palette, no rogue hex / rgb."""
     # Arrange
-    out = _run(
-        "console.log(JSON.stringify(authorColorToken('operator')));"
-    )
+    out = _run("console.log(JSON.stringify(authorColorToken('operator')));")
     # Act
     token = json.loads(out)
     # Assert
@@ -197,6 +197,7 @@ def test_author_color_token_different_authors_can_collide_case_1() -> None:
     a, b = json.loads(out)
     # Assert
     assert isinstance(a, str) and a.startswith("var(--stx-")
+
 
 def test_author_color_token_different_authors_can_collide_case_2() -> None:
     """The hash space is finite (6 slots) and the mapping is content-
@@ -264,30 +265,37 @@ def test_append_comment_empty_to_first() -> None:
 # === static source contract ================================================
 
 
-def test_static_source_contract() -> None:
-    """The TS module must continue to expose the documented public API
-    so the React component keeps importing ``authorColorToken`` +
-    ``appendComment`` + ``AUTHOR_COLOR_TOKENS`` by name. Also pins the
-    canonical predicate fragments so the JS mirror above stays in
-    lock-step with the TS source."""
+def test_ts_module_exports_documented_public_api() -> None:
+    """The TS module keeps exposing ``authorColorToken`` + ``appendComment``
+    + ``AUTHOR_COLOR_TOKENS`` so the React component imports them by name."""
     # Arrange
     # Act
     src = TS_FILE.read_text(encoding="utf-8")
-    # Public API surface.
     # Assert
-    assert "export const AUTHOR_COLOR_TOKENS" in src
-    assert "export function authorColorToken(" in src
-    assert "export function appendComment(" in src
-    # Canonical predicate fragments — if any change, this test fires
-    # so the JS mirror in _JS_RUNTIME above gets updated in lock-step.
-    for needle in [
-        'var(--stx-accent)',
-        'var(--stx-text-muted)',
-        "let h = 5381;",
-        "h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;",
-        "return [...current, next];",
-    ]:
-        assert needle in src, (
-            f"ChatPanel.tsx no longer contains the canonical fragment "
-            f"{needle!r}; update the JS mirror in this test in lock-step."
+    assert all(
+        api in src
+        for api in (
+            "export const AUTHOR_COLOR_TOKENS",
+            "export function authorColorToken(",
+            "export function appendComment(",
         )
+    )
+
+
+def test_ts_module_keeps_canonical_predicate_fragments() -> None:
+    """Pins the canonical fragments so the JS mirror in _JS_RUNTIME stays in
+    lock-step with the TS source — if any changes, this test fires."""
+    # Arrange
+    # Act
+    src = TS_FILE.read_text(encoding="utf-8")
+    # Assert
+    assert all(
+        needle in src
+        for needle in (
+            "var(--stx-accent)",
+            "var(--stx-text-muted)",
+            "let h = 5381;",
+            "h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;",
+            "return [...current, next];",
+        )
+    )

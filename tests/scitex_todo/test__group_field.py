@@ -72,7 +72,9 @@ def test_task_dataclass_omits_none_group_from_to_dict():
 
 def test_validate_accepts_non_empty_group_string():
     # Arrange
-    tasks = [{"id": "t-a", "title": "x", "status": "pending", "group": "paper-portfolio"}]
+    tasks = [
+        {"id": "t-a", "title": "x", "status": "pending", "group": "paper-portfolio"}
+    ]
     accepted = False
     # Act
     _validate_tasks(tasks, source="<test>")
@@ -167,8 +169,7 @@ def test_cli_add_with_group_persists(tmp_path: Path):
     # Act
     result = runner.invoke(
         main,
-        ["add", "t-a", "x", "--tasks", str(store),
-         "--group", "paper-portfolio", "-y"],
+        ["add", "t-a", "x", "--tasks", str(store), "--group", "paper-portfolio", "-y"],
     )
     # Assert
     assert result.exit_code == 0, result.output
@@ -182,8 +183,7 @@ def test_cli_update_with_group_sets_field(tmp_path: Path):
     # Act
     runner.invoke(
         main,
-        ["update", "t-a", "--tasks", str(store),
-         "--group", "paper-portfolio", "-y"],
+        ["update", "t-a", "--tasks", str(store), "--group", "paper-portfolio", "-y"],
     )
     # Assert
     loaded = [t for t in load_tasks(store) if t["id"] == "t-a"][0]

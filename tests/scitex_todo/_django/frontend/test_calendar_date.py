@@ -248,6 +248,7 @@ def test_tasks_by_date_placement_counts_out() -> None:
         "2026-06-20": ["t6"],
     }
 
+
 def test_tasks_by_date_placement_counts_value_excludes() -> None:
     """Given a tasks array, ``tasksByDate`` produces a map keyed by
     YYYY-MM-DD with the right task ids on each day — matches the
@@ -295,6 +296,7 @@ def test_month_grid_returns_42_cells_with_leading_trailing_len() -> None:
     trailing = [c for c in out if not c["inMonth"] and c["key"] > "2026-06-30"]
     assert len(out) == 42
 
+
 def test_month_grid_returns_42_cells_with_leading_trailing_key() -> None:
     """``monthGridDays`` always returns 42 cells (6 weeks × 7 days), so
     the grid height never jitters. Leading + trailing days that fall
@@ -316,6 +318,7 @@ def test_month_grid_returns_42_cells_with_leading_trailing_key() -> None:
     # Trailing cells (after June 30) are July, inMonth=false.
     trailing = [c for c in out if not c["inMonth"] and c["key"] > "2026-06-30"]
     assert out[0]["key"] == "2026-05-31"
+
 
 def test_month_grid_returns_42_cells_with_leading_trailing_inmonth() -> None:
     """``monthGridDays`` always returns 42 cells (6 weeks × 7 days), so
@@ -339,6 +342,7 @@ def test_month_grid_returns_42_cells_with_leading_trailing_inmonth() -> None:
     trailing = [c for c in out if not c["inMonth"] and c["key"] > "2026-06-30"]
     assert out[0]["inMonth"] is False
 
+
 def test_month_grid_returns_42_cells_with_leading_trailing_key_2() -> None:
     """``monthGridDays`` always returns 42 cells (6 weeks × 7 days), so
     the grid height never jitters. Leading + trailing days that fall
@@ -360,6 +364,7 @@ def test_month_grid_returns_42_cells_with_leading_trailing_key_2() -> None:
     # Trailing cells (after June 30) are July, inMonth=false.
     trailing = [c for c in out if not c["inMonth"] and c["key"] > "2026-06-30"]
     assert out[1]["key"] == "2026-06-01"
+
 
 def test_month_grid_returns_42_cells_with_leading_trailing_inmonth_2() -> None:
     """``monthGridDays`` always returns 42 cells (6 weeks × 7 days), so
@@ -383,6 +388,7 @@ def test_month_grid_returns_42_cells_with_leading_trailing_inmonth_2() -> None:
     trailing = [c for c in out if not c["inMonth"] and c["key"] > "2026-06-30"]
     assert out[1]["inMonth"] is True
 
+
 def test_month_grid_returns_42_cells_with_leading_trailing_in_month_keys() -> None:
     """``monthGridDays`` always returns 42 cells (6 weeks × 7 days), so
     the grid height never jitters. Leading + trailing days that fall
@@ -404,6 +410,7 @@ def test_month_grid_returns_42_cells_with_leading_trailing_in_month_keys() -> No
     # Trailing cells (after June 30) are July, inMonth=false.
     trailing = [c for c in out if not c["inMonth"] and c["key"] > "2026-06-30"]
     assert in_month_keys[0] == "2026-06-01"
+
 
 def test_month_grid_returns_42_cells_with_leading_trailing_in_month_keys_2() -> None:
     """``monthGridDays`` always returns 42 cells (6 weeks × 7 days), so
@@ -427,6 +434,7 @@ def test_month_grid_returns_42_cells_with_leading_trailing_in_month_keys_2() -> 
     trailing = [c for c in out if not c["inMonth"] and c["key"] > "2026-06-30"]
     assert in_month_keys[-1] == "2026-06-30"
 
+
 def test_month_grid_returns_42_cells_with_leading_trailing_len_2() -> None:
     """``monthGridDays`` always returns 42 cells (6 weeks × 7 days), so
     the grid height never jitters. Leading + trailing days that fall
@@ -448,6 +456,7 @@ def test_month_grid_returns_42_cells_with_leading_trailing_len_2() -> None:
     # Trailing cells (after June 30) are July, inMonth=false.
     trailing = [c for c in out if not c["inMonth"] and c["key"] > "2026-06-30"]
     assert len(in_month_keys) == 30
+
 
 def test_month_grid_returns_42_cells_with_leading_trailing_all() -> None:
     """``monthGridDays`` always returns 42 cells (6 weeks × 7 days), so
@@ -486,6 +495,7 @@ def test_today_cell_flag_is_set_len() -> None:
     # Assert
     assert len(today_cells) == 1
 
+
 def test_today_cell_flag_is_set_key() -> None:
     """The cell matching the `today` parameter must carry
     ``isToday=true`` — drives the accent-border ring on the Calendar."""
@@ -499,6 +509,7 @@ def test_today_cell_flag_is_set_key() -> None:
     today_cells = [c for c in out if c["isToday"]]
     # Assert
     assert today_cells[0]["key"] == "2026-06-14"
+
 
 def test_today_cell_flag_is_set_inmonth() -> None:
     """The cell matching the `today` parameter must carry

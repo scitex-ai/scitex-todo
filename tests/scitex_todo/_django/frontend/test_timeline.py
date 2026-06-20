@@ -99,9 +99,7 @@ def test_timeline_css_declares_selector(selector: str) -> None:
     # Act
     css = _read(_TIMELINE_CSS)
     # Assert
-    assert selector in css, (
-        f"timeline.css missing rule for {selector!r}"
-    )
+    assert selector in css, f"timeline.css missing rule for {selector!r}"
 
 
 def test_timeline_css_no_hardcoded_colors_hex_hits() -> None:
@@ -117,9 +115,7 @@ def test_timeline_css_no_hardcoded_colors_hex_hits() -> None:
     hex_hits = re.findall(r"#[0-9a-fA-F]{3,8}\b", no_comments)
     # Assert
     # rgb()/rgba()/hsl()/hsla() literals.
-    func_hits = re.findall(
-        r"\b(?:rgb|rgba|hsl|hsla)\s*\(", no_comments
-    )
+    func_hits = re.findall(r"\b(?:rgb|rgba|hsl|hsla)\s*\(", no_comments)
     # Common CSS named colors — not exhaustive, but covers the easy
     # mistakes ("red", "blue", etc.).
     named = re.findall(
@@ -129,6 +125,7 @@ def test_timeline_css_no_hardcoded_colors_hex_hits() -> None:
         re.IGNORECASE,
     )
     assert hex_hits == [], f"timeline.css has hex colors: {hex_hits!r}"
+
 
 def test_timeline_css_no_hardcoded_colors_func_hits() -> None:
     """No hex / rgb / named-color literals — everything must ride through
@@ -143,9 +140,7 @@ def test_timeline_css_no_hardcoded_colors_func_hits() -> None:
     hex_hits = re.findall(r"#[0-9a-fA-F]{3,8}\b", no_comments)
     # Assert
     # rgb()/rgba()/hsl()/hsla() literals.
-    func_hits = re.findall(
-        r"\b(?:rgb|rgba|hsl|hsla)\s*\(", no_comments
-    )
+    func_hits = re.findall(r"\b(?:rgb|rgba|hsl|hsla)\s*\(", no_comments)
     # Common CSS named colors — not exhaustive, but covers the easy
     # mistakes ("red", "blue", etc.).
     named = re.findall(
@@ -154,9 +149,8 @@ def test_timeline_css_no_hardcoded_colors_func_hits() -> None:
         no_comments,
         re.IGNORECASE,
     )
-    assert func_hits == [], (
-        f"timeline.css has color function literals: {func_hits!r}"
-    )
+    assert func_hits == [], f"timeline.css has color function literals: {func_hits!r}"
+
 
 def test_timeline_css_no_hardcoded_colors_named() -> None:
     """No hex / rgb / named-color literals — everything must ride through
@@ -171,9 +165,7 @@ def test_timeline_css_no_hardcoded_colors_named() -> None:
     hex_hits = re.findall(r"#[0-9a-fA-F]{3,8}\b", no_comments)
     # Assert
     # rgb()/rgba()/hsl()/hsla() literals.
-    func_hits = re.findall(
-        r"\b(?:rgb|rgba|hsl|hsla)\s*\(", no_comments
-    )
+    func_hits = re.findall(r"\b(?:rgb|rgba|hsl|hsla)\s*\(", no_comments)
     # Common CSS named colors — not exhaustive, but covers the easy
     # mistakes ("red", "blue", etc.).
     named = re.findall(
@@ -182,9 +174,7 @@ def test_timeline_css_no_hardcoded_colors_named() -> None:
         no_comments,
         re.IGNORECASE,
     )
-    assert named == [], (
-        f"timeline.css has named color literals: {named!r}"
-    )
+    assert named == [], f"timeline.css has named color literals: {named!r}"
 
 
 def test_timeline_css_imported_by_board_css() -> None:
@@ -230,7 +220,8 @@ def test_todoboard_wires_timeline_view_tsx_contains() -> None:
     # Act
     tsx = _read(_TODOBOARD_TSX)
     # Assert
-    assert 'import { TimelineView }' in tsx
+    assert "import { TimelineView }" in tsx
+
 
 def test_todoboard_wires_timeline_view_tsx_contains_2() -> None:
     """TodoBoard.tsx mounts TimelineView when ``view === 'timeline'`` and
@@ -240,6 +231,7 @@ def test_todoboard_wires_timeline_view_tsx_contains_2() -> None:
     tsx = _read(_TODOBOARD_TSX)
     # Assert
     assert 'setView("timeline")' in tsx
+
 
 def test_todoboard_wires_timeline_view_tsx_contains_3() -> None:
     """TodoBoard.tsx mounts TimelineView when ``view === 'timeline'`` and

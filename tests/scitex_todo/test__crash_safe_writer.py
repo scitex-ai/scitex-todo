@@ -200,9 +200,7 @@ def test_clean_save_leaves_no_stale_tmp_sidecar(tmp_path: Path):
     tmp = store.parent / f".{store.name}.tmp"
 
     # Act
-    save_tasks(
-        [{"id": "t-only", "title": "only", "status": "pending"}], store
-    )
+    save_tasks([{"id": "t-only", "title": "only", "status": "pending"}], store)
 
     # Assert — successful save deletes the tmp via os.replace; no sidecar.
     assert not tmp.exists()

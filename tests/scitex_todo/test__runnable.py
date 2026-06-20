@@ -60,10 +60,14 @@ def test_done_task_is_not_runnable():
 
 def test_blocked_task_is_not_runnable():
     # Arrange — explicit blocker set; dispatcher should not pick it up.
-    tasks = [{
-        "id": "t-a", "title": "x", "status": "pending",
-        "blocker": "operator-decision",
-    }]
+    tasks = [
+        {
+            "id": "t-a",
+            "title": "x",
+            "status": "pending",
+            "blocker": "operator-decision",
+        }
+    ]
     # Act
     result = runnable_tasks(tasks)
     # Assert
@@ -77,8 +81,12 @@ def test_task_blocked_by_pending_upstream_is_filtered_out():
     # Arrange — t-b depends on t-a which is still pending.
     tasks = [
         {"id": "t-a", "title": "upstream", "status": "pending"},
-        {"id": "t-b", "title": "downstream", "status": "pending",
-         "depends_on": ["t-a"]},
+        {
+            "id": "t-b",
+            "title": "downstream",
+            "status": "pending",
+            "depends_on": ["t-a"],
+        },
     ]
     # Act
     result = runnable_tasks(tasks)
@@ -90,8 +98,12 @@ def test_task_becomes_runnable_when_upstream_done():
     # Arrange
     tasks = [
         {"id": "t-a", "title": "upstream", "status": "done"},
-        {"id": "t-b", "title": "downstream", "status": "pending",
-         "depends_on": ["t-a"]},
+        {
+            "id": "t-b",
+            "title": "downstream",
+            "status": "pending",
+            "depends_on": ["t-a"],
+        },
     ]
     # Act
     result = runnable_tasks(tasks)
@@ -103,8 +115,7 @@ def test_blocks_field_creates_implicit_upstream():
     # Arrange — t-a has `blocks: [t-b]` which is the SAME as t-b depends_on
     # t-a. The runnable engine respects both forms symmetrically.
     tasks = [
-        {"id": "t-a", "title": "upstream", "status": "pending",
-         "blocks": ["t-b"]},
+        {"id": "t-a", "title": "upstream", "status": "pending", "blocks": ["t-b"]},
         {"id": "t-b", "title": "downstream", "status": "pending"},
     ]
     # Act
@@ -119,8 +130,12 @@ def test_unknown_dep_id_is_permissive():
     # consistency case; the runnable engine is permissive so a stale
     # ref doesn't park the task forever.
     tasks = [
-        {"id": "t-a", "title": "x", "status": "pending",
-         "depends_on": ["never-existed"]},
+        {
+            "id": "t-a",
+            "title": "x",
+            "status": "pending",
+            "depends_on": ["never-existed"],
+        },
     ]
     # Act
     result = runnable_tasks(tasks)
@@ -133,8 +148,7 @@ def test_blocked_by_deps_count_reflects_filtered_set():
     # truly runnable. Diagnostic counters should distinguish them.
     tasks = [
         {"id": "t-up", "title": "up", "status": "pending"},
-        {"id": "t-down", "title": "down", "status": "pending",
-         "depends_on": ["t-up"]},
+        {"id": "t-down", "title": "down", "status": "pending", "depends_on": ["t-up"]},
     ]
     # Act
     result = runnable_tasks(tasks)
@@ -148,10 +162,13 @@ def test_blocked_by_deps_count_reflects_filtered_set():
 def test_agent_filter_matches_agent_field():
     # Arrange
     tasks = [
-        {"id": "t-mine", "title": "x", "status": "pending",
-         "agent": "proj-scitex-todo"},
-        {"id": "t-other", "title": "y", "status": "pending",
-         "agent": "proj-other"},
+        {
+            "id": "t-mine",
+            "title": "x",
+            "status": "pending",
+            "agent": "proj-scitex-todo",
+        },
+        {"id": "t-other", "title": "y", "status": "pending", "agent": "proj-other"},
     ]
     # Act
     result = runnable_tasks(tasks, agent="proj-scitex-todo")
@@ -161,10 +178,14 @@ def test_agent_filter_matches_agent_field():
 
 def test_agent_filter_matches_legacy_assignee_field():
     # Arrange — legacy `assignee` matches too (back-compat).
-    tasks = [{
-        "id": "t-a", "title": "x", "status": "pending",
-        "assignee": "proj-scitex-todo",
-    }]
+    tasks = [
+        {
+            "id": "t-a",
+            "title": "x",
+            "status": "pending",
+            "assignee": "proj-scitex-todo",
+        }
+    ]
     # Act
     result = runnable_tasks(tasks, agent="proj-scitex-todo")
     # Assert
@@ -177,10 +198,8 @@ def test_agent_filter_matches_legacy_assignee_field():
 def test_group_filter_matches_T11_group_field():
     # Arrange
     tasks = [
-        {"id": "t-a", "title": "x", "status": "pending",
-         "group": "paper-portfolio"},
-        {"id": "t-b", "title": "y", "status": "pending",
-         "group": "ci-recovery"},
+        {"id": "t-a", "title": "x", "status": "pending", "group": "paper-portfolio"},
+        {"id": "t-b", "title": "y", "status": "pending", "group": "ci-recovery"},
     ]
     # Act
     result = runnable_tasks(tasks, group="paper-portfolio")
@@ -191,8 +210,12 @@ def test_group_filter_matches_T11_group_field():
 def test_group_empty_string_matches_ungrouped_only():
     # Arrange — `group=""` is the "residual / ungrouped" filter.
     tasks = [
-        {"id": "t-grouped", "title": "x", "status": "pending",
-         "group": "paper-portfolio"},
+        {
+            "id": "t-grouped",
+            "title": "x",
+            "status": "pending",
+            "group": "paper-portfolio",
+        },
         {"id": "t-ungrouped", "title": "y", "status": "pending"},
     ]
     # Act
@@ -226,7 +249,8 @@ def test_cli_runnable_lists_runnable_tasks(tmp_path: Path):
     runner = CliRunner()
     # Act
     result = runner.invoke(
-        main, ["runnable", "--tasks", str(store)],
+        main,
+        ["runnable", "--tasks", str(store)],
     )
     # Assert — exit 0 (something runnable), one line of output.
     assert result.exit_code == 0
@@ -239,7 +263,8 @@ def test_cli_runnable_json_emits_full_payload(tmp_path: Path):
     runner = CliRunner()
     # Act
     result = runner.invoke(
-        main, ["runnable", "--tasks", str(store), "--json"],
+        main,
+        ["runnable", "--tasks", str(store), "--json"],
     )
     # Assert — JSON parses + has the expected keys.
     payload = json.loads(result.output)
@@ -254,8 +279,8 @@ def test_cli_runnable_group_filter_narrows_results(tmp_path: Path):
     runner = CliRunner()
     # Act
     result = runner.invoke(
-        main, ["runnable", "--tasks", str(store),
-               "--group", "paper-portfolio", "--json"],
+        main,
+        ["runnable", "--tasks", str(store), "--group", "paper-portfolio", "--json"],
     )
     # Assert
     payload = json.loads(result.output)
@@ -269,7 +294,8 @@ def test_cli_runnable_exit_1_when_queue_empty(tmp_path: Path):
     runner = CliRunner()
     # Act
     result = runner.invoke(
-        main, ["runnable", "--tasks", str(store)],
+        main,
+        ["runnable", "--tasks", str(store)],
     )
     # Assert — exit 1 lets shell scripts test "did the queue empty?"
     assert result.exit_code == 1
@@ -283,7 +309,8 @@ def test_cli_runnable_mine_uses_env_agent(tmp_path: Path, env):
     runner = CliRunner()
     # Act
     result = runner.invoke(
-        main, ["runnable", "--tasks", str(store), "--mine", "--json"],
+        main,
+        ["runnable", "--tasks", str(store), "--mine", "--json"],
     )
     # Assert
     payload = json.loads(result.output)

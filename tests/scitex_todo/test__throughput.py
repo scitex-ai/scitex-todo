@@ -118,7 +118,9 @@ class TestAggregate:
     def test_stale_excludes_pending(self):
         # Arrange
         now = _utc(2026, 6, 12, 12, 0, 0)
-        tasks = [{"agent": "a", "status": "pending", "last_activity": "2026-01-01T00:00:00Z"}]
+        tasks = [
+            {"agent": "a", "status": "pending", "last_activity": "2026-01-01T00:00:00Z"}
+        ]
         # Act
         rows = aggregate(tasks, by="agent", now=now, stale_hours=24)
         # Assert
@@ -189,8 +191,12 @@ class TestClassify:
     def test_blocked_takes_precedence_over_deps(self):
         # Arrange
         by_id = {
-            "x": {"id": "x", "status": "blocked", "blocker": "compute",
-                  "depends_on": ["dep"]},
+            "x": {
+                "id": "x",
+                "status": "blocked",
+                "blocker": "compute",
+                "depends_on": ["dep"],
+            },
             "dep": {"id": "dep", "status": "in_progress"},
         }
         # Act
@@ -294,10 +300,14 @@ class TestNotifyBody:
     def test_runnable_listed_before_blocked(self):
         # Arrange
         tasks = [
-            {"id": "blk", "title": "Blocked one",
-             "status": "blocked", "blocker": "compute", "agent": "a"},
-            {"id": "run", "title": "Runnable one",
-             "status": "pending", "agent": "a"},
+            {
+                "id": "blk",
+                "title": "Blocked one",
+                "status": "blocked",
+                "blocker": "compute",
+                "agent": "a",
+            },
+            {"id": "run", "title": "Runnable one", "status": "pending", "agent": "a"},
         ]
         # Act
         body = build_notify_body("a", tasks)
@@ -310,8 +320,7 @@ class TestNotifyBody:
     def test_truncation_at_open_cap(self):
         # Arrange
         tasks = [
-            {"id": f"t{i}", "title": f"Task {i}",
-             "status": "pending", "agent": "a"}
+            {"id": f"t{i}", "title": f"Task {i}", "status": "pending", "agent": "a"}
             for i in range(NOTIFY_OPEN_CAP + 5)
         ]
         # Act
@@ -324,8 +333,13 @@ class TestNotifyBody:
         now = _utc(2026, 6, 12, 12, 0, 0)
         old = _iso(_utc(2026, 6, 1, 0, 0, 0))
         tasks = [
-            {"id": "old", "title": "Old task",
-             "status": "in_progress", "last_activity": old, "agent": "a"},
+            {
+                "id": "old",
+                "title": "Old task",
+                "status": "in_progress",
+                "last_activity": old,
+                "agent": "a",
+            },
         ]
         # Act
         body = build_notify_body("a", tasks, now=now, stale_hours=24)
@@ -337,8 +351,13 @@ class TestNotifyBody:
         now = _utc(2026, 6, 12, 12, 0, 0)
         recent = _iso(_utc(2026, 6, 11, 12, 0, 0))
         tasks = [
-            {"id": "d1", "title": "Done one",
-             "status": "done", "last_activity": recent, "agent": "a"},
+            {
+                "id": "d1",
+                "title": "Done one",
+                "status": "done",
+                "last_activity": recent,
+                "agent": "a",
+            },
         ]
         # Act
         body = build_notify_body("a", tasks, now=now)
@@ -357,9 +376,13 @@ class TestNotifyBody:
         now = _utc(2026, 6, 13, 0, 0, 0)
         naive_ts = "2026-06-08T00:42:30"  # NO 'Z', NO offset — naive.
         tasks = [
-            {"id": "naive", "title": "Naive last_activity",
-             "status": "in_progress", "last_activity": naive_ts,
-             "agent": "a"},
+            {
+                "id": "naive",
+                "title": "Naive last_activity",
+                "status": "in_progress",
+                "last_activity": naive_ts,
+                "agent": "a",
+            },
         ]
         # Act
         body = build_notify_body("a", tasks, now=now)

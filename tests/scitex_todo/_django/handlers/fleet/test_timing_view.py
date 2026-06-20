@@ -39,9 +39,7 @@ from scitex_todo._store import add_task  # noqa: E402
 
 def _now_minus(minutes: float) -> str:
     """ISO-8601 ``minutes`` before NOW (UTC)."""
-    ts = _dt.datetime.now(tz=_dt.timezone.utc) - _dt.timedelta(
-        minutes=minutes
-    )
+    ts = _dt.datetime.now(tz=_dt.timezone.utc) - _dt.timedelta(minutes=minutes)
     return ts.isoformat()
 
 
@@ -135,6 +133,7 @@ def test_timing_view_aggregates_real_done_task_n_tasks_in_window(store_with_done
     # Assert — the seeded task should be in window and bucketed.
     assert payload["n_tasks_in_window"] == 1
 
+
 def test_timing_view_aggregates_real_done_task_per_agent_contains(store_with_done_task):
     # Arrange
     rf = RequestFactory()
@@ -143,6 +142,7 @@ def test_timing_view_aggregates_real_done_task_per_agent_contains(store_with_don
     payload = json.loads(fleet_timing_view(req).content)
     # Assert — the seeded task should be in window and bucketed.
     assert "agent-alpha" in payload["per_agent"]
+
 
 def test_timing_view_aggregates_real_done_task_n_tasks_done(store_with_done_task):
     # Arrange
@@ -163,6 +163,7 @@ def test_timing_view_rejects_post_with_405_status_code(store_with_done_task):
     # Assert
     data = json.loads(response.content)
     assert response.status_code == 405
+
 
 def test_timing_view_rejects_post_with_405_data_contains(store_with_done_task):
     # Arrange

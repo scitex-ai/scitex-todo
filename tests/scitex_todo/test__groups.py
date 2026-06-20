@@ -100,10 +100,7 @@ class TestRejectMissingId:
         # Arrange
         store = _write_store(
             tmp_path,
-            "groups:\n"
-            "  - label: 'No id'\n"
-            "    projects: [a]\n"
-            "tasks: []\n",
+            "groups:\n" "  - label: 'No id'\n" "    projects: [a]\n" "tasks: []\n",
         )
         # Act
         # Assert
@@ -116,14 +113,13 @@ class TestRejectMissingLabel:
         # Arrange
         store = _write_store(
             tmp_path,
-            "groups:\n"
-            "  - id: g1\n"
-            "    projects: [a]\n"
-            "tasks: []\n",
+            "groups:\n" "  - id: g1\n" "    projects: [a]\n" "tasks: []\n",
         )
         # Act
         # Assert
-        with pytest.raises(TaskValidationError, match="label must be a non-empty string"):
+        with pytest.raises(
+            TaskValidationError, match="label must be a non-empty string"
+        ):
             load_groups(store)
 
 
@@ -150,10 +146,7 @@ class TestRejectEmptyGroup:
         # Arrange
         store = _write_store(
             tmp_path,
-            "groups:\n"
-            "  - id: g1\n"
-            "    label: 'empty'\n"
-            "tasks: []\n",
+            "groups:\n" "  - id: g1\n" "    label: 'empty'\n" "tasks: []\n",
         )
         # Act
         # Assert

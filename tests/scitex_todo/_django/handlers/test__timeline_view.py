@@ -130,6 +130,7 @@ def test_timeline_view_event_shape_events(store_with_timeline_tasks):
     e = payload["events"][0]
     assert payload["events"], "expected at least one event in the window"
 
+
 def test_timeline_view_event_shape_case_2(store_with_timeline_tasks):
     """Each event row carries the operator-brief-mandated keys."""
     # Arrange
@@ -286,9 +287,7 @@ def test_timeline_view_edges_only_when_both_endpoints_visible(
     } in edges
 
 
-def test_timeline_view_edge_dropped_when_endpoint_out_of_window(
-    tmp_path: Path, env
-):
+def test_timeline_view_edge_dropped_when_endpoint_out_of_window(tmp_path: Path, env):
     """If one endpoint of an edge is OUTSIDE the window, the edge is
     dropped from the payload — keeps the wire payload bounded and
     matches the brief's contract."""

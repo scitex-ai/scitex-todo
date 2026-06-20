@@ -67,7 +67,9 @@ class TestDeadlineLine:
         # Arrange
         tasks = [
             {
-                "id": "a", "title": "x", "status": "pending",
+                "id": "a",
+                "title": "x",
+                "status": "pending",
                 "deadline": "2026-06-15",
             }
         ]
@@ -80,7 +82,9 @@ class TestDeadlineLine:
         # Arrange
         tasks = [
             {
-                "id": "a", "title": "x", "status": "pending",
+                "id": "a",
+                "title": "x",
+                "status": "pending",
                 "deadline": "2026-06-15T18:00:00+09:00",
             }
         ]
@@ -103,7 +107,9 @@ class TestScheduledLine:
         # Arrange
         tasks = [
             {
-                "id": "a", "title": "x", "status": "pending",
+                "id": "a",
+                "title": "x",
+                "status": "pending",
                 "scheduled": "2026-06-10",
             }
         ]
@@ -116,8 +122,11 @@ class TestScheduledLine:
         # Arrange
         tasks = [
             {
-                "id": "a", "title": "x", "status": "pending",
-                "deadline": "2026-06-15", "scheduled": "2026-06-10",
+                "id": "a",
+                "title": "x",
+                "status": "pending",
+                "deadline": "2026-06-15",
+                "scheduled": "2026-06-10",
             }
         ]
         # Act
@@ -140,7 +149,9 @@ class TestPropertiesDrawer:
         # Arrange
         tasks = [
             {
-                "id": "a", "title": "x", "status": "pending",
+                "id": "a",
+                "title": "x",
+                "status": "pending",
                 "project": "scitex-todo",
             }
         ]
@@ -162,7 +173,9 @@ class TestPropertiesDrawer:
         # Arrange
         tasks = [
             {
-                "id": "child", "title": "c", "status": "pending",
+                "id": "child",
+                "title": "c",
+                "status": "pending",
                 "parent": "umbrella",
             }
         ]
@@ -177,7 +190,9 @@ class TestNoteBody:
         # Arrange
         tasks = [
             {
-                "id": "a", "title": "x", "status": "pending",
+                "id": "a",
+                "title": "x",
+                "status": "pending",
                 "note": "line1\nline2",
             }
         ]
@@ -190,7 +205,9 @@ class TestNoteBody:
         # Arrange
         tasks = [
             {
-                "id": "a", "title": "x", "status": "pending",
+                "id": "a",
+                "title": "x",
+                "status": "pending",
                 "note": "line1\nline2",
             }
         ]

@@ -425,9 +425,9 @@ def test_template_sort_dropdown_has_created_at_option() -> None:
     # Act
     html = _read(_BOARD_V3_TEMPLATE)
     # Assert
-    assert '<option value="created_at">' in html, (
-        "board_v3.html missing 'created_at' option in #f-sort"
-    )
+    assert (
+        '<option value="created_at">' in html
+    ), "board_v3.html missing 'created_at' option in #f-sort"
 
 
 def test_template_sort_dropdown_has_completed_at_option() -> None:
@@ -436,9 +436,9 @@ def test_template_sort_dropdown_has_completed_at_option() -> None:
     # Act
     html = _read(_BOARD_V3_TEMPLATE)
     # Assert
-    assert '<option value="completed_at">' in html, (
-        "board_v3.html missing 'completed_at' option in #f-sort"
-    )
+    assert (
+        '<option value="completed_at">' in html
+    ), "board_v3.html missing 'completed_at' option in #f-sort"
 
 
 def test_template_sort_dropdown_keeps_last_activity_option() -> None:
@@ -449,9 +449,9 @@ def test_template_sort_dropdown_keeps_last_activity_option() -> None:
     # Act
     html = _read(_BOARD_V3_TEMPLATE)
     # Assert
-    assert '<option value="last_activity">' in html, (
-        "board_v3.html lost the pre-existing 'last_activity' option"
-    )
+    assert (
+        '<option value="last_activity">' in html
+    ), "board_v3.html lost the pre-existing 'last_activity' option"
 
 
 def test_template_group_by_time_checkbox_present() -> None:
@@ -461,9 +461,9 @@ def test_template_group_by_time_checkbox_present() -> None:
     # Act
     html = _read(_BOARD_V3_TEMPLATE)
     # Assert
-    assert 'id="stx-toggle-group-by-time"' in html, (
-        "board_v3.html missing #stx-toggle-group-by-time checkbox"
-    )
+    assert (
+        'id="stx-toggle-group-by-time"' in html
+    ), "board_v3.html missing #stx-toggle-group-by-time checkbox"
 
 
 def test_template_group_by_time_lives_in_view_group_m() -> None:
@@ -482,6 +482,7 @@ def test_template_group_by_time_lives_in_view_group_m() -> None:
     view_body = m.group(1)
     assert m, "could not locate VIEW group block in template"
 
+
 def test_template_group_by_time_lives_in_view_group_view_body_contains() -> None:
     """The Group-by-time checkbox must live inside the existing
     ``.stx-todo-filterbar__group--view`` so the operator's time
@@ -496,9 +497,9 @@ def test_template_group_by_time_lives_in_view_group_view_body_contains() -> None
     )
     # Assert
     view_body = m.group(1)
-    assert 'id="stx-toggle-group-by-time"' in view_body, (
-        "Group-by-time checkbox not inside the VIEW group"
-    )
+    assert (
+        'id="stx-toggle-group-by-time"' in view_body
+    ), "Group-by-time checkbox not inside the VIEW group"
 
 
 def test_template_loads_time_grouping_css() -> None:
@@ -507,9 +508,9 @@ def test_template_loads_time_grouping_css() -> None:
     # Act
     html = _read(_BOARD_V3_TEMPLATE)
     # Assert
-    assert "08-time-grouping.css" in html, (
-        "board_v3.html never <link>s 08-time-grouping.css"
-    )
+    assert (
+        "08-time-grouping.css" in html
+    ), "board_v3.html never <link>s 08-time-grouping.css"
 
 
 def test_template_wires_on_group_by_time_change_handler_html_contains() -> None:
@@ -519,9 +520,10 @@ def test_template_wires_on_group_by_time_change_handler_html_contains() -> None:
     # Act
     html = _read(_BOARD_V3_TEMPLATE)
     # Assert
-    assert "onGroupByTimeChange" in html, (
-        "board_v3.html missing onGroupByTimeChange handler reference"
-    )
+    assert (
+        "onGroupByTimeChange" in html
+    ), "board_v3.html missing onGroupByTimeChange handler reference"
+
 
 def test_template_wires_on_group_by_time_change_handler_html_contains_2() -> None:
     """The checkbox must wire onchange → onGroupByTimeChange, and the
@@ -530,9 +532,9 @@ def test_template_wires_on_group_by_time_change_handler_html_contains_2() -> Non
     # Act
     html = _read(_BOARD_V3_TEMPLATE)
     # Assert
-    assert "function onGroupByTimeChange" in html, (
-        "board_v3.html missing onGroupByTimeChange function definition"
-    )
+    assert (
+        "function onGroupByTimeChange" in html
+    ), "board_v3.html missing onGroupByTimeChange function definition"
 
 
 def test_template_defines_time_bucket_helper_html_contains() -> None:
@@ -543,9 +545,10 @@ def test_template_defines_time_bucket_helper_html_contains() -> None:
     # Act
     html = _read(_BOARD_V3_TEMPLATE)
     # Assert
-    assert "function timeBucketForCard" in html, (
-        "board_v3.html missing timeBucketForCard helper"
-    )
+    assert (
+        "function timeBucketForCard" in html
+    ), "board_v3.html missing timeBucketForCard helper"
+
 
 def test_template_defines_time_bucket_helper_html_contains_2() -> None:
     """The bucket classifier ``timeBucketForCard`` must be defined in
@@ -555,9 +558,7 @@ def test_template_defines_time_bucket_helper_html_contains_2() -> None:
     # Act
     html = _read(_BOARD_V3_TEMPLATE)
     # Assert
-    assert "function timeSortKey" in html, (
-        "board_v3.html missing timeSortKey helper"
-    )
+    assert "function timeSortKey" in html, "board_v3.html missing timeSortKey helper"
 
 
 def test_template_persists_group_by_time_in_localstorage() -> None:
@@ -568,9 +569,9 @@ def test_template_persists_group_by_time_in_localstorage() -> None:
     # Act
     html = _read(_BOARD_V3_TEMPLATE)
     # Assert
-    assert "scitex-todo:group-by-time" in html, (
-        "board_v3.html does not persist group-by-time in localStorage"
-    )
+    assert (
+        "scitex-todo:group-by-time" in html
+    ), "board_v3.html does not persist group-by-time in localStorage"
 
 
 # ============================================================================
@@ -603,9 +604,7 @@ def test_time_css_declares_selector(selector: str) -> None:
     # Act
     css = _read(_TIME_CSS)
     # Assert
-    assert selector in css, (
-        f"08-time-grouping.css missing rule for {selector!r}"
-    )
+    assert selector in css, f"08-time-grouping.css missing rule for {selector!r}"
 
 
 def test_time_css_no_hardcoded_colors() -> None:
@@ -626,8 +625,7 @@ def test_time_css_no_hardcoded_colors() -> None:
     # Forbidden literals: `#fff` / `#ffffff` / bare `white` / `black`
     # outside of property names like `white-space:`.
     pattern = re.compile(
-        r"(?<![\w-])"
-        r"(#[0-9a-fA-F]{3,8}\b|\b(?:white|black)\b(?!-))",
+        r"(?<![\w-])" r"(#[0-9a-fA-F]{3,8}\b|\b(?:white|black)\b(?!-))",
     )
     # Act
     matches = pattern.findall(no_var)
@@ -658,9 +656,10 @@ def test_time_css_chevron_signals_collapsible_css_contains() -> None:
     css = _read(_TIME_CSS)
     # Assert
     html = _read(_BOARD_V3_TEMPLATE)
-    assert ".stx-todo-time-bucket-chevron" in css, (
-        "08-time-grouping.css missing chevron rule"
-    )
+    assert (
+        ".stx-todo-time-bucket-chevron" in css
+    ), "08-time-grouping.css missing chevron rule"
+
 
 def test_time_css_chevron_signals_collapsible_case_2() -> None:
     """The chevron class must exist — collapsibility cue for the
@@ -670,6 +669,6 @@ def test_time_css_chevron_signals_collapsible_case_2() -> None:
     css = _read(_TIME_CSS)
     # Assert
     html = _read(_BOARD_V3_TEMPLATE)
-    assert "▸" in html and "▾" in html, (
-        "board_v3.html chevron glyphs ▸ / ▾ missing from template"
-    )
+    assert (
+        "▸" in html and "▾" in html
+    ), "board_v3.html chevron glyphs ▸ / ▾ missing from template"

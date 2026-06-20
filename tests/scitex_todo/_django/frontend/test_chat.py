@@ -118,9 +118,7 @@ def test_chat_css_no_hardcoded_colors_hex_hits() -> None:
     hex_hits = re.findall(r"#[0-9a-fA-F]{3,8}\b", no_comments)
     # Assert
     # rgb()/rgba()/hsl()/hsla() literals.
-    func_hits = re.findall(
-        r"\b(?:rgb|rgba|hsl|hsla)\s*\(", no_comments
-    )
+    func_hits = re.findall(r"\b(?:rgb|rgba|hsl|hsla)\s*\(", no_comments)
     # Common CSS named colors.
     named = re.findall(
         r":\s*(red|blue|green|yellow|orange|purple|black|white|gray|grey|"
@@ -129,6 +127,7 @@ def test_chat_css_no_hardcoded_colors_hex_hits() -> None:
         re.IGNORECASE,
     )
     assert hex_hits == [], f"chat.css has hex colors: {hex_hits!r}"
+
 
 def test_chat_css_no_hardcoded_colors_func_hits() -> None:
     """No hex / rgb / named-color literals — everything rides the
@@ -143,9 +142,7 @@ def test_chat_css_no_hardcoded_colors_func_hits() -> None:
     hex_hits = re.findall(r"#[0-9a-fA-F]{3,8}\b", no_comments)
     # Assert
     # rgb()/rgba()/hsl()/hsla() literals.
-    func_hits = re.findall(
-        r"\b(?:rgb|rgba|hsl|hsla)\s*\(", no_comments
-    )
+    func_hits = re.findall(r"\b(?:rgb|rgba|hsl|hsla)\s*\(", no_comments)
     # Common CSS named colors.
     named = re.findall(
         r":\s*(red|blue|green|yellow|orange|purple|black|white|gray|grey|"
@@ -153,9 +150,8 @@ def test_chat_css_no_hardcoded_colors_func_hits() -> None:
         no_comments,
         re.IGNORECASE,
     )
-    assert func_hits == [], (
-        f"chat.css has color function literals: {func_hits!r}"
-    )
+    assert func_hits == [], f"chat.css has color function literals: {func_hits!r}"
+
 
 def test_chat_css_no_hardcoded_colors_named() -> None:
     """No hex / rgb / named-color literals — everything rides the
@@ -170,9 +166,7 @@ def test_chat_css_no_hardcoded_colors_named() -> None:
     hex_hits = re.findall(r"#[0-9a-fA-F]{3,8}\b", no_comments)
     # Assert
     # rgb()/rgba()/hsl()/hsla() literals.
-    func_hits = re.findall(
-        r"\b(?:rgb|rgba|hsl|hsla)\s*\(", no_comments
-    )
+    func_hits = re.findall(r"\b(?:rgb|rgba|hsl|hsla)\s*\(", no_comments)
     # Common CSS named colors.
     named = re.findall(
         r":\s*(red|blue|green|yellow|orange|purple|black|white|gray|grey|"
@@ -237,7 +231,8 @@ def test_node_detail_panel_imports_chat_panel_tsx_contains() -> None:
     # Act
     tsx = _read(_DETAIL_TSX)
     # Assert
-    assert 'import { ChatPanel }' in tsx
+    assert "import { ChatPanel }" in tsx
+
 
 def test_node_detail_panel_imports_chat_panel_tsx_contains_2() -> None:
     """NodeDetailPanel.tsx imports + mounts the ChatPanel so the new
@@ -267,6 +262,7 @@ def test_chat_panel_has_fail_loud_error_path_tsx_contains() -> None:
     tsx = _read(_CHAT_TSX)
     # Assert
     assert "setError(" in tsx
+
 
 def test_chat_panel_has_fail_loud_error_path_tsx_contains_2() -> None:
     """The component surfaces a write failure (error state + toast)

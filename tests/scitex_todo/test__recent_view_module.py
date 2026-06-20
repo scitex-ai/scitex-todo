@@ -26,18 +26,10 @@ PKG_ROOT = Path(scitex_todo.__file__).parent
 RECENT_SORT_JS = (
     PKG_ROOT / "_django" / "static" / "scitex_todo" / "board_v3" / "recentSort.js"
 )
-RECENT_SORT_TS = (
-    PKG_ROOT / "_django" / "frontend" / "src" / "recentSort.ts"
-)
-RECENT_VIEW_TSX = (
-    PKG_ROOT / "_django" / "frontend" / "src" / "RecentView.tsx"
-)
-TODO_BOARD_TSX = (
-    PKG_ROOT / "_django" / "frontend" / "src" / "TodoBoard.tsx"
-)
-STORE_TS = (
-    PKG_ROOT / "_django" / "frontend" / "src" / "store" / "useBoardStore.ts"
-)
+RECENT_SORT_TS = PKG_ROOT / "_django" / "frontend" / "src" / "recentSort.ts"
+RECENT_VIEW_TSX = PKG_ROOT / "_django" / "frontend" / "src" / "RecentView.tsx"
+TODO_BOARD_TSX = PKG_ROOT / "_django" / "frontend" / "src" / "TodoBoard.tsx"
+STORE_TS = PKG_ROOT / "_django" / "frontend" / "src" / "store" / "useBoardStore.ts"
 
 
 @pytest.fixture(scope="module")

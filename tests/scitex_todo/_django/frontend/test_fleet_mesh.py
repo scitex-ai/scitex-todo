@@ -90,38 +90,40 @@ def test_css_has_canonical_selectors() -> None:
         assert selector in css, f"missing CSS selector: {selector}"
 
 
-def test_css_uses_design_tokens_only() -> None:
-    """Colors must come from CSS variables — NO hardcoded hex / named
-    color literals. Hex / ``white`` / ``#fff`` would freeze the panel
-    to one theme and break the operator's light-mode view.
-
-    Required tokens: ``--status-success`` (allow edge), ``--status-error``
-    (deny edge), ``--stx-danger`` (error ring), ``--stx-text-muted`` /
-    ``--stx-text`` / ``--stx-border`` / ``--stx-panel-bg`` for the
-    pill chrome.
-    """
+def test_css_has_no_hardcoded_hex_colors() -> None:
+    """Hex literals freeze the panel to one theme; colors must come
+    from design tokens."""
     # Arrange
     css = _CSS_FILE.read_text(encoding="utf-8")
-    # Strip /* ... */ comments before scanning — the comment block at
-    # the top documents the token names verbatim and would falsely
-    # trip the hex / named-color detectors otherwise.
+    # Strip /* ... */ comments so the doc block (which names the
+    # tokens verbatim) does not trip the hex / named-color scan.
     no_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
-    # 3-, 4-, 6-, or 8-digit hex literals.
     # Act
     hex_matches = re.findall(r"#[0-9A-Fa-f]{3,8}\b", no_comments)
     # Assert
-    assert not hex_matches, (
-        f"hardcoded hex colors in fleet-mesh.css (breaks theming): "
-        f"{hex_matches!r}"
-    )
-    # Named-color literals — same theming smell.
-    for forbidden in (r":\s*white\b", r":\s*black\b"):
-        assert not re.search(forbidden, no_comments), (
-            f"hardcoded named color matching {forbidden!r} found in "
-            f"fleet-mesh.css — use a design token."
-        )
-    # Required token references — at least one occurrence each.
-    for token in (
+    assert not hex_matches, f"hardcoded hex colors in fleet-mesh.css: {hex_matches!r}"
+
+
+def test_css_has_no_hardcoded_named_colors() -> None:
+    """Named-color literals (white / black) are the same theming
+    smell as hex."""
+    # Arrange
+    css = _CSS_FILE.read_text(encoding="utf-8")
+    # Strip /* ... */ comments so the doc block (which names the
+    # tokens verbatim) does not trip the hex / named-color scan.
+    no_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    # Act
+    forbidden = (r":\s*white\b", r":\s*black\b")
+    # Assert
+    assert not any(re.search(f, no_comments) for f in forbidden)
+
+
+def test_css_references_all_required_tokens() -> None:
+    """Every required design token must be referenced at least once."""
+    # Arrange
+    css = _CSS_FILE.read_text(encoding="utf-8")
+    # Act
+    required = (
         "--status-success",
         "--status-error",
         "--stx-danger",
@@ -129,8 +131,9 @@ def test_css_uses_design_tokens_only() -> None:
         "--stx-border",
         "--stx-panel-bg",
         "--stx-text",
-    ):
-        assert token in css, f"missing design token: {token}"
+    )
+    # Assert
+    assert all(token in css for token in required)
 
 
 def test_css_is_imported_from_board_css_is_file() -> None:
@@ -143,6 +146,7 @@ def test_css_is_imported_from_board_css_is_file() -> None:
     # Assert
     text = board_css.read_text(encoding="utf-8")
     assert board_css.is_file()
+
 
 def test_css_is_imported_from_board_css_text_contains() -> None:
     """The panel only renders correctly when board.css imports the
@@ -269,6 +273,7 @@ def test_edge_color_token_maps_allow_and_deny_allowclass() -> None:
     # Assert
     assert out["allowClass"] == "stx-todo-fleet-mesh__edge--allow"
 
+
 def test_edge_color_token_maps_allow_and_deny_denyclass() -> None:
     """The SINGLE point where allow/deny becomes a CSS token must
     return the two canonical class names. The CSS file defines both;
@@ -313,6 +318,7 @@ def test_label_with_agents_and_grants_iserr() -> None:
     # Tooltip surfaces the agent list + edge list.
     assert out["isErr"] is False
 
+
 def test_label_with_agents_and_grants_label_contains() -> None:
     """The label pattern matches the spec verbatim:
     ``🕸 <N> agents · <M> grants``. Pin one realistic payload to
@@ -337,6 +343,7 @@ def test_label_with_agents_and_grants_label_contains() -> None:
     # Assert
     # Tooltip surfaces the agent list + edge list.
     assert "3 agents" in out["label"]
+
 
 def test_label_with_agents_and_grants_label_contains_2() -> None:
     """The label pattern matches the spec verbatim:
@@ -363,6 +370,7 @@ def test_label_with_agents_and_grants_label_contains_2() -> None:
     # Tooltip surfaces the agent list + edge list.
     assert "2 grants" in out["label"]
 
+
 def test_label_with_agents_and_grants_tooltip_contains() -> None:
     """The label pattern matches the spec verbatim:
     ``🕸 <N> agents · <M> grants``. Pin one realistic payload to
@@ -387,6 +395,7 @@ def test_label_with_agents_and_grants_tooltip_contains() -> None:
     # Assert
     # Tooltip surfaces the agent list + edge list.
     assert "a (local) [online]" in out["tooltip"]
+
 
 def test_label_with_agents_and_grants_tooltip_contains_2() -> None:
     """The label pattern matches the spec verbatim:
@@ -413,6 +422,7 @@ def test_label_with_agents_and_grants_tooltip_contains_2() -> None:
     # Tooltip surfaces the agent list + edge list.
     assert "c (peer) [unknown]" in out["tooltip"]
 
+
 def test_label_with_agents_and_grants_tooltip_contains_3() -> None:
     """The label pattern matches the spec verbatim:
     ``🕸 <N> agents · <M> grants``. Pin one realistic payload to
@@ -437,6 +447,7 @@ def test_label_with_agents_and_grants_tooltip_contains_3() -> None:
     # Assert
     # Tooltip surfaces the agent list + edge list.
     assert "[allow]" in out["tooltip"]
+
 
 def test_label_with_agents_and_grants_tooltip_contains_4() -> None:
     """The label pattern matches the spec verbatim:
@@ -480,6 +491,7 @@ def test_label_with_empty_mesh_iserr() -> None:
     # Assert
     assert out["isErr"] is False
 
+
 def test_label_with_empty_mesh_label_contains() -> None:
     """A fresh install with zero agents + zero grants renders
     ``0 agents · 0 grants`` cleanly — no off-by-one or NaN."""
@@ -495,6 +507,7 @@ def test_label_with_empty_mesh_label_contains() -> None:
     )
     # Assert
     assert "0 agents" in out["label"]
+
 
 def test_label_with_empty_mesh_label_contains_2() -> None:
     """A fresh install with zero agents + zero grants renders
@@ -512,6 +525,7 @@ def test_label_with_empty_mesh_label_contains_2() -> None:
     # Assert
     assert "0 grants" in out["label"]
 
+
 def test_label_with_empty_mesh_tooltip_contains() -> None:
     """A fresh install with zero agents + zero grants renders
     ``0 agents · 0 grants`` cleanly — no off-by-one or NaN."""
@@ -527,6 +541,7 @@ def test_label_with_empty_mesh_tooltip_contains() -> None:
     )
     # Assert
     assert "agents: 0" in out["tooltip"]
+
 
 def test_label_with_empty_mesh_tooltip_contains_2() -> None:
     """A fresh install with zero agents + zero grants renders
@@ -556,6 +571,7 @@ def test_error_payload_discriminator_iserr() -> None:
     # Assert
     assert out["isErr"] is True
 
+
 def test_error_payload_discriminator_label() -> None:
     """``isMeshPayloadErr`` returns true for an HTTP-500 error body
     so the component branches to the ``--error`` render path."""
@@ -566,6 +582,7 @@ def test_error_payload_discriminator_label() -> None:
     )
     # Assert
     assert out["label"] is None
+
 
 def test_error_payload_discriminator_tooltip() -> None:
     """``isMeshPayloadErr`` returns true for an HTTP-500 error body
@@ -629,6 +646,7 @@ def test_radial_layout_first_node_at_twelve_oclock_isclose() -> None:
     # First node is ABOVE the centre (SVG y grows downward).
     assert math.isclose(x, 70.0, abs_tol=1e-9)
 
+
 def test_radial_layout_first_node_at_twelve_oclock_y() -> None:
     """The first node anchors at the TOP of the circle (12 o'clock) so
     the operator's eye lands on a consistent reference frame across
@@ -662,5 +680,6 @@ def test_radial_layout_zero_nodes_returns_empty() -> None:
     pts = _py_radial_layout([])
     # Assert
     assert pts == {}
+
 
 # EOF

@@ -25,9 +25,7 @@ from pathlib import Path
 import scitex_todo
 
 
-_TEMPLATES_ROOT = (
-    Path(scitex_todo.__file__).parent / "_django" / "templates"
-)
+_TEMPLATES_ROOT = Path(scitex_todo.__file__).parent / "_django" / "templates"
 
 
 def _iter_template_files():

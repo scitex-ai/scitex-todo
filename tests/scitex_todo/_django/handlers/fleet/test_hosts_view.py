@@ -48,6 +48,7 @@ def test_hosts_view_returns_500_when_sac_missing_status_code(env) -> None:
     # The message must name "sac" so the operator knows what is missing.
     assert response.status_code == 500
 
+
 def test_hosts_view_returns_500_when_sac_missing_data_contains(env) -> None:
     """When sac is artificially unavailable (we clobber PATH), the
     adapter raises and the view returns HTTP 500 with the error in the
@@ -61,6 +62,7 @@ def test_hosts_view_returns_500_when_sac_missing_data_contains(env) -> None:
     data = json.loads(response.content)
     # The message must name "sac" so the operator knows what is missing.
     assert "error" in data
+
 
 def test_hosts_view_returns_500_when_sac_missing_lower_contains(env) -> None:
     """When sac is artificially unavailable (we clobber PATH), the
@@ -83,9 +85,7 @@ def test_hosts_view_returns_500_when_sac_missing_lower_contains(env) -> None:
 _SAC_AVAILABLE = shutil.which("sac") is not None
 
 
-@pytest.mark.skipif(
-    not _SAC_AVAILABLE, reason="sac CLI not installed on PATH"
-)
+@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
 def test_hosts_view_returns_200_with_local_and_peers_status_code() -> None:
     """When sac is available, the view returns 200 with the adapter
     payload shape: ``local`` (carrying ``name``) + ``peers`` (a list).
@@ -105,9 +105,8 @@ def test_hosts_view_returns_200_with_local_and_peers_status_code() -> None:
     # config file).
     assert response.status_code == 200
 
-@pytest.mark.skipif(
-    not _SAC_AVAILABLE, reason="sac CLI not installed on PATH"
-)
+
+@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
 def test_hosts_view_returns_200_with_local_and_peers_data_contains() -> None:
     """When sac is available, the view returns 200 with the adapter
     payload shape: ``local`` (carrying ``name``) + ``peers`` (a list).
@@ -127,9 +126,8 @@ def test_hosts_view_returns_200_with_local_and_peers_data_contains() -> None:
     # config file).
     assert "local" in data
 
-@pytest.mark.skipif(
-    not _SAC_AVAILABLE, reason="sac CLI not installed on PATH"
-)
+
+@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
 def test_hosts_view_returns_200_with_local_and_peers_data_contains_2() -> None:
     """When sac is available, the view returns 200 with the adapter
     payload shape: ``local`` (carrying ``name``) + ``peers`` (a list).
@@ -149,9 +147,8 @@ def test_hosts_view_returns_200_with_local_and_peers_data_contains_2() -> None:
     # config file).
     assert "peers" in data
 
-@pytest.mark.skipif(
-    not _SAC_AVAILABLE, reason="sac CLI not installed on PATH"
-)
+
+@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
 def test_hosts_view_returns_200_with_local_and_peers_isinstance() -> None:
     """When sac is available, the view returns 200 with the adapter
     payload shape: ``local`` (carrying ``name``) + ``peers`` (a list).
@@ -171,9 +168,8 @@ def test_hosts_view_returns_200_with_local_and_peers_isinstance() -> None:
     # config file).
     assert isinstance(data["local"], dict)
 
-@pytest.mark.skipif(
-    not _SAC_AVAILABLE, reason="sac CLI not installed on PATH"
-)
+
+@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
 def test_hosts_view_returns_200_with_local_and_peers_isinstance_2() -> None:
     """When sac is available, the view returns 200 with the adapter
     payload shape: ``local`` (carrying ``name``) + ``peers`` (a list).
@@ -193,9 +189,8 @@ def test_hosts_view_returns_200_with_local_and_peers_isinstance_2() -> None:
     # config file).
     assert isinstance(data["local"].get("name"), str)
 
-@pytest.mark.skipif(
-    not _SAC_AVAILABLE, reason="sac CLI not installed on PATH"
-)
+
+@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
 def test_hosts_view_returns_200_with_local_and_peers_name() -> None:
     """When sac is available, the view returns 200 with the adapter
     payload shape: ``local`` (carrying ``name``) + ``peers`` (a list).
@@ -215,9 +210,8 @@ def test_hosts_view_returns_200_with_local_and_peers_name() -> None:
     # config file).
     assert data["local"]["name"]
 
-@pytest.mark.skipif(
-    not _SAC_AVAILABLE, reason="sac CLI not installed on PATH"
-)
+
+@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
 def test_hosts_view_returns_200_with_local_and_peers_isinstance_3() -> None:
     """When sac is available, the view returns 200 with the adapter
     payload shape: ``local`` (carrying ``name``) + ``peers`` (a list).
@@ -237,9 +231,8 @@ def test_hosts_view_returns_200_with_local_and_peers_isinstance_3() -> None:
     # config file).
     assert isinstance(data["peers"], list)
 
-@pytest.mark.skipif(
-    not _SAC_AVAILABLE, reason="sac CLI not installed on PATH"
-)
+
+@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
 def test_hosts_view_returns_200_with_local_and_peers_data_contains_3() -> None:
     """When sac is available, the view returns 200 with the adapter
     payload shape: ``local`` (carrying ``name``) + ``peers`` (a list).

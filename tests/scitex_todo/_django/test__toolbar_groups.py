@@ -81,9 +81,7 @@ def test_toolbar_css_declares_group_selector(selector: str) -> None:
     # Act
     css = _read(_TOOLBAR_CSS)
     # Assert
-    assert selector in css, (
-        f"07-toolbar-groups.css missing rule for {selector!r}"
-    )
+    assert selector in css, f"07-toolbar-groups.css missing rule for {selector!r}"
 
 
 def test_toolbar_css_responsive_media_query_present_m() -> None:
@@ -99,6 +97,7 @@ def test_toolbar_css_responsive_media_query_present_m() -> None:
     # Assert
     px = int(m.group(1))
     assert m, "07-toolbar-groups.css missing @media (max-width: …px) rule"
+
 
 def test_toolbar_css_responsive_media_query_present_case_2() -> None:
     """A media query for the narrow-viewport wrap (≤780px) must be
@@ -136,8 +135,7 @@ def test_toolbar_css_no_hardcoded_colors() -> None:
     # property names. Use a negative lookbehind to keep `white-space:`
     # property names safe.
     pattern = re.compile(
-        r"(?<![\w-])"
-        r"(#[0-9a-fA-F]{3,8}\b|\bwhite\b(?!-))",
+        r"(?<![\w-])" r"(#[0-9a-fA-F]{3,8}\b|\bwhite\b(?!-))",
     )
     # Act
     matches = pattern.findall(no_var)
@@ -182,9 +180,9 @@ def test_template_renders_group_class(selector_class: str) -> None:
     # Act
     html = _read(_BOARD_V3_TEMPLATE)
     # Assert
-    assert selector_class in html, (
-        f"board_v3.html missing class {selector_class!r} on any element"
-    )
+    assert (
+        selector_class in html
+    ), f"board_v3.html missing class {selector_class!r} on any element"
 
 
 def test_template_loads_toolbar_css() -> None:
@@ -193,9 +191,9 @@ def test_template_loads_toolbar_css() -> None:
     # Act
     html = _read(_BOARD_V3_TEMPLATE)
     # Assert
-    assert "07-toolbar-groups.css" in html, (
-        "board_v3.html never <link>s 07-toolbar-groups.css"
-    )
+    assert (
+        "07-toolbar-groups.css" in html
+    ), "board_v3.html never <link>s 07-toolbar-groups.css"
 
 
 def test_template_view_group_contains_layout_sort_group_m() -> None:
@@ -208,13 +206,14 @@ def test_template_view_group_contains_layout_sort_group_m() -> None:
     # next end-of-group comment.
     # Act
     m = re.search(
-        r'stx-todo-filterbar__group--view[^>]*>(.*?)\{#\s*end VIEW group',
+        r"stx-todo-filterbar__group--view[^>]*>(.*?)\{#\s*end VIEW group",
         html,
         flags=re.DOTALL,
     )
     # Assert
     view_body = m.group(1)
     assert m, "could not locate VIEW group block in template"
+
 
 def test_template_view_group_contains_layout_sort_group_view_body_contains() -> None:
     """The VIEW group must wrap the Layout, Sort, and Group controls so
@@ -226,13 +225,14 @@ def test_template_view_group_contains_layout_sort_group_view_body_contains() -> 
     # next end-of-group comment.
     # Act
     m = re.search(
-        r'stx-todo-filterbar__group--view[^>]*>(.*?)\{#\s*end VIEW group',
+        r"stx-todo-filterbar__group--view[^>]*>(.*?)\{#\s*end VIEW group",
         html,
         flags=re.DOTALL,
     )
     # Assert
     view_body = m.group(1)
     assert 'class="filt-layout"' in view_body, "VIEW group missing Layout"
+
 
 def test_template_view_group_contains_layout_sort_group_view_body_contains_2() -> None:
     """The VIEW group must wrap the Layout, Sort, and Group controls so
@@ -244,13 +244,14 @@ def test_template_view_group_contains_layout_sort_group_view_body_contains_2() -
     # next end-of-group comment.
     # Act
     m = re.search(
-        r'stx-todo-filterbar__group--view[^>]*>(.*?)\{#\s*end VIEW group',
+        r"stx-todo-filterbar__group--view[^>]*>(.*?)\{#\s*end VIEW group",
         html,
         flags=re.DOTALL,
     )
     # Assert
     view_body = m.group(1)
     assert 'class="filt-sort"' in view_body, "VIEW group missing Sort"
+
 
 def test_template_view_group_contains_layout_sort_group_view_body_contains_3() -> None:
     """The VIEW group must wrap the Layout, Sort, and Group controls so
@@ -262,7 +263,7 @@ def test_template_view_group_contains_layout_sort_group_view_body_contains_3() -
     # next end-of-group comment.
     # Act
     m = re.search(
-        r'stx-todo-filterbar__group--view[^>]*>(.*?)\{#\s*end VIEW group',
+        r"stx-todo-filterbar__group--view[^>]*>(.*?)\{#\s*end VIEW group",
         html,
         flags=re.DOTALL,
     )
@@ -278,13 +279,14 @@ def test_template_primary_zone_contains_add_task_m() -> None:
     html = _read(_BOARD_V3_TEMPLATE)
     # Act
     m = re.search(
-        r'stx-todo-filterbar__primary[^>]*>(.*?)\{#\s*end PRIMARY',
+        r"stx-todo-filterbar__primary[^>]*>(.*?)\{#\s*end PRIMARY",
         html,
         flags=re.DOTALL,
     )
     # Assert
     primary_body = m.group(1)
     assert m, "could not locate PRIMARY zone block in template"
+
 
 def test_template_primary_zone_contains_add_task_primary_body_contains() -> None:
     """The PRIMARY action zone must wrap the +Add Task button so it pops
@@ -293,15 +295,15 @@ def test_template_primary_zone_contains_add_task_primary_body_contains() -> None
     html = _read(_BOARD_V3_TEMPLATE)
     # Act
     m = re.search(
-        r'stx-todo-filterbar__primary[^>]*>(.*?)\{#\s*end PRIMARY',
+        r"stx-todo-filterbar__primary[^>]*>(.*?)\{#\s*end PRIMARY",
         html,
         flags=re.DOTALL,
     )
     # Assert
     primary_body = m.group(1)
-    assert 'id="add-task-btn"' in primary_body, (
-        "PRIMARY zone missing the +Add Task button"
-    )
+    assert (
+        'id="add-task-btn"' in primary_body
+    ), "PRIMARY zone missing the +Add Task button"
 
 
 def test_template_status_group_contains_recent_reload_hideproject_m() -> None:
@@ -312,7 +314,7 @@ def test_template_status_group_contains_recent_reload_hideproject_m() -> None:
     html = _read(_BOARD_V3_TEMPLATE)
     # Act
     m = re.search(
-        r'stx-todo-filterbar__group--status[^>]*>(.*?)\{#\s*end STATUS group',
+        r"stx-todo-filterbar__group--status[^>]*>(.*?)\{#\s*end STATUS group",
         html,
         flags=re.DOTALL,
     )
@@ -320,7 +322,10 @@ def test_template_status_group_contains_recent_reload_hideproject_m() -> None:
     status_body = m.group(1)
     assert m, "could not locate STATUS group block in template"
 
-def test_template_status_group_contains_recent_reload_hideproject_status_body_contains() -> None:
+
+def test_template_status_group_contains_recent_reload_hideproject_status_body_contains() -> (
+    None
+):
     """The STATUS group must wrap the 'N new' recent-count pill, Reload
     button, and hide-project toggle so the operator's status-row stays
     together."""
@@ -328,17 +333,20 @@ def test_template_status_group_contains_recent_reload_hideproject_status_body_co
     html = _read(_BOARD_V3_TEMPLATE)
     # Act
     m = re.search(
-        r'stx-todo-filterbar__group--status[^>]*>(.*?)\{#\s*end STATUS group',
+        r"stx-todo-filterbar__group--status[^>]*>(.*?)\{#\s*end STATUS group",
         html,
         flags=re.DOTALL,
     )
     # Assert
     status_body = m.group(1)
-    assert 'id="recent-count-pill"' in status_body, (
-        "STATUS group missing the 'N new in 24 h' pill"
-    )
+    assert (
+        'id="recent-count-pill"' in status_body
+    ), "STATUS group missing the 'N new in 24 h' pill"
 
-def test_template_status_group_contains_recent_reload_hideproject_status_body_contains_2() -> None:
+
+def test_template_status_group_contains_recent_reload_hideproject_status_body_contains_2() -> (
+    None
+):
     """The STATUS group must wrap the 'N new' recent-count pill, Reload
     button, and hide-project toggle so the operator's status-row stays
     together."""
@@ -346,7 +354,7 @@ def test_template_status_group_contains_recent_reload_hideproject_status_body_co
     html = _read(_BOARD_V3_TEMPLATE)
     # Act
     m = re.search(
-        r'stx-todo-filterbar__group--status[^>]*>(.*?)\{#\s*end STATUS group',
+        r"stx-todo-filterbar__group--status[^>]*>(.*?)\{#\s*end STATUS group",
         html,
         flags=re.DOTALL,
     )
@@ -354,7 +362,10 @@ def test_template_status_group_contains_recent_reload_hideproject_status_body_co
     status_body = m.group(1)
     assert 'id="reload"' in status_body, "STATUS group missing Reload"
 
-def test_template_status_group_contains_recent_reload_hideproject_status_body_contains_3() -> None:
+
+def test_template_status_group_contains_recent_reload_hideproject_status_body_contains_3() -> (
+    None
+):
     """The STATUS group must wrap the 'N new' recent-count pill, Reload
     button, and hide-project toggle so the operator's status-row stays
     together."""
@@ -362,15 +373,15 @@ def test_template_status_group_contains_recent_reload_hideproject_status_body_co
     html = _read(_BOARD_V3_TEMPLATE)
     # Act
     m = re.search(
-        r'stx-todo-filterbar__group--status[^>]*>(.*?)\{#\s*end STATUS group',
+        r"stx-todo-filterbar__group--status[^>]*>(.*?)\{#\s*end STATUS group",
         html,
         flags=re.DOTALL,
     )
     # Assert
     status_body = m.group(1)
-    assert 'id="proj-hide-wrap"' in status_body, (
-        "STATUS group missing hide-project toggle"
-    )
+    assert (
+        'id="proj-hide-wrap"' in status_body
+    ), "STATUS group missing hide-project toggle"
 
 
 def test_template_search_group_contains_search_and_filters_m() -> None:
@@ -380,8 +391,7 @@ def test_template_search_group_contains_search_and_filters_m() -> None:
     html = _read(_BOARD_V3_TEMPLATE)
     # Act
     m = re.search(
-        r'stx-todo-filterbar__group--search[^>]*>(.*?)\{#\s*end '
-        r'\.fb-center',
+        r"stx-todo-filterbar__group--search[^>]*>(.*?)\{#\s*end " r"\.fb-center",
         html,
         flags=re.DOTALL,
     )
@@ -389,41 +399,43 @@ def test_template_search_group_contains_search_and_filters_m() -> None:
     search_body = m.group(1)
     assert m, "could not locate SEARCH/FILTER group block in template"
 
-def test_template_search_group_contains_search_and_filters_search_body_contains() -> None:
-    """The SEARCH/FILTER group must wrap the search input and the
-    Filters popover so query-narrowing controls cluster."""
-    # Arrange
-    html = _read(_BOARD_V3_TEMPLATE)
-    # Act
-    m = re.search(
-        r'stx-todo-filterbar__group--search[^>]*>(.*?)\{#\s*end '
-        r'\.fb-center',
-        html,
-        flags=re.DOTALL,
-    )
-    # Assert
-    search_body = m.group(1)
-    assert 'id="f-search"' in search_body, (
-        "SEARCH group missing search input"
-    )
 
-def test_template_search_group_contains_search_and_filters_search_body_contains_2() -> None:
+def test_template_search_group_contains_search_and_filters_search_body_contains() -> (
+    None
+):
     """The SEARCH/FILTER group must wrap the search input and the
     Filters popover so query-narrowing controls cluster."""
     # Arrange
     html = _read(_BOARD_V3_TEMPLATE)
     # Act
     m = re.search(
-        r'stx-todo-filterbar__group--search[^>]*>(.*?)\{#\s*end '
-        r'\.fb-center',
+        r"stx-todo-filterbar__group--search[^>]*>(.*?)\{#\s*end " r"\.fb-center",
         html,
         flags=re.DOTALL,
     )
     # Assert
     search_body = m.group(1)
-    assert 'id="filt-popover-wrap"' in search_body, (
-        "SEARCH group missing Filters popover"
+    assert 'id="f-search"' in search_body, "SEARCH group missing search input"
+
+
+def test_template_search_group_contains_search_and_filters_search_body_contains_2() -> (
+    None
+):
+    """The SEARCH/FILTER group must wrap the search input and the
+    Filters popover so query-narrowing controls cluster."""
+    # Arrange
+    html = _read(_BOARD_V3_TEMPLATE)
+    # Act
+    m = re.search(
+        r"stx-todo-filterbar__group--search[^>]*>(.*?)\{#\s*end " r"\.fb-center",
+        html,
+        flags=re.DOTALL,
     )
+    # Assert
+    search_body = m.group(1)
+    assert (
+        'id="filt-popover-wrap"' in search_body
+    ), "SEARCH group missing Filters popover"
 
 
 # ============================================================================
@@ -457,6 +469,4 @@ def test_template_preserves_every_original_control(needle: str) -> None:
     # Act
     html = _read(_BOARD_V3_TEMPLATE)
     # Assert
-    assert needle in html, (
-        f"board_v3.html lost an original toolbar control: {needle!r}"
-    )
+    assert needle in html, f"board_v3.html lost an original toolbar control: {needle!r}"

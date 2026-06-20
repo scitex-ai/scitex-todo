@@ -33,10 +33,14 @@ from scitex_todo._store import add_task
 
 def test_explicit_blocker_reason_when_blocker_field_set():
     # Arrange — status=blocked + blocker=<kind>.
-    tasks = [{
-        "id": "t-a", "title": "x", "status": "blocked",
-        "blocker": "operator-decision",
-    }]
+    tasks = [
+        {
+            "id": "t-a",
+            "title": "x",
+            "status": "blocked",
+            "blocker": "operator-decision",
+        }
+    ]
     # Act
     result = blocked_tasks(tasks)
     # Assert
@@ -45,10 +49,14 @@ def test_explicit_blocker_reason_when_blocker_field_set():
 
 def test_explicit_blocker_chain_carries_blocker_label():
     # Arrange
-    tasks = [{
-        "id": "t-a", "title": "x", "status": "blocked",
-        "blocker": "compute",
-    }]
+    tasks = [
+        {
+            "id": "t-a",
+            "title": "x",
+            "status": "blocked",
+            "blocker": "compute",
+        }
+    ]
     # Act
     result = blocked_tasks(tasks)
     # Assert
@@ -77,8 +85,7 @@ def test_depends_on_reason_when_upstream_pending():
     # Arrange — t-b's depends_on is unresolved.
     tasks = [
         {"id": "t-up", "title": "up", "status": "pending"},
-        {"id": "t-b", "title": "down", "status": "pending",
-         "depends_on": ["t-up"]},
+        {"id": "t-b", "title": "down", "status": "pending", "depends_on": ["t-up"]},
     ]
     # Act
     result = blocked_tasks(tasks)
@@ -92,8 +99,7 @@ def test_depends_on_chain_carries_unresolved_upstream_ids():
     # Arrange
     tasks = [
         {"id": "t-up", "title": "up", "status": "pending"},
-        {"id": "t-b", "title": "down", "status": "pending",
-         "depends_on": ["t-up"]},
+        {"id": "t-b", "title": "down", "status": "pending", "depends_on": ["t-up"]},
     ]
     # Act
     result = blocked_tasks(tasks)
@@ -105,8 +111,7 @@ def test_depends_on_chain_carries_unresolved_upstream_ids():
 def test_reverse_blocks_reason_when_upstream_z_blocks_us():
     # Arrange — Z has `blocks: [t-b]` and Z is pending.
     tasks = [
-        {"id": "t-z", "title": "blocker", "status": "pending",
-         "blocks": ["t-b"]},
+        {"id": "t-z", "title": "blocker", "status": "pending", "blocks": ["t-b"]},
         {"id": "t-b", "title": "downstream", "status": "pending"},
     ]
     # Act
@@ -173,13 +178,15 @@ def test_runnable_task_is_excluded():
 def test_by_reason_histogram_counts_each_reason():
     # Arrange — 2 explicit-blockers + 1 depends-on.
     tasks = [
-        {"id": "t-a", "title": "x", "status": "blocked",
-         "blocker": "operator-decision"},
-        {"id": "t-b", "title": "y", "status": "blocked",
-         "blocker": "compute"},
+        {
+            "id": "t-a",
+            "title": "x",
+            "status": "blocked",
+            "blocker": "operator-decision",
+        },
+        {"id": "t-b", "title": "y", "status": "blocked", "blocker": "compute"},
         {"id": "t-up", "title": "up", "status": "pending"},
-        {"id": "t-c", "title": "down", "status": "pending",
-         "depends_on": ["t-up"]},
+        {"id": "t-c", "title": "down", "status": "pending", "depends_on": ["t-up"]},
     ]
     # Act
     result = blocked_tasks(tasks)
@@ -191,8 +198,12 @@ def test_total_count_matches_task_list_length():
     # Arrange
     tasks = [
         {"id": "t-a", "title": "x", "status": "blocked"},
-        {"id": "t-b", "title": "y", "status": "blocked",
-         "blocker": "operator-decision"},
+        {
+            "id": "t-b",
+            "title": "y",
+            "status": "blocked",
+            "blocker": "operator-decision",
+        },
     ]
     # Act
     result = blocked_tasks(tasks)
@@ -206,10 +217,13 @@ def test_total_count_matches_task_list_length():
 def test_agent_filter_narrows_blocked_list():
     # Arrange
     tasks = [
-        {"id": "t-mine", "title": "x", "status": "blocked",
-         "agent": "proj-scitex-todo"},
-        {"id": "t-other", "title": "y", "status": "blocked",
-         "agent": "proj-other"},
+        {
+            "id": "t-mine",
+            "title": "x",
+            "status": "blocked",
+            "agent": "proj-scitex-todo",
+        },
+        {"id": "t-other", "title": "y", "status": "blocked", "agent": "proj-other"},
     ]
     # Act
     result = blocked_tasks(tasks, agent="proj-scitex-todo")
@@ -220,10 +234,13 @@ def test_agent_filter_narrows_blocked_list():
 def test_group_filter_narrows_blocked_list():
     # Arrange
     tasks = [
-        {"id": "t-paper", "title": "x", "status": "blocked",
-         "group": "paper-portfolio"},
-        {"id": "t-ci", "title": "y", "status": "blocked",
-         "group": "ci-recovery"},
+        {
+            "id": "t-paper",
+            "title": "x",
+            "status": "blocked",
+            "group": "paper-portfolio",
+        },
+        {"id": "t-ci", "title": "y", "status": "blocked", "group": "ci-recovery"},
     ]
     # Act
     result = blocked_tasks(tasks, group="paper-portfolio")
@@ -238,9 +255,14 @@ def test_blocked_reasons_constant_has_four_entries():
     # Arrange
     # Act
     # Assert
-    assert BLOCKED_REASONS == frozenset({
-        "explicit-blocker", "manual-block", "depends-on", "reverse-blocks",
-    })
+    assert BLOCKED_REASONS == frozenset(
+        {
+            "explicit-blocker",
+            "manual-block",
+            "depends-on",
+            "reverse-blocks",
+        }
+    )
 
 
 # === CLI =================================================================
@@ -249,8 +271,9 @@ def test_blocked_reasons_constant_has_four_entries():
 def test_cli_blocked_lists_blocked_tasks(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-a", title="x", status="blocked",
-             blocker="operator-decision")
+    add_task(
+        store=store, id="t-a", title="x", status="blocked", blocker="operator-decision"
+    )
     runner = CliRunner()
     # Act
     result = runner.invoke(main, ["blocked", "--tasks", str(store)])
@@ -261,12 +284,14 @@ def test_cli_blocked_lists_blocked_tasks(tmp_path: Path):
 def test_cli_blocked_json_emits_structured_payload(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-a", title="x", status="blocked",
-             blocker="operator-decision")
+    add_task(
+        store=store, id="t-a", title="x", status="blocked", blocker="operator-decision"
+    )
     runner = CliRunner()
     # Act
     result = runner.invoke(
-        main, ["blocked", "--tasks", str(store), "--json"],
+        main,
+        ["blocked", "--tasks", str(store), "--json"],
     )
     # Assert
     payload = json.loads(result.output)

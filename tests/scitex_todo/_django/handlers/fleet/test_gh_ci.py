@@ -49,6 +49,7 @@ def test_fleet_adapter_error_is_runtime_error_subclass_issubclass() -> None:
     # Assert
     assert issubclass(FleetAdapterError, RuntimeError)
 
+
 def test_fleet_adapter_error_is_runtime_error_subclass_fleetadaptererror() -> None:
     """The adapter family's failure class is a ``RuntimeError`` subclass
     so callers that ``except RuntimeError`` (e.g. broad Django error
@@ -103,7 +104,6 @@ def test_config_malformed_yaml_raises_raises_fleetadaptererror(env, tmp_path) ->
     # The message must name the file path so the operator can find it.
     with pytest.raises(FleetAdapterError, match="dashboard.yaml"):
         fleet_config_load()
-
 
 
 def test_config_env_override_replaces_file_list(env, tmp_path) -> None:
@@ -215,7 +215,6 @@ def test_invalid_slug_shape_raises_without_gh_raises_fleetadaptererror() -> None
         fetch_repo_ci_status("not-a-slug")
 
 
-
 def test_gh_missing_binary_raises_raises_fleetadaptererror(env) -> None:
     """Surfacing "gh not installed" must NOT silently fall back to an
     empty-checks success — that would lie to the operator about fleet
@@ -228,7 +227,6 @@ def test_gh_missing_binary_raises_raises_fleetadaptererror(env) -> None:
     # Assert
     with pytest.raises(FleetAdapterError, match="(?i)gh"):
         gh_ci_mod.fetch_repo_ci_status("owner/name")
-
 
 
 # ─── overall-reducer pure unit tests ────────────────────────────────────
@@ -296,6 +294,7 @@ def test_config_module_constant_paths_str() -> None:
     assert str(fleet_config_mod._CONFIG_REL) == str(
         Path(".scitex") / "todo" / "dashboard.yaml"
     )
+
 
 def test_config_module_constant_paths_env_repos() -> None:
     """Lock the config-path constant so a rename downstream forces a
@@ -528,32 +527,51 @@ def test_ecosystem_flag_off_keeps_only_explicit_repos(env, tmp_path) -> None:
     assert out["fleet"]["ci_status"]["repos"] == ["owner/x", "owner/y"]
 
 
-@pytest.mark.skipif(
-    not _scitex_dev_available(),
-    reason="scitex-dev not on PATH (ecosystem registry source)",
-)
-def test_ecosystem_flag_unions_registry_keeping_pin(env, tmp_path) -> None:
-    """With the flag ON the explicit repo leads the list and the live
-    ecosystem registry is unioned in (de-duped) — the pills 'spin out'
-    across the ecosystem without dropping the operator's pin."""
-    # Arrange
+@pytest.fixture()
+def _unioned_ecosystem_repos(env, tmp_path):
+    """Resolve the CI repo list with the ecosystem flag ON.
+
+    The ecosystem is sourced from a LIVE ``scitex-dev ecosystem list``
+    subprocess that intermittently returns nothing under suite load;
+    when it does, the union can't be exercised, so the fixture SKIPs
+    (hermetic guard, same spirit as #218's sac-mesh skip) rather than
+    letting the dependent tests flake.
+    """
+    if not _scitex_dev_available():
+        pytest.skip("scitex-dev not on PATH (ecosystem registry source)")
     _isolate_home(env, tmp_path)
     fleet_config_mod._eco_cache["ts"] = 0.0
     fleet_config_mod._eco_cache["repos"] = []
     env.set("SCITEX_TODO_FLEET_CI_REPOS", "owner/pinned")
     env.set("SCITEX_TODO_FLEET_CI_ECOSYSTEM", "1")
-
-    # Act
     repos = fleet_config_load()["fleet"]["ci_status"]["repos"]
-
-    # The ecosystem is sourced from a LIVE `scitex-dev ecosystem list`
-    # subprocess that intermittently returns nothing under suite load. Without
-    # it the union can't be asserted, so skip rather than flake — hermetic
-    # guard, same spirit as #218's sac-mesh skip.
     if len(repos) <= 1:
         pytest.skip("live `scitex-dev ecosystem list` returned no ecosystem repos")
+    return repos
 
+
+def test_ecosystem_flag_keeps_operator_pin_first(_unioned_ecosystem_repos) -> None:
+    """With the flag ON the explicit repo still leads the list."""
+    # Arrange
+    repos = _unioned_ecosystem_repos
+    # Act
     # Assert
-    assert (
-        repos[0] == "owner/pinned" and len(repos) > 1 and len(repos) == len(set(repos))
-    )
+    assert repos[0] == "owner/pinned"
+
+
+def test_ecosystem_flag_unions_extra_repos(_unioned_ecosystem_repos) -> None:
+    """The live ecosystem registry is unioned in beyond the single pin."""
+    # Arrange
+    repos = _unioned_ecosystem_repos
+    # Act
+    # Assert
+    assert len(repos) > 1
+
+
+def test_ecosystem_flag_union_is_deduped(_unioned_ecosystem_repos) -> None:
+    """The unioned list carries no duplicates."""
+    # Arrange
+    repos = _unioned_ecosystem_repos
+    # Act
+    # Assert
+    assert len(repos) == len(set(repos))

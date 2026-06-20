@@ -25,64 +25,99 @@ class TestRunnableFilter:
     def test_skips_blocked_tasks(self):
         # Arrange
         # Act
-        tasks = [{
-            "id": "a", "title": "A", "status": "blocked",
-            "blocker": "operator-decision", "agent": "proj-x",
-        }]
+        tasks = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "blocked",
+                "blocker": "operator-decision",
+                "agent": "proj-x",
+            }
+        ]
         # Assert
         assert next_task(tasks, assignee="proj-x").task is None
 
     def test_skips_done_tasks(self):
         # Arrange
         # Act
-        tasks = [{
-            "id": "a", "title": "A", "status": "done", "agent": "proj-x",
-        }]
+        tasks = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "done",
+                "agent": "proj-x",
+            }
+        ]
         # Assert
         assert next_task(tasks, assignee="proj-x").task is None
 
     def test_accepts_pending_runnable_task(self):
         # Arrange
         # Act
-        tasks = [{
-            "id": "a", "title": "A", "status": "pending", "agent": "proj-x",
-        }]
+        tasks = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "agent": "proj-x",
+            }
+        ]
         # Assert
         assert next_task(tasks, assignee="proj-x").task["id"] == "a"
 
     def test_accepts_in_progress(self):
         # Arrange
         # Act
-        tasks = [{
-            "id": "a", "title": "A", "status": "in_progress", "agent": "proj-x",
-        }]
+        tasks = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "in_progress",
+                "agent": "proj-x",
+            }
+        ]
         # Assert
         assert next_task(tasks, assignee="proj-x").task["id"] == "a"
 
     def test_skips_other_assignees(self):
         # Arrange
         # Act
-        tasks = [{
-            "id": "a", "title": "A", "status": "pending", "agent": "proj-y",
-        }]
+        tasks = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "agent": "proj-y",
+            }
+        ]
         # Assert
         assert next_task(tasks, assignee="proj-x").task is None
 
     def test_accepts_legacy_assignee_field(self):
         # Arrange
         # Act
-        tasks = [{
-            "id": "a", "title": "A", "status": "pending", "assignee": "proj-x",
-        }]
+        tasks = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "assignee": "proj-x",
+            }
+        ]
         # Assert
         assert next_task(tasks, assignee="proj-x").task["id"] == "a"
 
     def test_no_assignee_arg_accepts_any(self):
         # Arrange
         # Act
-        tasks = [{
-            "id": "a", "title": "A", "status": "pending", "agent": "proj-x",
-        }]
+        tasks = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "agent": "proj-x",
+            }
+        ]
         # When `assignee` is None, the predicate accepts any agent — the
         # lead-side cron uses this mode to see the global runnable queue.
         # Assert
@@ -93,10 +128,20 @@ class TestProjectFilter:
     def test_scopes_to_project(self):
         # Arrange
         tasks = [
-            {"id": "a", "title": "A", "status": "pending",
-             "agent": "proj-x", "project": "alpha"},
-            {"id": "b", "title": "B", "status": "pending",
-             "agent": "proj-x", "project": "beta"},
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "agent": "proj-x",
+                "project": "alpha",
+            },
+            {
+                "id": "b",
+                "title": "B",
+                "status": "pending",
+                "agent": "proj-x",
+                "project": "beta",
+            },
         ]
         # Act
         out = next_task(tasks, assignee="proj-x", project="beta")
@@ -108,10 +153,20 @@ class TestPrioritySort:
     def test_lower_priority_picked_first(self):
         # Arrange
         tasks = [
-            {"id": "low", "title": "L", "status": "pending",
-             "agent": "proj-x", "priority": 5},
-            {"id": "high", "title": "H", "status": "pending",
-             "agent": "proj-x", "priority": 1},
+            {
+                "id": "low",
+                "title": "L",
+                "status": "pending",
+                "agent": "proj-x",
+                "priority": 5,
+            },
+            {
+                "id": "high",
+                "title": "H",
+                "status": "pending",
+                "agent": "proj-x",
+                "priority": 1,
+            },
         ]
         # Act
         out = next_task(tasks, assignee="proj-x")
@@ -121,10 +176,14 @@ class TestPrioritySort:
     def test_unrated_ranks_last(self):
         # Arrange
         tasks = [
-            {"id": "rated", "title": "R", "status": "pending",
-             "agent": "proj-x", "priority": 99},
-            {"id": "unrated", "title": "U", "status": "pending",
-             "agent": "proj-x"},
+            {
+                "id": "rated",
+                "title": "R",
+                "status": "pending",
+                "agent": "proj-x",
+                "priority": 99,
+            },
+            {"id": "unrated", "title": "U", "status": "pending", "agent": "proj-x"},
         ]
         # Act
         out = next_task(tasks, assignee="proj-x")
@@ -136,10 +195,22 @@ class TestActivitySort:
     def test_newer_activity_wins_at_equal_priority(self):
         # Arrange
         tasks = [
-            {"id": "old", "title": "O", "status": "pending",
-             "agent": "proj-x", "priority": 1, "last_activity": "2026-01-01"},
-            {"id": "new", "title": "N", "status": "pending",
-             "agent": "proj-x", "priority": 1, "last_activity": "2026-06-12"},
+            {
+                "id": "old",
+                "title": "O",
+                "status": "pending",
+                "agent": "proj-x",
+                "priority": 1,
+                "last_activity": "2026-01-01",
+            },
+            {
+                "id": "new",
+                "title": "N",
+                "status": "pending",
+                "agent": "proj-x",
+                "priority": 1,
+                "last_activity": "2026-06-12",
+            },
         ]
         # Act
         out = next_task(tasks, assignee="proj-x")
@@ -151,10 +222,20 @@ class TestIdTiebreak:
     def test_deterministic_id_asc(self):
         # Arrange
         tasks = [
-            {"id": "b", "title": "B", "status": "pending",
-             "agent": "proj-x", "priority": 1},
-            {"id": "a", "title": "A", "status": "pending",
-             "agent": "proj-x", "priority": 1},
+            {
+                "id": "b",
+                "title": "B",
+                "status": "pending",
+                "agent": "proj-x",
+                "priority": 1,
+            },
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "agent": "proj-x",
+                "priority": 1,
+            },
         ]
         # Act
         out = next_task(tasks, assignee="proj-x")
@@ -168,8 +249,13 @@ class TestCandidateCount:
         tasks = [
             {"id": "a", "title": "A", "status": "pending", "agent": "proj-x"},
             {"id": "b", "title": "B", "status": "pending", "agent": "proj-x"},
-            {"id": "c", "title": "C", "status": "blocked",
-             "blocker": "dep", "agent": "proj-x"},
+            {
+                "id": "c",
+                "title": "C",
+                "status": "blocked",
+                "blocker": "dep",
+                "agent": "proj-x",
+            },
         ]
         # Act
         out = next_task(tasks, assignee="proj-x")

@@ -100,8 +100,9 @@ class TestCollisionPolicy:
         with caplog.at_level("WARNING", logger="scitex_todo._django.services"):
             _svc.get_board(str(global_store))
         # Assert — a collision log entry naming the id is emitted.
-        assert any("collision" in r.message and "'x'" in r.message
-                   for r in caplog.records)
+        assert any(
+            "collision" in r.message and "'x'" in r.message for r in caplog.records
+        )
 
 
 class TestMalformedLane:
@@ -156,10 +157,8 @@ class TestMtime:
 class TestNoLanesConfigured:
     """When no lanes are discovered, behavior matches the pre-PR loader."""
 
-    def test_no_lanes_only_global_appears(self, tmp_path, env):
-        # Arrange — empty glob so nothing is discovered. The conftest's
-        # autouse fixture already sets this to "" by default; we redo it
-        # here so the test is self-describing if the autouse changes.
+    def test_empty_glob_yields_only_the_global_store_tasks(self, tmp_path, env):
+        # Arrange — empty glob so nothing is discovered.
         env.set(_svc.ENV_LANE_GLOBS, "")
         _svc._reset_cache()
         global_store = tmp_path / "global.yaml"
@@ -169,6 +168,19 @@ class TestNoLanesConfigured:
             board = _svc.get_board(str(global_store))
             # Assert
             assert {t["id"] for t in board.tasks} == {"g"}
+        finally:
+            _svc._reset_cache()
+
+    def test_empty_glob_yields_no_lane_paths(self, tmp_path, env):
+        # Arrange — empty glob so nothing is discovered.
+        env.set(_svc.ENV_LANE_GLOBS, "")
+        _svc._reset_cache()
+        global_store = tmp_path / "global.yaml"
+        _write(global_store, "tasks:\n  - {id: g, title: G, status: pending}\n")
+        try:
+            # Act
+            board = _svc.get_board(str(global_store))
+            # Assert
             assert board.lane_paths == []
         finally:
             _svc._reset_cache()

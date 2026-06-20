@@ -106,7 +106,8 @@ class TestStatus:
         assert "NOT running" in result.output
 
     def test_status_when_pidfile_points_at_live_process(
-        self, pidfile_path,
+        self,
+        pidfile_path,
     ):
         # Arrange — spawn a sleeper subprocess + write its PID.
         sleeper = subprocess.Popen(

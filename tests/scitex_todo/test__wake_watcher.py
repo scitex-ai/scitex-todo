@@ -34,8 +34,7 @@ class TestSeed:
     def test_first_pass_fires_no_wakes_out(self):
         # Arrange
         state = WatcherState()
-        tasks = [{"id": "a", "title": "A", "status": "pending",
-                  "agent": "proj-x"}]
+        tasks = [{"id": "a", "title": "A", "status": "pending", "agent": "proj-x"}]
         # Act
         out = detect_changes(state, tasks, now=0.0)
         # Assert
@@ -44,8 +43,7 @@ class TestSeed:
     def test_first_pass_fires_no_wakes_seeded(self):
         # Arrange
         state = WatcherState()
-        tasks = [{"id": "a", "title": "A", "status": "pending",
-                  "agent": "proj-x"}]
+        tasks = [{"id": "a", "title": "A", "status": "pending", "agent": "proj-x"}]
         # Act
         out = detect_changes(state, tasks, now=0.0)
         # Assert
@@ -57,8 +55,7 @@ class TestTaskAdded:
         # Arrange
         state = WatcherState()
         _seed(state, [])  # empty seed
-        tasks = [{"id": "a", "title": "A", "status": "pending",
-                  "agent": "proj-x"}]
+        tasks = [{"id": "a", "title": "A", "status": "pending", "agent": "proj-x"}]
         # Act
         out = detect_changes(state, tasks, now=100.0)
         # Assert
@@ -68,8 +65,7 @@ class TestTaskAdded:
         # Arrange
         state = WatcherState()
         _seed(state, [])  # empty seed
-        tasks = [{"id": "a", "title": "A", "status": "pending",
-                  "agent": "proj-x"}]
+        tasks = [{"id": "a", "title": "A", "status": "pending", "agent": "proj-x"}]
         # Act
         out = detect_changes(state, tasks, now=100.0)
         # Assert
@@ -79,8 +75,7 @@ class TestTaskAdded:
         # Arrange
         state = WatcherState()
         _seed(state, [])  # empty seed
-        tasks = [{"id": "a", "title": "A", "status": "pending",
-                  "agent": "proj-x"}]
+        tasks = [{"id": "a", "title": "A", "status": "pending", "agent": "proj-x"}]
         # Act
         out = detect_changes(state, tasks, now=100.0)
         # Assert
@@ -90,8 +85,7 @@ class TestTaskAdded:
         # Arrange
         state = WatcherState()
         _seed(state, [])  # empty seed
-        tasks = [{"id": "a", "title": "A", "status": "pending",
-                  "agent": "proj-x"}]
+        tasks = [{"id": "a", "title": "A", "status": "pending", "agent": "proj-x"}]
         # Act
         out = detect_changes(state, tasks, now=100.0)
         # Assert
@@ -111,15 +105,31 @@ class TestCommentAdded:
     def test_appended_comment_fires_wake_len(self):
         # Arrange
         state = WatcherState()
-        prev = [{"id": "a", "title": "A", "status": "pending",
-                 "agent": "proj-x", "comments": []}]
+        prev = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "agent": "proj-x",
+                "comments": [],
+            }
+        ]
         _seed(state, prev)
-        cur = [{"id": "a", "title": "A", "status": "pending",
+        cur = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
                 "agent": "proj-x",
                 "comments": [
-                    {"ts": "2026-06-12T00:00Z", "author": "lead",
-                     "text": "please pick this up"},
-                ]}]
+                    {
+                        "ts": "2026-06-12T00:00Z",
+                        "author": "lead",
+                        "text": "please pick this up",
+                    },
+                ],
+            }
+        ]
         # Act
         out = detect_changes(state, cur, now=100.0)
         # Assert
@@ -128,15 +138,31 @@ class TestCommentAdded:
     def test_appended_comment_fires_wake_trigger_kind(self):
         # Arrange
         state = WatcherState()
-        prev = [{"id": "a", "title": "A", "status": "pending",
-                 "agent": "proj-x", "comments": []}]
+        prev = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "agent": "proj-x",
+                "comments": [],
+            }
+        ]
         _seed(state, prev)
-        cur = [{"id": "a", "title": "A", "status": "pending",
+        cur = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
                 "agent": "proj-x",
                 "comments": [
-                    {"ts": "2026-06-12T00:00Z", "author": "lead",
-                     "text": "please pick this up"},
-                ]}]
+                    {
+                        "ts": "2026-06-12T00:00Z",
+                        "author": "lead",
+                        "text": "please pick this up",
+                    },
+                ],
+            }
+        ]
         # Act
         out = detect_changes(state, cur, now=100.0)
         # Assert
@@ -145,15 +171,31 @@ class TestCommentAdded:
     def test_appended_comment_fires_wake_summary_contains(self):
         # Arrange
         state = WatcherState()
-        prev = [{"id": "a", "title": "A", "status": "pending",
-                 "agent": "proj-x", "comments": []}]
+        prev = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "agent": "proj-x",
+                "comments": [],
+            }
+        ]
         _seed(state, prev)
-        cur = [{"id": "a", "title": "A", "status": "pending",
+        cur = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
                 "agent": "proj-x",
                 "comments": [
-                    {"ts": "2026-06-12T00:00Z", "author": "lead",
-                     "text": "please pick this up"},
-                ]}]
+                    {
+                        "ts": "2026-06-12T00:00Z",
+                        "author": "lead",
+                        "text": "please pick this up",
+                    },
+                ],
+            }
+        ]
         # Act
         out = detect_changes(state, cur, now=100.0)
         # Assert
@@ -164,11 +206,9 @@ class TestStatusChanged:
     def test_status_flip_fires_wake_len(self):
         # Arrange
         state = WatcherState()
-        prev = [{"id": "a", "title": "A", "status": "pending",
-                 "agent": "proj-x"}]
+        prev = [{"id": "a", "title": "A", "status": "pending", "agent": "proj-x"}]
         _seed(state, prev)
-        cur = [{"id": "a", "title": "A", "status": "in_progress",
-                "agent": "proj-x"}]
+        cur = [{"id": "a", "title": "A", "status": "in_progress", "agent": "proj-x"}]
         # Act
         out = detect_changes(state, cur, now=100.0)
         # Assert
@@ -177,11 +217,9 @@ class TestStatusChanged:
     def test_status_flip_fires_wake_trigger_kind(self):
         # Arrange
         state = WatcherState()
-        prev = [{"id": "a", "title": "A", "status": "pending",
-                 "agent": "proj-x"}]
+        prev = [{"id": "a", "title": "A", "status": "pending", "agent": "proj-x"}]
         _seed(state, prev)
-        cur = [{"id": "a", "title": "A", "status": "in_progress",
-                "agent": "proj-x"}]
+        cur = [{"id": "a", "title": "A", "status": "in_progress", "agent": "proj-x"}]
         # Act
         out = detect_changes(state, cur, now=100.0)
         # Assert
@@ -190,11 +228,9 @@ class TestStatusChanged:
     def test_status_flip_fires_wake_summary_contains(self):
         # Arrange
         state = WatcherState()
-        prev = [{"id": "a", "title": "A", "status": "pending",
-                 "agent": "proj-x"}]
+        prev = [{"id": "a", "title": "A", "status": "pending", "agent": "proj-x"}]
         _seed(state, prev)
-        cur = [{"id": "a", "title": "A", "status": "in_progress",
-                "agent": "proj-x"}]
+        cur = [{"id": "a", "title": "A", "status": "in_progress", "agent": "proj-x"}]
         # Act
         out = detect_changes(state, cur, now=100.0)
         # Assert
@@ -203,11 +239,9 @@ class TestStatusChanged:
     def test_status_flip_fires_wake_summary_contains_2(self):
         # Arrange
         state = WatcherState()
-        prev = [{"id": "a", "title": "A", "status": "pending",
-                 "agent": "proj-x"}]
+        prev = [{"id": "a", "title": "A", "status": "pending", "agent": "proj-x"}]
         _seed(state, prev)
-        cur = [{"id": "a", "title": "A", "status": "in_progress",
-                "agent": "proj-x"}]
+        cur = [{"id": "a", "title": "A", "status": "in_progress", "agent": "proj-x"}]
         # Act
         out = detect_changes(state, cur, now=100.0)
         # Assert
@@ -218,69 +252,128 @@ class TestDebounce:
     def test_back_to_back_wakes_collapse_per_agent_len(self):
         # Arrange
         state = WatcherState()
-        prev = [{"id": "a", "title": "A", "status": "pending",
-                 "agent": "proj-x", "comments": []}]
+        prev = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "agent": "proj-x",
+                "comments": [],
+            }
+        ]
         _seed(state, prev)
         # Two comments in quick succession.
-        cur1 = [{"id": "a", "title": "A", "status": "pending",
-                 "agent": "proj-x",
-                 "comments": [{"author": "lead", "text": "1"}]}]
-        cur2 = [{"id": "a", "title": "A", "status": "pending",
-                 "agent": "proj-x",
-                 "comments": [{"author": "lead", "text": "1"},
-                              {"author": "lead", "text": "2"}]}]
+        cur1 = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "agent": "proj-x",
+                "comments": [{"author": "lead", "text": "1"}],
+            }
+        ]
+        cur2 = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "agent": "proj-x",
+                "comments": [
+                    {"author": "lead", "text": "1"},
+                    {"author": "lead", "text": "2"},
+                ],
+            }
+        ]
         # Act
-        first = detect_changes(state, cur1, now=100.0,
-                               min_wake_interval_s=30.0)
+        first = detect_changes(state, cur1, now=100.0, min_wake_interval_s=30.0)
         # Assert
-        second = detect_changes(state, cur2, now=110.0,
-                                min_wake_interval_s=30.0)
+        second = detect_changes(state, cur2, now=110.0, min_wake_interval_s=30.0)
         assert len(first) == 1
 
     def test_back_to_back_wakes_collapse_per_agent_second(self):
         # Arrange
         state = WatcherState()
-        prev = [{"id": "a", "title": "A", "status": "pending",
-                 "agent": "proj-x", "comments": []}]
+        prev = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "agent": "proj-x",
+                "comments": [],
+            }
+        ]
         _seed(state, prev)
         # Two comments in quick succession.
-        cur1 = [{"id": "a", "title": "A", "status": "pending",
-                 "agent": "proj-x",
-                 "comments": [{"author": "lead", "text": "1"}]}]
-        cur2 = [{"id": "a", "title": "A", "status": "pending",
-                 "agent": "proj-x",
-                 "comments": [{"author": "lead", "text": "1"},
-                              {"author": "lead", "text": "2"}]}]
+        cur1 = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "agent": "proj-x",
+                "comments": [{"author": "lead", "text": "1"}],
+            }
+        ]
+        cur2 = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "agent": "proj-x",
+                "comments": [
+                    {"author": "lead", "text": "1"},
+                    {"author": "lead", "text": "2"},
+                ],
+            }
+        ]
         # Act
-        first = detect_changes(state, cur1, now=100.0,
-                               min_wake_interval_s=30.0)
+        first = detect_changes(state, cur1, now=100.0, min_wake_interval_s=30.0)
         # Assert
-        second = detect_changes(state, cur2, now=110.0,
-                                min_wake_interval_s=30.0)
+        second = detect_changes(state, cur2, now=110.0, min_wake_interval_s=30.0)
         assert second == []  # debounced
 
     def test_wake_after_debounce_window_passes(self):
         # Arrange
         state = WatcherState()
-        prev = [{"id": "a", "title": "A", "status": "pending",
-                 "agent": "proj-x", "comments": []}]
+        prev = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "agent": "proj-x",
+                "comments": [],
+            }
+        ]
         _seed(state, prev)
-        cur1 = [{"id": "a", "title": "A", "status": "pending",
-                 "agent": "proj-x",
-                 "comments": [{"author": "lead", "text": "1"}]}]
-        cur2 = [{"id": "a", "title": "A", "status": "pending",
-                 "agent": "proj-x",
-                 "comments": [{"author": "lead", "text": "1"},
-                              {"author": "lead", "text": "2"}]}]
+        cur1 = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "agent": "proj-x",
+                "comments": [{"author": "lead", "text": "1"}],
+            }
+        ]
+        cur2 = [
+            {
+                "id": "a",
+                "title": "A",
+                "status": "pending",
+                "agent": "proj-x",
+                "comments": [
+                    {"author": "lead", "text": "1"},
+                    {"author": "lead", "text": "2"},
+                ],
+            }
+        ]
         detect_changes(state, cur1, now=100.0, min_wake_interval_s=30.0)
         # Act
-        out = detect_changes(state, cur2, now=200.0,
-                             min_wake_interval_s=30.0)
+        out = detect_changes(state, cur2, now=200.0, min_wake_interval_s=30.0)
         # Assert
         assert len(out) == 1
 
 
 # === post_wake — real HTTP round-trip on a localhost ephemeral port ====
+
 
 class _OkHandler(BaseHTTPRequestHandler):
     received: list[dict] = []

@@ -43,7 +43,10 @@ class TestRepeaterParseWeekly:
         # Arrange
         # Act
         _, rep = _parse_deadline_or_raise(
-            "2026-06-15 +1w", source="<t>", tid="x", label="deadline",
+            "2026-06-15 +1w",
+            source="<t>",
+            tid="x",
+            label="deadline",
         )
         # Assert
         assert rep == Repeater(n=1, unit="w", catchup=False)
@@ -54,7 +57,10 @@ class TestRepeaterParseCatchupMonthly:
         # Arrange
         # Act
         _, rep = _parse_deadline_or_raise(
-            "2026-06-15 ++2m", source="<t>", tid="x", label="deadline",
+            "2026-06-15 ++2m",
+            source="<t>",
+            tid="x",
+            label="deadline",
         )
         # Assert
         assert rep == Repeater(n=2, unit="m", catchup=True)
@@ -68,20 +74,30 @@ class TestRepeaterRejectZeroN:
         with pytest.raises(TaskValidationError, match="zero/negative"):
             _parse_deadline_or_raise(
                 "2026-06-15 +0w",
-                source="<t>", tid="x", label="deadline",
+                source="<t>",
+                tid="x",
+                label="deadline",
             )
 
 
 class TestRepeaterAcceptsAllUnits:
-    @pytest.mark.parametrize("suffix,unit", [
-        ("+3d", "d"), ("+1w", "w"), ("+2m", "m"), ("+5y", "y"),
-    ])
+    @pytest.mark.parametrize(
+        "suffix,unit",
+        [
+            ("+3d", "d"),
+            ("+1w", "w"),
+            ("+2m", "m"),
+            ("+5y", "y"),
+        ],
+    )
     def test_unit_suffix_parses_to_unit(self, suffix, unit):
         # Arrange
         # Act
         _, rep = _parse_deadline_or_raise(
             f"2026-06-15 {suffix}",
-            source="<t>", tid="x", label="deadline",
+            source="<t>",
+            tid="x",
+            label="deadline",
         )
         # Assert
         assert rep.unit == unit
@@ -95,7 +111,9 @@ class TestRepeaterRejectUnknownUnit:
         with pytest.raises(TaskValidationError, match="unparseable"):
             _parse_deadline_or_raise(
                 "2026-06-15 +1x",
-                source="<t>", tid="x", label="deadline",
+                source="<t>",
+                tid="x",
+                label="deadline",
             )
 
 
@@ -156,9 +174,7 @@ class TestMutualExclusion:
         )
         # Act
         # Assert
-        with pytest.raises(
-            TaskValidationError, match="BOTH deadline and deadlines"
-        ):
+        with pytest.raises(TaskValidationError, match="BOTH deadline and deadlines"):
             load_tasks(store)
 
 
@@ -167,8 +183,7 @@ class TestDeadlinesEmptyListRejected:
         # Arrange
         store = _write(
             tmp_path,
-            "tasks:\n"
-            "  - {id: a, title: A, status: pending, deadlines: []}\n",
+            "tasks:\n" "  - {id: a, title: A, status: pending, deadlines: []}\n",
         )
         # Act
         # Assert

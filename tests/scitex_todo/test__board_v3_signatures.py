@@ -62,10 +62,10 @@ def css_text() -> str:
     Returns one big string so signature pins can ``assert x in css_text``
     without caring which of the 5 (currently 6) files the rule landed in.
     """
-    parts = []
-    for css_path in sorted(BOARD_CSS_DIR.glob("*.css")):
-        parts.append(css_path.read_text(encoding="utf-8"))
-    return "\n".join(parts)
+    return "\n".join(
+        css_path.read_text(encoding="utf-8")
+        for css_path in sorted(BOARD_CSS_DIR.glob("*.css"))
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -116,9 +116,9 @@ class TestP1SearchAsLauncher:
         # Arrange
         # Act
         # Assert
-        assert "Esc to blur" in board_text, (
-            "search input must hint at 'Esc to blur' in its placeholder"
-        )
+        assert (
+            "Esc to blur" in board_text
+        ), "search input must hint at 'Esc to blur' in its placeholder"
 
     def test_search_input_min_width_bumped(self, css_text):
         # The P1 CSS bump to 320px is what makes the search the PRIMARY
@@ -371,7 +371,9 @@ class TestSearchQualifierSyntax:
         # Assert
         assert 'id="filt-qhints"' in board_text
 
-    def test_search_input_advertises_qualifier_syntax_board_text_contains(self, board_text):
+    def test_search_input_advertises_qualifier_syntax_board_text_contains(
+        self, board_text
+    ):
         # Placeholder + title should mention the new qualifier syntax so
         # the operator's expectation (GitHub-style) is met without docs.
         # Arrange
@@ -379,7 +381,9 @@ class TestSearchQualifierSyntax:
         # Assert
         assert "project:" in board_text
 
-    def test_search_input_advertises_qualifier_syntax_board_text_contains_2(self, board_text):
+    def test_search_input_advertises_qualifier_syntax_board_text_contains_2(
+        self, board_text
+    ):
         # Placeholder + title should mention the new qualifier syntax so
         # the operator's expectation (GitHub-style) is met without docs.
         # Arrange

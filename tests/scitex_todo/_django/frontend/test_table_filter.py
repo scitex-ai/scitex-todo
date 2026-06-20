@@ -138,11 +138,11 @@ ROWS = [
     {"id": "task-1", "kind": "task"},
     {"id": "compute-1", "kind": "compute"},
     {"id": "decision-1", "kind": "decision"},
-    {"id": "q-scitex-io", "kind": "status"},       # quality-axis umbrella
-    {"id": "scitex", "kind": "goal"},              # goal/umbrella anchor
-    {"id": "proj-clew", "kind": "goal"},           # goal/umbrella anchor
-    {"id": "legacy-no-kind", "kind": None},        # absent kind ⇒ task
-    {"id": "absent-kind"},                          # field omitted entirely
+    {"id": "q-scitex-io", "kind": "status"},  # quality-axis umbrella
+    {"id": "scitex", "kind": "goal"},  # goal/umbrella anchor
+    {"id": "proj-clew", "kind": "goal"},  # goal/umbrella anchor
+    {"id": "legacy-no-kind", "kind": None},  # absent kind ⇒ task
+    {"id": "absent-kind"},  # field omitted entirely
 ]
 
 
@@ -156,6 +156,7 @@ def test_default_hides_status_and_goal_rows_ids_excludes() -> None:
     # Assert
     assert "q-scitex-io" not in ids
 
+
 def test_default_hides_status_and_goal_rows_ids_excludes_2() -> None:
     """By default (toggle OFF) ``kind=status`` and ``kind=goal`` rows
     disappear from the Table — the operator's actionable-only lens."""
@@ -165,6 +166,7 @@ def test_default_hides_status_and_goal_rows_ids_excludes_2() -> None:
     ids = [r["id"] for r in out]
     # Assert
     assert "scitex" not in ids
+
 
 def test_default_hides_status_and_goal_rows_ids_excludes_3() -> None:
     """By default (toggle OFF) ``kind=status`` and ``kind=goal`` rows
@@ -188,6 +190,7 @@ def test_toggle_on_shows_structural_rows_ids_contains() -> None:
     # And nothing else is dropped.
     assert "q-scitex-io" in ids
 
+
 def test_toggle_on_shows_structural_rows_ids_contains_2() -> None:
     """With the toggle ON the structural cards come back — operator can
     opt in when they need to see the quality + goal anchors."""
@@ -199,6 +202,7 @@ def test_toggle_on_shows_structural_rows_ids_contains_2() -> None:
     # And nothing else is dropped.
     assert "scitex" in ids
 
+
 def test_toggle_on_shows_structural_rows_ids_contains_3() -> None:
     """With the toggle ON the structural cards come back — operator can
     opt in when they need to see the quality + goal anchors."""
@@ -209,6 +213,7 @@ def test_toggle_on_shows_structural_rows_ids_contains_3() -> None:
     # Assert
     # And nothing else is dropped.
     assert "proj-clew" in ids
+
 
 def test_toggle_on_shows_structural_rows_len() -> None:
     """With the toggle ON the structural cards come back — operator can
@@ -222,19 +227,32 @@ def test_toggle_on_shows_structural_rows_len() -> None:
     assert len(out) == len(ROWS)
 
 
-def test_actionable_rows_are_unaffected() -> None:
-    """Non-status, non-goal rows (``task`` / ``compute`` / ``decision``)
-    must appear in BOTH default and toggle-on modes — the filter is
-    additive, not destructive."""
+def _filter_ids(show: bool) -> list:
+    """Ids returned by the filter in the given structural-toggle mode."""
+    return [r["id"] for r in _run_filter(ROWS, show_structural=show)]
+
+
+def test_task_row_present_in_both_filter_modes() -> None:
+    """A plain ``task`` row appears whether or not structural rows show —
+    the filter is additive, not destructive."""
     # Arrange
     # Act
     # Assert
-    for show in (False, True):
-        out = _run_filter(ROWS, show_structural=show)
-        ids = [r["id"] for r in out]
-        assert "task-1" in ids
-        assert "compute-1" in ids
-        assert "decision-1" in ids
+    assert all("task-1" in _filter_ids(show) for show in (False, True))
+
+
+def test_compute_row_present_in_both_filter_modes() -> None:
+    # Arrange
+    # Act
+    # Assert
+    assert all("compute-1" in _filter_ids(show) for show in (False, True))
+
+
+def test_decision_row_present_in_both_filter_modes() -> None:
+    # Arrange
+    # Act
+    # Assert
+    assert all("decision-1" in _filter_ids(show) for show in (False, True))
 
 
 def test_null_kind_is_default_visible_ids_contains() -> None:
@@ -247,6 +265,7 @@ def test_null_kind_is_default_visible_ids_contains() -> None:
     ids = [r["id"] for r in out]
     # Assert
     assert "legacy-no-kind" in ids
+
 
 def test_null_kind_is_default_visible_ids_contains_2() -> None:
     """A row with ``kind=null`` OR no ``kind`` field at all must be
@@ -270,6 +289,7 @@ def test_static_source_contract_src_contains() -> None:
     # Assert
     assert "export const STRUCTURAL_KINDS" in src
 
+
 def test_static_source_contract_src_contains_2() -> None:
     """The TS module must continue to expose the documented public API
     so the React component (``TableView.tsx``) can keep importing
@@ -279,6 +299,7 @@ def test_static_source_contract_src_contains_2() -> None:
     src = TS_FILE.read_text(encoding="utf-8")
     # Assert
     assert "export function isVisibleRow(" in src
+
 
 def test_static_source_contract_src_contains_3() -> None:
     """The TS module must continue to expose the documented public API

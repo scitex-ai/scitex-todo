@@ -96,9 +96,7 @@ class TestJsonOutput:
     def test_json_output_decodes_to_dict(self, store):
         # Arrange
         # Act
-        result = CliRunner().invoke(
-            next_cmd, ["--tasks", store, "--json"]
-        )
+        result = CliRunner().invoke(next_cmd, ["--tasks", store, "--json"])
         payload = json.loads(result.output)
         # Assert
         assert isinstance(payload, dict)
@@ -106,9 +104,7 @@ class TestJsonOutput:
     def test_json_output_includes_id_field(self, store):
         # Arrange
         # Act
-        result = CliRunner().invoke(
-            next_cmd, ["--tasks", store, "--json"]
-        )
+        result = CliRunner().invoke(next_cmd, ["--tasks", store, "--json"])
         payload = json.loads(result.output)
         # Assert
         assert "id" in payload
@@ -122,9 +118,7 @@ class TestNoCandidate:
         empty = tmp_path / "empty.yaml"
         empty.write_text("tasks: []\n", encoding="utf-8")
         # Act
-        result = CliRunner().invoke(
-            next_cmd, ["--tasks", str(empty)]
-        )
+        result = CliRunner().invoke(next_cmd, ["--tasks", str(empty)])
         # Assert
         assert result.exit_code != 0
 
@@ -150,9 +144,7 @@ class TestMineFlag:
         # Arrange
         env.set("SCITEX_TODO_AGENT", "proj-beta")
         # Act
-        result = CliRunner().invoke(
-            next_cmd, ["--tasks", store, "--mine", "--json"]
-        )
+        result = CliRunner().invoke(next_cmd, ["--tasks", store, "--mine", "--json"])
         payload = json.loads(result.output)
         # Assert
         assert payload["id"] == "b-pending"
@@ -161,9 +153,7 @@ class TestMineFlag:
         # Arrange
         env.delete("SCITEX_TODO_AGENT")
         # Act
-        result = CliRunner().invoke(
-            next_cmd, ["--tasks", store, "--mine"]
-        )
+        result = CliRunner().invoke(next_cmd, ["--tasks", store, "--mine"])
         # Assert
         assert result.exit_code != 0
 
@@ -175,8 +165,13 @@ class TestMutuallyExclusive:
         # Arrange
         # Act
         result = CliRunner().invoke(
-            next_cmd, [
-                "--tasks", store, "--assignee", "proj-alpha", "--mine",
+            next_cmd,
+            [
+                "--tasks",
+                store,
+                "--assignee",
+                "proj-alpha",
+                "--mine",
             ],
         )
         # Assert
@@ -191,8 +186,12 @@ class TestAutoClaim:
         # Arrange
         # Act
         CliRunner().invoke(
-            next_cmd, [
-                "--tasks", store, "--assignee", "proj-alpha",
+            next_cmd,
+            [
+                "--tasks",
+                store,
+                "--assignee",
+                "proj-alpha",
                 "--auto-claim",
             ],
         )
@@ -203,8 +202,12 @@ class TestAutoClaim:
         # Arrange
         # Act
         CliRunner().invoke(
-            next_cmd, [
-                "--tasks", store, "--assignee", "proj-alpha",
+            next_cmd,
+            [
+                "--tasks",
+                store,
+                "--assignee",
+                "proj-alpha",
                 "--auto-claim",
             ],
         )

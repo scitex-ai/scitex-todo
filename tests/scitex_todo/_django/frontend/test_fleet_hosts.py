@@ -81,48 +81,49 @@ def test_css_has_canonical_selectors() -> None:
         assert selector in css, f"missing CSS selector: {selector}"
 
 
-def test_css_uses_design_tokens_only() -> None:
-    """Colors must come from CSS variables — NO hardcoded hex / named
-    color literals. Hex / ``white`` / ``#fff`` would freeze the panel
-    to one theme and break the operator's light-mode view.
-
-    Required tokens: ``--stx-danger`` (error ring), ``--status-success``
-    (OK border), ``--stx-text-muted`` (error label color). The shell
-    + board.css token chain feeds all of them.
-    """
+def test_css_has_no_hardcoded_hex_colors() -> None:
+    """Hex literals freeze the panel to one theme; colors must come
+    from design tokens."""
     # Arrange
     css = _CSS_FILE.read_text(encoding="utf-8")
-    # Strip /* ... */ comments before scanning — the comment block at
-    # the top documents the token names verbatim and would falsely
-    # trip the hex / named-color detectors otherwise.
+    # Strip /* ... */ comments so the doc block (which names the
+    # tokens verbatim) does not trip the hex / named-color scan.
     no_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
-    # 3-, 4-, 6-, or 8-digit hex literals.
     # Act
     hex_matches = re.findall(r"#[0-9A-Fa-f]{3,8}\b", no_comments)
     # Assert
-    assert not hex_matches, (
-        f"hardcoded hex colors in fleet-hosts.css (breaks theming): "
-        f"{hex_matches!r}"
-    )
-    # Named-color literals — same theming smell. Only match standalone
-    # color values, not substrings like ``whitespace`` (none expected,
-    # but be defensive). We look for ``: white`` and ``: black`` shapes
-    # specifically inside property values.
-    for forbidden in (r":\s*white\b", r":\s*black\b"):
-        assert not re.search(forbidden, no_comments), (
-            f"hardcoded named color matching {forbidden!r} found in "
-            f"fleet-hosts.css — use a design token."
-        )
-    # Required token references — at least one occurrence each.
-    for token in (
+    assert not hex_matches, f"hardcoded hex colors in fleet-hosts.css: {hex_matches!r}"
+
+
+def test_css_has_no_hardcoded_named_colors() -> None:
+    """Named-color literals (white / black) are the same theming
+    smell as hex."""
+    # Arrange
+    css = _CSS_FILE.read_text(encoding="utf-8")
+    # Strip /* ... */ comments so the doc block (which names the
+    # tokens verbatim) does not trip the hex / named-color scan.
+    no_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    # Act
+    forbidden = (r":\s*white\b", r":\s*black\b")
+    # Assert
+    assert not any(re.search(f, no_comments) for f in forbidden)
+
+
+def test_css_references_all_required_tokens() -> None:
+    """Every required design token must be referenced at least once."""
+    # Arrange
+    css = _CSS_FILE.read_text(encoding="utf-8")
+    # Act
+    required = (
         "--status-success",
         "--stx-danger",
         "--stx-text-muted",
         "--stx-border",
         "--stx-panel-bg",
         "--stx-text",
-    ):
-        assert token in css, f"missing design token: {token}"
+    )
+    # Assert
+    assert all(token in css for token in required)
 
 
 def test_css_is_imported_from_board_css_is_file() -> None:
@@ -135,6 +136,7 @@ def test_css_is_imported_from_board_css_is_file() -> None:
     # Assert
     text = board_css.read_text(encoding="utf-8")
     assert board_css.is_file()
+
 
 def test_css_is_imported_from_board_css_text_contains() -> None:
     """The panel only renders correctly when board.css imports the
@@ -262,6 +264,7 @@ def test_label_with_interfaces_and_peers_iserr() -> None:
     # Tooltip surfaces the full interface list.
     assert out["isErr"] is False
 
+
 def test_label_with_interfaces_and_peers_label_contains() -> None:
     """The label pattern matches the operator's spec verbatim:
     ``🖥 <hostname> · <N> ifaces · <M> peers``. Pin one realistic
@@ -286,6 +289,7 @@ def test_label_with_interfaces_and_peers_label_contains() -> None:
     # Assert
     # Tooltip surfaces the full interface list.
     assert "test-box" in out["label"]
+
 
 def test_label_with_interfaces_and_peers_label_contains_2() -> None:
     """The label pattern matches the operator's spec verbatim:
@@ -312,6 +316,7 @@ def test_label_with_interfaces_and_peers_label_contains_2() -> None:
     # Tooltip surfaces the full interface list.
     assert "2 ifaces" in out["label"]
 
+
 def test_label_with_interfaces_and_peers_label_contains_3() -> None:
     """The label pattern matches the operator's spec verbatim:
     ``🖥 <hostname> · <N> ifaces · <M> peers``. Pin one realistic
@@ -336,6 +341,7 @@ def test_label_with_interfaces_and_peers_label_contains_3() -> None:
     # Assert
     # Tooltip surfaces the full interface list.
     assert "3 peers" in out["label"]
+
 
 def test_label_with_interfaces_and_peers_tooltip_contains() -> None:
     """The label pattern matches the operator's spec verbatim:
@@ -362,6 +368,7 @@ def test_label_with_interfaces_and_peers_tooltip_contains() -> None:
     # Tooltip surfaces the full interface list.
     assert "eth0" in out["tooltip"]
 
+
 def test_label_with_interfaces_and_peers_tooltip_contains_2() -> None:
     """The label pattern matches the operator's spec verbatim:
     ``🖥 <hostname> · <N> ifaces · <M> peers``. Pin one realistic
@@ -387,6 +394,7 @@ def test_label_with_interfaces_and_peers_tooltip_contains_2() -> None:
     # Tooltip surfaces the full interface list.
     assert "10.0.0.1" in out["tooltip"]
 
+
 def test_label_with_interfaces_and_peers_tooltip_contains_3() -> None:
     """The label pattern matches the operator's spec verbatim:
     ``🖥 <hostname> · <N> ifaces · <M> peers``. Pin one realistic
@@ -411,6 +419,7 @@ def test_label_with_interfaces_and_peers_tooltip_contains_3() -> None:
     # Assert
     # Tooltip surfaces the full interface list.
     assert "eth1" in out["tooltip"]
+
 
 def test_label_with_interfaces_and_peers_tooltip_contains_4() -> None:
     """The label pattern matches the operator's spec verbatim:
@@ -459,6 +468,7 @@ def test_label_with_no_interfaces_or_peers_iserr() -> None:
     # Assert
     assert out["isErr"] is False
 
+
 def test_label_with_no_interfaces_or_peers_label_contains() -> None:
     """A host with zero NICs visible to sac (containerized env) +
     zero peers (fresh install) renders ``0 ifaces · 0 peers`` and the
@@ -479,6 +489,7 @@ def test_label_with_no_interfaces_or_peers_label_contains() -> None:
     )
     # Assert
     assert "isolated" in out["label"]
+
 
 def test_label_with_no_interfaces_or_peers_label_contains_2() -> None:
     """A host with zero NICs visible to sac (containerized env) +
@@ -501,6 +512,7 @@ def test_label_with_no_interfaces_or_peers_label_contains_2() -> None:
     # Assert
     assert "0 ifaces" in out["label"]
 
+
 def test_label_with_no_interfaces_or_peers_label_contains_3() -> None:
     """A host with zero NICs visible to sac (containerized env) +
     zero peers (fresh install) renders ``0 ifaces · 0 peers`` and the
@@ -521,6 +533,7 @@ def test_label_with_no_interfaces_or_peers_label_contains_3() -> None:
     )
     # Assert
     assert "0 peers" in out["label"]
+
 
 def test_label_with_no_interfaces_or_peers_tooltip_contains() -> None:
     """A host with zero NICs visible to sac (containerized env) +
@@ -555,6 +568,7 @@ def test_error_payload_discriminator_iserr() -> None:
     # Assert
     assert out["isErr"] is True
 
+
 def test_error_payload_discriminator_label() -> None:
     """``isHostsPayloadErr`` returns true for an HTTP-500 error body
     so the component branches to the ``--error`` render path."""
@@ -565,6 +579,7 @@ def test_error_payload_discriminator_label() -> None:
     )
     # Assert
     assert out["label"] is None
+
 
 def test_error_payload_discriminator_tooltip() -> None:
     """``isHostsPayloadErr`` returns true for an HTTP-500 error body

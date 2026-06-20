@@ -58,8 +58,10 @@ def test_validator_rejects_card_message_missing_body():
 def test_validator_rejects_card_message_collaborators_non_list():
     # Arrange
     payload = {
-        "kind": "card-message", "card_id": "c-1", "body": "hi",
-        "collaborators": "agent-a",   # must be a list
+        "kind": "card-message",
+        "card_id": "c-1",
+        "body": "hi",
+        "collaborators": "agent-a",  # must be a list
     }
     # Act
     # Assert
@@ -70,7 +72,9 @@ def test_validator_rejects_card_message_collaborators_non_list():
 def test_validator_rejects_card_message_collaborators_non_string_entry():
     # Arrange
     payload = {
-        "kind": "card-message", "card_id": "c-1", "body": "hi",
+        "kind": "card-message",
+        "card_id": "c-1",
+        "body": "hi",
         "collaborators": ["agent-a", 42],
     }
     # Act
@@ -83,7 +87,9 @@ def test_validator_accepts_empty_collaborators_list():
     # Arrange — an isolated card with no prior comments has no
     # collaborators yet; that's valid.
     payload = {
-        "kind": "card-message", "card_id": "c-1", "body": "hi",
+        "kind": "card-message",
+        "card_id": "c-1",
+        "body": "hi",
         "collaborators": [],
     }
     # Act
@@ -158,107 +164,180 @@ def test_comment_task_emits_card_message_event(tmp_path: Path, bus):
     store = tmp_path / "tasks.yaml"
     add_task(store=store, id="c-1", title="x")
     # Act
-    comment_task(store=store, task_id="c-1", text="hello", by="operator", entry_points=bus.entry_points)
+    comment_task(
+        store=store,
+        task_id="c-1",
+        text="hello",
+        by="operator",
+        entry_points=bus.entry_points,
+    )
     # Assert
     assert any(e.get("kind") == "card-message" for e in bus.events)
 
 
 def test_card_message_event_carries_card_id_body_author(
-    tmp_path: Path, bus,
+    tmp_path: Path,
+    bus,
 ):
     # Arrange
     store = tmp_path / "tasks.yaml"
     add_task(store=store, id="c-1", title="x")
     # Act
-    comment_task(store=store, task_id="c-1", text="hello", by="operator", entry_points=bus.entry_points)
+    comment_task(
+        store=store,
+        task_id="c-1",
+        text="hello",
+        by="operator",
+        entry_points=bus.entry_points,
+    )
     # Assert
     e = [x for x in bus.events if x.get("kind") == "card-message"][0]
     assert e["card_id"] == "c-1" and e["body"] == "hello" and e["author"] == "operator"
 
 
 def test_card_message_owner_comes_from_agent_field(
-    tmp_path: Path, bus,
+    tmp_path: Path,
+    bus,
 ):
     # Arrange
     store = tmp_path / "tasks.yaml"
     add_task(store=store, id="c-1", title="x", agent="proj-clew")
     # Act
-    comment_task(store=store, task_id="c-1", text="hello", by="operator", entry_points=bus.entry_points)
+    comment_task(
+        store=store,
+        task_id="c-1",
+        text="hello",
+        by="operator",
+        entry_points=bus.entry_points,
+    )
     # Assert
     e = [x for x in bus.events if x.get("kind") == "card-message"][0]
     assert e["owner"] == "proj-clew"
 
 
 def test_card_message_owner_falls_back_to_assignee(
-    tmp_path: Path, bus,
+    tmp_path: Path,
+    bus,
 ):
     # Arrange — no `agent` field; legacy `assignee` is the fallback.
     store = tmp_path / "tasks.yaml"
     add_task(store=store, id="c-1", title="x", assignee="proj-legacy")
     # Act
-    comment_task(store=store, task_id="c-1", text="hello", by="operator", entry_points=bus.entry_points)
+    comment_task(
+        store=store,
+        task_id="c-1",
+        text="hello",
+        by="operator",
+        entry_points=bus.entry_points,
+    )
     # Assert
     e = [x for x in bus.events if x.get("kind") == "card-message"][0]
     assert e["owner"] == "proj-legacy"
 
 
 def test_card_message_owner_is_none_when_card_has_neither(
-    tmp_path: Path, bus,
+    tmp_path: Path,
+    bus,
 ):
     # Arrange — naked card with no agent/assignee.
     store = tmp_path / "tasks.yaml"
     add_task(store=store, id="c-1", title="x")
     # Act
-    comment_task(store=store, task_id="c-1", text="hello", by="operator", entry_points=bus.entry_points)
+    comment_task(
+        store=store,
+        task_id="c-1",
+        text="hello",
+        by="operator",
+        entry_points=bus.entry_points,
+    )
     # Assert
     e = [x for x in bus.events if x.get("kind") == "card-message"][0]
     assert e["owner"] is None
 
 
 def test_card_message_collaborators_excludes_owner(
-    tmp_path: Path, bus,
+    tmp_path: Path,
+    bus,
 ):
     # Arrange — owner already in the conversation; the event should
     # NOT echo them in collaborators (SAC routes to owner directly).
     store = tmp_path / "tasks.yaml"
     add_task(store=store, id="c-1", title="x", agent="proj-clew")
-    comment_task(store=store, task_id="c-1", text="first", by="proj-clew", entry_points=bus.entry_points)
+    comment_task(
+        store=store,
+        task_id="c-1",
+        text="first",
+        by="proj-clew",
+        entry_points=bus.entry_points,
+    )
     bus.clear()
     # Act
-    comment_task(store=store, task_id="c-1", text="second", by="operator", entry_points=bus.entry_points)
+    comment_task(
+        store=store,
+        task_id="c-1",
+        text="second",
+        by="operator",
+        entry_points=bus.entry_points,
+    )
     # Assert
     e = [x for x in bus.events if x.get("kind") == "card-message"][0]
     assert "proj-clew" not in e["collaborators"]
 
 
 def test_card_message_collaborators_excludes_new_author(
-    tmp_path: Path, bus,
+    tmp_path: Path,
+    bus,
 ):
     # Arrange — the new commenter should NOT appear in their own
     # event's collaborators (SAC would echo the message back at them).
     store = tmp_path / "tasks.yaml"
     add_task(store=store, id="c-1", title="x")
-    comment_task(store=store, task_id="c-1", text="a", by="operator", entry_points=bus.entry_points)
+    comment_task(
+        store=store,
+        task_id="c-1",
+        text="a",
+        by="operator",
+        entry_points=bus.entry_points,
+    )
     bus.clear()
     # Act
-    comment_task(store=store, task_id="c-1", text="b", by="operator", entry_points=bus.entry_points)
+    comment_task(
+        store=store,
+        task_id="c-1",
+        text="b",
+        by="operator",
+        entry_points=bus.entry_points,
+    )
     # Assert
     e = [x for x in bus.events if x.get("kind") == "card-message"][0]
     assert "operator" not in e["collaborators"]
 
 
 def test_card_message_collaborators_lists_prior_commenters(
-    tmp_path: Path, bus,
+    tmp_path: Path,
+    bus,
 ):
     # Arrange — three earlier authors, current author is different.
     store = tmp_path / "tasks.yaml"
     add_task(store=store, id="c-1", title="x")
-    comment_task(store=store, task_id="c-1", text="a", by="alice", entry_points=bus.entry_points)
-    comment_task(store=store, task_id="c-1", text="b", by="bob", entry_points=bus.entry_points)
-    comment_task(store=store, task_id="c-1", text="c", by="alice", entry_points=bus.entry_points)  # dedupe
+    comment_task(
+        store=store, task_id="c-1", text="a", by="alice", entry_points=bus.entry_points
+    )
+    comment_task(
+        store=store, task_id="c-1", text="b", by="bob", entry_points=bus.entry_points
+    )
+    comment_task(
+        store=store, task_id="c-1", text="c", by="alice", entry_points=bus.entry_points
+    )  # dedupe
     bus.clear()
     # Act
-    comment_task(store=store, task_id="c-1", text="d", by="operator", entry_points=bus.entry_points)
+    comment_task(
+        store=store,
+        task_id="c-1",
+        text="d",
+        by="operator",
+        entry_points=bus.entry_points,
+    )
     # Assert — alice + bob (deduped) appear, in original order.
     e = [x for x in bus.events if x.get("kind") == "card-message"][0]
     assert e["collaborators"] == ["alice", "bob"]
@@ -277,7 +356,10 @@ def test_comment_task_save_succeeds_even_when_bus_raises(tmp_path: Path):
     bad_eps = [_FakeEP("bad", _bad)]
     # Act — must NOT raise (comment_task swallows bus errors).
     comment_task(
-        store=store, task_id="c-1", text="hello", by="operator",
+        store=store,
+        task_id="c-1",
+        text="hello",
+        by="operator",
         entry_points=bad_eps,
     )
 
@@ -289,13 +371,20 @@ def test_comment_task_save_succeeds_even_when_bus_raises(tmp_path: Path):
 
 
 def test_card_message_created_at_matches_comment_ts(
-    tmp_path: Path, bus,
+    tmp_path: Path,
+    bus,
 ):
     # Arrange
     store = tmp_path / "tasks.yaml"
     add_task(store=store, id="c-1", title="x")
     # Act
-    comment_task(store=store, task_id="c-1", text="hello", by="operator", entry_points=bus.entry_points)
+    comment_task(
+        store=store,
+        task_id="c-1",
+        text="hello",
+        by="operator",
+        entry_points=bus.entry_points,
+    )
     # Assert — the event's created_at is the same ISO stamp the
     # comment carries (for downstream timeline reconstruction).
     from scitex_todo._model import load_tasks

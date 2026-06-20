@@ -177,4 +177,4 @@ class TestKeyHintsCoverAllQualifiers:
         # Arrange
         # Act
         # Assert
-        assert f'{qualifier}:' in js_text or f'"{qualifier}"' in js_text
+        assert f"{qualifier}:" in js_text or f'"{qualifier}"' in js_text

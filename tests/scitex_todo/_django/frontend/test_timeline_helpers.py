@@ -166,6 +166,7 @@ def test_parse_timeline_ts_basic_iso_v() -> None:
     # Assert
     assert out["v"] == out["ref"]
 
+
 def test_parse_timeline_ts_basic_iso_isinstance() -> None:
     """An ISO-8601 string parses into a finite ms epoch — round-trips
     via ``new Date().getTime()`` (sidesteps any local-tz math)."""
@@ -218,6 +219,7 @@ def test_group_events_by_lane_buckets_order() -> None:
     # Assert
     assert out["order"] == ["x", "y"]
 
+
 def test_group_events_by_lane_buckets_bylane() -> None:
     """Events bucket into a Map keyed by lane; insertion order preserved."""
     # Arrange
@@ -262,11 +264,7 @@ def test_time_to_x_linear_mid() -> None:
     """A timestamp at the window midpoint maps to width/2."""
     # Arrange
     # Act
-    out = _run(
-        "console.log(JSON.stringify({"
-        "x: timeToX(500, 0, 1000, 100),"
-        "}));"
-    )
+    out = _run("console.log(JSON.stringify({" "x: timeToX(500, 0, 1000, 100)," "}));")
     # Assert
     assert out["x"] == 50.0
 
@@ -275,11 +273,7 @@ def test_time_to_x_clamps_before_window() -> None:
     """A timestamp before window_start clamps to 0."""
     # Arrange
     # Act
-    out = _run(
-        "console.log(JSON.stringify({"
-        "x: timeToX(-100, 0, 1000, 100),"
-        "}));"
-    )
+    out = _run("console.log(JSON.stringify({" "x: timeToX(-100, 0, 1000, 100)," "}));")
     # Assert
     assert out["x"] == 0
 
@@ -288,11 +282,7 @@ def test_time_to_x_clamps_after_window() -> None:
     """A timestamp after window_end clamps to width."""
     # Arrange
     # Act
-    out = _run(
-        "console.log(JSON.stringify({"
-        "x: timeToX(2000, 0, 1000, 100),"
-        "}));"
-    )
+    out = _run("console.log(JSON.stringify({" "x: timeToX(2000, 0, 1000, 100)," "}));")
     # Assert
     assert out["x"] == 100
 
@@ -302,9 +292,7 @@ def test_time_to_x_null_on_degenerate_window() -> None:
     # Arrange
     # Act
     out = _run(
-        "console.log(JSON.stringify({"
-        "x: timeToX(500, 1000, 1000, 100),"
-        "}));"
+        "console.log(JSON.stringify({" "x: timeToX(500, 1000, 1000, 100)," "}));"
     )
     # Assert
     assert out["x"] is None
@@ -375,42 +363,37 @@ def test_make_ticks_endpoints_and_spacing_len() -> None:
     """N evenly-spaced ticks span from 0 to width with N-1 segments."""
     # Arrange
     # Act
-    out = _run(
-        "console.log(JSON.stringify(makeTicks(0, 1000, 100, 6)));"
-    )
+    out = _run("console.log(JSON.stringify(makeTicks(0, 1000, 100, 6)));")
     # Assert
     # Middle tick is at width/2.
     assert len(out) == 6
+
 
 def test_make_ticks_endpoints_and_spacing_x() -> None:
     """N evenly-spaced ticks span from 0 to width with N-1 segments."""
     # Arrange
     # Act
-    out = _run(
-        "console.log(JSON.stringify(makeTicks(0, 1000, 100, 6)));"
-    )
+    out = _run("console.log(JSON.stringify(makeTicks(0, 1000, 100, 6)));")
     # Assert
     # Middle tick is at width/2.
     assert out[0]["x"] == 0
+
 
 def test_make_ticks_endpoints_and_spacing_x_2() -> None:
     """N evenly-spaced ticks span from 0 to width with N-1 segments."""
     # Arrange
     # Act
-    out = _run(
-        "console.log(JSON.stringify(makeTicks(0, 1000, 100, 6)));"
-    )
+    out = _run("console.log(JSON.stringify(makeTicks(0, 1000, 100, 6)));")
     # Assert
     # Middle tick is at width/2.
     assert out[-1]["x"] == 100
+
 
 def test_make_ticks_endpoints_and_spacing_case_4() -> None:
     """N evenly-spaced ticks span from 0 to width with N-1 segments."""
     # Arrange
     # Act
-    out = _run(
-        "console.log(JSON.stringify(makeTicks(0, 1000, 100, 6)));"
-    )
+    out = _run("console.log(JSON.stringify(makeTicks(0, 1000, 100, 6)));")
     # Assert
     # Middle tick is at width/2.
     assert abs(out[len(out) // 2]["x"] - 50.0) < 0.001 or out[2]["x"] == 40.0

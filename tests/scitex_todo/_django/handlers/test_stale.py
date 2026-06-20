@@ -44,7 +44,9 @@ def _iso(dt: datetime.datetime) -> str:
 
 
 _OLD = _iso(datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=30))
-_RECENT = _iso(datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=2))
+_RECENT = _iso(
+    datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=2)
+)
 
 
 _STORE_TEXT = f"""\

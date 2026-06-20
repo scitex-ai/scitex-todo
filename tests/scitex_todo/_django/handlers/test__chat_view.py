@@ -159,6 +159,7 @@ def test_chat_view_post_returns_new_comment_text(store_with_chat_task):
     # Assert
     assert payload["comment"]["text"] == "ping"
 
+
 def test_chat_view_post_returns_new_comment_author(store_with_chat_task):
     """The 200 payload carries the appended comment so the FE can
     optimistic-append without a follow-up GET."""
@@ -288,6 +289,7 @@ def test_chat_view_post_default_author_used_when_missing_isinstance(
     # pin the exact sentinel here so the underlying $USER fallback
     # (when the env happens to be set) still passes.
     assert isinstance(payload["comment"]["author"], str)
+
 
 def test_chat_view_post_default_author_used_when_missing_len(
     store_with_chat_task,

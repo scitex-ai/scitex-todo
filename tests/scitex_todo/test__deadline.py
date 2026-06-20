@@ -81,8 +81,7 @@ class TestDeadlineEmptyStringRejected:
         # Arrange
         store = _write(
             tmp_path,
-            "tasks:\n"
-            "  - {id: a, title: A, status: pending, deadline: ''}\n",
+            "tasks:\n" "  - {id: a, title: A, status: pending, deadline: ''}\n",
         )
         # Act
         # Assert
@@ -95,8 +94,7 @@ class TestDeadlineNonStringRejected:
         # Arrange
         store = _write(
             tmp_path,
-            "tasks:\n"
-            "  - {id: a, title: A, status: pending, deadline: 20260615}\n",
+            "tasks:\n" "  - {id: a, title: A, status: pending, deadline: 20260615}\n",
         )
         # Act
         # Assert
@@ -123,8 +121,7 @@ class TestScheduledUnparseableRejected:
         # Arrange
         store = _write(
             tmp_path,
-            "tasks:\n"
-            "  - {id: a, title: A, status: pending, scheduled: 'soon'}\n",
+            "tasks:\n" "  - {id: a, title: A, status: pending, scheduled: 'soon'}\n",
         )
         # Act
         # Assert

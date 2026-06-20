@@ -66,6 +66,7 @@ def test_endpoint_returns_200_with_repos_shape_status_code(env, tmp_path) -> Non
     data = json.loads(response.content)
     assert response.status_code == 200
 
+
 def test_endpoint_returns_200_with_repos_shape_set(env, tmp_path) -> None:
     """Configure ONE slug. The adapter will RAISE (invalid slug shape,
     so no network is touched) — the per-repo error trap converts that
@@ -85,6 +86,7 @@ def test_endpoint_returns_200_with_repos_shape_set(env, tmp_path) -> None:
     # Assert
     data = json.loads(response.content)
     assert set(data.keys()) >= {"repos", "config"}
+
 
 def test_endpoint_returns_200_with_repos_shape_repos(env, tmp_path) -> None:
     """Configure ONE slug. The adapter will RAISE (invalid slug shape,
@@ -106,6 +108,7 @@ def test_endpoint_returns_200_with_repos_shape_repos(env, tmp_path) -> None:
     data = json.loads(response.content)
     assert data["config"]["repos"] == ["bad-slug-no-slash"]
 
+
 def test_endpoint_returns_200_with_repos_shape_isinstance(env, tmp_path) -> None:
     """Configure ONE slug. The adapter will RAISE (invalid slug shape,
     so no network is touched) — the per-repo error trap converts that
@@ -125,6 +128,7 @@ def test_endpoint_returns_200_with_repos_shape_isinstance(env, tmp_path) -> None
     # Assert
     data = json.loads(response.content)
     assert isinstance(data["repos"], list)
+
 
 def test_endpoint_returns_200_with_repos_shape_len(env, tmp_path) -> None:
     """Configure ONE slug. The adapter will RAISE (invalid slug shape,
@@ -147,30 +151,41 @@ def test_endpoint_returns_200_with_repos_shape_len(env, tmp_path) -> None:
     assert len(data["repos"]) == 1
 
 
-def test_per_repo_error_does_not_blank_page(env, tmp_path) -> None:
-    """The headline guarantee: one bad repo becomes ``{slug, error}``
-    rather than killing the whole response. The operator sees the
-    other (hypothetically working) pills next to a single red ``!``."""
-    # Arrange
+def _ci_status_for_bad_repos(env, tmp_path):
+    """Run the CI-status view with two malformed slugs; return parsed JSON."""
     _isolate_home(env, tmp_path)
-    env.set(
-        "SCITEX_TODO_FLEET_CI_REPOS",
-        "bad-slug-no-slash,also-bad",
-    )
-
+    env.set("SCITEX_TODO_FLEET_CI_REPOS", "bad-slug-no-slash,also-bad")
     request = RequestFactory().get("/fleet/ci-status")
-    # Act
     response = fleet_ci_status_view(request)
+    return response, json.loads(response.content)
 
+
+def test_per_repo_error_returns_200(env, tmp_path) -> None:
+    """One bad repo must NOT blank the page — the response is still 200."""
+    # Arrange
+    # Act
+    response, _data = _ci_status_for_bad_repos(env, tmp_path)
     # Assert
     assert response.status_code == 200
-    data = json.loads(response.content)
-    slugs = [r["slug"] for r in data["repos"]]
-    assert slugs == ["bad-slug-no-slash", "also-bad"]
-    for repo in data["repos"]:
-        # Both must carry an ``error`` field (per-repo trap kicked in).
-        assert "error" in repo, f"missing per-repo error: {repo!r}"
-        assert isinstance(repo["error"], str) and repo["error"]
+
+
+def test_per_repo_error_keeps_both_slugs_in_order(env, tmp_path) -> None:
+    # Arrange
+    # Act
+    _response, data = _ci_status_for_bad_repos(env, tmp_path)
+    # Assert
+    assert [r["slug"] for r in data["repos"]] == ["bad-slug-no-slash", "also-bad"]
+
+
+def test_per_repo_error_traps_each_repo_with_error_string(env, tmp_path) -> None:
+    """Each bad repo becomes ``{slug, error}`` rather than killing the page."""
+    # Arrange
+    # Act
+    _response, data = _ci_status_for_bad_repos(env, tmp_path)
+    # Assert
+    assert all(
+        isinstance(repo.get("error"), str) and repo["error"] for repo in data["repos"]
+    )
 
 
 def test_empty_config_returns_200_with_empty_list_status_code(env, tmp_path) -> None:
@@ -186,6 +201,7 @@ def test_empty_config_returns_200_with_empty_list_status_code(env, tmp_path) -> 
     data = json.loads(response.content)
     assert response.status_code == 200
 
+
 def test_empty_config_returns_200_with_empty_list_repos(env, tmp_path) -> None:
     """No repos configured = empty list + 200 (NOT 500). The FE hides
     the strip with a "no CI status configured" footnote."""
@@ -198,6 +214,7 @@ def test_empty_config_returns_200_with_empty_list_repos(env, tmp_path) -> None:
     # Assert
     data = json.loads(response.content)
     assert data["config"]["repos"] == []
+
 
 def test_empty_config_returns_200_with_empty_list_repos_2(env, tmp_path) -> None:
     """No repos configured = empty list + 200 (NOT 500). The FE hides
@@ -234,6 +251,7 @@ def test_malformed_config_returns_500_status_code(env, tmp_path) -> None:
     # The message should mention the file so the operator can find it.
     assert response.status_code == 500
 
+
 def test_malformed_config_returns_500_data_contains(env, tmp_path) -> None:
     """A broken ``dashboard.yaml`` is the one error that DOES blank the
     strip — the whole thing is unconfigurable. Fail-loud per harness."""
@@ -254,6 +272,7 @@ def test_malformed_config_returns_500_data_contains(env, tmp_path) -> None:
     data = json.loads(response.content)
     # The message should mention the file so the operator can find it.
     assert "error" in data
+
 
 def test_malformed_config_returns_500_error_contains(env, tmp_path) -> None:
     """A broken ``dashboard.yaml`` is the one error that DOES blank the

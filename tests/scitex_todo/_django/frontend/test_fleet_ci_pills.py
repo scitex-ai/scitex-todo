@@ -84,36 +84,34 @@ def test_css_has_canonical_selectors() -> None:
         assert selector in css, f"missing CSS selector: {selector}"
 
 
-def test_css_uses_design_tokens_only() -> None:
-    """Colors must come from CSS variables — NO hardcoded hex literals.
-
-    Hex literals would freeze the pills to one theme (dark) and break
-    the operator's light-mode view. The board's design-token chain is
-    ``board.css`` → ``--stx-*`` board-local aliases (which fall back to
-    the scitex-ui shell variables ``--status-success``,
-    ``--status-error``, ``--status-warning``, ``--text-muted``).
-    """
+def test_css_has_no_hardcoded_hex_colors() -> None:
+    """Hex literals freeze the panel to one theme; colors must come
+    from design tokens."""
     # Arrange
     css = _CSS_FILE.read_text(encoding="utf-8")
-    # Strip /* ... */ comments before scanning — the comment block at
-    # the top of the file documents the token names verbatim and would
-    # falsely trip the hex detector otherwise.
+    # Strip /* ... */ comments so the doc block (which names the
+    # tokens verbatim) does not trip the hex / named-color scan.
     no_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
-    # 3-, 4-, 6-, or 8-digit hex.
     # Act
     hex_matches = re.findall(r"#[0-9A-Fa-f]{3,8}\b", no_comments)
     # Assert
-    assert not hex_matches, (
-        f"hardcoded hex colors in fleet-ci-pills.css (breaks theming): "
-        f"{hex_matches!r}"
-    )
-    # Required token references — at least one occurrence each.
-    for token in (
+    assert (
+        not hex_matches
+    ), f"hardcoded hex colors in fleet-ci-pills.css: {hex_matches!r}"
+
+
+def test_css_references_all_required_tokens() -> None:
+    """Every required design token must be referenced at least once."""
+    # Arrange
+    css = _CSS_FILE.read_text(encoding="utf-8")
+    # Act
+    required = (
         "--status-success",
         "--status-error",
         "--status-warning",
-    ):
-        assert token in css, f"missing design token: {token}"
+    )
+    # Assert
+    assert all(token in css for token in required)
 
 
 def test_css_is_imported_from_board_css_is_file() -> None:
@@ -126,6 +124,7 @@ def test_css_is_imported_from_board_css_is_file() -> None:
     # Assert
     text = board_css.read_text(encoding="utf-8")
     assert board_css.is_file()
+
 
 def test_css_is_imported_from_board_css_text_contains() -> None:
     """The pills strip only renders correctly when board.css imports
@@ -252,6 +251,7 @@ def test_pill_color_mapping_for_each_overall_modifier(
     # Assert
     assert out["modifier"] == expected_mod
 
+
 @pytest.mark.parametrize(
     "overall,expected_mod",
     [
@@ -284,6 +284,7 @@ def test_pill_color_mapping_for_each_overall_iserr(
     )
     # Assert
     assert out["isErr"] is False
+
 
 @pytest.mark.parametrize(
     "overall,expected_mod",
@@ -318,6 +319,7 @@ def test_pill_color_mapping_for_each_overall_tooltip_contains(
     # Assert
     assert "foo/bar" in out["tooltip"]
 
+
 @pytest.mark.parametrize(
     "overall,expected_mod",
     [
@@ -350,6 +352,7 @@ def test_pill_color_mapping_for_each_overall_tooltip_contains_2(
     )
     # Assert
     assert "main" in out["tooltip"]
+
 
 @pytest.mark.parametrize(
     "overall,expected_mod",
@@ -390,42 +393,37 @@ def test_pill_modifier_for_per_repo_error_modifier() -> None:
     modifier with the adapter message in the tooltip."""
     # Arrange
     # Act
-    out = _run_pill_helpers(
-        {"slug": "foo/dead", "error": "gh exited 1: not found"}
-    )
+    out = _run_pill_helpers({"slug": "foo/dead", "error": "gh exited 1: not found"})
     # Assert
     assert out["modifier"] == "error"
+
 
 def test_pill_modifier_for_per_repo_error_iserr() -> None:
     """A per-repo error (``{slug, error}``) maps to the ``--error``
     modifier with the adapter message in the tooltip."""
     # Arrange
     # Act
-    out = _run_pill_helpers(
-        {"slug": "foo/dead", "error": "gh exited 1: not found"}
-    )
+    out = _run_pill_helpers({"slug": "foo/dead", "error": "gh exited 1: not found"})
     # Assert
     assert out["isErr"] is True
+
 
 def test_pill_modifier_for_per_repo_error_tooltip_contains() -> None:
     """A per-repo error (``{slug, error}``) maps to the ``--error``
     modifier with the adapter message in the tooltip."""
     # Arrange
     # Act
-    out = _run_pill_helpers(
-        {"slug": "foo/dead", "error": "gh exited 1: not found"}
-    )
+    out = _run_pill_helpers({"slug": "foo/dead", "error": "gh exited 1: not found"})
     # Assert
     assert "foo/dead" in out["tooltip"]
+
 
 def test_pill_modifier_for_per_repo_error_tooltip_contains_2() -> None:
     """A per-repo error (``{slug, error}``) maps to the ``--error``
     modifier with the adapter message in the tooltip."""
     # Arrange
     # Act
-    out = _run_pill_helpers(
-        {"slug": "foo/dead", "error": "gh exited 1: not found"}
-    )
+    out = _run_pill_helpers({"slug": "foo/dead", "error": "gh exited 1: not found"})
     # Assert
     assert "gh exited 1" in out["tooltip"]
 

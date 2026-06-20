@@ -100,37 +100,40 @@ def test_css_has_canonical_selectors() -> None:
         assert selector in css, f"missing CSS selector: {selector}"
 
 
-def test_css_uses_design_tokens_only() -> None:
-    """Colors must come from CSS variables — NO hardcoded hex / named
-    color literals. Hex / ``white`` / ``#fff`` would freeze the panel
-    to one theme and break the operator's light-mode view.
-
-    Required tokens: ``--status-success`` (ok bar), ``--status-warning``
-    (warn bar), ``--status-error`` (slow bar), ``--stx-danger`` (error
-    ring), plus the board-local chrome tokens.
-    """
+def test_css_has_no_hardcoded_hex_colors() -> None:
+    """Hex literals freeze the panel to one theme; colors must come
+    from design tokens."""
     # Arrange
     css = _CSS_FILE.read_text(encoding="utf-8")
-    # Strip /* ... */ comments before scanning — the comment block at
-    # the top documents the token names verbatim and would falsely
-    # trip the hex / named-color detectors otherwise.
+    # Strip /* ... */ comments so the doc block (which names the
+    # tokens verbatim) does not trip the hex / named-color scan.
     no_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
-    # 3-, 4-, 6-, or 8-digit hex literals.
     # Act
     hex_matches = re.findall(r"#[0-9A-Fa-f]{3,8}\b", no_comments)
     # Assert
-    assert not hex_matches, (
-        f"hardcoded hex colors in fleet-timing.css (breaks theming): "
-        f"{hex_matches!r}"
-    )
-    # Named-color literals — same theming smell.
-    for forbidden in (r":\s*white\b", r":\s*black\b"):
-        assert not re.search(forbidden, no_comments), (
-            f"hardcoded named color matching {forbidden!r} found in "
-            f"fleet-timing.css — use a design token."
-        )
-    # Required token references — at least one occurrence each.
-    for token in (
+    assert not hex_matches, f"hardcoded hex colors in fleet-timing.css: {hex_matches!r}"
+
+
+def test_css_has_no_hardcoded_named_colors() -> None:
+    """Named-color literals (white / black) are the same theming
+    smell as hex."""
+    # Arrange
+    css = _CSS_FILE.read_text(encoding="utf-8")
+    # Strip /* ... */ comments so the doc block (which names the
+    # tokens verbatim) does not trip the hex / named-color scan.
+    no_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    # Act
+    forbidden = (r":\s*white\b", r":\s*black\b")
+    # Assert
+    assert not any(re.search(f, no_comments) for f in forbidden)
+
+
+def test_css_references_all_required_tokens() -> None:
+    """Every required design token must be referenced at least once."""
+    # Arrange
+    css = _CSS_FILE.read_text(encoding="utf-8")
+    # Act
+    required = (
         "--status-success",
         "--status-warning",
         "--status-error",
@@ -139,8 +142,9 @@ def test_css_uses_design_tokens_only() -> None:
         "--stx-border",
         "--stx-panel-bg",
         "--stx-text",
-    ):
-        assert token in css, f"missing design token: {token}"
+    )
+    # Assert
+    assert all(token in css for token in required)
 
 
 def test_css_is_imported_from_board_css_is_file() -> None:
@@ -153,6 +157,7 @@ def test_css_is_imported_from_board_css_is_file() -> None:
     # Assert
     text = board_css.read_text(encoding="utf-8")
     assert board_css.is_file()
+
 
 def test_css_is_imported_from_board_css_text_contains() -> None:
     """The panel only renders correctly when board.css imports the
@@ -305,7 +310,7 @@ def test_format_duration_sub_second() -> None:
     # Arrange
     # Act
     out = _run_js(
-        'process.stdout.write(JSON.stringify({a: formatDurationSeconds(1.5)}));'
+        "process.stdout.write(JSON.stringify({a: formatDurationSeconds(1.5)}));"
     )
     # Assert
     assert out["a"] == "1.5s"
@@ -331,6 +336,7 @@ def test_format_duration_minutes_ninety() -> None:
     # Assert
     assert out["ninety"] == "1m 30s"
 
+
 def test_format_duration_minutes_one_hour() -> None:
     """90s renders as ``1m 30s`` — operator wants both halves visible.
     3600s renders as ``1h`` cleanly (no leftover ``0m``). 7200s →
@@ -350,6 +356,7 @@ def test_format_duration_minutes_one_hour() -> None:
     )
     # Assert
     assert out["one_hour"] == "1h"
+
 
 def test_format_duration_minutes_two_hours() -> None:
     """90s renders as ``1m 30s`` — operator wants both halves visible.
@@ -391,6 +398,7 @@ def test_format_duration_handles_nulls_and_infinities_n() -> None:
     # Assert
     assert out["n"] == "—"
 
+
 def test_format_duration_handles_nulls_and_infinities_i() -> None:
     """Null / NaN / Infinity all surface as the dash literal — the
     fail-loud principle: don't render a bogus number."""
@@ -409,6 +417,7 @@ def test_format_duration_handles_nulls_and_infinities_i() -> None:
     )
     # Assert
     assert out["i"] == "—"
+
 
 def test_format_duration_handles_nulls_and_infinities_nan() -> None:
     """Null / NaN / Infinity all surface as the dash literal — the
@@ -435,7 +444,7 @@ def test_format_duration_seconds_integer() -> None:
     # Arrange
     # Act
     out = _run_js(
-        'process.stdout.write(JSON.stringify({a: formatDurationSeconds(45)}));'
+        "process.stdout.write(JSON.stringify({a: formatDurationSeconds(45)}));"
     )
     # Assert
     assert out["a"] == "45s"
@@ -462,6 +471,7 @@ def test_bar_width_pct_basic_full() -> None:
     # Assert
     assert out["full"] == 100
 
+
 def test_bar_width_pct_basic_half() -> None:
     """value=max → 100; value=0 → 0; value=half → 50."""
     # Arrange
@@ -479,6 +489,7 @@ def test_bar_width_pct_basic_half() -> None:
     )
     # Assert
     assert out["half"] == 50
+
 
 def test_bar_width_pct_basic_zero() -> None:
     """value=max → 100; value=0 → 0; value=half → 50."""
@@ -519,6 +530,7 @@ def test_bar_width_pct_clamps_and_null_safe_n() -> None:
     # Assert
     assert out["n"] == 0
 
+
 def test_bar_width_pct_clamps_and_null_safe_neg() -> None:
     """Null / negative / over-max all clamp to [0, 100] — no NaN /
     overflow geometry."""
@@ -539,6 +551,7 @@ def test_bar_width_pct_clamps_and_null_safe_neg() -> None:
     # Assert
     assert out["neg"] == 0
 
+
 def test_bar_width_pct_clamps_and_null_safe_over() -> None:
     """Null / negative / over-max all clamp to [0, 100] — no NaN /
     overflow geometry."""
@@ -558,6 +571,7 @@ def test_bar_width_pct_clamps_and_null_safe_over() -> None:
     )
     # Assert
     assert out["over"] == 100
+
 
 def test_bar_width_pct_clamps_and_null_safe_zero_max() -> None:
     """Null / negative / over-max all clamp to [0, 100] — no NaN /
@@ -604,6 +618,7 @@ def test_bar_color_token_thresholds_ok() -> None:
     # Assert
     assert out["ok"] == "stx-todo-fleet-timing__bar--ok"
 
+
 def test_bar_color_token_thresholds_ok_just_under() -> None:
     """Green / warn / error mapping by width-percentage."""
     # Arrange
@@ -624,6 +639,7 @@ def test_bar_color_token_thresholds_ok_just_under() -> None:
     )
     # Assert
     assert out["ok_just_under"] == "stx-todo-fleet-timing__bar--ok"
+
 
 def test_bar_color_token_thresholds_warn() -> None:
     """Green / warn / error mapping by width-percentage."""
@@ -646,6 +662,7 @@ def test_bar_color_token_thresholds_warn() -> None:
     # Assert
     assert out["warn"] == "stx-todo-fleet-timing__bar--warn"
 
+
 def test_bar_color_token_thresholds_warn_just_under() -> None:
     """Green / warn / error mapping by width-percentage."""
     # Arrange
@@ -667,6 +684,7 @@ def test_bar_color_token_thresholds_warn_just_under() -> None:
     # Assert
     assert out["warn_just_under"] == "stx-todo-fleet-timing__bar--warn"
 
+
 def test_bar_color_token_thresholds_slow() -> None:
     """Green / warn / error mapping by width-percentage."""
     # Arrange
@@ -687,6 +705,7 @@ def test_bar_color_token_thresholds_slow() -> None:
     )
     # Assert
     assert out["slow"] == "stx-todo-fleet-timing__bar--slow"
+
 
 def test_bar_color_token_thresholds_slow_full() -> None:
     """Green / warn / error mapping by width-percentage."""
@@ -828,6 +847,7 @@ def test_error_payload_discriminator_ok() -> None:
     # Assert
     assert out["ok"] is False
 
+
 def test_error_payload_discriminator_err() -> None:
     """``isTimingPayloadErr`` returns true for an HTTP-500 error body
     so the component branches to the ``--error`` render path."""
@@ -857,18 +877,28 @@ def test_timing_panel_label_counts_rows_in_dimension_agent_contains() -> None:
     # Arrange
     payload = {
         "window_days": 30,
-        "per_agent": {"a": {"n_tasks_done": 1,
-            "median_started_to_done_s": 1.0,
-            "p95_started_to_done_s": 1.0,
-            "median_created_to_started_s": None},
-                      "b": {"n_tasks_done": 1,
-            "median_started_to_done_s": 1.0,
-            "p95_started_to_done_s": 1.0,
-            "median_created_to_started_s": None}},
-        "per_project": {"proj1": {"n_tasks_done": 2,
-            "median_started_to_done_s": 1.0,
-            "p95_started_to_done_s": 1.0,
-            "median_created_to_started_s": None}},
+        "per_agent": {
+            "a": {
+                "n_tasks_done": 1,
+                "median_started_to_done_s": 1.0,
+                "p95_started_to_done_s": 1.0,
+                "median_created_to_started_s": None,
+            },
+            "b": {
+                "n_tasks_done": 1,
+                "median_started_to_done_s": 1.0,
+                "p95_started_to_done_s": 1.0,
+                "median_created_to_started_s": None,
+            },
+        },
+        "per_project": {
+            "proj1": {
+                "n_tasks_done": 2,
+                "median_started_to_done_s": 1.0,
+                "p95_started_to_done_s": 1.0,
+                "median_created_to_started_s": None,
+            }
+        },
         "per_group": {},
         "n_tasks_in_window": 2,
         "n_tasks_missing_timestamps": 0,
@@ -886,24 +916,35 @@ def test_timing_panel_label_counts_rows_in_dimension_agent_contains() -> None:
     # Assert
     assert "2 rows" in out["agent"]
 
+
 def test_timing_panel_label_counts_rows_in_dimension_project_contains() -> None:
     """The label reflects the row count of the currently-selected
     group-by dimension, not the union of all dimensions."""
     # Arrange
     payload = {
         "window_days": 30,
-        "per_agent": {"a": {"n_tasks_done": 1,
-            "median_started_to_done_s": 1.0,
-            "p95_started_to_done_s": 1.0,
-            "median_created_to_started_s": None},
-                      "b": {"n_tasks_done": 1,
-            "median_started_to_done_s": 1.0,
-            "p95_started_to_done_s": 1.0,
-            "median_created_to_started_s": None}},
-        "per_project": {"proj1": {"n_tasks_done": 2,
-            "median_started_to_done_s": 1.0,
-            "p95_started_to_done_s": 1.0,
-            "median_created_to_started_s": None}},
+        "per_agent": {
+            "a": {
+                "n_tasks_done": 1,
+                "median_started_to_done_s": 1.0,
+                "p95_started_to_done_s": 1.0,
+                "median_created_to_started_s": None,
+            },
+            "b": {
+                "n_tasks_done": 1,
+                "median_started_to_done_s": 1.0,
+                "p95_started_to_done_s": 1.0,
+                "median_created_to_started_s": None,
+            },
+        },
+        "per_project": {
+            "proj1": {
+                "n_tasks_done": 2,
+                "median_started_to_done_s": 1.0,
+                "p95_started_to_done_s": 1.0,
+                "median_created_to_started_s": None,
+            }
+        },
         "per_group": {},
         "n_tasks_in_window": 2,
         "n_tasks_missing_timestamps": 0,
@@ -921,24 +962,35 @@ def test_timing_panel_label_counts_rows_in_dimension_project_contains() -> None:
     # Assert
     assert "1 rows" in out["project"]
 
+
 def test_timing_panel_label_counts_rows_in_dimension_group_contains() -> None:
     """The label reflects the row count of the currently-selected
     group-by dimension, not the union of all dimensions."""
     # Arrange
     payload = {
         "window_days": 30,
-        "per_agent": {"a": {"n_tasks_done": 1,
-            "median_started_to_done_s": 1.0,
-            "p95_started_to_done_s": 1.0,
-            "median_created_to_started_s": None},
-                      "b": {"n_tasks_done": 1,
-            "median_started_to_done_s": 1.0,
-            "p95_started_to_done_s": 1.0,
-            "median_created_to_started_s": None}},
-        "per_project": {"proj1": {"n_tasks_done": 2,
-            "median_started_to_done_s": 1.0,
-            "p95_started_to_done_s": 1.0,
-            "median_created_to_started_s": None}},
+        "per_agent": {
+            "a": {
+                "n_tasks_done": 1,
+                "median_started_to_done_s": 1.0,
+                "p95_started_to_done_s": 1.0,
+                "median_created_to_started_s": None,
+            },
+            "b": {
+                "n_tasks_done": 1,
+                "median_started_to_done_s": 1.0,
+                "p95_started_to_done_s": 1.0,
+                "median_created_to_started_s": None,
+            },
+        },
+        "per_project": {
+            "proj1": {
+                "n_tasks_done": 2,
+                "median_started_to_done_s": 1.0,
+                "p95_started_to_done_s": 1.0,
+                "median_created_to_started_s": None,
+            }
+        },
         "per_group": {},
         "n_tasks_in_window": 2,
         "n_tasks_missing_timestamps": 0,
@@ -980,6 +1032,7 @@ def test_pick_rows_routes_to_correct_dimension_a() -> None:
     # Assert
     assert out["a"] == {"a": "AGENT"}
 
+
 def test_pick_rows_routes_to_correct_dimension_p() -> None:
     """``pickRows`` returns the agent / project / group map for the
     current selection — the SINGLE point where the dimension switch
@@ -1003,6 +1056,7 @@ def test_pick_rows_routes_to_correct_dimension_p() -> None:
     # Assert
     assert out["p"] == {"p": "PROJECT"}
 
+
 def test_pick_rows_routes_to_correct_dimension_g() -> None:
     """``pickRows`` returns the agent / project / group map for the
     current selection — the SINGLE point where the dimension switch
@@ -1025,5 +1079,6 @@ def test_pick_rows_routes_to_correct_dimension_g() -> None:
     )
     # Assert
     assert out["g"] == {"g": "GROUP"}
+
 
 # EOF

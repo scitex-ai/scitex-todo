@@ -15,10 +15,14 @@ from scitex_todo._org import build_org
 class TestExportRepeaterSuffix:
     def test_emits_weekly_repeater(self):
         # Arrange
-        tasks = [{
-            "id": "a", "title": "X", "status": "pending",
-            "deadline": "2026-06-15 +1w",
-        }]
+        tasks = [
+            {
+                "id": "a",
+                "title": "X",
+                "status": "pending",
+                "deadline": "2026-06-15 +1w",
+            }
+        ]
         # Act
         text = build_org(tasks)
         # Assert
@@ -26,10 +30,14 @@ class TestExportRepeaterSuffix:
 
     def test_emits_catchup_monthly(self):
         # Arrange
-        tasks = [{
-            "id": "a", "title": "X", "status": "pending",
-            "deadline": "2026-06-15 ++2m",
-        }]
+        tasks = [
+            {
+                "id": "a",
+                "title": "X",
+                "status": "pending",
+                "deadline": "2026-06-15 ++2m",
+            }
+        ]
         # Act
         text = build_org(tasks)
         # Assert
@@ -39,10 +47,14 @@ class TestExportRepeaterSuffix:
 class TestExportMultipleDeadlines:
     def test_emits_two_deadline_tokens_on_same_line_text_contains(self):
         # Arrange
-        tasks = [{
-            "id": "a", "title": "X", "status": "pending",
-            "deadlines": ["2026-06-15", "2026-07-01 +1m"],
-        }]
+        tasks = [
+            {
+                "id": "a",
+                "title": "X",
+                "status": "pending",
+                "deadlines": ["2026-06-15", "2026-07-01 +1m"],
+            }
+        ]
         # Act
         text = build_org(tasks)
         # Assert
@@ -50,10 +62,14 @@ class TestExportMultipleDeadlines:
 
     def test_emits_two_deadline_tokens_on_same_line_text_contains_2(self):
         # Arrange
-        tasks = [{
-            "id": "a", "title": "X", "status": "pending",
-            "deadlines": ["2026-06-15", "2026-07-01 +1m"],
-        }]
+        tasks = [
+            {
+                "id": "a",
+                "title": "X",
+                "status": "pending",
+                "deadlines": ["2026-06-15", "2026-07-01 +1m"],
+            }
+        ]
         # Act
         text = build_org(tasks)
         # Assert
@@ -63,11 +79,15 @@ class TestExportMultipleDeadlines:
         # When both happen to be present (validator would normally
         # reject; assert the adapter is robust).
         # Arrange
-        tasks = [{
-            "id": "a", "title": "X", "status": "pending",
-            "deadline": "2026-09-01",
-            "deadlines": ["2026-06-15"],
-        }]
+        tasks = [
+            {
+                "id": "a",
+                "title": "X",
+                "status": "pending",
+                "deadline": "2026-09-01",
+                "deadlines": ["2026-06-15"],
+            }
+        ]
         # Act
         text = build_org(tasks)
         # Assert
@@ -77,11 +97,15 @@ class TestExportMultipleDeadlines:
         # When both happen to be present (validator would normally
         # reject; assert the adapter is robust).
         # Arrange
-        tasks = [{
-            "id": "a", "title": "X", "status": "pending",
-            "deadline": "2026-09-01",
-            "deadlines": ["2026-06-15"],
-        }]
+        tasks = [
+            {
+                "id": "a",
+                "title": "X",
+                "status": "pending",
+                "deadline": "2026-09-01",
+                "deadlines": ["2026-06-15"],
+            }
+        ]
         # Act
         text = build_org(tasks)
         # Assert
