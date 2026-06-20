@@ -41,7 +41,7 @@ class TestRunnableFilter:
         # Assert
         assert next_task(tasks, assignee="proj-x").task is None
 
-    def test_accepts_pending(self):
+    def test_accepts_pending_runnable_task(self):
         # Arrange
         # Act
         tasks = [{

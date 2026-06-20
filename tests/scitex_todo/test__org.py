@@ -128,7 +128,7 @@ class TestScheduledLine:
 
 
 class TestPropertiesDrawer:
-    def test_includes_id(self):
+    def test_drawer_includes_id_property(self):
         # Arrange
         tasks = [{"id": "task-42", "title": "x", "status": "pending"}]
         # Act

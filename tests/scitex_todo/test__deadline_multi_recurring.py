@@ -61,7 +61,7 @@ class TestRepeaterParseCatchupMonthly:
 
 
 class TestRepeaterRejectZeroN:
-    def test_raises(self):
+    def test_raises_on_zero_interval(self):
         # Arrange
         # Act
         # Assert
@@ -76,7 +76,7 @@ class TestRepeaterAcceptsAllUnits:
     @pytest.mark.parametrize("suffix,unit", [
         ("+3d", "d"), ("+1w", "w"), ("+2m", "m"), ("+5y", "y"),
     ])
-    def test_unit(self, suffix, unit):
+    def test_unit_suffix_parses_to_unit(self, suffix, unit):
         # Arrange
         # Act
         _, rep = _parse_deadline_or_raise(
@@ -88,7 +88,7 @@ class TestRepeaterAcceptsAllUnits:
 
 
 class TestRepeaterRejectUnknownUnit:
-    def test_raises(self):
+    def test_raises_on_unknown_unit(self):
         # Arrange
         # Act
         # Assert
@@ -163,7 +163,7 @@ class TestMutualExclusion:
 
 
 class TestDeadlinesEmptyListRejected:
-    def test_raises(self, tmp_path):
+    def test_raises_on_empty_deadline_list(self, tmp_path):
         # Arrange
         store = _write(
             tmp_path,
@@ -195,7 +195,7 @@ class TestDeadlinesPerEntryValidated:
 
 
 class TestNextDeadlineForSingleScalar:
-    def test_bare_iso(self):
+    def test_bare_iso_scalar_returned(self):
         # Arrange
         # Act
         out = next_deadline_for_task({"deadline": "2026-06-15"})

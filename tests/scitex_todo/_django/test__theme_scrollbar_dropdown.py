@@ -304,7 +304,7 @@ def test_no_hardcoded_white_in_scrollbar_or_select_rules(path: Path) -> None:
 @pytest.mark.parametrize(
     "path", [_BOARD_REACT_CSS, _BOARD_V3_THEME_CSS]
 )
-def test_balanced_braces(path: Path) -> None:
+def test_css_braces_are_balanced(path: Path) -> None:
     """Edits did not corrupt brace nesting."""
     # Arrange
     # Act

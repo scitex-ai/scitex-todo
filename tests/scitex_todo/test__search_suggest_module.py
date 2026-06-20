@@ -40,7 +40,7 @@ def js_text() -> str:
 class TestSearchSuggestModuleSurface:
     """Static pins on the autocomplete module's public API."""
 
-    def test_module_exists(self):
+    def test_suggest_module_exists_on_disk(self):
         # Arrange
         # Act
         # Assert

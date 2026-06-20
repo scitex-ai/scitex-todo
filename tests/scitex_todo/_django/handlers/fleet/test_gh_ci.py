@@ -263,7 +263,7 @@ def test_gh_missing_binary_raises(env) -> None:
         ),
     ],
 )
-def test_overall_reducer(checks, expected) -> None:
+def test_overall_status_reducer_picks_worst(checks, expected) -> None:
     """The reducer is the heart of the pill color — failure beats
     pending beats success. Pin every branch explicitly so the FE color
     mapping stays in lock-step with what the back-end emits."""

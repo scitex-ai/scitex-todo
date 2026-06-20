@@ -96,7 +96,7 @@ class TestSpansAllGroup:
 
 
 class TestRejectMissingId:
-    def test_raises(self, tmp_path: Path) -> None:
+    def test_raises_when_id_missing(self, tmp_path: Path) -> None:
         # Arrange
         store = _write_store(
             tmp_path,
@@ -112,7 +112,7 @@ class TestRejectMissingId:
 
 
 class TestRejectMissingLabel:
-    def test_raises(self, tmp_path: Path) -> None:
+    def test_raises_when_label_missing(self, tmp_path: Path) -> None:
         # Arrange
         store = _write_store(
             tmp_path,
@@ -128,7 +128,7 @@ class TestRejectMissingLabel:
 
 
 class TestRejectBothSpansAllAndProjects:
-    def test_raises(self, tmp_path: Path) -> None:
+    def test_raises_when_spans_all_and_projects_both_set(self, tmp_path: Path) -> None:
         # Arrange
         store = _write_store(
             tmp_path,
@@ -162,7 +162,7 @@ class TestRejectEmptyGroup:
 
 
 class TestRejectDuplicateIds:
-    def test_raises(self, tmp_path: Path) -> None:
+    def test_raises_on_duplicate_group_id(self, tmp_path: Path) -> None:
         # Arrange
         store = _write_store(
             tmp_path,
@@ -199,7 +199,7 @@ class TestRejectIdCollisionWithTask:
 
 
 class TestRejectNonStringProject:
-    def test_raises(self, tmp_path: Path) -> None:
+    def test_raises_on_non_string_project_entry(self, tmp_path: Path) -> None:
         # Arrange
         store = _write_store(
             tmp_path,
@@ -216,7 +216,7 @@ class TestRejectNonStringProject:
 
 
 class TestRejectNonBoolSpansAll:
-    def test_raises(self, tmp_path: Path) -> None:
+    def test_raises_on_non_bool_spans_all(self, tmp_path: Path) -> None:
         # Arrange
         store = _write_store(
             tmp_path,

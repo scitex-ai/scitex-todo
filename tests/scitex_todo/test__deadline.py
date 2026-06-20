@@ -77,7 +77,7 @@ class TestScheduledFieldRoundTrip:
 
 
 class TestDeadlineEmptyStringRejected:
-    def test_raises(self, tmp_path):
+    def test_raises_on_empty_deadline_string(self, tmp_path):
         # Arrange
         store = _write(
             tmp_path,

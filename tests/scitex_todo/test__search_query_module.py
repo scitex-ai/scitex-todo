@@ -38,7 +38,7 @@ def js_text() -> str:
 class TestSearchQueryModuleSurface:
     """Static pins on the parser module's public API."""
 
-    def test_module_exists(self):
+    def test_query_module_exists_on_disk(self):
         # Arrange
         # Act
         # Assert
@@ -56,7 +56,7 @@ class TestSearchQueryModuleSurface:
         # Assert
         assert "matchesSearchQuery" in js_text
 
-    def test_tokenize_exported(self, js_text):
+    def test_tokenize_symbol_is_exported(self, js_text):
         # Arrange
         # Act
         # Assert
@@ -82,7 +82,7 @@ class TestQualifierDictionary:
             "host",
         ],
     )
-    def test_qualifier_present(self, js_text, qualifier):
+    def test_qualifier_keyword_present_in_source(self, js_text, qualifier):
         # Each qualifier name should appear as a key in the QUALIFIERS
         # dictionary literal — substring pin is enough; the JS test
         # suite verifies the actual matching.
