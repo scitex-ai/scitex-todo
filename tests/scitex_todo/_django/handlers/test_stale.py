@@ -44,7 +44,9 @@ def _iso(dt: datetime.datetime) -> str:
 
 
 _OLD = _iso(datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=30))
-_RECENT = _iso(datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=2))
+_RECENT = _iso(
+    datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=2)
+)
 
 
 _STORE_TEXT = f"""\
@@ -110,91 +112,103 @@ def _load(store_path):
 
 
 def test_stale_returns_200(store):
-    # Arrange + Act
+    # Arrange
+    # Act
     resp = _get("stale", store)
     # Assert
     assert resp.status_code == 200
 
 
 def test_stale_includes_old_pending_card(store):
-    # Arrange + Act
+    # Arrange
     payload = json.loads(_get("stale", store).content)
-    # Assert
+    # Act
     ids = [r["id"] for r in payload["stale"]]
+    # Assert
     assert "old-pending-card" in ids
 
 
 def test_stale_excludes_recent_pending_card(store):
-    # Arrange + Act
+    # Arrange
     payload = json.loads(_get("stale", store).content)
-    # Assert
+    # Act
     ids = [r["id"] for r in payload["stale"]]
+    # Assert
     assert "recent-pending-card" not in ids
 
 
 def test_stale_excludes_done_card(store):
-    # Arrange + Act
+    # Arrange
     payload = json.loads(_get("stale", store).content)
-    # Assert
+    # Act
     ids = [r["id"] for r in payload["stale"]]
+    # Assert
     assert "done-card" not in ids
 
 
 def test_stale_flags_no_timestamp_row(store):
-    # Arrange + Act
+    # Arrange
     payload = json.loads(_get("stale", store).content)
-    # Assert
+    # Act
     ids = [r["id"] for r in payload["stale"]]
+    # Assert
     assert "no-timestamp-card" in ids
 
 
 def test_stale_flags_vague_row(store):
-    # Arrange + Act
+    # Arrange
     payload = json.loads(_get("stale", store).content)
-    # Assert
+    # Act
     ids = [r["id"] for r in payload["stale"]]
+    # Assert
     assert "vague-card" in ids
 
 
 def test_stale_include_no_timestamp_false_filter(store):
-    # Arrange + Act
+    # Arrange
     payload = json.loads(_get("stale", store, "&include_no_timestamp=false").content)
-    # Assert — no-timestamp-card was flagged ONLY for missing timestamps; the
     # filter must drop it (vague-card stays — it has a second reason).
+    # Act
     ids = [r["id"] for r in payload["stale"]]
+    # Assert
     assert "no-timestamp-card" not in ids
 
 
 def test_stale_returns_criteria_block(store):
-    # Arrange + Act
+    # Arrange
+    # Act
     payload = json.loads(_get("stale", store, "&days=7").content)
     # Assert
     assert payload["criteria"] == {"days": 7, "include_no_timestamp": True}
 
 
 def test_stale_rejects_negative_days(store):
-    # Arrange + Act
+    # Arrange
+    # Act
     resp = _get("stale", store, "&days=-1")
     # Assert
     assert resp.status_code == 400
 
 
 def test_stale_rejects_non_integer_days(store):
-    # Arrange + Act
+    # Arrange
+    # Act
     resp = _get("stale", store, "&days=forever")
     # Assert
     assert resp.status_code == 400
 
 
 def test_stale_returns_by_project_rollup(store):
-    # Arrange + Act
+    # Arrange
+    # Act
     payload = json.loads(_get("stale", store).content)
-    # Assert — old-pending-card lives in scitex-dev; should be counted there.
+    # Assert
     assert payload["by_project"].get("scitex-dev", 0) >= 1
 
 
 def test_stale_rejects_post(store):
-    # Arrange + Act
+    # Arrange
+    # Act
     resp = _post("stale", store, {})
     # Assert
     assert resp.status_code == 405
@@ -281,7 +295,8 @@ def test_archive_rejects_unknown_id(store):
 
 
 def test_archive_rejects_get(store):
-    # Arrange + Act
+    # Arrange
+    # Act
     resp = _get("archive", store)
     # Assert
     assert resp.status_code == 405

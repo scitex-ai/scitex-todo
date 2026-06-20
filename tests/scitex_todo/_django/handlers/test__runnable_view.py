@@ -29,15 +29,20 @@ from scitex_todo._store import add_task
 
 
 @pytest.fixture()
-def store_with_runnable(tmp_path: Path, monkeypatch) -> Path:
+def store_with_runnable(tmp_path: Path, env) -> Path:
     """A store with one runnable + one blocked task; pin via
     SCITEX_TODO_TASKS so the view's `resolve_tasks_path(None)` picks
     it up."""
     store = tmp_path / "tasks.yaml"
     add_task(store=store, id="t-runnable", title="r", group="paper")
-    add_task(store=store, id="t-blocked", title="b", status="blocked",
-             blocker="operator-decision")
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
+    add_task(
+        store=store,
+        id="t-blocked",
+        title="b",
+        status="blocked",
+        blocker="operator-decision",
+    )
+    env.set("SCITEX_TODO_TASKS", str(store))
     return store
 
 
@@ -63,7 +68,9 @@ def test_runnable_view_payload_has_expected_keys(store_with_runnable):
     payload = json.loads(response.content)
     # Assert
     assert set(payload.keys()) == {
-        "tasks", "candidate_count", "blocked_by_deps_count",
+        "tasks",
+        "candidate_count",
+        "blocked_by_deps_count",
     }
 
 
@@ -149,7 +156,9 @@ def test_blocked_batch_view_carries_reason_and_chain(store_with_runnable):
     payload = json.loads(blocked_batch_view(req).content)
     # Assert
     blocked = payload["tasks"][0]
-    assert blocked["reason"] == "explicit-blocker" and blocked["chain"] == ["operator-decision"]
+    assert blocked["reason"] == "explicit-blocker" and blocked["chain"] == [
+        "operator-decision"
+    ]
 
 
 def test_blocked_batch_view_by_reason_histogram(store_with_runnable):

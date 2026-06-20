@@ -51,7 +51,8 @@ class TestGetTask:
         # Arrange
         store = tmp_path / "tasks.yaml"
         _store.add_task(store, id="a", title="A")
-        # Act / Assert
+        # Act
+        # Assert
         with pytest.raises(_store.TaskNotFoundError):
             _store.get_task(store, task_id="missing")
 
@@ -59,7 +60,8 @@ class TestGetTask:
         # Arrange
         store = tmp_path / "tasks.yaml"
         _store.add_task(store, id="a", title="A")
-        # Act / Assert
+        # Act
+        # Assert
         with pytest.raises(ValueError):
             _store.get_task(store, task_id=None)
 
@@ -136,7 +138,8 @@ class TestDeleteTask:
         # Arrange
         store = tmp_path / "tasks.yaml"
         _store.add_task(store, id="a", title="A")
-        # Act / Assert
+        # Act
+        # Assert
         with pytest.raises(_store.TaskNotFoundError):
             _store.delete_task(store, task_id="missing")
 
@@ -161,24 +164,28 @@ class TestRestoreTask:
         # Arrange
         store = tmp_path / "tasks.yaml"
         _store.add_task(store, id="a", title="A")
-        # Act / Assert — restoring without deleting first hits the dup
         # branch.
+        # Act
+        # Assert
         with pytest.raises(ValueError):
             _store.restore_task(
-                store, task={"id": "a", "title": "A", "status": "pending"},
+                store,
+                task={"id": "a", "title": "A", "status": "pending"},
             )
 
     def test_missing_task_arg_raises(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        # Act / Assert
+        # Act
+        # Assert
         with pytest.raises(ValueError):
             _store.restore_task(store, task=None)
 
     def test_missing_id_in_task_arg_raises(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        # Act / Assert
+        # Act
+        # Assert
         with pytest.raises(ValueError):
             _store.restore_task(store, task={"title": "noid"})
 
@@ -213,7 +220,8 @@ class TestCommentTask:
         # Arrange
         store = tmp_path / "tasks.yaml"
         _store.add_task(store, id="a", title="A")
-        # Act / Assert
+        # Act
+        # Assert
         with pytest.raises(ValueError):
             _store.comment_task(store, task_id="a", text="", by="me")
 
@@ -221,7 +229,8 @@ class TestCommentTask:
         # Arrange
         store = tmp_path / "tasks.yaml"
         _store.add_task(store, id="a", title="A")
-        # Act / Assert
+        # Act
+        # Assert
         with pytest.raises(_store.TaskNotFoundError):
             _store.comment_task(store, task_id="missing", text="hi", by="me")
 
@@ -239,8 +248,11 @@ class TestSetEdge:
         _store.add_task(store, id="b", title="B")
         # Act
         _store.set_edge(
-            store, action="add", kind="depends_on",
-            source="b", target="a",
+            store,
+            action="add",
+            kind="depends_on",
+            source="b",
+            target="a",
         )
         # Assert
         assert _store.get_task(store, task_id="b")["depends_on"] == ["a"]
@@ -252,8 +264,11 @@ class TestSetEdge:
         _store.add_task(store, id="b", title="B", depends_on=["a"])
         # Act
         _store.set_edge(
-            store, action="remove", kind="depends_on",
-            source="b", target="a",
+            store,
+            action="remove",
+            kind="depends_on",
+            source="b",
+            target="a",
         )
         # Assert — list becomes empty → key removed entirely.
         assert "depends_on" not in _store.get_task(store, task_id="b")
@@ -265,8 +280,11 @@ class TestSetEdge:
         _store.add_task(store, id="b", title="B")
         # Act
         _store.set_edge(
-            store, action="add", kind="blocks",
-            source="a", target="b",
+            store,
+            action="add",
+            kind="blocks",
+            source="a",
+            target="b",
         )
         # Assert
         assert _store.get_task(store, task_id="a")["blocks"] == ["b"]
@@ -274,63 +292,87 @@ class TestSetEdge:
     def test_invalid_action_raises(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        # Act / Assert
+        # Act
+        # Assert
         with pytest.raises(ValueError):
             _store.set_edge(
-                store, action="upsert", kind="depends_on",
-                source="a", target="b",
+                store,
+                action="upsert",
+                kind="depends_on",
+                source="a",
+                target="b",
             )
 
     def test_invalid_kind_raises(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        # Act / Assert
+        # Act
+        # Assert
         with pytest.raises(ValueError):
             _store.set_edge(
-                store, action="add", kind="related_to",
-                source="a", target="b",
+                store,
+                action="add",
+                kind="related_to",
+                source="a",
+                target="b",
             )
 
     def test_self_edge_raises(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        # Act / Assert
+        # Act
+        # Assert
         with pytest.raises(ValueError):
             _store.set_edge(
-                store, action="add", kind="depends_on",
-                source="a", target="a",
+                store,
+                action="add",
+                kind="depends_on",
+                source="a",
+                target="a",
             )
 
     def test_missing_endpoints_raises(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        # Act / Assert
+        # Act
+        # Assert
         with pytest.raises(ValueError):
             _store.set_edge(
-                store, action="add", kind="depends_on",
-                source="", target="b",
+                store,
+                action="add",
+                kind="depends_on",
+                source="",
+                target="b",
             )
 
     def test_unknown_source_raises_not_found(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
         _store.add_task(store, id="a", title="A")
-        # Act / Assert
+        # Act
+        # Assert
         with pytest.raises(_store.TaskNotFoundError):
             _store.set_edge(
-                store, action="add", kind="depends_on",
-                source="missing", target="a",
+                store,
+                action="add",
+                kind="depends_on",
+                source="missing",
+                target="a",
             )
 
     def test_unknown_target_raises_not_found(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
         _store.add_task(store, id="a", title="A")
-        # Act / Assert
+        # Act
+        # Assert
         with pytest.raises(_store.TaskNotFoundError):
             _store.set_edge(
-                store, action="add", kind="depends_on",
-                source="a", target="missing",
+                store,
+                action="add",
+                kind="depends_on",
+                source="a",
+                target="missing",
             )
 
 
@@ -344,8 +386,11 @@ class TestResolveTask:
         # Arrange
         store = tmp_path / "tasks.yaml"
         _store.add_task(
-            store, id="a", title="A",
-            status="blocked", blocker="operator-decision",
+            store,
+            id="a",
+            title="A",
+            status="blocked",
+            blocker="operator-decision",
         )
         # Act
         _store.resolve_task(store, task_id="a", actor="op")
@@ -356,8 +401,11 @@ class TestResolveTask:
         # Arrange
         store = tmp_path / "tasks.yaml"
         _store.add_task(
-            store, id="a", title="A",
-            status="blocked", blocker="operator-decision",
+            store,
+            id="a",
+            title="A",
+            status="blocked",
+            blocker="operator-decision",
         )
         # Act
         _store.resolve_task(store, task_id="a", actor="op")
@@ -368,8 +416,11 @@ class TestResolveTask:
         # Arrange
         store = tmp_path / "tasks.yaml"
         _store.add_task(
-            store, id="a", title="A",
-            status="blocked", blocker="operator-decision",
+            store,
+            id="a",
+            title="A",
+            status="blocked",
+            blocker="operator-decision",
         )
         # Act
         _store.resolve_task(store, task_id="a", actor="op")
@@ -389,11 +440,12 @@ class TestResolveTask:
         assert any("noop" in (c.get("text") or "") for c in comments)
 
     def test_unknown_id_raises_not_found(self, tmp_path):
-        # Arrange — pre-seed the store so load_tasks doesn't raise FNF
         # before resolve_task gets to its own not-found branch.
+        # Arrange
         store = tmp_path / "tasks.yaml"
         _store.add_task(store, id="a", title="A")
-        # Act / Assert
+        # Act
+        # Assert
         with pytest.raises(_store.TaskNotFoundError):
             _store.resolve_task(store, task_id="missing", actor="op")
 
@@ -436,6 +488,7 @@ class TestReopenTask:
         # Arrange
         store = tmp_path / "tasks.yaml"
         _store.add_task(store, id="a", title="A")
-        # Act / Assert
+        # Act
+        # Assert
         with pytest.raises(_store.TaskNotFoundError):
             _store.reopen_task(store, task_id="missing", by="op")

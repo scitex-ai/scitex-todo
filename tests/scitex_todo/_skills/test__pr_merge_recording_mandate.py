@@ -30,32 +30,36 @@ LEAF_MD = SKILL_DIR / "60_pr-merge-recording-mandate.md"
 
 
 def test_skill_md_has_pr_merge_mandate_header():
-    # Arrange / Act
+    # Arrange
+    # Act
     text = SKILL_MD.read_text(encoding="utf-8")
     # Assert
     assert "MANDATE — record evidence at PR-merge" in text
 
 
 def test_skill_md_mandate_specifies_done_with_pr_url():
-    # Arrange / Act
+    # Arrange
+    # Act
     text = SKILL_MD.read_text(encoding="utf-8")
-    # Assert — the exact CLI verb must appear so an agent reading on
     # boot can grep it directly.
+    # Assert
     assert "scitex-todo done <card-id> --pr-url" in text
 
 
 def test_skill_md_mandate_states_pr_url_is_required():
-    # Arrange / Act
+    # Arrange
+    # Act
     text = SKILL_MD.read_text(encoding="utf-8")
-    # Assert — the required-not-optional phrase is the hard-rule signal.
+    # Assert
     assert "REQUIRED, not optional" in text
 
 
 def test_skill_md_mandate_cites_completion_rationale():
-    # Arrange / Act
+    # Arrange
+    # Act
     text = SKILL_MD.read_text(encoding="utf-8")
-    # Assert — the operator's 完了率 metric is the WHY; if the phrase
     # drops, agents lose the reason to follow the mandate.
+    # Assert
     assert "完了率" in text
 
 
@@ -63,27 +67,32 @@ def test_skill_md_mandate_cites_completion_rationale():
 
 
 def test_leaf_doc_exists():
-    # Arrange / Act / Assert
+    # Arrange
+    # Act
+    # Assert
     assert LEAF_MD.exists()
 
 
 def test_leaf_doc_documents_no_pr_path():
-    # Arrange / Act
+    # Arrange
+    # Act
     text = LEAF_MD.read_text(encoding="utf-8")
-    # Assert — the "no-PR completion" alternative must be reachable.
+    # Assert
     assert "no-PR completion" in text
 
 
 def test_leaf_doc_documents_bulk_catchup_verb():
-    # Arrange / Act
+    # Arrange
+    # Act
     text = LEAF_MD.read_text(encoding="utf-8")
-    # Assert — the sync-github fallback is the documented catch-up path.
+    # Assert
     assert "scitex-todo sync-github" in text
 
 
 def test_leaf_doc_cites_lead_provenance():
-    # Arrange / Act
+    # Arrange
+    # Act
     text = LEAF_MD.read_text(encoding="utf-8")
-    # Assert — provenance line keeps the audit trail discoverable for
     # the next maintainer / restart.
+    # Assert
     assert "0cdca03a" in text

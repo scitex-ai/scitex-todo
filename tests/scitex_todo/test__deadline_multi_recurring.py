@@ -40,47 +40,80 @@ def _write(tmp_path, text):
 
 class TestRepeaterParseWeekly:
     def test_parses_weekly_suffix(self):
+        # Arrange
+        # Act
         _, rep = _parse_deadline_or_raise(
-            "2026-06-15 +1w", source="<t>", tid="x", label="deadline",
+            "2026-06-15 +1w",
+            source="<t>",
+            tid="x",
+            label="deadline",
         )
+        # Assert
         assert rep == Repeater(n=1, unit="w", catchup=False)
 
 
 class TestRepeaterParseCatchupMonthly:
     def test_parses_catchup_monthly(self):
+        # Arrange
+        # Act
         _, rep = _parse_deadline_or_raise(
-            "2026-06-15 ++2m", source="<t>", tid="x", label="deadline",
+            "2026-06-15 ++2m",
+            source="<t>",
+            tid="x",
+            label="deadline",
         )
+        # Assert
         assert rep == Repeater(n=2, unit="m", catchup=True)
 
 
 class TestRepeaterRejectZeroN:
-    def test_raises(self):
+    def test_raises_on_zero_interval(self):
+        # Arrange
+        # Act
+        # Assert
         with pytest.raises(TaskValidationError, match="zero/negative"):
             _parse_deadline_or_raise(
                 "2026-06-15 +0w",
-                source="<t>", tid="x", label="deadline",
+                source="<t>",
+                tid="x",
+                label="deadline",
             )
 
 
 class TestRepeaterAcceptsAllUnits:
-    @pytest.mark.parametrize("suffix,unit", [
-        ("+3d", "d"), ("+1w", "w"), ("+2m", "m"), ("+5y", "y"),
-    ])
-    def test_unit(self, suffix, unit):
+    @pytest.mark.parametrize(
+        "suffix,unit",
+        [
+            ("+3d", "d"),
+            ("+1w", "w"),
+            ("+2m", "m"),
+            ("+5y", "y"),
+        ],
+    )
+    def test_unit_suffix_parses_to_unit(self, suffix, unit):
+        # Arrange
+        # Act
         _, rep = _parse_deadline_or_raise(
             f"2026-06-15 {suffix}",
-            source="<t>", tid="x", label="deadline",
+            source="<t>",
+            tid="x",
+            label="deadline",
         )
+        # Assert
         assert rep.unit == unit
 
 
 class TestRepeaterRejectUnknownUnit:
-    def test_raises(self):
+    def test_raises_on_unknown_unit(self):
+        # Arrange
+        # Act
+        # Assert
         with pytest.raises(TaskValidationError, match="unparseable"):
             _parse_deadline_or_raise(
                 "2026-06-15 +1x",
-                source="<t>", tid="x", label="deadline",
+                source="<t>",
+                tid="x",
+                label="deadline",
             )
 
 
@@ -91,30 +124,39 @@ class TestNextOccurrenceWeekly:
     def test_advances_one_week_from_past_to_present(self):
         # base 2026-06-15; now is 2026-06-22 — first future occurrence
         # is 2026-06-22.
+        # Arrange
         rep = Repeater(n=1, unit="w", catchup=False)
+        # Act
         nxt = rep.next_occurrence(
             dt.datetime(2026, 6, 15),
             now=dt.datetime(2026, 6, 22),
         )
+        # Assert
         assert nxt == dt.datetime(2026, 6, 22)
 
 
 class TestNextOccurrenceCatchupSkipsPast:
     def test_catchup_skips_to_next_future(self):
         # base way in the past; should jump to the next future Mon.
+        # Arrange
         rep = Repeater(n=1, unit="w", catchup=True)
+        # Act
         nxt = rep.next_occurrence(
             dt.datetime(2026, 1, 1),
             now=dt.datetime(2026, 6, 12),
         )
         # 2026-01-01 + N*7d ≥ 2026-06-12
+        # Assert
         assert nxt > dt.datetime(2026, 6, 12) - dt.timedelta(days=7)
 
 
 class TestNextOccurrenceFutureBaseReturnsBase:
     def test_future_base_unchanged(self):
+        # Arrange
         rep = Repeater(n=1, unit="w", catchup=False)
+        # Act
         base = dt.datetime(2030, 1, 1)
+        # Assert
         assert rep.next_occurrence(base, now=dt.datetime(2026, 6, 12)) == base
 
 
@@ -123,37 +165,43 @@ class TestNextOccurrenceFutureBaseReturnsBase:
 
 class TestMutualExclusion:
     def test_rejects_both_set(self, tmp_path):
+        # Arrange
         store = _write(
             tmp_path,
             "tasks:\n"
             "  - {id: a, title: A, status: pending,"
             " deadline: '2026-06-15', deadlines: ['2026-06-15']}\n",
         )
-        with pytest.raises(
-            TaskValidationError, match="BOTH deadline and deadlines"
-        ):
+        # Act
+        # Assert
+        with pytest.raises(TaskValidationError, match="BOTH deadline and deadlines"):
             load_tasks(store)
 
 
 class TestDeadlinesEmptyListRejected:
-    def test_raises(self, tmp_path):
+    def test_raises_on_empty_deadline_list(self, tmp_path):
+        # Arrange
         store = _write(
             tmp_path,
-            "tasks:\n"
-            "  - {id: a, title: A, status: pending, deadlines: []}\n",
+            "tasks:\n" "  - {id: a, title: A, status: pending, deadlines: []}\n",
         )
+        # Act
+        # Assert
         with pytest.raises(TaskValidationError, match="empty deadlines list"):
             load_tasks(store)
 
 
 class TestDeadlinesPerEntryValidated:
     def test_garbage_entry_rejected(self, tmp_path):
+        # Arrange
         store = _write(
             tmp_path,
             "tasks:\n"
             "  - {id: a, title: A, status: pending,"
             " deadlines: ['2026-06-15', 'nope']}\n",
         )
+        # Act
+        # Assert
         with pytest.raises(TaskValidationError, match="deadlines\\[1\\]"):
             load_tasks(store)
 
@@ -162,33 +210,45 @@ class TestDeadlinesPerEntryValidated:
 
 
 class TestNextDeadlineForSingleScalar:
-    def test_bare_iso(self):
+    def test_bare_iso_scalar_returned(self):
+        # Arrange
+        # Act
         out = next_deadline_for_task({"deadline": "2026-06-15"})
+        # Assert
         assert out == "2026-06-15"
 
 
 class TestNextDeadlineForRecurring:
     def test_advances_recurring_past_seed(self):
+        # Arrange
         out = next_deadline_for_task(
             {"deadline": "2026-01-01 +1w"},
             now=dt.datetime(2026, 6, 12),
         )
         # Some Monday on/after 2026-06-12.
+        # Act
         parsed = dt.date.fromisoformat(out)
+        # Assert
         assert parsed >= dt.date(2026, 6, 12)
 
 
 class TestNextDeadlineForMultiPicksEarliest:
     def test_chooses_earliest_next_occurrence(self):
+        # Arrange
+        # Act
         out = next_deadline_for_task(
             {"deadlines": ["2026-07-01", "2026-06-15"]},
             now=dt.datetime(2026, 6, 1),
         )
+        # Assert
         assert out == "2026-06-15"
 
 
 class TestNextDeadlineForNoneWhenAbsent:
     def test_no_fields_returns_none(self):
+        # Arrange
+        # Act
+        # Assert
         assert next_deadline_for_task({"id": "a"}) is None
 
 

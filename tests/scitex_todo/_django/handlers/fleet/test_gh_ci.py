@@ -39,12 +39,25 @@ from scitex_todo._django.handlers.fleet import _config as fleet_config_mod
 # ─── FleetAdapterError shape ────────────────────────────────────────────
 
 
-def test_fleet_adapter_error_is_runtime_error_subclass() -> None:
+def test_fleet_adapter_error_is_runtime_error_subclass_issubclass() -> None:
     """The adapter family's failure class is a ``RuntimeError`` subclass
     so callers that ``except RuntimeError`` (e.g. broad Django error
     middleware) keep working — but a dedicated subclass lets the view
     + tests pin behavior with ``pytest.raises(FleetAdapterError)``."""
+    # Arrange
+    # Act
+    # Assert
     assert issubclass(FleetAdapterError, RuntimeError)
+
+
+def test_fleet_adapter_error_is_runtime_error_subclass_fleetadaptererror() -> None:
+    """The adapter family's failure class is a ``RuntimeError`` subclass
+    so callers that ``except RuntimeError`` (e.g. broad Django error
+    middleware) keep working — but a dedicated subclass lets the view
+    + tests pin behavior with ``pytest.raises(FleetAdapterError)``."""
+    # Arrange
+    # Act
+    # Assert
     assert FleetAdapterError is not RuntimeError
 
 
@@ -66,14 +79,18 @@ def test_config_missing_file_returns_empty_repos(env, tmp_path) -> None:
     """A fresh install has no ``dashboard.yaml`` and that is NOT an
     error — "no repos configured" is a valid steady state and the UI
     hides the pills strip gracefully."""
+    # Arrange
     _isolate_home(env, tmp_path)
+    # Act
     out = fleet_config_load()
+    # Assert
     assert out == {"fleet": {"ci_status": {"repos": []}}}
 
 
-def test_config_malformed_yaml_raises(env, tmp_path) -> None:
+def test_config_malformed_yaml_raises_raises_fleetadaptererror(env, tmp_path) -> None:
     """A broken config IS fail-loud so the operator does not stare at
     an empty strip wondering why their config is being ignored."""
+    # Arrange
     _isolate_home(env, tmp_path)
     cfg_dir = tmp_path / ".scitex" / "todo"
     cfg_dir.mkdir(parents=True)
@@ -82,15 +99,17 @@ def test_config_malformed_yaml_raises(env, tmp_path) -> None:
         "fleet:\n  ci_status:\n    repos: [a, b,\n",
         encoding="utf-8",
     )
-    with pytest.raises(FleetAdapterError) as excinfo:
-        fleet_config_load()
+    # Act
+    # Assert
     # The message must name the file path so the operator can find it.
-    assert "dashboard.yaml" in str(excinfo.value)
+    with pytest.raises(FleetAdapterError, match="dashboard.yaml"):
+        fleet_config_load()
 
 
 def test_config_env_override_replaces_file_list(env, tmp_path) -> None:
     """The env var trumps the file — handy for tests AND for the
     operator to flip the set without editing the file."""
+    # Arrange
     _isolate_home(env, tmp_path)
     cfg_dir = tmp_path / ".scitex" / "todo"
     cfg_dir.mkdir(parents=True)
@@ -99,15 +118,20 @@ def test_config_env_override_replaces_file_list(env, tmp_path) -> None:
         encoding="utf-8",
     )
     env.set("SCITEX_TODO_FLEET_CI_REPOS", "env/aaa, env/bbb")
+    # Act
     out = fleet_config_load()
+    # Assert
     assert out["fleet"]["ci_status"]["repos"] == ["env/aaa", "env/bbb"]
 
 
 def test_config_env_override_without_file(env, tmp_path) -> None:
     """The env override alone is enough — no file required."""
+    # Arrange
     _isolate_home(env, tmp_path)
     env.set("SCITEX_TODO_FLEET_CI_REPOS", "owner/x,owner/y")
+    # Act
     out = fleet_config_load()
+    # Assert
     assert out["fleet"]["ci_status"]["repos"] == ["owner/x", "owner/y"]
 
 
@@ -115,14 +139,18 @@ def test_config_env_override_empty_string_means_no_repos(env, tmp_path) -> None:
     """Empty env override yields an empty list (not a one-item ``""``)
     — the operator can intentionally disable the strip with an empty
     env value."""
+    # Arrange
     _isolate_home(env, tmp_path)
     env.set("SCITEX_TODO_FLEET_CI_REPOS", "")
+    # Act
     out = fleet_config_load()
+    # Assert
     assert out["fleet"]["ci_status"]["repos"] == []
 
 
 def test_config_reads_file_when_env_unset(env, tmp_path) -> None:
     """File-sourced list shines through when the env override is unset."""
+    # Arrange
     _isolate_home(env, tmp_path)
     cfg_dir = tmp_path / ".scitex" / "todo"
     cfg_dir.mkdir(parents=True)
@@ -130,7 +158,9 @@ def test_config_reads_file_when_env_unset(env, tmp_path) -> None:
         "fleet:\n  ci_status:\n    repos:\n      - file/one\n      - file/two\n",
         encoding="utf-8",
     )
+    # Act
     out = fleet_config_load()
+    # Assert
     assert out["fleet"]["ci_status"]["repos"] == ["file/one", "file/two"]
 
 
@@ -165,6 +195,9 @@ _AUTHED = _gh_authed()
 def test_nonexistent_repo_raises() -> None:
     """Calling the adapter on a slug that does not exist on GitHub
     must surface as ``FleetAdapterError`` — the fail-loud contract."""
+    # Arrange
+    # Act
+    # Assert
     with pytest.raises(FleetAdapterError):
         # A slug that almost-certainly resolves to 404. We avoid using a
         # name that COULD be claimed later by namespacing it under a
@@ -172,24 +205,28 @@ def test_nonexistent_repo_raises() -> None:
         fetch_repo_ci_status("ywatanabe1989/scitex-todo-test-does-not-exist-xyz123")
 
 
-def test_invalid_slug_shape_raises_without_gh() -> None:
+def test_invalid_slug_shape_raises_without_gh_raises_fleetadaptererror() -> None:
     """Slug validation happens before we touch ``gh``, so this test
     is gh-independent — it pins the input contract on every CI box."""
-    with pytest.raises(FleetAdapterError) as excinfo:
+    # Arrange
+    # Act
+    # Assert
+    with pytest.raises(FleetAdapterError, match="owner/name"):
         fetch_repo_ci_status("not-a-slug")
-    assert "owner/name" in str(excinfo.value)
 
 
-def test_gh_missing_binary_raises(env) -> None:
+def test_gh_missing_binary_raises_raises_fleetadaptererror(env) -> None:
     """Surfacing "gh not installed" must NOT silently fall back to an
     empty-checks success — that would lie to the operator about fleet
     health. Simulate the missing binary by clobbering PATH."""
+    # Arrange
     env.set("PATH", "")
     from scitex_todo._django.handlers.fleet import gh_ci as gh_ci_mod
 
-    with pytest.raises(FleetAdapterError) as excinfo:
+    # Act
+    # Assert
+    with pytest.raises(FleetAdapterError, match="(?i)gh"):
         gh_ci_mod.fetch_repo_ci_status("owner/name")
-    assert "gh" in str(excinfo.value).lower()
 
 
 # ─── overall-reducer pure unit tests ────────────────────────────────────
@@ -233,24 +270,38 @@ def test_gh_missing_binary_raises(env) -> None:
         ),
     ],
 )
-def test_overall_reducer(checks, expected) -> None:
+def test_overall_status_reducer_picks_worst(checks, expected) -> None:
     """The reducer is the heart of the pill color — failure beats
     pending beats success. Pin every branch explicitly so the FE color
     mapping stays in lock-step with what the back-end emits."""
+    # Arrange
+    # Act
     from scitex_todo._django.handlers.fleet.gh_ci import _overall_from_checks
 
+    # Assert
     assert _overall_from_checks(checks) == expected
 
 
 # ─── module-surface contract ────────────────────────────────────────────
 
 
-def test_config_module_constant_paths() -> None:
+def test_config_module_constant_paths_str() -> None:
     """Lock the config-path constant so a rename downstream forces a
     test update. Operators search for this literal when debugging."""
+    # Arrange
+    # Act
+    # Assert
     assert str(fleet_config_mod._CONFIG_REL) == str(
         Path(".scitex") / "todo" / "dashboard.yaml"
     )
+
+
+def test_config_module_constant_paths_env_repos() -> None:
+    """Lock the config-path constant so a rename downstream forces a
+    test update. Operators search for this literal when debugging."""
+    # Arrange
+    # Act
+    # Assert
     assert fleet_config_mod._ENV_REPOS == "SCITEX_TODO_FLEET_CI_REPOS"
 
 
@@ -259,8 +310,11 @@ def test_module_has_documented_attrs() -> None:
     the surface so downstream waves (hosts / mesh / …) can ``from
     scitex_todo._django.handlers.fleet import FleetAdapterError`` and
     expect that name to be stable."""
+    # Arrange
     from scitex_todo._django.handlers import fleet as fleet_pkg
 
+    # Act
+    # Assert
     for attr in (
         "FleetAdapterError",
         "fleet_config_load",
@@ -473,32 +527,51 @@ def test_ecosystem_flag_off_keeps_only_explicit_repos(env, tmp_path) -> None:
     assert out["fleet"]["ci_status"]["repos"] == ["owner/x", "owner/y"]
 
 
-@pytest.mark.skipif(
-    not _scitex_dev_available(),
-    reason="scitex-dev not on PATH (ecosystem registry source)",
-)
-def test_ecosystem_flag_unions_registry_keeping_pin(env, tmp_path) -> None:
-    """With the flag ON the explicit repo leads the list and the live
-    ecosystem registry is unioned in (de-duped) — the pills 'spin out'
-    across the ecosystem without dropping the operator's pin."""
-    # Arrange
+@pytest.fixture()
+def _unioned_ecosystem_repos(env, tmp_path):
+    """Resolve the CI repo list with the ecosystem flag ON.
+
+    The ecosystem is sourced from a LIVE ``scitex-dev ecosystem list``
+    subprocess that intermittently returns nothing under suite load;
+    when it does, the union can't be exercised, so the fixture SKIPs
+    (hermetic guard, same spirit as #218's sac-mesh skip) rather than
+    letting the dependent tests flake.
+    """
+    if not _scitex_dev_available():
+        pytest.skip("scitex-dev not on PATH (ecosystem registry source)")
     _isolate_home(env, tmp_path)
     fleet_config_mod._eco_cache["ts"] = 0.0
     fleet_config_mod._eco_cache["repos"] = []
     env.set("SCITEX_TODO_FLEET_CI_REPOS", "owner/pinned")
     env.set("SCITEX_TODO_FLEET_CI_ECOSYSTEM", "1")
-
-    # Act
     repos = fleet_config_load()["fleet"]["ci_status"]["repos"]
-
-    # The ecosystem is sourced from a LIVE `scitex-dev ecosystem list`
-    # subprocess that intermittently returns nothing under suite load. Without
-    # it the union can't be asserted, so skip rather than flake — hermetic
-    # guard, same spirit as #218's sac-mesh skip.
     if len(repos) <= 1:
         pytest.skip("live `scitex-dev ecosystem list` returned no ecosystem repos")
+    return repos
 
+
+def test_ecosystem_flag_keeps_operator_pin_first(_unioned_ecosystem_repos) -> None:
+    """With the flag ON the explicit repo still leads the list."""
+    # Arrange
+    repos = _unioned_ecosystem_repos
+    # Act
     # Assert
-    assert (
-        repos[0] == "owner/pinned" and len(repos) > 1 and len(repos) == len(set(repos))
-    )
+    assert repos[0] == "owner/pinned"
+
+
+def test_ecosystem_flag_unions_extra_repos(_unioned_ecosystem_repos) -> None:
+    """The live ecosystem registry is unioned in beyond the single pin."""
+    # Arrange
+    repos = _unioned_ecosystem_repos
+    # Act
+    # Assert
+    assert len(repos) > 1
+
+
+def test_ecosystem_flag_union_is_deduped(_unioned_ecosystem_repos) -> None:
+    """The unioned list carries no duplicates."""
+    # Arrange
+    repos = _unioned_ecosystem_repos
+    # Act
+    # Assert
+    assert len(repos) == len(set(repos))

@@ -40,25 +40,46 @@ def js_text() -> str:
 class TestSearchSuggestModuleSurface:
     """Static pins on the autocomplete module's public API."""
 
-    def test_module_exists(self):
+    def test_suggest_module_exists_on_disk(self):
+        # Arrange
+        # Act
+        # Assert
         assert SEARCH_SUGGEST_JS.exists()
 
     def test_token_at_cursor_exported(self, js_text):
+        # Arrange
+        # Act
+        # Assert
         assert "tokenAtCursor" in js_text
 
     def test_key_suggestions_exported(self, js_text):
+        # Arrange
+        # Act
+        # Assert
         assert "keySuggestions" in js_text
 
     def test_value_suggestions_exported(self, js_text):
+        # Arrange
+        # Act
+        # Assert
         assert "valueSuggestions" in js_text
 
     def test_apply_suggestion_exported(self, js_text):
+        # Arrange
+        # Act
+        # Assert
         assert "applySuggestion" in js_text
 
     def test_format_suggestion_exported(self, js_text):
+        # Arrange
+        # Act
+        # Assert
         assert "formatSuggestion" in js_text
 
     def test_compute_suggestions_exported(self, js_text):
+        # Arrange
+        # Act
+        # Assert
         assert "computeSuggestions" in js_text
 
 
@@ -72,6 +93,9 @@ class TestDryWithSearchQuery:
         # The module must source its qualifier vocabulary from
         # ``searchQuery.js``; either a require() (node) or a globalThis
         # fallback (browser script-tag) is acceptable.
+        # Arrange
+        # Act
+        # Assert
         assert "searchQuery" in js_text
 
     def test_no_local_qualifiers_literal(self, js_text):
@@ -80,6 +104,9 @@ class TestDryWithSearchQuery:
         # the strategies / fields must come from searchQuery.js.
         # We pin via the absence of `strategy: "substring"` (a
         # tell-tale of a redefined QUALIFIERS spec literal).
+        # Arrange
+        # Act
+        # Assert
         assert 'strategy: "substring"' not in js_text
 
 
@@ -91,10 +118,16 @@ class TestClosedEnumsRespected:
 
     def test_status_routed_through_enum(self, js_text):
         # The valueSuggestions impl must special-case the enum branch.
+        # Arrange
+        # Act
+        # Assert
         assert 'strategy === "enum"' in js_text
 
     def test_priority_special_cased(self, js_text):
         # priority: hint set with operators must appear.
+        # Arrange
+        # Act
+        # Assert
         assert '"priority"' in js_text
 
 
@@ -106,11 +139,17 @@ class TestOperatorPhotographedFlow:
     the relevant strings the implementation must carry."""
 
     def test_tab_completion_supported(self, js_text):
+        # Arrange
+        # Act
+        # Assert
         assert "applySuggestion" in js_text
 
     def test_value_with_space_auto_quoted(self, js_text):
         # The implementation auto-wraps values containing whitespace
         # so the searchQuery tokenizer keeps them intact.
+        # Arrange
+        # Act
+        # Assert
         assert "needsQuote" in js_text
 
 
@@ -135,4 +174,7 @@ class TestKeyHintsCoverAllQualifiers:
         ],
     )
     def test_key_hint_present(self, js_text, qualifier):
-        assert f'{qualifier}:' in js_text or f'"{qualifier}"' in js_text
+        # Arrange
+        # Act
+        # Assert
+        assert f"{qualifier}:" in js_text or f'"{qualifier}"' in js_text

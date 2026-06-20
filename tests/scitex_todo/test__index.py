@@ -58,34 +58,34 @@ class TestInitSchema:
     """The four expected tables exist after `init_schema`."""
 
     def test_tasks_table_created(self, index_target):
-        # Arrange / Act
+        # Arrange
+        # Act
         with _idx.open_connection(index_target) as c:
             _idx.init_schema(c)
             rows = c.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' "
-                "AND name='tasks'",
+                "SELECT name FROM sqlite_master WHERE type='table' " "AND name='tasks'",
             ).fetchall()
         # Assert
         assert len(rows) == 1
 
     def test_tags_table_created(self, index_target):
-        # Arrange / Act
+        # Arrange
+        # Act
         with _idx.open_connection(index_target) as c:
             _idx.init_schema(c)
             rows = c.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' "
-                "AND name='tags'",
+                "SELECT name FROM sqlite_master WHERE type='table' " "AND name='tags'",
             ).fetchall()
         # Assert
         assert len(rows) == 1
 
     def test_meta_table_created(self, index_target):
-        # Arrange / Act
+        # Arrange
+        # Act
         with _idx.open_connection(index_target) as c:
             _idx.init_schema(c)
             rows = c.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' "
-                "AND name='meta'",
+                "SELECT name FROM sqlite_master WHERE type='table' " "AND name='meta'",
             ).fetchall()
         # Assert
         assert len(rows) == 1
@@ -145,11 +145,15 @@ class TestRebuildWithLanes:
         assert rows == {"g1", "lan1"}
 
     def test_lane_overrides_global_on_collision(
-        self, index_target, tmp_path,
+        self,
+        index_target,
+        tmp_path,
     ):
         # Arrange — both have an id=x row with different titles.
         global_store = tmp_path / "global.yaml"
-        _write_store(global_store, "tasks:\n  - {id: x, title: GLOBAL, status: pending}\n")
+        _write_store(
+            global_store, "tasks:\n  - {id: x, title: GLOBAL, status: pending}\n"
+        )
         lane = tmp_path / "lane" / "tasks.yaml"
         _write_store(lane, "tasks:\n  - {id: x, title: LANE, status: pending}\n")
         # Act
@@ -169,7 +173,9 @@ class TestInfo:
     """`info()` reports the on-disk state."""
 
     def test_info_reports_row_count_after_rebuild(
-        self, index_target, tmp_path,
+        self,
+        index_target,
+        tmp_path,
     ):
         # Arrange
         store = tmp_path / "global.yaml"
@@ -237,7 +243,10 @@ class TestCliRebuildAndInfo:
     """`scitex-todo index rebuild` + `info` round-trip via CliRunner."""
 
     def test_rebuild_then_info_reports_rows(
-        self, index_target, tmp_path, env,
+        self,
+        index_target,
+        tmp_path,
+        env,
     ):
         # Arrange — point the global store at a tmp YAML; empty lane glob.
         store = tmp_path / "global.yaml"
@@ -256,7 +265,10 @@ class TestCliRebuildAndInfo:
         assert rb.exit_code == 0 and payload["rows"] == 1
 
     def test_dry_run_does_not_create_index(
-        self, index_target, tmp_path, env,
+        self,
+        index_target,
+        tmp_path,
+        env,
     ):
         # Arrange
         store = tmp_path / "global.yaml"

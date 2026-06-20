@@ -28,28 +28,32 @@ from scitex_todo._cli._skills_propagate import (
 
 
 def test_manifest_file_exists_in_package():
-    # Arrange / Act
+    # Arrange
+    # Act
     path = manifest_path()
     # Assert
     assert path.is_file()
 
 
 def test_manifest_loads_as_dict():
-    # Arrange / Act
+    # Arrange
+    # Act
     data = load_manifest()
     # Assert
     assert isinstance(data, dict)
 
 
 def test_manifest_lists_at_least_one_canonical_skill_id():
-    # Arrange / Act
+    # Arrange
+    # Act
     ids = canonical_skill_ids()
     # Assert
     assert len(ids) >= 1
 
 
 def test_manifest_includes_scitex_todo_skill_id():
-    # Arrange / Act
+    # Arrange
+    # Act
     ids = canonical_skill_ids()
     # Assert
     assert "scitex-todo" in ids
@@ -155,9 +159,7 @@ def test_propagate_appends_canonical_id_to_csv_field(tmp_path):
     spec = _write_spec(agents, "a1", _MINIMAL_SPEC)
     runner = CliRunner()
     # Act
-    runner.invoke(
-        main, ["skills", "propagate", "--agents-dir", str(agents), "-y"]
-    )
+    runner.invoke(main, ["skills", "propagate", "--agents-dir", str(agents), "-y"])
     # Assert
     csv = _read_yaml(spec)["metadata"]["labels"]["skills"]
     assert "scitex-todo" in [tok.strip() for tok in csv.split(",")]
@@ -169,9 +171,7 @@ def test_propagate_preserves_existing_csv_entries(tmp_path):
     spec = _write_spec(agents, "a1", _MINIMAL_SPEC)
     runner = CliRunner()
     # Act
-    runner.invoke(
-        main, ["skills", "propagate", "--agents-dir", str(agents), "-y"]
-    )
+    runner.invoke(main, ["skills", "propagate", "--agents-dir", str(agents), "-y"])
     # Assert
     csv = _read_yaml(spec)["metadata"]["labels"]["skills"]
     tokens = [tok.strip() for tok in csv.split(",")]
@@ -184,9 +184,7 @@ def test_propagate_creates_field_when_absent(tmp_path):
     spec = _write_spec(agents, "a1", _SPEC_NO_SKILLS)
     runner = CliRunner()
     # Act
-    runner.invoke(
-        main, ["skills", "propagate", "--agents-dir", str(agents), "-y"]
-    )
+    runner.invoke(main, ["skills", "propagate", "--agents-dir", str(agents), "-y"])
     # Assert
     csv = _read_yaml(spec)["metadata"]["labels"]["skills"]
     assert "scitex-todo" in csv
@@ -200,14 +198,10 @@ def test_propagate_twice_is_idempotent(tmp_path):
     agents = tmp_path / "agents"
     spec = _write_spec(agents, "a1", _MINIMAL_SPEC)
     runner = CliRunner()
-    runner.invoke(
-        main, ["skills", "propagate", "--agents-dir", str(agents), "-y"]
-    )
+    runner.invoke(main, ["skills", "propagate", "--agents-dir", str(agents), "-y"])
     after_first = spec.read_text(encoding="utf-8")
     # Act
-    runner.invoke(
-        main, ["skills", "propagate", "--agents-dir", str(agents), "-y"]
-    )
+    runner.invoke(main, ["skills", "propagate", "--agents-dir", str(agents), "-y"])
     # Assert
     assert spec.read_text(encoding="utf-8") == after_first
 
@@ -223,13 +217,9 @@ def test_propagate_touches_every_agent_in_dir(tmp_path):
     s3 = _write_spec(agents, "a3", _SPEC_NO_SKILLS)
     runner = CliRunner()
     # Act
-    runner.invoke(
-        main, ["skills", "propagate", "--agents-dir", str(agents), "-y"]
-    )
+    runner.invoke(main, ["skills", "propagate", "--agents-dir", str(agents), "-y"])
     # Assert — every spec mentions scitex-todo afterwards.
-    csvs = [
-        _read_yaml(s)["metadata"]["labels"]["skills"] for s in (s1, s2, s3)
-    ]
+    csvs = [_read_yaml(s)["metadata"]["labels"]["skills"] for s in (s1, s2, s3)]
     assert all("scitex-todo" in csv for csv in csvs)
 
 

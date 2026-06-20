@@ -37,16 +37,47 @@ from scitex_todo._django.handlers.fleet import fleet_mesh_view  # noqa: E402
 # ─── fail-loud path: missing sac ────────────────────────────────────────
 
 
-def test_mesh_view_returns_500_when_sac_missing(env) -> None:
+def test_mesh_view_returns_500_when_sac_missing_status_code(env) -> None:
     """When sac is artificially unavailable (we clobber PATH), the
     adapter raises and the view returns HTTP 500 with the error in the
     body — fail-loud per the harness contract."""
+    # Arrange
     env.set("PATH", "")
     request = RequestFactory().get("/fleet/mesh")
+    # Act
     response = fleet_mesh_view(request)
-    assert response.status_code == 500
+    # Assert
     data = json.loads(response.content)
+    # The message must name "sac" so the operator knows what is missing.
+    assert response.status_code == 500
+
+
+def test_mesh_view_returns_500_when_sac_missing_data_contains(env) -> None:
+    """When sac is artificially unavailable (we clobber PATH), the
+    adapter raises and the view returns HTTP 500 with the error in the
+    body — fail-loud per the harness contract."""
+    # Arrange
+    env.set("PATH", "")
+    request = RequestFactory().get("/fleet/mesh")
+    # Act
+    response = fleet_mesh_view(request)
+    # Assert
+    data = json.loads(response.content)
+    # The message must name "sac" so the operator knows what is missing.
     assert "error" in data
+
+
+def test_mesh_view_returns_500_when_sac_missing_lower_contains(env) -> None:
+    """When sac is artificially unavailable (we clobber PATH), the
+    adapter raises and the view returns HTTP 500 with the error in the
+    body — fail-loud per the harness contract."""
+    # Arrange
+    env.set("PATH", "")
+    request = RequestFactory().get("/fleet/mesh")
+    # Act
+    response = fleet_mesh_view(request)
+    # Assert
+    data = json.loads(response.content)
     # The message must name "sac" so the operator knows what is missing.
     assert "sac" in data["error"].lower()
 
@@ -54,16 +85,45 @@ def test_mesh_view_returns_500_when_sac_missing(env) -> None:
 # ─── method discipline ──────────────────────────────────────────────────
 
 
-def test_mesh_view_rejects_post_with_405() -> None:
+def test_mesh_view_rejects_post_with_405_status_code() -> None:
     """The endpoint is strictly read-only — mutations route through
     the ``sac a2a grant`` / ``revoke`` CLI, not through scitex-todo.
     POST must come back as 405. No env manipulation needed: the
     method check runs before the adapter call."""
+    # Arrange
     request = RequestFactory().post("/fleet/mesh")
+    # Act
     response = fleet_mesh_view(request)
+    # Assert
+    data = json.loads(response.content)
     assert response.status_code == 405
+
+
+def test_mesh_view_rejects_post_with_405_data_contains() -> None:
+    """The endpoint is strictly read-only — mutations route through
+    the ``sac a2a grant`` / ``revoke`` CLI, not through scitex-todo.
+    POST must come back as 405. No env manipulation needed: the
+    method check runs before the adapter call."""
+    # Arrange
+    request = RequestFactory().post("/fleet/mesh")
+    # Act
+    response = fleet_mesh_view(request)
+    # Assert
     data = json.loads(response.content)
     assert "error" in data
+
+
+def test_mesh_view_rejects_post_with_405_case_3() -> None:
+    """The endpoint is strictly read-only — mutations route through
+    the ``sac a2a grant`` / ``revoke`` CLI, not through scitex-todo.
+    POST must come back as 405. No env manipulation needed: the
+    method check runs before the adapter call."""
+    # Arrange
+    request = RequestFactory().post("/fleet/mesh")
+    # Act
+    response = fleet_mesh_view(request)
+    # Assert
+    data = json.loads(response.content)
     assert "POST" in data["error"] or "method" in data["error"].lower()
 
 
@@ -103,25 +163,103 @@ _SAC_FUNCTIONAL = _sac_mesh_functional()
     not _SAC_FUNCTIONAL,
     reason="sac not installed or `sac a2a list --json` non-functional",
 )
-def test_mesh_view_returns_200_with_load_bearing_keys() -> None:
-    """When sac is available, the view returns 200 with the adapter
-    payload shape: ``agents`` + ``edges`` + ``config_path`` +
-    ``source_versions``.
-
-    We deliberately do NOT assert specific agent names or grant
-    counts — the registry is environment-specific and the architecture
-    forbids proper-noun literals here.
-    """
+def test_mesh_view_returns_200() -> None:
+    """The view returns HTTP 200 when sac is available."""
+    # Arrange
     request = RequestFactory().get("/fleet/mesh")
+    # Act
     response = fleet_mesh_view(request)
+    # Assert
     assert response.status_code == 200
+
+
+@pytest.mark.skipif(
+    not _SAC_FUNCTIONAL,
+    reason="sac not installed or `sac a2a list --json` non-functional",
+)
+def test_mesh_view_payload_has_all_load_bearing_keys() -> None:
+    """Payload carries agents+edges+config_path+source_versions."""
+    # Arrange
+    request = RequestFactory().get("/fleet/mesh")
+    # Act
+    response = fleet_mesh_view(request)
     data = json.loads(response.content)
-    for key in ("agents", "edges", "config_path", "source_versions"):
-        assert key in data, f"missing load-bearing key: {key!r}"
+    # Assert
+    assert {"agents", "edges", "config_path", "source_versions"} <= set(data)
+
+
+@pytest.mark.skipif(
+    not _SAC_FUNCTIONAL,
+    reason="sac not installed or `sac a2a list --json` non-functional",
+)
+def test_mesh_view_agents_value_is_a_list() -> None:
+    """"""
+    # Arrange
+    request = RequestFactory().get("/fleet/mesh")
+    # Act
+    response = fleet_mesh_view(request)
+    data = json.loads(response.content)
+    # Assert
     assert isinstance(data["agents"], list)
+
+
+@pytest.mark.skipif(
+    not _SAC_FUNCTIONAL,
+    reason="sac not installed or `sac a2a list --json` non-functional",
+)
+def test_mesh_view_edges_value_is_a_list() -> None:
+    """"""
+    # Arrange
+    request = RequestFactory().get("/fleet/mesh")
+    # Act
+    response = fleet_mesh_view(request)
+    data = json.loads(response.content)
+    # Assert
     assert isinstance(data["edges"], list)
+
+
+@pytest.mark.skipif(
+    not _SAC_FUNCTIONAL,
+    reason="sac not installed or `sac a2a list --json` non-functional",
+)
+def test_mesh_view_source_versions_is_a_dict() -> None:
+    """"""
+    # Arrange
+    request = RequestFactory().get("/fleet/mesh")
+    # Act
+    response = fleet_mesh_view(request)
+    data = json.loads(response.content)
+    # Assert
     assert isinstance(data["source_versions"], dict)
+
+
+@pytest.mark.skipif(
+    not _SAC_FUNCTIONAL,
+    reason="sac not installed or `sac a2a list --json` non-functional",
+)
+def test_mesh_view_source_versions_has_peers_key() -> None:
+    """"""
+    # Arrange
+    request = RequestFactory().get("/fleet/mesh")
+    # Act
+    response = fleet_mesh_view(request)
+    data = json.loads(response.content)
+    # Assert
     assert "peers" in data["source_versions"]
+
+
+@pytest.mark.skipif(
+    not _SAC_FUNCTIONAL,
+    reason="sac not installed or `sac a2a list --json` non-functional",
+)
+def test_mesh_view_source_versions_has_grants_key() -> None:
+    """"""
+    # Arrange
+    request = RequestFactory().get("/fleet/mesh")
+    # Act
+    response = fleet_mesh_view(request)
+    data = json.loads(response.content)
+    # Assert
     assert "grants" in data["source_versions"]
 
 

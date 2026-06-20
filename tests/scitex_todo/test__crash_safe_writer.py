@@ -59,14 +59,15 @@ def good_store(tmp_path: Path) -> Path:
 
 
 def test_invalid_in_memory_structure_raises_before_write(tmp_path: Path):
-    # Arrange — a tasks list with a duplicate id violates _validate_tasks.
+    # Arrange
     store = tmp_path / "tasks.yaml"
     bad = [
         {"id": "dup", "title": "first", "status": "pending"},
         {"id": "dup", "title": "second", "status": "pending"},
     ]
 
-    # Act / Assert
+    # Act
+    # Assert
     with pytest.raises(TaskValidationError):
         save_tasks(bad, store)
 
@@ -199,9 +200,7 @@ def test_clean_save_leaves_no_stale_tmp_sidecar(tmp_path: Path):
     tmp = store.parent / f".{store.name}.tmp"
 
     # Act
-    save_tasks(
-        [{"id": "t-only", "title": "only", "status": "pending"}], store
-    )
+    save_tasks([{"id": "t-only", "title": "only", "status": "pending"}], store)
 
     # Assert — successful save deletes the tmp via os.replace; no sidecar.
     assert not tmp.exists()

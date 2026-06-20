@@ -254,7 +254,12 @@ def event_validate(event: Any) -> dict:
     return out
 
 
-def dispatch_event(event: dict, *, store: Any | None = None) -> dict:
+def dispatch_event(
+    event: dict,
+    *,
+    store: Any | None = None,
+    entry_points: Iterable | None = None,
+) -> dict:
     """Run the built-in handler + every entry-point plugin for ``event``.
 
     Returns a summary dict::
@@ -281,6 +286,17 @@ def dispatch_event(event: dict, *, store: Any | None = None) -> dict:
     store : Path-like, optional
         Override the task-store path; ``None`` resolves via the
         normal precedence chain.
+    entry_points : iterable, optional
+        Explicit set of plugin entry points to run instead of the ones
+        discovered from packaging metadata. Each item must be entry-
+        point-shaped: a ``.name`` attribute and a ``.load()`` method
+        returning the handler callable. ``None`` (the default) reads the
+        real :data:`ENTRY_POINT_GROUP` group via :func:`_iter_entry_points`.
+        This is the in-process injection seam (mirrors scitex-dev's
+        ``load_plugins(entry_points_iter=...)``): in-process producers
+        that can't ship packaging metadata, and tests that need a real
+        fake handler, pass a concrete list here — no monkeypatch of
+        ``importlib.metadata`` required (PA-306-compliant).
     """
     kind = event["kind"]
     card_writes: list[dict] = []
@@ -289,7 +305,7 @@ def dispatch_event(event: dict, *, store: Any | None = None) -> dict:
     elif kind == "done":
         card_writes = _handle_done(event, store=store)
 
-    plugin_count, plugin_errors = _run_plugins(event)
+    plugin_count, plugin_errors = _run_plugins(event, entry_points=entry_points)
     return {
         "kind": kind,
         "card_writes": card_writes,
@@ -378,10 +394,20 @@ def _push_already_recorded(
     return False
 
 
-def _run_plugins(event: dict) -> tuple[int, list[dict]]:
+def _run_plugins(
+    event: dict, *, entry_points: Iterable | None = None
+) -> tuple[int, list[dict]]:
     """Discover + invoke every plugin registered under
-    :data:`ENTRY_POINT_GROUP`. Failures are caught + logged."""
+    :data:`ENTRY_POINT_GROUP`. Failures are caught + logged.
+
+    ``entry_points`` overrides discovery with an explicit iterable of
+    entry-point-shaped objects (``.name`` + ``.load()``); ``None`` reads
+    the real group via :func:`_iter_entry_points`. See
+    :func:`dispatch_event` for the rationale (in-process injection seam,
+    PA-306-compliant).
+    """
     plugin_errors: list[dict] = []
+    eps = _iter_entry_points() if entry_points is None else entry_points
     # Materialize the entry-point list FIRST so we can sort by the
     # handler's declared (priority, name) before dispatch. Lead a2a
     # `0ab1d9fd` + dev coordination 2026-06-14 — the ci-result event
@@ -405,7 +431,7 @@ def _run_plugins(event: dict) -> tuple[int, list[dict]]:
     # Tie-break is the entry-point name (lex asc) so the order is
     # stable across packaging-metadata implementations.
     handlers: list[tuple[int, str, Callable[[dict], None]]] = []
-    for ep in _iter_entry_points():
+    for ep in eps:
         name = ep.name
         try:
             fn: Callable[[dict], None] = ep.load()

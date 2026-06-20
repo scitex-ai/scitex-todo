@@ -99,39 +99,80 @@ def _run(js: str) -> str:
 
 def test_author_color_token_deterministic() -> None:
     """The same input string maps to the same token across two calls."""
+    # Arrange
     out = _run(
         "console.log(JSON.stringify("
         "[authorColorToken('agent-a'), authorColorToken('agent-a')]"
         "));"
     )
+    # Act
     a, b = json.loads(out)
+    # Assert
     assert a == b
 
 
-def test_author_color_token_empty_input_uses_muted_slot() -> None:
+def test_author_color_token_empty_input_uses_muted_slot_tokens() -> None:
     """Empty / null input lands in the muted slot (index 2) so
     unlabeled comments still render legibly. The exact slot is the
     contract — no hardcoded literal here in the test, we just pin
     "it picks index 2 = the muted token"."""
+    # Arrange
     out = _run(
         "console.log(JSON.stringify("
         "[authorColorToken(''), authorColorToken(null), "
         "authorColorToken(undefined)]"
         "));"
     )
+    # Act
     tokens = json.loads(out)
+    # Assert
     assert tokens[0] == "var(--stx-text-muted)"
+
+
+def test_author_color_token_empty_input_uses_muted_slot_tokens_2() -> None:
+    """Empty / null input lands in the muted slot (index 2) so
+    unlabeled comments still render legibly. The exact slot is the
+    contract — no hardcoded literal here in the test, we just pin
+    "it picks index 2 = the muted token"."""
+    # Arrange
+    out = _run(
+        "console.log(JSON.stringify("
+        "[authorColorToken(''), authorColorToken(null), "
+        "authorColorToken(undefined)]"
+        "));"
+    )
+    # Act
+    tokens = json.loads(out)
+    # Assert
     assert tokens[1] == "var(--stx-text-muted)"
+
+
+def test_author_color_token_empty_input_uses_muted_slot_tokens_3() -> None:
+    """Empty / null input lands in the muted slot (index 2) so
+    unlabeled comments still render legibly. The exact slot is the
+    contract — no hardcoded literal here in the test, we just pin
+    "it picks index 2 = the muted token"."""
+    # Arrange
+    out = _run(
+        "console.log(JSON.stringify("
+        "[authorColorToken(''), authorColorToken(null), "
+        "authorColorToken(undefined)]"
+        "));"
+    )
+    # Act
+    tokens = json.loads(out)
+    # Assert
     assert tokens[2] == "var(--stx-text-muted)"
 
 
 def test_author_color_token_returns_known_token() -> None:
     """The returned string is one of the AUTHOR_COLOR_TOKENS — closed
     palette, no rogue hex / rgb."""
-    out = _run(
-        "console.log(JSON.stringify(authorColorToken('operator')));"
-    )
+    # Arrange
+    out = _run("console.log(JSON.stringify(authorColorToken('operator')));")
+    # Act
     token = json.loads(out)
+    # Assert
     assert token in {
         "var(--stx-accent)",
         "var(--stx-text)",
@@ -142,17 +183,35 @@ def test_author_color_token_returns_known_token() -> None:
     }
 
 
-def test_author_color_token_different_authors_can_collide() -> None:
+def test_author_color_token_different_authors_can_collide_case_1() -> None:
     """The hash space is finite (6 slots) and the mapping is content-
     agnostic; we only assert the predicate doesn't throw and returns a
     token for two different inputs."""
+    # Arrange
     out = _run(
         "console.log(JSON.stringify("
         "[authorColorToken('agent-a'), authorColorToken('agent-b')]"
         "));"
     )
+    # Act
     a, b = json.loads(out)
+    # Assert
     assert isinstance(a, str) and a.startswith("var(--stx-")
+
+
+def test_author_color_token_different_authors_can_collide_case_2() -> None:
+    """The hash space is finite (6 slots) and the mapping is content-
+    agnostic; we only assert the predicate doesn't throw and returns a
+    token for two different inputs."""
+    # Arrange
+    out = _run(
+        "console.log(JSON.stringify("
+        "[authorColorToken('agent-a'), authorColorToken('agent-b')]"
+        "));"
+    )
+    # Act
+    a, b = json.loads(out)
+    # Assert
     assert isinstance(b, str) and b.startswith("var(--stx-")
 
 
@@ -161,12 +220,15 @@ def test_author_color_token_different_authors_can_collide() -> None:
 
 def test_append_comment_preserves_order() -> None:
     """The new comment lands at the end — oldest-first thread order."""
+    # Arrange
     out = _run(
         "const cur = [{ts: '1', author: 'a', text: 'one'}];\n"
         "const next = {ts: '2', author: 'b', text: 'two'};\n"
         "console.log(JSON.stringify(appendComment(cur, next)));"
     )
+    # Act
     result = json.loads(out)
+    # Assert
     assert [c["text"] for c in result] == ["one", "two"]
 
 
@@ -174,50 +236,66 @@ def test_append_comment_does_not_mutate_input() -> None:
     """The helper returns a new array; the caller's list is unchanged.
     Pins the optimistic-append safety property — concurrent renders
     with the previous list reference don't see the appended row."""
+    # Arrange
     out = _run(
         "const cur = [{ts: '1', author: 'a', text: 'one'}];\n"
         "const next = {ts: '2', author: 'b', text: 'two'};\n"
         "appendComment(cur, next);\n"
         "console.log(JSON.stringify(cur));"
     )
+    # Act
     result = json.loads(out)
+    # Assert
     assert len(result) == 1
 
 
 def test_append_comment_empty_to_first() -> None:
     """Appending to an empty thread yields a one-row list."""
+    # Arrange
     out = _run(
         "const next = {ts: '1', author: 'a', text: 'first'};\n"
         "console.log(JSON.stringify(appendComment([], next)));"
     )
+    # Act
     result = json.loads(out)
+    # Assert
     assert len(result) == 1 and result[0]["text"] == "first"
 
 
 # === static source contract ================================================
 
 
-def test_static_source_contract() -> None:
-    """The TS module must continue to expose the documented public API
-    so the React component keeps importing ``authorColorToken`` +
-    ``appendComment`` + ``AUTHOR_COLOR_TOKENS`` by name. Also pins the
-    canonical predicate fragments so the JS mirror above stays in
-    lock-step with the TS source."""
+def test_ts_module_exports_documented_public_api() -> None:
+    """The TS module keeps exposing ``authorColorToken`` + ``appendComment``
+    + ``AUTHOR_COLOR_TOKENS`` so the React component imports them by name."""
+    # Arrange
+    # Act
     src = TS_FILE.read_text(encoding="utf-8")
-    # Public API surface.
-    assert "export const AUTHOR_COLOR_TOKENS" in src
-    assert "export function authorColorToken(" in src
-    assert "export function appendComment(" in src
-    # Canonical predicate fragments — if any change, this test fires
-    # so the JS mirror in _JS_RUNTIME above gets updated in lock-step.
-    for needle in [
-        'var(--stx-accent)',
-        'var(--stx-text-muted)',
-        "let h = 5381;",
-        "h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;",
-        "return [...current, next];",
-    ]:
-        assert needle in src, (
-            f"ChatPanel.tsx no longer contains the canonical fragment "
-            f"{needle!r}; update the JS mirror in this test in lock-step."
+    # Assert
+    assert all(
+        api in src
+        for api in (
+            "export const AUTHOR_COLOR_TOKENS",
+            "export function authorColorToken(",
+            "export function appendComment(",
         )
+    )
+
+
+def test_ts_module_keeps_canonical_predicate_fragments() -> None:
+    """Pins the canonical fragments so the JS mirror in _JS_RUNTIME stays in
+    lock-step with the TS source — if any changes, this test fires."""
+    # Arrange
+    # Act
+    src = TS_FILE.read_text(encoding="utf-8")
+    # Assert
+    assert all(
+        needle in src
+        for needle in (
+            "var(--stx-accent)",
+            "var(--stx-text-muted)",
+            "let h = 5381;",
+            "h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;",
+            "return [...current, next];",
+        )
+    )

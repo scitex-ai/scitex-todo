@@ -691,6 +691,7 @@ def comment_task(
     text: str | None = None,
     by: str | None = None,
     kind: str | None = None,
+    entry_points=None,
 ) -> dict:
     """Append an entry to ``task.comments[]`` (the established Issue-
     activity-log shape from skill 30, Gitea-compatible field).
@@ -702,6 +703,14 @@ def comment_task(
     ``done`` / ``card-message``) stamped onto the entry so the board can
     render "how the card was routed" (operator 2026-06-17). Lenient: the
     model only requires ``text``, so the extra key round-trips cleanly.
+
+    `entry_points` is forwarded to :func:`scitex_todo._hooks.dispatch_event`
+    for the ``card-message`` bus emit below: an explicit iterable of
+    entry-point-shaped objects to receive the event instead of the ones
+    discovered from packaging metadata. ``None`` (the default) uses the
+    real installed plugins. This is the in-process injection seam used by
+    in-process consumers and by no-mock tests (PA-306-compliant) that
+    observe the emitted event via a real fake handler.
     """
     from . import _model
 
@@ -766,7 +775,8 @@ def comment_task(
                 "owner": owner,
                 "collaborators": collaborators,
                 "created_at": entry["ts"],
-            }
+            },
+            entry_points=entry_points,
         )
     except Exception:  # noqa: BLE001 — bus must not break comment_task
         import logging
