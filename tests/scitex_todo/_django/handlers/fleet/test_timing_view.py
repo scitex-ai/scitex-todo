@@ -46,7 +46,7 @@ def _now_minus(minutes: float) -> str:
 
 
 @pytest.fixture()
-def store_with_done_task(tmp_path: Path, monkeypatch) -> Path:
+def store_with_done_task(tmp_path: Path, env) -> Path:
     """Seed a tmp store with one done task carrying a full ``_log_meta``
     set so the timing compute has something to aggregate. Pinned via
     ``SCITEX_TODO_TASKS`` so the view's ``resolve_tasks_path(None)``
@@ -70,7 +70,7 @@ def store_with_done_task(tmp_path: Path, monkeypatch) -> Path:
             "completed_by": "agent-alpha",
         },
     )
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS", str(store))
     return store
 
 

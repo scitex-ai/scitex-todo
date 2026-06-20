@@ -10,7 +10,7 @@ exit codes, dry-run).
 No mocks (STX-NM/PA-306) on the production logic — the transition
 classifier is a pure function over two dicts; state load/save uses
 real tmp_path files. The CLI-level sweep tests inject the fake entry
-points via `monkeypatch` on the iterator (same fault-injection pattern
+points via `env` on the iterator (same fault-injection pattern
 as PR #196 ordering tests), NOT mocks of the code under test.
 """
 
@@ -147,10 +147,10 @@ def test_save_state_is_atomic_tmp_then_replace(tmp_path: Path):
     assert not tmp_sidecar.exists()
 
 
-def test_state_path_honors_env_override(monkeypatch, tmp_path: Path):
+def test_state_path_honors_env_override(env, tmp_path: Path):
     # Arrange
     override = tmp_path / "custom-ci-state.json"
-    monkeypatch.setenv("SCITEX_TODO_CI_STATE", str(override))
+    env.set("SCITEX_TODO_CI_STATE", str(override))
     # Act
     p = state_path()
     # Assert
@@ -160,14 +160,14 @@ def test_state_path_honors_env_override(monkeypatch, tmp_path: Path):
 # === CLI: --dry-run path ===================================================
 
 
-def test_ci_watch_dry_run_with_no_repos_configured(tmp_path: Path, monkeypatch):
+def test_ci_watch_dry_run_with_no_repos_configured(tmp_path: Path, env):
     # Arrange — point the state cache at tmp, leave the FE config
     # empty (no SCITEX_TODO_FLEET_CI_REPOS, no dashboard.yaml under HOME).
-    monkeypatch.setenv("SCITEX_TODO_CI_STATE", str(tmp_path / "ci-state.json"))
+    env.set("SCITEX_TODO_CI_STATE", str(tmp_path / "ci-state.json"))
     # Force a hermetic HOME so the test doesn't pick up the operator's
     # actual ~/.scitex/todo/dashboard.yaml.
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("SCITEX_TODO_FLEET_CI_REPOS", raising=False)
+    env.set("HOME", str(tmp_path))
+    env.delete("SCITEX_TODO_FLEET_CI_REPOS")
     runner = CliRunner()
     # Act
     result = runner.invoke(main, ["ci-watch", "--once", "--dry-run"])
@@ -176,11 +176,11 @@ def test_ci_watch_dry_run_with_no_repos_configured(tmp_path: Path, monkeypatch):
     assert result.exit_code == 0
 
 
-def test_ci_watch_dry_run_summary_line_present(tmp_path: Path, monkeypatch):
+def test_ci_watch_dry_run_summary_line_present(tmp_path: Path, env):
     # Arrange
-    monkeypatch.setenv("SCITEX_TODO_CI_STATE", str(tmp_path / "ci-state.json"))
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("SCITEX_TODO_FLEET_CI_REPOS", raising=False)
+    env.set("SCITEX_TODO_CI_STATE", str(tmp_path / "ci-state.json"))
+    env.set("HOME", str(tmp_path))
+    env.delete("SCITEX_TODO_FLEET_CI_REPOS")
     runner = CliRunner()
     # Act
     result = runner.invoke(main, ["ci-watch", "--once", "--dry-run"])
@@ -189,12 +189,12 @@ def test_ci_watch_dry_run_summary_line_present(tmp_path: Path, monkeypatch):
     assert "ci-watch: repos=0" in result.output
 
 
-def test_ci_watch_dry_run_does_not_write_state(tmp_path: Path, monkeypatch):
+def test_ci_watch_dry_run_does_not_write_state(tmp_path: Path, env):
     # Arrange
     state_file = tmp_path / "ci-state.json"
-    monkeypatch.setenv("SCITEX_TODO_CI_STATE", str(state_file))
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("SCITEX_TODO_FLEET_CI_REPOS", raising=False)
+    env.set("SCITEX_TODO_CI_STATE", str(state_file))
+    env.set("HOME", str(tmp_path))
+    env.delete("SCITEX_TODO_FLEET_CI_REPOS")
     runner = CliRunner()
     # Act
     runner.invoke(main, ["ci-watch", "--once", "--dry-run"])

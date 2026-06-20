@@ -24,10 +24,10 @@ from scitex_todo._store import add_task
 
 
 @pytest.fixture()
-def store_with_card(tmp_path: Path, monkeypatch) -> Path:
+def store_with_card(tmp_path: Path, env) -> Path:
     store = tmp_path / "tasks.yaml"
     add_task(store=store, id="card-1", title="x")
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS", str(store))
     return store
 
 

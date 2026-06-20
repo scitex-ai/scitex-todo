@@ -37,7 +37,7 @@ from scitex_todo._store import add_task, complete_task
 
 
 @pytest.fixture()
-def store_with_timeline_tasks(tmp_path: Path, monkeypatch) -> Path:
+def store_with_timeline_tasks(tmp_path: Path, env) -> Path:
     """Seed a tmp store with one in-window + one out-of-window task plus
     a depends_on edge. Pinned via ``SCITEX_TODO_TASKS`` so the view's
     ``resolve_tasks_path(None)`` picks it up.
@@ -74,17 +74,17 @@ def store_with_timeline_tasks(tmp_path: Path, monkeypatch) -> Path:
         # validator gates closed enums; created_at is free-form ISO.
         created_at="2020-01-01T00:00:00+00:00",
     )
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS", str(store))
     return store
 
 
 @pytest.fixture()
-def store_ungrouped(tmp_path: Path, monkeypatch) -> Path:
+def store_ungrouped(tmp_path: Path, env) -> Path:
     """One task without ``agent`` or ``group`` — should land in
     ``"(ungrouped)"`` regardless of ``lane_by``."""
     store = tmp_path / "tasks.yaml"
     add_task(store=store, id="t-naked", title="No lane")
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS", str(store))
     return store
 
 
@@ -195,7 +195,7 @@ def test_timeline_view_lane_by_group(store_with_timeline_tasks):
 def test_build_payload_lane_by_task_uses_title():
     """``lane_by=task`` gives ONE lane per task, labelled by its title —
     the basis of the per-task "simple" view. Pure ``_build_payload`` unit
-    (no Django / env) so it needs no monkeypatch."""
+    (no Django / env) so it needs no env."""
     # Arrange
     now = _dt.datetime(2026, 6, 17, 12, 0, tzinfo=_dt.timezone.utc)
     tasks = [
@@ -213,7 +213,7 @@ def test_build_payload_lane_by_task_uses_title():
 
 def test_build_payload_lane_by_project_uses_project():
     """``lane_by=project`` projects the task's ``project`` into the lane
-    (operator by-project view). Pure unit — no monkeypatch."""
+    (operator by-project view). Pure unit — no env."""
     # Arrange
     now = _dt.datetime(2026, 6, 17, 12, 0, tzinfo=_dt.timezone.utc)
     tasks = [
@@ -277,7 +277,7 @@ def test_timeline_view_edges_only_when_both_endpoints_visible(
 
 
 def test_timeline_view_edge_dropped_when_endpoint_out_of_window(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, env
 ):
     """If one endpoint of an edge is OUTSIDE the window, the edge is
     dropped from the payload — keeps the wire payload bounded and
@@ -298,7 +298,7 @@ def test_timeline_view_edge_dropped_when_endpoint_out_of_window(
         agent="a",
         depends_on=["t-old"],
     )
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS", str(store))
     rf = RequestFactory()
     req = rf.get("/timeline")
     # Act
@@ -356,7 +356,7 @@ def test_timeline_view_method_post_returns_405(store_with_timeline_tasks):
     assert response.status_code == 405
 
 
-def test_timeline_view_completed_task_in_window_renders(tmp_path: Path, monkeypatch):
+def test_timeline_view_completed_task_in_window_renders(tmp_path: Path, env):
     """A task that COMPLETED inside the window must appear (the
     ``_log_meta.completed_at`` path is one of the three window-membership
     tests). The bar fades in the UI, but the event is still in events."""
@@ -372,7 +372,7 @@ def test_timeline_view_completed_task_in_window_renders(tmp_path: Path, monkeypa
         created_at="2020-01-01T00:00:00+00:00",
     )
     complete_task(store=store, task_id="t-done")
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS", str(store))
     rf = RequestFactory()
     req = rf.get("/timeline")
     # Act

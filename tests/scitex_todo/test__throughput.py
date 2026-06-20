@@ -236,27 +236,27 @@ class TestWipGate:
         # Assert
         assert rep is None
 
-    def test_warn_at_limit(self, monkeypatch):
+    def test_warn_at_limit(self, env):
         # Arrange
-        monkeypatch.setenv(ENV_WIP_LIMIT, "3")
+        env.set(ENV_WIP_LIMIT, "3")
         tasks = [{"agent": "a", "status": "pending"} for _ in range(3)]
         # Act
         rep = evaluate_wip(tasks, agent="a")
         # Assert
         assert rep.is_warn is True
 
-    def test_refuse_at_2x(self, monkeypatch):
+    def test_refuse_at_2x(self, env):
         # Arrange
-        monkeypatch.setenv(ENV_WIP_LIMIT, "3")
+        env.set(ENV_WIP_LIMIT, "3")
         tasks = [{"agent": "a", "status": "pending"} for _ in range(6)]
         # Act
         rep = evaluate_wip(tasks, agent="a")
         # Assert
         assert rep.is_refuse is True
 
-    def test_below_limit_no_warn(self, monkeypatch):
+    def test_below_limit_no_warn(self, env):
         # Arrange
-        monkeypatch.setenv(ENV_WIP_LIMIT, "10")
+        env.set(ENV_WIP_LIMIT, "10")
         tasks = [{"agent": "a", "status": "pending"} for _ in range(3)]
         # Act
         rep = evaluate_wip(tasks, agent="a")

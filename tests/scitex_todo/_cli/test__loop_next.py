@@ -146,9 +146,9 @@ class TestAssigneeFilter:
 class TestMineFlag:
     """`--mine` reads SCITEX_TODO_AGENT from the env."""
 
-    def test_mine_with_env_resolves_to_agent(self, store, monkeypatch):
+    def test_mine_with_env_resolves_to_agent(self, store, env):
         # Arrange
-        monkeypatch.setenv("SCITEX_TODO_AGENT", "proj-beta")
+        env.set("SCITEX_TODO_AGENT", "proj-beta")
         # Act
         result = CliRunner().invoke(
             next_cmd, ["--tasks", store, "--mine", "--json"]
@@ -157,9 +157,9 @@ class TestMineFlag:
         # Assert
         assert payload["id"] == "b-pending"
 
-    def test_mine_without_env_raises_click_exception(self, store, monkeypatch):
+    def test_mine_without_env_raises_click_exception(self, store, env):
         # Arrange
-        monkeypatch.delenv("SCITEX_TODO_AGENT", raising=False)
+        env.delete("SCITEX_TODO_AGENT")
         # Act
         result = CliRunner().invoke(
             next_cmd, ["--tasks", store, "--mine"]

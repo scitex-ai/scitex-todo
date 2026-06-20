@@ -137,27 +137,27 @@ class TestDispatchNoUrl:
     can render a toast. The 502 status is reserved for actual transport
     failures from a CONFIGURED URL."""
 
-    def test_no_turn_url_returns_200(self, store, monkeypatch):
+    def test_no_turn_url_returns_200(self, store, env):
         # Arrange — strip env precedence 1 + 2 + 3 so resolution fails.
         from scitex_todo._push import ENV_MAP, ENV_SAC_BEARER, PER_AGENT_PREFIX
-        monkeypatch.delenv(ENV_MAP, raising=False)
-        monkeypatch.delenv(ENV_SAC_BEARER, raising=False)
+        env.delete(ENV_MAP)
+        env.delete(ENV_SAC_BEARER)
         for k in list(__import__("os").environ):
             if k.startswith(PER_AGENT_PREFIX):
-                monkeypatch.delenv(k, raising=False)
+                env.delete(k)
         # Act
         resp = _post(store, {"agent": "proj-paper-scitex-clew"})
         # Assert
         assert resp.status_code == 200
 
-    def test_no_turn_url_body_carries_reason(self, store, monkeypatch):
+    def test_no_turn_url_body_carries_reason(self, store, env):
         # Arrange
         from scitex_todo._push import ENV_MAP, ENV_SAC_BEARER, PER_AGENT_PREFIX
-        monkeypatch.delenv(ENV_MAP, raising=False)
-        monkeypatch.delenv(ENV_SAC_BEARER, raising=False)
+        env.delete(ENV_MAP)
+        env.delete(ENV_SAC_BEARER)
         for k in list(__import__("os").environ):
             if k.startswith(PER_AGENT_PREFIX):
-                monkeypatch.delenv(k, raising=False)
+                env.delete(k)
         # Act
         resp = _post(store, {"agent": "proj-paper-scitex-clew"})
         payload = json.loads(resp.content)

@@ -275,11 +275,11 @@ def test_cli_runnable_exit_1_when_queue_empty(tmp_path: Path):
     assert result.exit_code == 1
 
 
-def test_cli_runnable_mine_uses_env_agent(tmp_path: Path, monkeypatch):
+def test_cli_runnable_mine_uses_env_agent(tmp_path: Path, env):
     # Arrange — --mine reads $SCITEX_TODO_AGENT.
     store = tmp_path / "tasks.yaml"
     add_task(store=store, id="t-a", title="x", agent="proj-scitex-todo")
-    monkeypatch.setenv("SCITEX_TODO_AGENT", "proj-scitex-todo")
+    env.set("SCITEX_TODO_AGENT", "proj-scitex-todo")
     runner = CliRunner()
     # Act
     result = runner.invoke(

@@ -293,11 +293,11 @@ def test_done_records_pr_url_on_card(tmp_path: Path, env):
 
 def test_done_is_idempotent_when_already_done_with_same_pr_url(
     tmp_path: Path,
-    monkeypatch,
+    env,
 ):
     # Arrange — first done recorded; second is a noop.
     store = _store_with(tmp_path)
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS", str(store))
     event = event_validate(
         {
             "kind": "done",
@@ -317,14 +317,10 @@ def test_done_is_idempotent_when_already_done_with_same_pr_url(
 # === Plugin failures are caught + reported, never propagated ==============
 
 
-def test_dispatch_event_handles_plugin_error_gracefully(tmp_path: Path, monkeypatch):
-    # Arrange — register a plugin that raises. We can't add a real
-    # entry-point at runtime cleanly without packaging machinery, so
-    # we directly patch the iterator to inject one. (This is fault
-    # injection — the same pattern PR #166 used for the kill-mid-write
-    # tests. The PRODUCTION code path is what's being tested.)
-    from scitex_todo import _hooks as hooks_module
-
+def test_dispatch_event_handles_plugin_error_gracefully(tmp_path: Path, env):
+    # Arrange — register a real fake entry point whose handler raises,
+    # injected through the dispatcher's `entry_points=` seam (no mock /
+    # no monkeypatch; the PRODUCTION code path is what's being tested).
     class _FakeEP:
         name = "fake-failing"
 
@@ -334,10 +330,8 @@ def test_dispatch_event_handles_plugin_error_gracefully(tmp_path: Path, monkeypa
 
             return _bad
 
-    monkeypatch.setattr(hooks_module, "_iter_entry_points", lambda: [_FakeEP()])
-
     store = _store_with(tmp_path)
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS", str(store))
     event = event_validate(
         {
             "kind": "push",
@@ -348,6 +342,6 @@ def test_dispatch_event_handles_plugin_error_gracefully(tmp_path: Path, monkeypa
         }
     )
     # Act — must NOT raise.
-    summary = dispatch_event(event)
+    summary = dispatch_event(event, entry_points=[_FakeEP()])
     # Assert
     assert summary["plugin_errors"][0]["plugin"] == "fake-failing"

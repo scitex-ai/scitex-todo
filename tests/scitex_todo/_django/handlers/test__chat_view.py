@@ -33,7 +33,7 @@ from scitex_todo._store import add_task, comment_task
 
 
 @pytest.fixture()
-def store_with_chat_task(tmp_path: Path, monkeypatch) -> Path:
+def store_with_chat_task(tmp_path: Path, env) -> Path:
     """Seed a tmp store with one task that already carries one comment,
     pinned via ``SCITEX_TODO_TASKS`` so the view's ``resolve_tasks_path(None)``
     picks it up.
@@ -61,7 +61,7 @@ def store_with_chat_task(tmp_path: Path, monkeypatch) -> Path:
         text="hello from agent-a",
         by="agent-a",
     )
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS", str(store))
     return store
 
 
