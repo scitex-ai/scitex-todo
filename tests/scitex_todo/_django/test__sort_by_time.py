@@ -149,116 +149,149 @@ _FIXED_NOW_MS = 1781438400000  # `new Date('2026-06-14T12:00:00Z').getTime()`
 def test_bucket_today_for_recent_activity() -> None:
     """Activity within the last 24 h lands in TODAY — the operator's
     "what changed since yesterday" question."""
+    # Arrange
+    # Act
     out = _run(
         f"const ref = {_FIXED_NOW_MS};\n"
         "const t = {id: 'a', last_activity: '2026-06-14T06:00:00Z'};\n"
         "console.log(JSON.stringify({b: timeBucketForCard(t, ref)}));"
     )
+    # Assert
     assert out == {"b": "today"}
 
 
 def test_bucket_week_for_4_days_old() -> None:
     """4 days old → THIS WEEK (between 24 h and 7 d)."""
+    # Arrange
+    # Act
     out = _run(
         f"const ref = {_FIXED_NOW_MS};\n"
         "const t = {id: 'a', last_activity: '2026-06-10T12:00:00Z'};\n"
         "console.log(JSON.stringify({b: timeBucketForCard(t, ref)}));"
     )
+    # Assert
     assert out == {"b": "week"}
 
 
 def test_bucket_month_for_14_days_old() -> None:
     """14 days old → THIS MONTH (between 7 d and 30 d)."""
+    # Arrange
+    # Act
     out = _run(
         f"const ref = {_FIXED_NOW_MS};\n"
         "const t = {id: 'a', last_activity: '2026-05-31T12:00:00Z'};\n"
         "console.log(JSON.stringify({b: timeBucketForCard(t, ref)}));"
     )
+    # Assert
     assert out == {"b": "month"}
 
 
 def test_bucket_older_for_60_days_old() -> None:
     """60 days old → OLDER (> 30 d)."""
+    # Arrange
+    # Act
     out = _run(
         f"const ref = {_FIXED_NOW_MS};\n"
         "const t = {id: 'a', last_activity: '2026-04-14T12:00:00Z'};\n"
         "console.log(JSON.stringify({b: timeBucketForCard(t, ref)}));"
     )
+    # Assert
     assert out == {"b": "older"}
 
 
 def test_bucket_boundary_exactly_24h_is_today() -> None:
     """Exactly 24 h old must land in TODAY (the inclusive boundary —
     operator expectation: "yesterday at this time still counts")."""
+    # Arrange
+    # Act
     out = _run(
         f"const ref = {_FIXED_NOW_MS};\n"
         "const t = {id: 'a', last_activity: '2026-06-13T12:00:00Z'};\n"
         "console.log(JSON.stringify({b: timeBucketForCard(t, ref)}));"
     )
+    # Assert
     assert out == {"b": "today"}
 
 
 def test_bucket_boundary_just_past_24h_is_week() -> None:
     """1 minute past 24 h falls into THIS WEEK — the next bucket."""
+    # Arrange
+    # Act
     out = _run(
         f"const ref = {_FIXED_NOW_MS};\n"
         "const t = {id: 'a', last_activity: '2026-06-13T11:59:00Z'};\n"
         "console.log(JSON.stringify({b: timeBucketForCard(t, ref)}));"
     )
+    # Assert
     assert out == {"b": "week"}
 
 
 def test_bucket_boundary_exactly_7d_is_week() -> None:
     """Exactly 7 d old must still land in THIS WEEK (inclusive
     upper edge of the bucket)."""
+    # Arrange
+    # Act
     out = _run(
         f"const ref = {_FIXED_NOW_MS};\n"
         "const t = {id: 'a', last_activity: '2026-06-07T12:00:00Z'};\n"
         "console.log(JSON.stringify({b: timeBucketForCard(t, ref)}));"
     )
+    # Assert
     assert out == {"b": "week"}
 
 
 def test_bucket_boundary_just_past_7d_is_month() -> None:
     """1 minute past 7 d → THIS MONTH bucket."""
+    # Arrange
+    # Act
     out = _run(
         f"const ref = {_FIXED_NOW_MS};\n"
         "const t = {id: 'a', last_activity: '2026-06-07T11:59:00Z'};\n"
         "console.log(JSON.stringify({b: timeBucketForCard(t, ref)}));"
     )
+    # Assert
     assert out == {"b": "month"}
 
 
 def test_bucket_missing_last_activity_is_older() -> None:
     """A task with no ``last_activity`` sinks to OLDER so the operator
     sees it at the bottom of the bucket stack, not in TODAY."""
+    # Arrange
+    # Act
     out = _run(
         f"const ref = {_FIXED_NOW_MS};\n"
         "const t = {id: 'a'};\n"
         "console.log(JSON.stringify({b: timeBucketForCard(t, ref)}));"
     )
+    # Assert
     assert out == {"b": "older"}
 
 
 def test_bucket_unparseable_last_activity_is_older() -> None:
     """A garbage ``last_activity`` value also sinks to OLDER — graceful
     degrade for legacy snapshots."""
+    # Arrange
+    # Act
     out = _run(
         f"const ref = {_FIXED_NOW_MS};\n"
         "const t = {id: 'a', last_activity: 'not-a-date'};\n"
         "console.log(JSON.stringify({b: timeBucketForCard(t, ref)}));"
     )
+    # Assert
     assert out == {"b": "older"}
 
 
 def test_bucket_future_last_activity_is_today() -> None:
     """A timestamp slightly in the future (clock drift) still reads as
     TODAY — ``ageMs`` is negative which is ≤ 24 h."""
+    # Arrange
+    # Act
     out = _run(
         f"const ref = {_FIXED_NOW_MS};\n"
         "const t = {id: 'a', last_activity: '2026-06-14T18:00:00Z'};\n"
         "console.log(JSON.stringify({b: timeBucketForCard(t, ref)}));"
     )
+    # Assert
     assert out == {"b": "today"}
 
 
@@ -274,19 +307,25 @@ _EPOCH_MS_2026_06_13 = 1781308800000  # new Date('2026-06-13T00:00:00Z').getTime
 def test_sort_key_last_activity_returns_epoch_ms() -> None:
     """``last_activity`` mode returns the parsed epoch ms of the
     timestamp — drives the descending Newest-first comparator."""
+    # Arrange
+    # Act
     out = _run(
         "const t = {id: 'a', last_activity: '2026-06-14T00:00:00Z'};\n"
         "console.log(JSON.stringify({k: timeSortKey(t, 'last_activity')}));"
     )
+    # Assert
     assert out["k"] == _EPOCH_MS_2026_06_14
 
 
 def test_sort_key_created_at_returns_epoch_ms() -> None:
     """``created_at`` mode reads task.created_at."""
+    # Arrange
+    # Act
     out = _run(
         "const t = {id: 'a', created_at: '2026-06-14T00:00:00Z'};\n"
         "console.log(JSON.stringify({k: timeSortKey(t, 'created_at')}));"
     )
+    # Assert
     assert out["k"] == _EPOCH_MS_2026_06_14
 
 
@@ -294,6 +333,8 @@ def test_sort_key_completed_at_prefers_log_meta() -> None:
     """``completed_at`` mode prefers the ``_log_meta.completed_at``
     envelope — the canonical place the store stamps the completion
     transition (see operator schema ADR-0007)."""
+    # Arrange
+    # Act
     out = _run(
         "const t = {id: 'a', _log_meta: "
         "  {completed_at: '2026-06-13T00:00:00Z'},\n"
@@ -301,22 +342,28 @@ def test_sort_key_completed_at_prefers_log_meta() -> None:
         "console.log(JSON.stringify({k: timeSortKey(t, 'completed_at')}));"
     )
     # _log_meta.completed_at wins over the top-level completed_at fallback.
+    # Assert
     assert out["k"] == _EPOCH_MS_2026_06_13
 
 
 def test_sort_key_completed_at_falls_back_to_top_level() -> None:
     """When ``_log_meta`` is absent, a top-level ``completed_at`` still
     feeds the sort key — back-compat with older snapshots."""
+    # Arrange
+    # Act
     out = _run(
         "const t = {id: 'a', completed_at: '2026-06-14T00:00:00Z'};\n"
         "console.log(JSON.stringify({k: timeSortKey(t, 'completed_at')}));"
     )
+    # Assert
     assert out["k"] == _EPOCH_MS_2026_06_14
 
 
 def test_sort_key_missing_value_returns_zero() -> None:
     """A task with neither the requested field nor a fallback returns 0
     so it sorts to the END for a DESCENDING comparator (b - a)."""
+    # Arrange
+    # Act
     out = _run(
         "const t = {id: 'a'};\n"
         "console.log(JSON.stringify({"
@@ -324,15 +371,19 @@ def test_sort_key_missing_value_returns_zero() -> None:
         "k2: timeSortKey(t, 'created_at'),\n"
         "k3: timeSortKey(t, 'completed_at')}));"
     )
+    # Assert
     assert out == {"k1": 0, "k2": 0, "k3": 0}
 
 
 def test_sort_key_unparseable_returns_zero() -> None:
     """A garbage ISO string returns 0 (graceful degrade)."""
+    # Arrange
+    # Act
     out = _run(
         "const t = {id: 'a', last_activity: 'garbage'};\n"
         "console.log(JSON.stringify({k: timeSortKey(t, 'last_activity')}));"
     )
+    # Assert
     assert out == {"k": 0}
 
 
@@ -340,6 +391,8 @@ def test_sort_key_descending_order_via_comparator() -> None:
     """Wire-level: sort an array DESCENDING by ``b - a`` and assert the
     newest landing at the front (matches the comparator emitted by
     ``_sortComparator('created_at')`` in board_v3.html)."""
+    # Arrange
+    # Act
     out = _run(
         textwrap.dedent(
             """
@@ -356,6 +409,7 @@ def test_sort_key_descending_order_via_comparator() -> None:
         )
     )
     # Newest first; the no-created-at card lands at the end.
+    # Assert
     assert out == ["b", "a", "c", "d"]
 
 
@@ -367,7 +421,10 @@ def test_sort_key_descending_order_via_comparator() -> None:
 def test_template_sort_dropdown_has_created_at_option() -> None:
     """The Sort <select> must carry the new ``created_at`` option so the
     operator sees "created (newest first)" in the dropdown."""
+    # Arrange
+    # Act
     html = _read(_BOARD_V3_TEMPLATE)
+    # Assert
     assert '<option value="created_at">' in html, (
         "board_v3.html missing 'created_at' option in #f-sort"
     )
@@ -375,7 +432,10 @@ def test_template_sort_dropdown_has_created_at_option() -> None:
 
 def test_template_sort_dropdown_has_completed_at_option() -> None:
     """The Sort <select> must carry the new ``completed_at`` option."""
+    # Arrange
+    # Act
     html = _read(_BOARD_V3_TEMPLATE)
+    # Assert
     assert '<option value="completed_at">' in html, (
         "board_v3.html missing 'completed_at' option in #f-sort"
     )
@@ -385,7 +445,10 @@ def test_template_sort_dropdown_keeps_last_activity_option() -> None:
     """The pre-existing ``last_activity`` option must survive the edit
     (back-compat: the operator may already have it persisted in
     localStorage['scitex-todo:sort'])."""
+    # Arrange
+    # Act
     html = _read(_BOARD_V3_TEMPLATE)
+    # Assert
     assert '<option value="last_activity">' in html, (
         "board_v3.html lost the pre-existing 'last_activity' option"
     )
@@ -394,7 +457,10 @@ def test_template_sort_dropdown_keeps_last_activity_option() -> None:
 def test_template_group_by_time_checkbox_present() -> None:
     """The Group-by-time checkbox must be mounted with id
     ``stx-toggle-group-by-time`` so the JS handler binds to it."""
+    # Arrange
+    # Act
     html = _read(_BOARD_V3_TEMPLATE)
+    # Assert
     assert 'id="stx-toggle-group-by-time"' in html, (
         "board_v3.html missing #stx-toggle-group-by-time checkbox"
     )
@@ -404,12 +470,15 @@ def test_template_group_by_time_lives_in_view_group() -> None:
     """The Group-by-time checkbox must live inside the existing
     ``.stx-todo-filterbar__group--view`` so the operator's time
     controls cluster with Layout/Sort/Group."""
+    # Arrange
     html = _read(_BOARD_V3_TEMPLATE)
+    # Act
     m = re.search(
         r"stx-todo-filterbar__group--view[^>]*>(.*?)\{#\s*end VIEW group",
         html,
         flags=re.DOTALL,
     )
+    # Assert
     assert m, "could not locate VIEW group block in template"
     view_body = m.group(1)
     assert 'id="stx-toggle-group-by-time"' in view_body, (
@@ -419,7 +488,10 @@ def test_template_group_by_time_lives_in_view_group() -> None:
 
 def test_template_loads_time_grouping_css() -> None:
     """The new 08-time-grouping.css must be wired into <head>."""
+    # Arrange
+    # Act
     html = _read(_BOARD_V3_TEMPLATE)
+    # Assert
     assert "08-time-grouping.css" in html, (
         "board_v3.html never <link>s 08-time-grouping.css"
     )
@@ -428,7 +500,10 @@ def test_template_loads_time_grouping_css() -> None:
 def test_template_wires_on_group_by_time_change_handler() -> None:
     """The checkbox must wire onchange → onGroupByTimeChange, and the
     handler function must be defined in the inline <script>."""
+    # Arrange
+    # Act
     html = _read(_BOARD_V3_TEMPLATE)
+    # Assert
     assert "onGroupByTimeChange" in html, (
         "board_v3.html missing onGroupByTimeChange handler reference"
     )
@@ -441,7 +516,10 @@ def test_template_defines_time_bucket_helper() -> None:
     """The bucket classifier ``timeBucketForCard`` must be defined in
     the inline <script> — the test JS RUNTIME mirrors its body, so the
     name must continue to exist for the mirror to be load-bearing."""
+    # Arrange
+    # Act
     html = _read(_BOARD_V3_TEMPLATE)
+    # Assert
     assert "function timeBucketForCard" in html, (
         "board_v3.html missing timeBucketForCard helper"
     )
@@ -454,7 +532,10 @@ def test_template_persists_group_by_time_in_localstorage() -> None:
     """The Group-by-time state must persist in
     ``localStorage['scitex-todo:group-by-time']`` so the operator's
     preference survives reloads."""
+    # Arrange
+    # Act
     html = _read(_BOARD_V3_TEMPLATE)
+    # Assert
     assert "scitex-todo:group-by-time" in html, (
         "board_v3.html does not persist group-by-time in localStorage"
     )
@@ -486,7 +567,10 @@ def test_template_persists_group_by_time_in_localstorage() -> None:
 def test_time_css_declares_selector(selector: str) -> None:
     """Every required bucket / toggle selector must have at least one
     CSS rule in 08-time-grouping.css."""
+    # Arrange
+    # Act
     css = _read(_TIME_CSS)
+    # Assert
     assert selector in css, (
         f"08-time-grouping.css missing rule for {selector!r}"
     )
@@ -497,6 +581,7 @@ def test_time_css_no_hardcoded_colors() -> None:
     ``var(--…)`` token. The only acceptable hex literals are inside
     ``var(--token, #fallback)`` fallback slots — same convention as
     07-toolbar-groups.css."""
+    # Arrange
     css = _read(_TIME_CSS)
     comments_stripped = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
     # Strip every `var(--token, …)` substring AND any nested var() too.
@@ -512,7 +597,9 @@ def test_time_css_no_hardcoded_colors() -> None:
         r"(?<![\w-])"
         r"(#[0-9a-fA-F]{3,8}\b|\b(?:white|black)\b(?!-))",
     )
+    # Act
     matches = pattern.findall(no_var)
+    # Assert
     assert not matches, (
         f"hardcoded colors found in 08-time-grouping.css "
         f"(must use var(--…) tokens): {matches[:5]}"
@@ -521,7 +608,10 @@ def test_time_css_no_hardcoded_colors() -> None:
 
 def test_time_css_balanced_braces() -> None:
     """Edits must not corrupt brace nesting."""
+    # Arrange
+    # Act
     css = _read(_TIME_CSS)
+    # Assert
     assert css.count("{") == css.count("}"), (
         f"unbalanced braces in {_TIME_CSS}: "
         f"{css.count('{')} opens vs {css.count('}')} closes"
@@ -531,7 +621,10 @@ def test_time_css_balanced_braces() -> None:
 def test_time_css_chevron_signals_collapsible() -> None:
     """The chevron class must exist — collapsibility cue for the
     operator. Spec calls out ``▸`` / ``▾`` glyphs in the inline JS."""
+    # Arrange
+    # Act
     css = _read(_TIME_CSS)
+    # Assert
     assert ".stx-todo-time-bucket-chevron" in css, (
         "08-time-grouping.css missing chevron rule"
     )

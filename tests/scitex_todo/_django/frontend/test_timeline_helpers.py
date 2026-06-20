@@ -155,18 +155,23 @@ def _run(snippet: str):
 def test_parse_timeline_ts_basic_iso() -> None:
     """An ISO-8601 string parses into a finite ms epoch — round-trips
     via ``new Date().getTime()`` (sidesteps any local-tz math)."""
+    # Arrange
+    # Act
     out = _run(
         "console.log(JSON.stringify({"
         "v: parseTimelineTs('2026-06-14T12:00:00Z'),"
         "ref: new Date('2026-06-14T12:00:00Z').getTime(),"
         "}));"
     )
+    # Assert
     assert out["v"] == out["ref"]
     assert isinstance(out["v"], int)
 
 
 def test_parse_timeline_ts_null_on_empty() -> None:
     """Empty / null input returns null (caller skips the row)."""
+    # Arrange
+    # Act
     out = _run(
         "console.log(JSON.stringify({"
         "a: parseTimelineTs(null),"
@@ -174,6 +179,7 @@ def test_parse_timeline_ts_null_on_empty() -> None:
         "c: parseTimelineTs('not a date'),"
         "}));"
     )
+    # Assert
     assert out == {"a": None, "b": None, "c": None}
 
 
@@ -182,6 +188,8 @@ def test_parse_timeline_ts_null_on_empty() -> None:
 
 def test_group_events_by_lane_buckets() -> None:
     """Events bucket into a Map keyed by lane; insertion order preserved."""
+    # Arrange
+    # Act
     out = _run(
         textwrap.dedent(
             """
@@ -194,18 +202,22 @@ def test_group_events_by_lane_buckets() -> None:
             """
         )
     )
+    # Assert
     assert out["order"] == ["x", "y"]
     assert out["byLane"] == {"x": ["a", "c"], "y": ["b"]}
 
 
 def test_group_events_handles_empty() -> None:
     """An empty / null events array yields an empty map without raising."""
+    # Arrange
+    # Act
     out = _run(
         "console.log(JSON.stringify({"
         "a: groupEventsByLane([]),"
         "b: groupEventsByLane(null),"
         "}));"
     )
+    # Assert
     assert out == {
         "a": {"order": [], "byLane": {}},
         "b": {"order": [], "byLane": {}},
@@ -217,41 +229,53 @@ def test_group_events_handles_empty() -> None:
 
 def test_time_to_x_linear_mid() -> None:
     """A timestamp at the window midpoint maps to width/2."""
+    # Arrange
+    # Act
     out = _run(
         "console.log(JSON.stringify({"
         "x: timeToX(500, 0, 1000, 100),"
         "}));"
     )
+    # Assert
     assert out["x"] == 50.0
 
 
 def test_time_to_x_clamps_before_window() -> None:
     """A timestamp before window_start clamps to 0."""
+    # Arrange
+    # Act
     out = _run(
         "console.log(JSON.stringify({"
         "x: timeToX(-100, 0, 1000, 100),"
         "}));"
     )
+    # Assert
     assert out["x"] == 0
 
 
 def test_time_to_x_clamps_after_window() -> None:
     """A timestamp after window_end clamps to width."""
+    # Arrange
+    # Act
     out = _run(
         "console.log(JSON.stringify({"
         "x: timeToX(2000, 0, 1000, 100),"
         "}));"
     )
+    # Assert
     assert out["x"] == 100
 
 
 def test_time_to_x_null_on_degenerate_window() -> None:
     """A degenerate (start >= end) window returns null."""
+    # Arrange
+    # Act
     out = _run(
         "console.log(JSON.stringify({"
         "x: timeToX(500, 1000, 1000, 100),"
         "}));"
     )
+    # Assert
     assert out["x"] is None
 
 
@@ -260,17 +284,22 @@ def test_time_to_x_null_on_degenerate_window() -> None:
 
 def test_event_bar_geometry_completed_within_window() -> None:
     """A completed event fully inside the window maps to (xStart, width)."""
+    # Arrange
+    # Act
     out = _run(
         "console.log(JSON.stringify({"
         "g: eventBarGeometry(250, 750, 0, 1000, 999, 100),"
         "}));"
     )
+    # Assert
     assert out["g"] == {"x": 25.0, "width": 50.0}
 
 
 def test_event_bar_geometry_still_running_uses_now() -> None:
     """A still-running event (ended=null) extends from started to NOW
     (which is the right edge of the visual when now == windowEnd)."""
+    # Arrange
+    # Act
     out = _run(
         "console.log(JSON.stringify({"
         "g: eventBarGeometry(250, null, 0, 1000, 750, 100),"
@@ -278,26 +307,33 @@ def test_event_bar_geometry_still_running_uses_now() -> None:
     )
     # started=250, ended=null -> effectiveEnd = min(now=750, windowEnd=1000) = 750.
     # x = 25, width = (75 - 25) = 50.
+    # Assert
     assert out["g"] == {"x": 25.0, "width": 50.0}
 
 
 def test_event_bar_geometry_outside_window_returns_null() -> None:
     """An event that completed entirely before the window starts is null."""
+    # Arrange
+    # Act
     out = _run(
         "console.log(JSON.stringify({"
         "g: eventBarGeometry(-500, -100, 0, 1000, 999, 100),"
         "}));"
     )
+    # Assert
     assert out["g"] is None
 
 
 def test_event_bar_geometry_null_when_no_started() -> None:
     """Missing started_at -> null bar (caller skips the row)."""
+    # Arrange
+    # Act
     out = _run(
         "console.log(JSON.stringify({"
         "g: eventBarGeometry(null, 500, 0, 1000, 999, 100),"
         "}));"
     )
+    # Assert
     assert out["g"] is None
 
 
@@ -306,9 +342,12 @@ def test_event_bar_geometry_null_when_no_started() -> None:
 
 def test_make_ticks_endpoints_and_spacing() -> None:
     """N evenly-spaced ticks span from 0 to width with N-1 segments."""
+    # Arrange
+    # Act
     out = _run(
         "console.log(JSON.stringify(makeTicks(0, 1000, 100, 6)));"
     )
+    # Assert
     assert len(out) == 6
     assert out[0]["x"] == 0
     assert out[-1]["x"] == 100
@@ -322,7 +361,10 @@ def test_make_ticks_endpoints_and_spacing() -> None:
 def test_static_source_contract() -> None:
     """The TS module must continue to expose the canonical names so
     TimelineView keeps depending on a stable API."""
+    # Arrange
     src = TS_FILE.read_text(encoding="utf-8")
+    # Act
+    # Assert
     for name in [
         "export function parseTimelineTs(",
         "export function groupEventsByLane",

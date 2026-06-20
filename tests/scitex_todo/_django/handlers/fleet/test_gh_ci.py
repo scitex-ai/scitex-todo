@@ -44,6 +44,9 @@ def test_fleet_adapter_error_is_runtime_error_subclass() -> None:
     so callers that ``except RuntimeError`` (e.g. broad Django error
     middleware) keep working — but a dedicated subclass lets the view
     + tests pin behavior with ``pytest.raises(FleetAdapterError)``."""
+    # Arrange
+    # Act
+    # Assert
     assert issubclass(FleetAdapterError, RuntimeError)
     assert FleetAdapterError is not RuntimeError
 
@@ -66,14 +69,18 @@ def test_config_missing_file_returns_empty_repos(env, tmp_path) -> None:
     """A fresh install has no ``dashboard.yaml`` and that is NOT an
     error — "no repos configured" is a valid steady state and the UI
     hides the pills strip gracefully."""
+    # Arrange
     _isolate_home(env, tmp_path)
+    # Act
     out = fleet_config_load()
+    # Assert
     assert out == {"fleet": {"ci_status": {"repos": []}}}
 
 
 def test_config_malformed_yaml_raises(env, tmp_path) -> None:
     """A broken config IS fail-loud so the operator does not stare at
     an empty strip wondering why their config is being ignored."""
+    # Arrange
     _isolate_home(env, tmp_path)
     cfg_dir = tmp_path / ".scitex" / "todo"
     cfg_dir.mkdir(parents=True)
@@ -82,6 +89,8 @@ def test_config_malformed_yaml_raises(env, tmp_path) -> None:
         "fleet:\n  ci_status:\n    repos: [a, b,\n",
         encoding="utf-8",
     )
+    # Act
+    # Assert
     with pytest.raises(FleetAdapterError) as excinfo:
         fleet_config_load()
     # The message must name the file path so the operator can find it.
@@ -91,6 +100,7 @@ def test_config_malformed_yaml_raises(env, tmp_path) -> None:
 def test_config_env_override_replaces_file_list(env, tmp_path) -> None:
     """The env var trumps the file — handy for tests AND for the
     operator to flip the set without editing the file."""
+    # Arrange
     _isolate_home(env, tmp_path)
     cfg_dir = tmp_path / ".scitex" / "todo"
     cfg_dir.mkdir(parents=True)
@@ -99,15 +109,20 @@ def test_config_env_override_replaces_file_list(env, tmp_path) -> None:
         encoding="utf-8",
     )
     env.set("SCITEX_TODO_FLEET_CI_REPOS", "env/aaa, env/bbb")
+    # Act
     out = fleet_config_load()
+    # Assert
     assert out["fleet"]["ci_status"]["repos"] == ["env/aaa", "env/bbb"]
 
 
 def test_config_env_override_without_file(env, tmp_path) -> None:
     """The env override alone is enough — no file required."""
+    # Arrange
     _isolate_home(env, tmp_path)
     env.set("SCITEX_TODO_FLEET_CI_REPOS", "owner/x,owner/y")
+    # Act
     out = fleet_config_load()
+    # Assert
     assert out["fleet"]["ci_status"]["repos"] == ["owner/x", "owner/y"]
 
 
@@ -115,14 +130,18 @@ def test_config_env_override_empty_string_means_no_repos(env, tmp_path) -> None:
     """Empty env override yields an empty list (not a one-item ``""``)
     — the operator can intentionally disable the strip with an empty
     env value."""
+    # Arrange
     _isolate_home(env, tmp_path)
     env.set("SCITEX_TODO_FLEET_CI_REPOS", "")
+    # Act
     out = fleet_config_load()
+    # Assert
     assert out["fleet"]["ci_status"]["repos"] == []
 
 
 def test_config_reads_file_when_env_unset(env, tmp_path) -> None:
     """File-sourced list shines through when the env override is unset."""
+    # Arrange
     _isolate_home(env, tmp_path)
     cfg_dir = tmp_path / ".scitex" / "todo"
     cfg_dir.mkdir(parents=True)
@@ -130,7 +149,9 @@ def test_config_reads_file_when_env_unset(env, tmp_path) -> None:
         "fleet:\n  ci_status:\n    repos:\n      - file/one\n      - file/two\n",
         encoding="utf-8",
     )
+    # Act
     out = fleet_config_load()
+    # Assert
     assert out["fleet"]["ci_status"]["repos"] == ["file/one", "file/two"]
 
 
@@ -165,6 +186,9 @@ _AUTHED = _gh_authed()
 def test_nonexistent_repo_raises() -> None:
     """Calling the adapter on a slug that does not exist on GitHub
     must surface as ``FleetAdapterError`` — the fail-loud contract."""
+    # Arrange
+    # Act
+    # Assert
     with pytest.raises(FleetAdapterError):
         # A slug that almost-certainly resolves to 404. We avoid using a
         # name that COULD be claimed later by namespacing it under a
@@ -175,6 +199,9 @@ def test_nonexistent_repo_raises() -> None:
 def test_invalid_slug_shape_raises_without_gh() -> None:
     """Slug validation happens before we touch ``gh``, so this test
     is gh-independent — it pins the input contract on every CI box."""
+    # Arrange
+    # Act
+    # Assert
     with pytest.raises(FleetAdapterError) as excinfo:
         fetch_repo_ci_status("not-a-slug")
     assert "owner/name" in str(excinfo.value)
@@ -184,9 +211,12 @@ def test_gh_missing_binary_raises(env) -> None:
     """Surfacing "gh not installed" must NOT silently fall back to an
     empty-checks success — that would lie to the operator about fleet
     health. Simulate the missing binary by clobbering PATH."""
+    # Arrange
     env.set("PATH", "")
     from scitex_todo._django.handlers.fleet import gh_ci as gh_ci_mod
 
+    # Act
+    # Assert
     with pytest.raises(FleetAdapterError) as excinfo:
         gh_ci_mod.fetch_repo_ci_status("owner/name")
     assert "gh" in str(excinfo.value).lower()
@@ -237,8 +267,11 @@ def test_overall_reducer(checks, expected) -> None:
     """The reducer is the heart of the pill color — failure beats
     pending beats success. Pin every branch explicitly so the FE color
     mapping stays in lock-step with what the back-end emits."""
+    # Arrange
+    # Act
     from scitex_todo._django.handlers.fleet.gh_ci import _overall_from_checks
 
+    # Assert
     assert _overall_from_checks(checks) == expected
 
 
@@ -248,6 +281,9 @@ def test_overall_reducer(checks, expected) -> None:
 def test_config_module_constant_paths() -> None:
     """Lock the config-path constant so a rename downstream forces a
     test update. Operators search for this literal when debugging."""
+    # Arrange
+    # Act
+    # Assert
     assert str(fleet_config_mod._CONFIG_REL) == str(
         Path(".scitex") / "todo" / "dashboard.yaml"
     )
@@ -259,8 +295,11 @@ def test_module_has_documented_attrs() -> None:
     the surface so downstream waves (hosts / mesh / …) can ``from
     scitex_todo._django.handlers.fleet import FleetAdapterError`` and
     expect that name to be stable."""
+    # Arrange
     from scitex_todo._django.handlers import fleet as fleet_pkg
 
+    # Act
+    # Assert
     for attr in (
         "FleetAdapterError",
         "fleet_config_load",

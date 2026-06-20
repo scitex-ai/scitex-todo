@@ -3,16 +3,6 @@
 
 project-type:
   - pip
-  # scitex-todo IS a Django app (src/scitex_todo/_django/ — board UI,
-  # handlers, frontend). The `django` project-type is a first-class
-  # recognised type (scitex_dev/_cli/audit/_config/_loader.py
-  # PROJECT_TYPES) that relaxes the no-mocks rule (PA-306) from error to
-  # warning: Django apps legitimately use test doubles for external
-  # services (HTTP, browser, telegram, ssh) — see _api/_audit.py lines
-  # 184-190 ("the no-mocks rule is wrong-by-default for them, ... Explicit
-  # and documented, not a silent exception"). PA-307 (test-quality) still
-  # applies at full severity and is handled via the deferral below.
-  - django
 
 # Pre-approved rule skips (lead a2a `fb413fb038da49d1b18262b237385c33`,
 # 2026-06-12, PR #110 fix-forward). Each entry is a scitex-dev audit rule
@@ -38,24 +28,3 @@ audit:
     # secret is shared across the fleet — renaming requires cross-repo
     # rotation.
     - PS-168
-    # PA-306 — `no-mocks` (`monkeypatch` / mock fixtures in tests). ~68 of
-    # these in the test tree. The `django` project-type above already
-    # downgrades PA-306 from error to warning by design (Django apps
-    # legitimately fake external services — HTTP/browser/telegram/ssh);
-    # this skip DROPS the warning entirely so `audit-python-apis` exits 0
-    # (it returns rc=1 on warnings-only, which would fail the CI audit
-    # gate under `set -e`). Pass 1 of the TQ-migration playbook
-    # (general/05_development/09_ecosystem-tq-migration.md) replaces these
-    # with real fakes / tmp_path / subprocess shims; remove this skip then.
-    - PA-306
-    # PA-307 — `test-quality` (AAA-structure markers TQ002, single-assert
-    # TQ007, descriptive-name TQ003/TQ001/TQ004). The legacy test tree
-    # carries ~613 of these. They are NOT introduced by this change; the
-    # canonical fix is the dedicated four-pass migration documented in
-    # scitex-dev's `general/05_development/09_ecosystem-tq-migration.md`
-    # (NM -> TQ003 -> TQ002 -> TQ007), which that playbook itself flags as
-    # a separate mechanical sweep ("ignore the develop CI failure flag —
-    # it's pre-existing and unrelated"). Deferred here so the canonical
-    # `audit-all` CI gate is GREEN on develop HEAD now; tracked for the
-    # TQ-migration PR. Remove this skip when that sweep lands.
-    - PA-307

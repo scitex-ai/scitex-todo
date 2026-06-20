@@ -56,13 +56,19 @@ _TSX_FILE = (
 
 
 def test_css_file_exists() -> None:
+    # Arrange
+    # Act
+    # Assert
     assert _CSS_FILE.is_file(), f"missing CSS file: {_CSS_FILE}"
 
 
 def test_css_has_canonical_selectors() -> None:
     """The component generates these class names — the CSS file MUST
     define each one or the pills will silently render unstyled."""
+    # Arrange
     css = _CSS_FILE.read_text(encoding="utf-8")
+    # Act
+    # Assert
     for selector in (
         ".stx-todo-fleet-ci",
         ".stx-todo-fleet-ci__pill",
@@ -87,13 +93,16 @@ def test_css_uses_design_tokens_only() -> None:
     the scitex-ui shell variables ``--status-success``,
     ``--status-error``, ``--status-warning``, ``--text-muted``).
     """
+    # Arrange
     css = _CSS_FILE.read_text(encoding="utf-8")
     # Strip /* ... */ comments before scanning — the comment block at
     # the top of the file documents the token names verbatim and would
     # falsely trip the hex detector otherwise.
     no_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
     # 3-, 4-, 6-, or 8-digit hex.
+    # Act
     hex_matches = re.findall(r"#[0-9A-Fa-f]{3,8}\b", no_comments)
+    # Assert
     assert not hex_matches, (
         f"hardcoded hex colors in fleet-ci-pills.css (breaks theming): "
         f"{hex_matches!r}"
@@ -111,7 +120,10 @@ def test_css_is_imported_from_board_css() -> None:
     """The pills strip only renders correctly when board.css imports
     the partial. Pinning this guards against an accidental removal in
     a future board.css refactor."""
+    # Arrange
+    # Act
     board_css = _CSS_FILE.parent / "board.css"
+    # Assert
     assert board_css.is_file()
     text = board_css.read_text(encoding="utf-8")
     assert '@import "./fleet-ci-pills.css";' in text
@@ -216,6 +228,8 @@ def test_pill_color_mapping_for_each_overall(
     """Pin one pill-modifier per known CiOverall value — these are the
     classes the CSS file rules on, so a rename here would silently
     blank the pill."""
+    # Arrange
+    # Act
     out = _run_pill_helpers(
         {
             "slug": "foo/bar",
@@ -225,6 +239,7 @@ def test_pill_color_mapping_for_each_overall(
             "checks": [],
         }
     )
+    # Assert
     assert out["modifier"] == expected_mod
     assert out["isErr"] is False
     assert "foo/bar" in out["tooltip"]
@@ -235,9 +250,12 @@ def test_pill_color_mapping_for_each_overall(
 def test_pill_modifier_for_per_repo_error() -> None:
     """A per-repo error (``{slug, error}``) maps to the ``--error``
     modifier with the adapter message in the tooltip."""
+    # Arrange
+    # Act
     out = _run_pill_helpers(
         {"slug": "foo/dead", "error": "gh exited 1: not found"}
     )
+    # Assert
     assert out["modifier"] == "error"
     assert out["isErr"] is True
     assert "foo/dead" in out["tooltip"]
@@ -248,6 +266,8 @@ def test_pill_tooltip_handles_missing_sha() -> None:
     """If the back-end emits an OK pill without a ``head_sha`` (e.g. a
     fresh repo with zero commits — defensive), the tooltip shows
     ``(no sha)`` rather than a misleading empty truncation."""
+    # Arrange
+    # Act
     out = _run_pill_helpers(
         {
             "slug": "foo/bar",
@@ -257,4 +277,5 @@ def test_pill_tooltip_handles_missing_sha() -> None:
             "checks": [],
         }
     )
+    # Assert
     assert "(no sha)" in out["tooltip"]

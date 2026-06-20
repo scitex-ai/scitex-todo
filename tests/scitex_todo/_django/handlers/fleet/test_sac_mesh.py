@@ -40,7 +40,10 @@ def test_fetch_mesh_missing_binary_raises(env) -> None:
     empty-mesh success — that would lie to the operator about what is
     on their mesh. Simulate the missing binary by clobbering PATH
     (PA-306-compliant via the ``env`` fixture, not monkeypatch)."""
+    # Arrange
     env.set("PATH", "")
+    # Act
+    # Assert
     with pytest.raises(FleetAdapterError) as excinfo:
         fetch_mesh()
     # The message must name "sac" so the operator knows what is missing.
@@ -90,7 +93,10 @@ def test_fetch_mesh_returns_load_bearing_keys() -> None:
     proper-noun literals would re-introduce a smell the architecture
     forbids.
     """
+    # Arrange
+    # Act
     out = fetch_mesh()
+    # Assert
     assert isinstance(out, dict)
     for key in ("agents", "edges", "config_path", "source_versions"):
         assert key in out, f"missing load-bearing key: {key!r}"
@@ -113,7 +119,10 @@ def test_fetch_mesh_agent_rows_have_required_fields() -> None:
     ``local`` / ``peer``) + ``status`` (one of the enum values). The
     FE renders these fields directly; missing keys would break the
     panel silently."""
+    # Arrange
     out = fetch_mesh()
+    # Act
+    # Assert
     for row in out["agents"]:
         assert isinstance(row, dict)
         assert isinstance(row.get("name"), str)
@@ -129,7 +138,10 @@ def test_fetch_mesh_agent_rows_have_required_fields() -> None:
 def test_fetch_mesh_edge_rows_have_required_fields() -> None:
     """Each edge row must carry ``source`` + ``target`` (both strings)
     + ``allow`` (bool). The FE picks the CSS token off ``allow``."""
+    # Arrange
     out = fetch_mesh()
+    # Act
+    # Assert
     for edge in out["edges"]:
         assert isinstance(edge, dict)
         assert isinstance(edge.get("source"), str)
@@ -143,6 +155,9 @@ def test_fetch_mesh_edge_rows_have_required_fields() -> None:
 def test_sac_mesh_module_exports_fetch_mesh() -> None:
     """Lock the public surface so a rename downstream forces a test
     update. Operators search for this literal when debugging."""
+    # Arrange
+    # Act
+    # Assert
     assert hasattr(sac_mesh_mod, "fetch_mesh")
     assert "fetch_mesh" in sac_mesh_mod.__all__
 
@@ -152,6 +167,9 @@ def test_sac_mesh_module_timeout_constant_pinned() -> None:
     triggers a test that asks "are you sure the operator wants to wait
     that long for the dashboard?". 10s is the agreed Phase-3 budget,
     matching the Phase-2 hosts adapter."""
+    # Arrange
+    # Act
+    # Assert
     assert sac_mesh_mod._SAC_TIMEOUT == 10
 
 
@@ -166,11 +184,14 @@ def test_sac_mesh_has_phase_3_b_todo_markers() -> None:
     Pin their presence so a refactor doesn't lose the follow-up
     markers.
     """
+    # Arrange
     import inspect
 
+    # Act
     src = inspect.getsource(sac_mesh_mod)
     # At least one ``TODO(phase-3.b)`` marker must be present —
     # tightening to a count is brittle if a future cleanup consolidates.
+    # Assert
     assert "TODO(phase-3.b)" in src
 
 
@@ -181,12 +202,15 @@ def test_normalise_agents_dedupes_by_name() -> None:
     """Duplicate names in the raw peer list collapse to one node so
     the radial layout doesn't draw two circles at the same point. The
     first occurrence wins (which matches sac's own list ordering)."""
+    # Arrange
     raw = [
         {"name": "a", "kind": "comms-node", "updated_at": 1},
         {"name": "a", "kind": "comms-node", "updated_at": 2},
         {"name": "b", "pid": 1234, "config": "/path"},
     ]
+    # Act
     out = sac_mesh_mod._normalise_agents(raw)
+    # Assert
     assert [r["name"] for r in out] == ["a", "b"]
     # Container Registry rows (``pid`` or ``config``) become local;
     # ``kind: comms-node`` becomes peer.
@@ -198,12 +222,15 @@ def test_normalise_agents_skips_rows_without_name() -> None:
     """Defensive: rows without a name can't be rendered. They're
     skipped silently rather than raising — a schema bump upstream
     shouldn't blank the whole panel for one bad row."""
+    # Arrange
     raw = [
         {"kind": "comms-node"},  # no name
         {"name": "", "kind": "comms-node"},  # empty name
         {"name": "ok", "kind": "comms-node", "updated_at": 1},
     ]
+    # Act
     out = sac_mesh_mod._normalise_agents(raw)
+    # Assert
     assert [r["name"] for r in out] == ["ok"]
     assert out[0]["status"] == "online"
 
@@ -212,11 +239,14 @@ def test_normalise_edges_maps_grants_to_allow_edges() -> None:
     """Each grant row → one allow-edge. The audit note is surfaced
     verbatim under ``edges[i]['note']`` so the FE tooltip can display
     it without a second roundtrip."""
+    # Arrange
     raw = [
         {"sender": "a", "target": "b", "note": "ticket-PA-1"},
         {"sender": "b", "target": "c"},
     ]
+    # Act
     out = sac_mesh_mod._normalise_edges(raw)
+    # Assert
     assert len(out) == 2
     assert out[0] == {
         "source": "a",
@@ -231,13 +261,16 @@ def test_normalise_edges_skips_malformed_rows() -> None:
     """Defensive: rows missing ``sender`` or ``target`` can't be drawn.
     Skipped rather than raising — same fail-soft-on-bad-row rationale
     as ``_normalise_agents``."""
+    # Arrange
     raw = [
         {"sender": "a"},  # no target
         {"target": "b"},  # no sender
         {"sender": "", "target": "x"},  # empty sender
         {"sender": "ok", "target": "fine"},
     ]
+    # Act
     out = sac_mesh_mod._normalise_edges(raw)
+    # Assert
     assert len(out) == 1
     assert out[0]["source"] == "ok"
     assert out[0]["target"] == "fine"

@@ -33,14 +33,16 @@ from scitex_todo._store import add_task, update_task
 
 
 def test_task_dataclass_has_group_field():
-    # Arrange / Act
+    # Arrange
+    # Act
     t = Task(id="t-a", title="x", group="ci-recovery-wave")
     # Assert
     assert t.group == "ci-recovery-wave"
 
 
 def test_task_dataclass_group_defaults_to_none():
-    # Arrange / Act
+    # Arrange
+    # Act
     t = Task(id="t-a", title="x")
     # Assert
     assert t.group is None
@@ -71,14 +73,16 @@ def test_task_dataclass_omits_none_group_from_to_dict():
 def test_validate_accepts_non_empty_group_string():
     # Arrange
     tasks = [{"id": "t-a", "title": "x", "status": "pending", "group": "paper-portfolio"}]
-    # Act / Assert — no raise.
+    # Act
+    # Assert
     _validate_tasks(tasks, source="<test>")
 
 
 def test_validate_accepts_absent_group():
-    # Arrange — absent group is the back-compat default.
+    # Arrange
     tasks = [{"id": "t-a", "title": "x", "status": "pending"}]
-    # Act / Assert
+    # Act
+    # Assert
     _validate_tasks(tasks, source="<test>")
 
 
@@ -88,15 +92,17 @@ def test_validate_accepts_absent_group():
 def test_validate_rejects_empty_string_group():
     # Arrange
     tasks = [{"id": "t-a", "title": "x", "status": "pending", "group": ""}]
-    # Act / Assert
+    # Act
+    # Assert
     with pytest.raises(TaskValidationError):
         _validate_tasks(tasks, source="<test>")
 
 
 def test_validate_rejects_non_string_group():
-    # Arrange — list, dict, int all rejected (group must be a string).
+    # Arrange
     tasks = [{"id": "t-a", "title": "x", "status": "pending", "group": ["paper", "ci"]}]
-    # Act / Assert
+    # Act
+    # Assert
     with pytest.raises(TaskValidationError):
         _validate_tasks(tasks, source="<test>")
 
@@ -104,7 +110,8 @@ def test_validate_rejects_non_string_group():
 def test_validate_rejects_integer_group():
     # Arrange
     tasks = [{"id": "t-a", "title": "x", "status": "pending", "group": 42}]
-    # Act / Assert
+    # Act
+    # Assert
     with pytest.raises(TaskValidationError):
         _validate_tasks(tasks, source="<test>")
 

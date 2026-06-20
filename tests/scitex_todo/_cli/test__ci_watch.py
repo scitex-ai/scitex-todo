@@ -35,7 +35,8 @@ from scitex_todo._cli._ci_watch import (
 
 
 def test_classify_first_seen_when_no_prior():
-    # Arrange / Act
+    # Arrange
+    # Act
     label = classify_transition(None, {"head_sha": "abc", "overall": "success"})
     # Assert
     assert label == "first-seen"
@@ -92,7 +93,8 @@ def test_classify_still_pending_when_neither_definitive():
 
 
 def test_classify_missing_overall_treated_as_unknown():
-    # Arrange — empty dicts default to unknown.
+    # Arrange
+    # Act
     label = classify_transition({}, {})
     # Assert
     assert label == "still-pending"
@@ -204,24 +206,26 @@ def test_ci_watch_dry_run_does_not_write_state(tmp_path: Path, monkeypatch):
 
 
 def test_jobspec_provider_includes_ci_watch():
-    # Arrange / Act
+    # Arrange
     from scitex_todo._jobs_provider import provide_jobs
 
     jobs = provide_jobs()
+    # Act
     names = [j.name for j in jobs]
-    # Assert — the cron entry that drives the 5-min poll loop.
+    # Assert
     assert "scitex-todo.ci-watch" in names
 
 
 def test_ci_watch_jobspec_runs_record_only_command():
-    # Arrange — the command MUST be `scitex-todo ci-watch --once` so
     # the cron tick exits and the next one starts cleanly. NOT a loop
     # (the cron is the loop).
+    # Arrange
     from scitex_todo._jobs_provider import provide_jobs
 
     jobs = provide_jobs()
+    # Act
     spec = next(j for j in jobs if j.name == "scitex-todo.ci-watch")
-    # Act / Assert
+    # Assert
     assert spec.command == "scitex-todo ci-watch --once"
 
 
@@ -230,6 +234,7 @@ def test_ci_watch_jobspec_is_5_min_cron():
     from scitex_todo._jobs_provider import provide_jobs
 
     jobs = provide_jobs()
+    # Act
     spec = next(j for j in jobs if j.name == "scitex-todo.ci-watch")
-    # Act / Assert — dev's locked cadence (msg `96afacc7`).
+    # Assert
     assert spec.schedule == "*/5 * * * *"

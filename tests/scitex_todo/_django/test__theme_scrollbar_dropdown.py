@@ -72,10 +72,13 @@ def _read(path: Path) -> str:
 
 def test_react_board_scrollbar_color_uses_token() -> None:
     """React board must declare `scrollbar-color` bound to scitex-ui tokens."""
+    # Arrange
     css = _read(_BOARD_REACT_CSS)
     # The modern Firefox property — must reference a CSS custom property,
     # not a hardcoded literal.
+    # Act
     matches = re.findall(r"scrollbar-color\s*:\s*[^;]+;", css)
+    # Assert
     assert matches, "board.css missing scrollbar-color declaration"
     for decl in matches:
         assert "var(--" in decl, (
@@ -85,7 +88,10 @@ def test_react_board_scrollbar_color_uses_token() -> None:
 
 def test_react_board_webkit_scrollbar_present() -> None:
     """React board must register ::-webkit-scrollbar pseudo-element rules."""
+    # Arrange
+    # Act
     css = _read(_BOARD_REACT_CSS)
+    # Assert
     assert "::-webkit-scrollbar" in css, "board.css missing ::-webkit-scrollbar"
     assert (
         "::-webkit-scrollbar-thumb" in css
@@ -102,7 +108,10 @@ def test_react_board_global_scrollbar_fallback() -> None:
     """A GLOBAL fallback rule must target `.stx-todo-board, .stx-todo-board *`
     so any scrollable element inherits themed chrome — pre-empts elements
     we'd otherwise miss (lead a2a 510a58d4 KEY INSIGHT)."""
+    # Arrange
+    # Act
     css = _read(_BOARD_REACT_CSS)
+    # Assert
     assert ".stx-todo-board," in css and ".stx-todo-board *" in css, (
         "board.css missing global `.stx-todo-board, .stx-todo-board *` "
         "scrollbar fallback"
@@ -111,6 +120,9 @@ def test_react_board_global_scrollbar_fallback() -> None:
 
 def test_board_v3_global_scrollbar_file_present() -> None:
     """The board_v3 global theming file must exist and be load-bearing."""
+    # Arrange
+    # Act
+    # Assert
     assert _BOARD_V3_THEME_CSS.is_file(), (
         f"new global theming file missing: {_BOARD_V3_THEME_CSS}"
     )
@@ -129,9 +141,12 @@ def test_board_v3_template_loads_global_theme_first() -> None:
     """The template must <link> 00-theme-scrollbar-select.css BEFORE
     01-filterbar.css so its rules form the global fallback, and per-file
     overrides win on specificity."""
+    # Arrange
     html = _read(_BOARD_V3_TEMPLATE)
     theme_idx = html.find("00-theme-scrollbar-select.css")
+    # Act
     filterbar_idx = html.find("01-filterbar.css")
+    # Assert
     assert theme_idx != -1, "template never links 00-theme-scrollbar-select.css"
     assert filterbar_idx != -1, "template never links 01-filterbar.css"
     assert theme_idx < filterbar_idx, (
@@ -148,7 +163,10 @@ def test_react_board_select_rule_present() -> None:
     """The React board must style `.stx-todo-board select` with token-bound
     background + color so vanilla dropdowns stop falling through to OS
     white."""
+    # Arrange
+    # Act
     css = _read(_BOARD_REACT_CSS)
+    # Assert
     assert ".stx-todo-board select" in css, (
         "board.css missing `.stx-todo-board select` rule"
     )
@@ -169,7 +187,10 @@ def test_react_board_select_rule_present() -> None:
 def test_react_board_select_focus_state() -> None:
     """Select must register a `:focus`/`:focus-visible` rule using the
     accent token so the active filter pops in either theme."""
+    # Arrange
+    # Act
     css = _read(_BOARD_REACT_CSS)
+    # Assert
     assert (
         ".stx-todo-board select:focus" in css
         or ".stx-todo-board select:focus-visible" in css
@@ -179,7 +200,10 @@ def test_react_board_select_focus_state() -> None:
 def test_board_v3_select_rule_present() -> None:
     """Vanilla board_v3 surface must style `body select` so every <select>
     in the filterbar (status, project, agent, sort) gets dark chrome."""
+    # Arrange
+    # Act
     css = _read(_BOARD_V3_THEME_CSS)
+    # Assert
     assert "body select" in css, "00-theme-scrollbar-select.css missing select rule"
     # Token-bound background + color
     m = re.search(r"body select\s*\{([^}]*)\}", css, flags=re.DOTALL)
@@ -193,7 +217,10 @@ def test_board_v3_select_rule_present() -> None:
 def test_board_v3_option_rule_present() -> None:
     """Best-effort <option> styling so the popover lines up with the
     closed state in Chromium / Firefox."""
+    # Arrange
+    # Act
     css = _read(_BOARD_V3_THEME_CSS)
+    # Assert
     assert "body select option" in css, "missing `body select option` rule"
 
 
@@ -244,7 +271,10 @@ def test_no_hardcoded_white_in_scrollbar_or_select_rules(path: Path) -> None:
     """No `#fff` / `#ffffff` / bare `white` keyword in scrollbar / select /
     option rule bodies — every color must be a `var(--…)` token (with a
     documented dark-mode hex fallback inside the var() call only)."""
+    # Arrange
+    # Act
     rules = _scrollbar_or_select_rules(_read(path))
+    # Assert
     assert rules, f"no scrollbar/select rules extracted from {path}"
     pattern = re.compile(
         r"(?<!var\(--)"  # not inside a var(--…, …) fallback slot
@@ -276,7 +306,10 @@ def test_no_hardcoded_white_in_scrollbar_or_select_rules(path: Path) -> None:
 )
 def test_balanced_braces(path: Path) -> None:
     """Edits did not corrupt brace nesting."""
+    # Arrange
+    # Act
     css = _read(path)
+    # Assert
     assert css.count("{") == css.count("}"), (
         f"unbalanced braces in {path}: "
         f"{css.count('{')} opens vs {css.count('}')} closes"

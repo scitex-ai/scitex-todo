@@ -255,6 +255,7 @@ def test_list_tasks_filter_overdue(tmp_path):
     # (PR #126) and the fleet payload's `overdue_count` (PR #125). A
     # task is overdue when its next deadline is strictly before today
     # AND it is NOT in a terminal lifecycle state.
+    # Arrange
     from scitex_todo._mcp_server import add_task, list_tasks, update_task
     store = str(tmp_path / "tasks.yaml")
     asyncio.run(_call_tool(
@@ -276,7 +277,7 @@ def test_list_tasks_filter_overdue(tmp_path):
     listed = asyncio.run(_call_tool(
         list_tasks, scope="", overdue=True, tasks_path=store,
     ))
-    # Assert — only the past-due, non-terminal row matches.
+    # Assert
     assert {r["id"] for r in json.loads(listed)} == {"late"}
 
 

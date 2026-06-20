@@ -294,11 +294,15 @@ def test_cli_runnable_mine_uses_env_agent(tmp_path: Path, monkeypatch):
 
 
 def test_runnable_statuses_contains_pending_and_in_progress():
-    # Arrange / Act / Assert
+    # Arrange
+    # Act
+    # Assert
     assert RUNNABLE_STATUSES == frozenset({"pending", "in_progress"})
 
 
 def test_resolved_statuses_contains_done_and_goal():
-    # Arrange / Act / Assert — `goal` umbrellas count as "resolved"
     # upstream because they accumulate by design (not actionable).
+    # Arrange
+    # Act
+    # Assert
     assert RESOLVED_STATUSES == frozenset({"done", "goal"})

@@ -95,7 +95,10 @@ def _read(path: Path) -> str:
 def test_timeline_css_declares_selector(selector: str) -> None:
     """Every load-bearing selector must have at least one rule in
     timeline.css. Catches a rename / accidental drop."""
+    # Arrange
+    # Act
     css = _read(_TIMELINE_CSS)
+    # Assert
     assert selector in css, (
         f"timeline.css missing rule for {selector!r}"
     )
@@ -104,12 +107,15 @@ def test_timeline_css_declares_selector(selector: str) -> None:
 def test_timeline_css_no_hardcoded_colors() -> None:
     """No hex / rgb / named-color literals — everything must ride through
     the scitex-ui token variables so the dark/light flip stays clean."""
+    # Arrange
     css = _read(_TIMELINE_CSS)
     # Strip comments before scanning so /* ...#ffffff... */ doc colour
     # tokens don't trip the assertion.
     no_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
     # Hex colors.
+    # Act
     hex_hits = re.findall(r"#[0-9a-fA-F]{3,8}\b", no_comments)
+    # Assert
     assert hex_hits == [], f"timeline.css has hex colors: {hex_hits!r}"
     # rgb()/rgba()/hsl()/hsla() literals.
     func_hits = re.findall(
@@ -133,14 +139,20 @@ def test_timeline_css_no_hardcoded_colors() -> None:
 
 def test_timeline_css_imported_by_board_css() -> None:
     """board.css must @import timeline.css so the bundle picks it up."""
+    # Arrange
+    # Act
     css = _read(_BOARD_CSS)
+    # Assert
     assert '@import "./timeline.css";' in css
 
 
 def test_timeline_css_uses_token_variables() -> None:
     """The stylesheet must rely on the scitex-ui token namespace
     (``--stx-…``) — that's how the dark/light flip propagates."""
+    # Arrange
+    # Act
     css = _read(_TIMELINE_CSS)
+    # Assert
     assert "var(--stx-" in css, (
         "timeline.css should reference at least one --stx-* token "
         "variable so the dark/light flip wires up"
@@ -154,14 +166,20 @@ def test_timeline_css_uses_token_variables() -> None:
 
 def test_timeline_view_is_a_module() -> None:
     """TimelineView.tsx exports the TimelineView component."""
+    # Arrange
+    # Act
     tsx = _read(_TIMELINE_TSX)
+    # Assert
     assert "export function TimelineView(" in tsx
 
 
 def test_todoboard_wires_timeline_view() -> None:
     """TodoBoard.tsx mounts TimelineView when ``view === 'timeline'`` and
     the toggle button sets view='timeline'."""
+    # Arrange
+    # Act
     tsx = _read(_TODOBOARD_TSX)
+    # Assert
     assert 'import { TimelineView }' in tsx
     assert 'setView("timeline")' in tsx
     assert 'view === "timeline"' in tsx
@@ -171,5 +189,8 @@ def test_todoboard_polls_30s_default_window() -> None:
     """The TimelineView component declares a polling cadence that matches
     the other fleet surfaces (30s) — keeps the operator's "what just
     changed" cognitive load uniform."""
+    # Arrange
+    # Act
     tsx = _read(_TIMELINE_TSX)
+    # Assert
     assert "30_000" in tsx or "30000" in tsx

@@ -38,7 +38,10 @@ def test_fetch_hosts_missing_binary_raises(env) -> None:
     empty-hosts success — that would lie to the operator about what is
     in their registry. Simulate the missing binary by clobbering PATH
     (PA-306-compliant via the ``env`` fixture, not monkeypatch)."""
+    # Arrange
     env.set("PATH", "")
+    # Act
+    # Assert
     with pytest.raises(FleetAdapterError) as excinfo:
         fetch_hosts()
     # The message must name "sac" so the operator knows what is missing.
@@ -63,7 +66,10 @@ def test_fetch_hosts_returns_local_and_peers_keys() -> None:
     the registry is environment-specific and asserting "ywata-note-win"
     would re-introduce a proper-noun literal the architecture forbids.
     """
+    # Arrange
+    # Act
     out = fetch_hosts()
+    # Assert
     assert isinstance(out, dict)
     assert "local" in out
     assert "peers" in out
@@ -86,6 +92,9 @@ def test_fetch_hosts_returns_local_and_peers_keys() -> None:
 def test_sac_hosts_module_exports_fetch_hosts() -> None:
     """Lock the public surface so a rename downstream forces a test
     update. Operators search for this literal when debugging."""
+    # Arrange
+    # Act
+    # Assert
     assert hasattr(sac_hosts_mod, "fetch_hosts")
     assert "fetch_hosts" in sac_hosts_mod.__all__
 
@@ -94,6 +103,9 @@ def test_sac_hosts_module_timeout_constant_pinned() -> None:
     """Pin the subprocess timeout so a careless bump (e.g. to 120s)
     triggers a test that asks "are you sure the operator wants to wait
     that long for the dashboard?". 10s is the agreed Phase-2 budget."""
+    # Arrange
+    # Act
+    # Assert
     assert sac_hosts_mod._SAC_TIMEOUT == 10
 
 
@@ -101,7 +113,10 @@ def test_sac_hosts_has_phase_2_b_todo_marker() -> None:
     """The cpu/mem/SLURM enrichment landing point is reserved by a
     ``TODO(phase-2.b)`` marker so the follow-up PR has an obvious
     landing site. Pin its presence so a refactor doesn't lose it."""
+    # Arrange
     import inspect
 
+    # Act
     src = inspect.getsource(sac_hosts_mod)
+    # Assert
     assert "TODO(phase-2.b)" in src

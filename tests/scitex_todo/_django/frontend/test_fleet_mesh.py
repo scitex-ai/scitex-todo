@@ -60,13 +60,19 @@ _TSX_FILE = (
 
 
 def test_css_file_exists() -> None:
+    # Arrange
+    # Act
+    # Assert
     assert _CSS_FILE.is_file(), f"missing CSS file: {_CSS_FILE}"
 
 
 def test_css_has_canonical_selectors() -> None:
     """The component generates these class names — the CSS file MUST
     define each one or the panel will silently render unstyled."""
+    # Arrange
     css = _CSS_FILE.read_text(encoding="utf-8")
+    # Act
+    # Assert
     for selector in (
         ".stx-todo-fleet-mesh",
         ".stx-todo-fleet-mesh--ok",
@@ -94,13 +100,16 @@ def test_css_uses_design_tokens_only() -> None:
     ``--stx-text`` / ``--stx-border`` / ``--stx-panel-bg`` for the
     pill chrome.
     """
+    # Arrange
     css = _CSS_FILE.read_text(encoding="utf-8")
     # Strip /* ... */ comments before scanning — the comment block at
     # the top documents the token names verbatim and would falsely
     # trip the hex / named-color detectors otherwise.
     no_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
     # 3-, 4-, 6-, or 8-digit hex literals.
+    # Act
     hex_matches = re.findall(r"#[0-9A-Fa-f]{3,8}\b", no_comments)
+    # Assert
     assert not hex_matches, (
         f"hardcoded hex colors in fleet-mesh.css (breaks theming): "
         f"{hex_matches!r}"
@@ -128,7 +137,10 @@ def test_css_is_imported_from_board_css() -> None:
     """The panel only renders correctly when board.css imports the
     partial. Pinning this guards against an accidental removal in a
     future board.css refactor."""
+    # Arrange
+    # Act
     board_css = _CSS_FILE.parent / "board.css"
+    # Assert
     assert board_css.is_file()
     text = board_css.read_text(encoding="utf-8")
     assert '@import "./fleet-mesh.css";' in text
@@ -234,6 +246,8 @@ def test_edge_color_token_maps_allow_and_deny() -> None:
     return the two canonical class names. The CSS file defines both;
     a rename here without a CSS-side update would silently break the
     color mapping."""
+    # Arrange
+    # Act
     out = _run_panel_helpers(
         {
             "agents": [],
@@ -242,6 +256,7 @@ def test_edge_color_token_maps_allow_and_deny() -> None:
             "source_versions": {"peers": "x", "grants": "y"},
         }
     )
+    # Assert
     assert out["allowClass"] == "stx-todo-fleet-mesh__edge--allow"
     assert out["denyClass"] == "stx-todo-fleet-mesh__edge--deny"
 
@@ -250,6 +265,8 @@ def test_label_with_agents_and_grants() -> None:
     """The label pattern matches the spec verbatim:
     ``🕸 <N> agents · <M> grants``. Pin one realistic payload to
     catch a rename or a count-off-by-one downstream."""
+    # Arrange
+    # Act
     out = _run_panel_helpers(
         {
             "agents": [
@@ -265,6 +282,7 @@ def test_label_with_agents_and_grants() -> None:
             "source_versions": {"peers": "x", "grants": "y"},
         }
     )
+    # Assert
     assert out["isErr"] is False
     assert "3 agents" in out["label"]
     assert "2 grants" in out["label"]
@@ -278,6 +296,8 @@ def test_label_with_agents_and_grants() -> None:
 def test_label_with_empty_mesh() -> None:
     """A fresh install with zero agents + zero grants renders
     ``0 agents · 0 grants`` cleanly — no off-by-one or NaN."""
+    # Arrange
+    # Act
     out = _run_panel_helpers(
         {
             "agents": [],
@@ -286,6 +306,7 @@ def test_label_with_empty_mesh() -> None:
             "source_versions": {"peers": "x", "grants": "y"},
         }
     )
+    # Assert
     assert out["isErr"] is False
     assert "0 agents" in out["label"]
     assert "0 grants" in out["label"]
@@ -296,9 +317,12 @@ def test_label_with_empty_mesh() -> None:
 def test_error_payload_discriminator() -> None:
     """``isMeshPayloadErr`` returns true for an HTTP-500 error body
     so the component branches to the ``--error`` render path."""
+    # Arrange
+    # Act
     out = _run_panel_helpers(
         {"error": "sac CLI not found on PATH — install scitex-agent-container"}
     )
+    # Assert
     assert out["isErr"] is True
     assert out["label"] is None
     assert out["tooltip"] is None
@@ -335,7 +359,10 @@ def _py_radial_layout(
 def test_radial_layout_single_node_lands_at_centre() -> None:
     """One-node case lands at the centre — visually correct (a single
     dot in the middle), avoids dividing by zero in the sweep math."""
+    # Arrange
+    # Act
     pts = _py_radial_layout(["only"])
+    # Assert
     assert pts["only"] == (70.0, 70.0)
 
 
@@ -343,8 +370,11 @@ def test_radial_layout_first_node_at_twelve_oclock() -> None:
     """The first node anchors at the TOP of the circle (12 o'clock) so
     the operator's eye lands on a consistent reference frame across
     polls. ``x ≈ cx`` and ``y < cy`` for the first node."""
+    # Arrange
     pts = _py_radial_layout(["a", "b", "c", "d"])
+    # Act
     x, y = pts["a"]
+    # Assert
     assert math.isclose(x, 70.0, abs_tol=1e-9)
     # First node is ABOVE the centre (SVG y grows downward).
     assert y < 70.0
@@ -353,8 +383,11 @@ def test_radial_layout_first_node_at_twelve_oclock() -> None:
 def test_radial_layout_evenly_spaced() -> None:
     """N equal-spaced points → all on the circle, equidistant from
     the centre. Pin the distance to the expected radius."""
+    # Arrange
     names = ["a", "b", "c", "d", "e"]
     pts = _py_radial_layout(names)
+    # Act
+    # Assert
     for x, y in pts.values():
         dist = math.hypot(x - 70.0, y - 70.0)
         assert math.isclose(dist, 52.0, abs_tol=1e-6)
@@ -362,7 +395,10 @@ def test_radial_layout_evenly_spaced() -> None:
 
 def test_radial_layout_zero_nodes_returns_empty() -> None:
     """Empty input → empty output, no exception."""
+    # Arrange
+    # Act
     pts = _py_radial_layout([])
+    # Assert
     assert pts == {}
 
 # EOF

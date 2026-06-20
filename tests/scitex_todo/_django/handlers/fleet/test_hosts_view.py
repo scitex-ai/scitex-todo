@@ -38,9 +38,12 @@ def test_hosts_view_returns_500_when_sac_missing(env) -> None:
     """When sac is artificially unavailable (we clobber PATH), the
     adapter raises and the view returns HTTP 500 with the error in the
     body — fail-loud per the harness contract."""
+    # Arrange
     env.set("PATH", "")
     request = RequestFactory().get("/fleet/hosts")
+    # Act
     response = fleet_hosts_view(request)
+    # Assert
     assert response.status_code == 500
     data = json.loads(response.content)
     assert "error" in data
@@ -65,8 +68,11 @@ def test_hosts_view_returns_200_with_local_and_peers() -> None:
     the registry is environment-specific and the architecture forbids
     proper-noun literals here.
     """
+    # Arrange
     request = RequestFactory().get("/fleet/hosts")
+    # Act
     response = fleet_hosts_view(request)
+    # Assert
     assert response.status_code == 200
     data = json.loads(response.content)
     assert "local" in data

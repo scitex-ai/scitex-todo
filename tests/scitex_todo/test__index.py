@@ -58,7 +58,8 @@ class TestInitSchema:
     """The four expected tables exist after `init_schema`."""
 
     def test_tasks_table_created(self, index_target):
-        # Arrange / Act
+        # Arrange
+        # Act
         with _idx.open_connection(index_target) as c:
             _idx.init_schema(c)
             rows = c.execute(
@@ -69,7 +70,8 @@ class TestInitSchema:
         assert len(rows) == 1
 
     def test_tags_table_created(self, index_target):
-        # Arrange / Act
+        # Arrange
+        # Act
         with _idx.open_connection(index_target) as c:
             _idx.init_schema(c)
             rows = c.execute(
@@ -80,7 +82,8 @@ class TestInitSchema:
         assert len(rows) == 1
 
     def test_meta_table_created(self, index_target):
-        # Arrange / Act
+        # Arrange
+        # Act
         with _idx.open_connection(index_target) as c:
             _idx.init_schema(c)
             rows = c.execute(

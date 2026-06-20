@@ -60,13 +60,19 @@ _TSX_FILE = (
 
 
 def test_css_file_exists() -> None:
+    # Arrange
+    # Act
+    # Assert
     assert _CSS_FILE.is_file(), f"missing CSS file: {_CSS_FILE}"
 
 
 def test_css_has_canonical_selectors() -> None:
     """The component generates these class names — the CSS file MUST
     define each one or the panel will silently render unstyled."""
+    # Arrange
     css = _CSS_FILE.read_text(encoding="utf-8")
+    # Act
+    # Assert
     for selector in (
         ".stx-todo-fleet-timing",
         ".stx-todo-fleet-timing--loading",
@@ -103,13 +109,16 @@ def test_css_uses_design_tokens_only() -> None:
     (warn bar), ``--status-error`` (slow bar), ``--stx-danger`` (error
     ring), plus the board-local chrome tokens.
     """
+    # Arrange
     css = _CSS_FILE.read_text(encoding="utf-8")
     # Strip /* ... */ comments before scanning — the comment block at
     # the top documents the token names verbatim and would falsely
     # trip the hex / named-color detectors otherwise.
     no_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
     # 3-, 4-, 6-, or 8-digit hex literals.
+    # Act
     hex_matches = re.findall(r"#[0-9A-Fa-f]{3,8}\b", no_comments)
+    # Assert
     assert not hex_matches, (
         f"hardcoded hex colors in fleet-timing.css (breaks theming): "
         f"{hex_matches!r}"
@@ -138,7 +147,10 @@ def test_css_is_imported_from_board_css() -> None:
     """The panel only renders correctly when board.css imports the
     partial. Pinning this guards against an accidental removal in a
     future board.css refactor."""
+    # Arrange
+    # Act
     board_css = _CSS_FILE.parent / "board.css"
+    # Assert
     assert board_css.is_file()
     text = board_css.read_text(encoding="utf-8")
     assert '@import "./fleet-timing.css";' in text
@@ -280,9 +292,12 @@ def _run_js(extra: str) -> dict:
 def test_format_duration_sub_second() -> None:
     """1.5s renders as ``1.5s`` — one decimal so the operator sees the
     millisec resolution that lives in the back-end timestamps."""
+    # Arrange
+    # Act
     out = _run_js(
         'process.stdout.write(JSON.stringify({a: formatDurationSeconds(1.5)}));'
     )
+    # Assert
     assert out["a"] == "1.5s"
 
 
@@ -290,6 +305,8 @@ def test_format_duration_minutes() -> None:
     """90s renders as ``1m 30s`` — operator wants both halves visible.
     3600s renders as ``1h`` cleanly (no leftover ``0m``). 7200s →
     ``2h``."""
+    # Arrange
+    # Act
     out = _run_js(
         textwrap.dedent(
             """
@@ -301,6 +318,7 @@ def test_format_duration_minutes() -> None:
             """
         ).strip()
     )
+    # Assert
     assert out["ninety"] == "1m 30s"
     assert out["one_hour"] == "1h"
     assert out["two_hours"] == "2h"
@@ -309,6 +327,8 @@ def test_format_duration_minutes() -> None:
 def test_format_duration_handles_nulls_and_infinities() -> None:
     """Null / NaN / Infinity all surface as the dash literal — the
     fail-loud principle: don't render a bogus number."""
+    # Arrange
+    # Act
     out = _run_js(
         textwrap.dedent(
             """
@@ -320,6 +340,7 @@ def test_format_duration_handles_nulls_and_infinities() -> None:
             """
         ).strip()
     )
+    # Assert
     assert out["n"] == "—"
     assert out["i"] == "—"
     assert out["nan"] == "—"
@@ -327,9 +348,12 @@ def test_format_duration_handles_nulls_and_infinities() -> None:
 
 def test_format_duration_seconds_integer() -> None:
     """45s renders without decimals — operator doesn't need 45.0s."""
+    # Arrange
+    # Act
     out = _run_js(
         'process.stdout.write(JSON.stringify({a: formatDurationSeconds(45)}));'
     )
+    # Assert
     assert out["a"] == "45s"
 
 
@@ -338,6 +362,8 @@ def test_format_duration_seconds_integer() -> None:
 
 def test_bar_width_pct_basic() -> None:
     """value=max → 100; value=0 → 0; value=half → 50."""
+    # Arrange
+    # Act
     out = _run_js(
         textwrap.dedent(
             """
@@ -349,6 +375,7 @@ def test_bar_width_pct_basic() -> None:
             """
         ).strip()
     )
+    # Assert
     assert out["full"] == 100
     assert out["half"] == 50
     assert out["zero"] == 0
@@ -357,6 +384,8 @@ def test_bar_width_pct_basic() -> None:
 def test_bar_width_pct_clamps_and_null_safe() -> None:
     """Null / negative / over-max all clamp to [0, 100] — no NaN /
     overflow geometry."""
+    # Arrange
+    # Act
     out = _run_js(
         textwrap.dedent(
             """
@@ -369,6 +398,7 @@ def test_bar_width_pct_clamps_and_null_safe() -> None:
             """
         ).strip()
     )
+    # Assert
     assert out["n"] == 0
     assert out["neg"] == 0
     assert out["over"] == 100
@@ -380,6 +410,8 @@ def test_bar_width_pct_clamps_and_null_safe() -> None:
 
 def test_bar_color_token_thresholds() -> None:
     """Green / warn / error mapping by width-percentage."""
+    # Arrange
+    # Act
     out = _run_js(
         textwrap.dedent(
             """
@@ -394,6 +426,7 @@ def test_bar_color_token_thresholds() -> None:
             """
         ).strip()
     )
+    # Assert
     assert out["ok"] == "stx-todo-fleet-timing__bar--ok"
     assert out["ok_just_under"] == "stx-todo-fleet-timing__bar--ok"
     assert out["warn"] == "stx-todo-fleet-timing__bar--warn"
@@ -408,6 +441,7 @@ def test_bar_color_token_thresholds() -> None:
 def test_sort_keys_by_p95_desc_basic() -> None:
     """Three agents — slowest p95 sorts first (operator-friendly
     bottleneck-at-top)."""
+    # Arrange
     payload = {
         "fast": {
             "n_tasks_done": 5,
@@ -428,17 +462,20 @@ def test_sort_keys_by_p95_desc_basic() -> None:
             "median_created_to_started_s": 2.0,
         },
     }
+    # Act
     out = _run_js(
         "const rows = "
         + json.dumps(payload)
         + ";\nprocess.stdout.write(JSON.stringify({order: sortKeysByP95Desc(rows)}));"
     )
+    # Assert
     assert out["order"] == ["slow", "mid", "fast"]
 
 
 def test_sort_keys_by_p95_desc_nulls_last() -> None:
     """Rows whose p95 is null sink to the bottom — they have no work
     duration to compare against (no done tasks in window)."""
+    # Arrange
     payload = {
         "has_data": {
             "n_tasks_done": 1,
@@ -453,17 +490,20 @@ def test_sort_keys_by_p95_desc_nulls_last() -> None:
             "median_created_to_started_s": None,
         },
     }
+    # Act
     out = _run_js(
         "const rows = "
         + json.dumps(payload)
         + ";\nprocess.stdout.write(JSON.stringify({order: sortKeysByP95Desc(rows)}));"
     )
+    # Assert
     assert out["order"] == ["has_data", "empty"]
 
 
 def test_sort_keys_by_p95_desc_stable_tie_break() -> None:
     """Equal p95 → alphabetical by key name. Deterministic order across
     polls so the chart doesn't jiggle."""
+    # Arrange
     payload = {
         "zebra": {
             "n_tasks_done": 1,
@@ -478,11 +518,13 @@ def test_sort_keys_by_p95_desc_stable_tie_break() -> None:
             "median_created_to_started_s": None,
         },
     }
+    # Act
     out = _run_js(
         "const rows = "
         + json.dumps(payload)
         + ";\nprocess.stdout.write(JSON.stringify({order: sortKeysByP95Desc(rows)}));"
     )
+    # Assert
     assert out["order"] == ["alpha", "zebra"]
 
 
@@ -492,6 +534,8 @@ def test_sort_keys_by_p95_desc_stable_tie_break() -> None:
 def test_error_payload_discriminator() -> None:
     """``isTimingPayloadErr`` returns true for an HTTP-500 error body
     so the component branches to the ``--error`` render path."""
+    # Arrange
+    # Act
     out = _run_js(
         textwrap.dedent(
             """
@@ -506,6 +550,7 @@ def test_error_payload_discriminator() -> None:
             """
         ).strip()
     )
+    # Assert
     assert out["ok"] is False
     assert out["err"] is True
 
@@ -513,6 +558,7 @@ def test_error_payload_discriminator() -> None:
 def test_timing_panel_label_counts_rows_in_dimension() -> None:
     """The label reflects the row count of the currently-selected
     group-by dimension, not the union of all dimensions."""
+    # Arrange
     payload = {
         "window_days": 30,
         "per_agent": {"a": {"n_tasks_done": 1,
@@ -531,6 +577,7 @@ def test_timing_panel_label_counts_rows_in_dimension() -> None:
         "n_tasks_in_window": 2,
         "n_tasks_missing_timestamps": 0,
     }
+    # Act
     out = _run_js(
         "const p = "
         + json.dumps(payload)
@@ -540,6 +587,7 @@ def test_timing_panel_label_counts_rows_in_dimension() -> None:
         + "group: timingPanelLabel(p, 'group')"
         + "}));"
     )
+    # Assert
     assert "2 rows" in out["agent"]
     assert "1 rows" in out["project"]
     assert "0 rows" in out["group"]
@@ -549,11 +597,13 @@ def test_pick_rows_routes_to_correct_dimension() -> None:
     """``pickRows`` returns the agent / project / group map for the
     current selection — the SINGLE point where the dimension switch
     happens."""
+    # Arrange
     payload = {
         "per_agent": {"a": "AGENT"},
         "per_project": {"p": "PROJECT"},
         "per_group": {"g": "GROUP"},
     }
+    # Act
     out = _run_js(
         "const p = "
         + json.dumps(payload)
@@ -563,6 +613,7 @@ def test_pick_rows_routes_to_correct_dimension() -> None:
         + "g: pickRows(p, 'group')"
         + "}));"
     )
+    # Assert
     assert out["a"] == {"a": "AGENT"}
     assert out["p"] == {"p": "PROJECT"}
     assert out["g"] == {"g": "GROUP"}

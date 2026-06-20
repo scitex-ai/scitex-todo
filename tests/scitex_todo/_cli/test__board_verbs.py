@@ -64,25 +64,29 @@ class TestGroupShape:
     """The group has the four lifecycle verbs the operator asked for."""
 
     def test_start_subcommand_registered(self):
-        # Arrange / Act
+        # Arrange
+        # Act
         names = board_group.commands.keys()
         # Assert
         assert "start" in names
 
     def test_stop_subcommand_registered(self):
-        # Arrange / Act
+        # Arrange
+        # Act
         names = board_group.commands.keys()
         # Assert
         assert "stop" in names
 
     def test_restart_subcommand_registered(self):
-        # Arrange / Act
+        # Arrange
+        # Act
         names = board_group.commands.keys()
         # Assert
         assert "restart" in names
 
     def test_status_subcommand_registered(self):
-        # Arrange / Act
+        # Arrange
+        # Act
         names = board_group.commands.keys()
         # Assert
         assert "status" in names

@@ -163,7 +163,7 @@ def test_early_handler_mutation_visible_to_late_handler(monkeypatch):
 
 
 def test_critical_handler_failure_aborts_chain(monkeypatch):
-    # Arrange — early critical handler raises; late handler should NOT run.
+    # Arrange
     calls: list[str] = []
 
     def early(_e):
@@ -181,7 +181,8 @@ def test_critical_handler_failure_aborts_chain(monkeypatch):
         _FakeEP("late", late),
     )
 
-    # Act / Assert — the critical failure propagates.
+    # Act
+    # Assert
     with pytest.raises(RuntimeError, match="owner-map failed"):
         dispatch_event(_valid_push_event())
     assert calls == []

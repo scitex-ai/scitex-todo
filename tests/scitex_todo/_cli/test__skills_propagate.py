@@ -28,28 +28,32 @@ from scitex_todo._cli._skills_propagate import (
 
 
 def test_manifest_file_exists_in_package():
-    # Arrange / Act
+    # Arrange
+    # Act
     path = manifest_path()
     # Assert
     assert path.is_file()
 
 
 def test_manifest_loads_as_dict():
-    # Arrange / Act
+    # Arrange
+    # Act
     data = load_manifest()
     # Assert
     assert isinstance(data, dict)
 
 
 def test_manifest_lists_at_least_one_canonical_skill_id():
-    # Arrange / Act
+    # Arrange
+    # Act
     ids = canonical_skill_ids()
     # Assert
     assert len(ids) >= 1
 
 
 def test_manifest_includes_scitex_todo_skill_id():
-    # Arrange / Act
+    # Arrange
+    # Act
     ids = canonical_skill_ids()
     # Assert
     assert "scitex-todo" in ids

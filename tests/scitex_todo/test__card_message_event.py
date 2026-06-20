@@ -41,7 +41,8 @@ def test_validator_accepts_card_message_with_required_fields():
 def test_validator_rejects_card_message_missing_card_id():
     # Arrange
     payload = {"kind": "card-message", "body": "hi"}
-    # Act / Assert
+    # Act
+    # Assert
     with pytest.raises(HookEventError):
         event_validate(payload)
 
@@ -49,7 +50,8 @@ def test_validator_rejects_card_message_missing_card_id():
 def test_validator_rejects_card_message_missing_body():
     # Arrange
     payload = {"kind": "card-message", "card_id": "c-1"}
-    # Act / Assert
+    # Act
+    # Assert
     with pytest.raises(HookEventError):
         event_validate(payload)
 
@@ -60,7 +62,8 @@ def test_validator_rejects_card_message_collaborators_non_list():
         "kind": "card-message", "card_id": "c-1", "body": "hi",
         "collaborators": "agent-a",   # must be a list
     }
-    # Act / Assert
+    # Act
+    # Assert
     with pytest.raises(HookEventError):
         event_validate(payload)
 
@@ -71,7 +74,8 @@ def test_validator_rejects_card_message_collaborators_non_string_entry():
         "kind": "card-message", "card_id": "c-1", "body": "hi",
         "collaborators": ["agent-a", 42],
     }
-    # Act / Assert
+    # Act
+    # Assert
     with pytest.raises(HookEventError):
         event_validate(payload)
 

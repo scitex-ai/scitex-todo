@@ -46,7 +46,8 @@ def _run(payload: str, env_extra: dict[str, str] | None = None):
 
 
 def test_hook_script_exists_at_bundled_path():
-    # Arrange / Act
+    # Arrange
+    # Act
     exists = HOOK_PATH.is_file()
     # Assert
     assert exists, f"hook script missing at {HOOK_PATH}"

@@ -51,6 +51,7 @@ def test_endpoint_returns_200_with_repos_shape(env, tmp_path) -> None:
     so no network is touched) — the per-repo error trap converts that
     into ``{slug, error}``. The OVERALL response is still 200 + a JSON
     document the FE can render."""
+    # Arrange
     _isolate_home(env, tmp_path)
     # Use an invalid-shape slug so the adapter raises synchronously on
     # the input check (no network needed). The shape pin is the same
@@ -58,8 +59,10 @@ def test_endpoint_returns_200_with_repos_shape(env, tmp_path) -> None:
     env.set("SCITEX_TODO_FLEET_CI_REPOS", "bad-slug-no-slash")
 
     request = RequestFactory().get("/fleet/ci-status")
+    # Act
     response = fleet_ci_status_view(request)
 
+    # Assert
     assert response.status_code == 200
     data = json.loads(response.content)
     assert set(data.keys()) >= {"repos", "config"}
@@ -72,6 +75,7 @@ def test_per_repo_error_does_not_blank_page(env, tmp_path) -> None:
     """The headline guarantee: one bad repo becomes ``{slug, error}``
     rather than killing the whole response. The operator sees the
     other (hypothetically working) pills next to a single red ``!``."""
+    # Arrange
     _isolate_home(env, tmp_path)
     env.set(
         "SCITEX_TODO_FLEET_CI_REPOS",
@@ -79,8 +83,10 @@ def test_per_repo_error_does_not_blank_page(env, tmp_path) -> None:
     )
 
     request = RequestFactory().get("/fleet/ci-status")
+    # Act
     response = fleet_ci_status_view(request)
 
+    # Assert
     assert response.status_code == 200
     data = json.loads(response.content)
     slugs = [r["slug"] for r in data["repos"]]
@@ -94,10 +100,13 @@ def test_per_repo_error_does_not_blank_page(env, tmp_path) -> None:
 def test_empty_config_returns_200_with_empty_list(env, tmp_path) -> None:
     """No repos configured = empty list + 200 (NOT 500). The FE hides
     the strip with a "no CI status configured" footnote."""
+    # Arrange
     _isolate_home(env, tmp_path)
     # No env override, no file -> empty list.
     request = RequestFactory().get("/fleet/ci-status")
+    # Act
     response = fleet_ci_status_view(request)
+    # Assert
     assert response.status_code == 200
     data = json.loads(response.content)
     assert data["config"]["repos"] == []
@@ -107,6 +116,7 @@ def test_empty_config_returns_200_with_empty_list(env, tmp_path) -> None:
 def test_malformed_config_returns_500(env, tmp_path) -> None:
     """A broken ``dashboard.yaml`` is the one error that DOES blank the
     strip — the whole thing is unconfigurable. Fail-loud per harness."""
+    # Arrange
     _isolate_home(env, tmp_path)
     cfg_dir = tmp_path / ".scitex" / "todo"
     cfg_dir.mkdir(parents=True)
@@ -116,8 +126,10 @@ def test_malformed_config_returns_500(env, tmp_path) -> None:
     )
 
     request = RequestFactory().get("/fleet/ci-status")
+    # Act
     response = fleet_ci_status_view(request)
 
+    # Assert
     assert response.status_code == 500
     data = json.loads(response.content)
     assert "error" in data

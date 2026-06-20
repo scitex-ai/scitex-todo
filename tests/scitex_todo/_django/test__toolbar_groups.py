@@ -77,7 +77,10 @@ def _read(path: Path) -> str:
 def test_toolbar_css_declares_group_selector(selector: str) -> None:
     """Every new group / primary / divider class must have at least one
     CSS rule in 07-toolbar-groups.css."""
+    # Arrange
+    # Act
     css = _read(_TOOLBAR_CSS)
+    # Assert
     assert selector in css, (
         f"07-toolbar-groups.css missing rule for {selector!r}"
     )
@@ -86,11 +89,14 @@ def test_toolbar_css_declares_group_selector(selector: str) -> None:
 def test_toolbar_css_responsive_media_query_present() -> None:
     """A media query for the narrow-viewport wrap (≤780px) must be
     declared so each group drops to its own row gracefully."""
+    # Arrange
     css = _read(_TOOLBAR_CSS)
     # Accept any max-width up to 800px so a future bump to 768/800 still
     # passes — the contract is "there is a responsive wrap rule", not the
     # exact pixel value.
+    # Act
     m = re.search(r"@media\s*\([^)]*max-width\s*:\s*(\d+)px\)", css)
+    # Assert
     assert m, "07-toolbar-groups.css missing @media (max-width: …px) rule"
     px = int(m.group(1))
     assert 700 <= px <= 800, (
@@ -104,6 +110,7 @@ def test_toolbar_css_no_hardcoded_colors() -> None:
     token. The only acceptable hex literals are inside `var(--token,
     #fallback)` fallback slots; bare `#fff` / `white` / raw hex
     assignments are forbidden."""
+    # Arrange
     css = _read(_TOOLBAR_CSS)
     # Strip block comments first so explanatory prose ("white in dark mode")
     # doesn't trigger the guard.
@@ -119,7 +126,9 @@ def test_toolbar_css_no_hardcoded_colors() -> None:
         r"(?<![\w-])"
         r"(#[0-9a-fA-F]{3,8}\b|\bwhite\b(?!-))",
     )
+    # Act
     matches = pattern.findall(no_var)
+    # Assert
     assert not matches, (
         f"hardcoded colors found in 07-toolbar-groups.css "
         f"(must use var(--…) tokens): {matches[:5]}"
@@ -128,7 +137,10 @@ def test_toolbar_css_no_hardcoded_colors() -> None:
 
 def test_toolbar_css_balanced_braces() -> None:
     """Edits did not corrupt brace nesting."""
+    # Arrange
+    # Act
     css = _read(_TOOLBAR_CSS)
+    # Assert
     assert css.count("{") == css.count("}"), (
         f"unbalanced braces in {_TOOLBAR_CSS}: "
         f"{css.count('{')} opens vs {css.count('}')} closes"
@@ -153,7 +165,10 @@ def test_toolbar_css_balanced_braces() -> None:
 def test_template_renders_group_class(selector_class: str) -> None:
     """board_v3.html must mount each new group / primary / divider class
     on at least one element so the CSS rules actually find targets."""
+    # Arrange
+    # Act
     html = _read(_BOARD_V3_TEMPLATE)
+    # Assert
     assert selector_class in html, (
         f"board_v3.html missing class {selector_class!r} on any element"
     )
@@ -161,7 +176,10 @@ def test_template_renders_group_class(selector_class: str) -> None:
 
 def test_template_loads_toolbar_css() -> None:
     """The toolbar declutter CSS must be wired into the template."""
+    # Arrange
+    # Act
     html = _read(_BOARD_V3_TEMPLATE)
+    # Assert
     assert "07-toolbar-groups.css" in html, (
         "board_v3.html never <link>s 07-toolbar-groups.css"
     )
@@ -171,14 +189,17 @@ def test_template_view_group_contains_layout_sort_group() -> None:
     """The VIEW group must wrap the Layout, Sort, and Group controls so
     the existing behavior is unchanged — only the structural wrapper
     moves."""
+    # Arrange
     html = _read(_BOARD_V3_TEMPLATE)
     # Find the VIEW group <div>; capture its inner content up to the
     # next end-of-group comment.
+    # Act
     m = re.search(
         r'stx-todo-filterbar__group--view[^>]*>(.*?)\{#\s*end VIEW group',
         html,
         flags=re.DOTALL,
     )
+    # Assert
     assert m, "could not locate VIEW group block in template"
     view_body = m.group(1)
     assert 'class="filt-layout"' in view_body, "VIEW group missing Layout"
@@ -189,12 +210,15 @@ def test_template_view_group_contains_layout_sort_group() -> None:
 def test_template_primary_zone_contains_add_task() -> None:
     """The PRIMARY action zone must wrap the +Add Task button so it pops
     as the right-most, brand-accent element."""
+    # Arrange
     html = _read(_BOARD_V3_TEMPLATE)
+    # Act
     m = re.search(
         r'stx-todo-filterbar__primary[^>]*>(.*?)\{#\s*end PRIMARY',
         html,
         flags=re.DOTALL,
     )
+    # Assert
     assert m, "could not locate PRIMARY zone block in template"
     primary_body = m.group(1)
     assert 'id="add-task-btn"' in primary_body, (
@@ -206,12 +230,15 @@ def test_template_status_group_contains_recent_reload_hideproject() -> None:
     """The STATUS group must wrap the 'N new' recent-count pill, Reload
     button, and hide-project toggle so the operator's status-row stays
     together."""
+    # Arrange
     html = _read(_BOARD_V3_TEMPLATE)
+    # Act
     m = re.search(
         r'stx-todo-filterbar__group--status[^>]*>(.*?)\{#\s*end STATUS group',
         html,
         flags=re.DOTALL,
     )
+    # Assert
     assert m, "could not locate STATUS group block in template"
     status_body = m.group(1)
     assert 'id="recent-count-pill"' in status_body, (
@@ -226,13 +253,16 @@ def test_template_status_group_contains_recent_reload_hideproject() -> None:
 def test_template_search_group_contains_search_and_filters() -> None:
     """The SEARCH/FILTER group must wrap the search input and the
     Filters popover so query-narrowing controls cluster."""
+    # Arrange
     html = _read(_BOARD_V3_TEMPLATE)
+    # Act
     m = re.search(
         r'stx-todo-filterbar__group--search[^>]*>(.*?)\{#\s*end '
         r'\.fb-center',
         html,
         flags=re.DOTALL,
     )
+    # Assert
     assert m, "could not locate SEARCH/FILTER group block in template"
     search_body = m.group(1)
     assert 'id="f-search"' in search_body, (
@@ -270,7 +300,10 @@ def test_template_preserves_every_original_control(needle: str) -> None:
     """The reorg moves controls into wrapper <div>s — it must NOT delete
     any of them. This guards against an accidental drop during the
     structural shuffle."""
+    # Arrange
+    # Act
     html = _read(_BOARD_V3_TEMPLATE)
+    # Assert
     assert needle in html, (
         f"board_v3.html lost an original toolbar control: {needle!r}"
     )

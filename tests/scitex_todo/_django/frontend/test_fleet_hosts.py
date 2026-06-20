@@ -57,13 +57,19 @@ _TSX_FILE = (
 
 
 def test_css_file_exists() -> None:
+    # Arrange
+    # Act
+    # Assert
     assert _CSS_FILE.is_file(), f"missing CSS file: {_CSS_FILE}"
 
 
 def test_css_has_canonical_selectors() -> None:
     """The component generates these class names — the CSS file MUST
     define each one or the panel will silently render unstyled."""
+    # Arrange
     css = _CSS_FILE.read_text(encoding="utf-8")
+    # Act
+    # Assert
     for selector in (
         ".stx-todo-fleet-hosts",
         ".stx-todo-fleet-hosts--ok",
@@ -84,13 +90,16 @@ def test_css_uses_design_tokens_only() -> None:
     (OK border), ``--stx-text-muted`` (error label color). The shell
     + board.css token chain feeds all of them.
     """
+    # Arrange
     css = _CSS_FILE.read_text(encoding="utf-8")
     # Strip /* ... */ comments before scanning — the comment block at
     # the top documents the token names verbatim and would falsely
     # trip the hex / named-color detectors otherwise.
     no_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
     # 3-, 4-, 6-, or 8-digit hex literals.
+    # Act
     hex_matches = re.findall(r"#[0-9A-Fa-f]{3,8}\b", no_comments)
+    # Assert
     assert not hex_matches, (
         f"hardcoded hex colors in fleet-hosts.css (breaks theming): "
         f"{hex_matches!r}"
@@ -120,7 +129,10 @@ def test_css_is_imported_from_board_css() -> None:
     """The panel only renders correctly when board.css imports the
     partial. Pinning this guards against an accidental removal in a
     future board.css refactor."""
+    # Arrange
+    # Act
     board_css = _CSS_FILE.parent / "board.css"
+    # Assert
     assert board_css.is_file()
     text = board_css.read_text(encoding="utf-8")
     assert '@import "./fleet-hosts.css";' in text
@@ -219,6 +231,8 @@ def test_label_with_interfaces_and_peers() -> None:
     """The label pattern matches the operator's spec verbatim:
     ``🖥 <hostname> · <N> ifaces · <M> peers``. Pin one realistic
     payload to catch a rename or a count-off-by-one downstream."""
+    # Arrange
+    # Act
     out = _run_panel_helpers(
         {
             "config_path": None,
@@ -234,6 +248,7 @@ def test_label_with_interfaces_and_peers() -> None:
             "peers": [{"name": "p1"}, {"name": "p2"}, {"name": "p3"}],
         }
     )
+    # Assert
     assert out["isErr"] is False
     assert "test-box" in out["label"]
     assert "2 ifaces" in out["label"]
@@ -249,6 +264,8 @@ def test_label_with_no_interfaces_or_peers() -> None:
     """A host with zero NICs visible to sac (containerized env) +
     zero peers (fresh install) renders ``0 ifaces · 0 peers`` and the
     tooltip surfaces ``interfaces: (none)``."""
+    # Arrange
+    # Act
     out = _run_panel_helpers(
         {
             "config_path": None,
@@ -261,6 +278,7 @@ def test_label_with_no_interfaces_or_peers() -> None:
             "peers": [],
         }
     )
+    # Assert
     assert out["isErr"] is False
     assert "isolated" in out["label"]
     assert "0 ifaces" in out["label"]
@@ -271,9 +289,12 @@ def test_label_with_no_interfaces_or_peers() -> None:
 def test_error_payload_discriminator() -> None:
     """``isHostsPayloadErr`` returns true for an HTTP-500 error body
     so the component branches to the ``--error`` render path."""
+    # Arrange
+    # Act
     out = _run_panel_helpers(
         {"error": "sac CLI not found on PATH — install scitex-agent-container"}
     )
+    # Assert
     assert out["isErr"] is True
     assert out["label"] is None
     assert out["tooltip"] is None

@@ -164,11 +164,14 @@ def _run(snippet: str) -> dict:
 def test_deadline_beats_last_activity() -> None:
     """``deadline`` takes precedence over ``last_activity`` when both
     are present — operator's stated precedence (TG 13295)."""
+    # Arrange
+    # Act
     out = _run(
         "const t = {id: 'a', deadline: '2026-06-14', last_activity: '2025-01-01T10:00:00Z'};\n"
         "const d = taskDateForCalendar(t);\n"
         "console.log(JSON.stringify({key: dateKey(d)}));"
     )
+    # Assert
     assert out == {"key": "2026-06-14"}
 
 
@@ -176,17 +179,22 @@ def test_deadline_next_beats_deadline() -> None:
     """``deadline_next`` (server-computed next occurrence) takes
     precedence over the static ``deadline`` field when both are present —
     so recurring tasks land on the right cell automatically."""
+    # Arrange
+    # Act
     out = _run(
         "const t = {id: 'a', deadline: '2026-06-14', deadline_next: '2026-07-01'};\n"
         "const d = taskDateForCalendar(t);\n"
         "console.log(JSON.stringify({key: dateKey(d)}));"
     )
+    # Assert
     assert out == {"key": "2026-07-01"}
 
 
 def test_last_activity_fallback() -> None:
     """When ``deadline``/``deadline_next`` are absent, ``last_activity``'s
     date portion is the bucket."""
+    # Arrange
+    # Act
     out = _run(
         "const t = {id: 'a', last_activity: '2026-06-10T18:42:00Z'};\n"
         "const d = taskDateForCalendar(t);\n"
@@ -194,17 +202,21 @@ def test_last_activity_fallback() -> None:
     )
     # The date portion is "2026-06-10" — anchored at local noon by
     # parseCalendarDate so timezone wobble doesn't shift the bucket.
+    # Assert
     assert out == {"key": "2026-06-10"}
 
 
 def test_no_date_returns_null() -> None:
     """A task with neither deadline nor last_activity yields null —
     the operator's rule "skip; don't render it"."""
+    # Arrange
+    # Act
     out = _run(
         "const t = {id: 'a'};\n"
         "const d = taskDateForCalendar(t);\n"
         "console.log(JSON.stringify({isNull: d === null}));"
     )
+    # Assert
     assert out == {"isNull": True}
 
 
@@ -212,6 +224,8 @@ def test_tasks_by_date_placement_counts() -> None:
     """Given a tasks array, ``tasksByDate`` produces a map keyed by
     YYYY-MM-DD with the right task ids on each day — matches the
     operator-facing "this day has N tasks" contract."""
+    # Arrange
+    # Act
     out = _run(
         textwrap.dedent(
             """
@@ -227,6 +241,7 @@ def test_tasks_by_date_placement_counts() -> None:
             """
         )
     )
+    # Assert
     assert out == {
         "2026-06-14": ["t1", "t2"],
         "2026-06-15": ["t3", "t4"],
@@ -241,9 +256,12 @@ def test_month_grid_returns_42_cells_with_leading_trailing() -> None:
     OUTSIDE the requested month must be flagged ``inMonth=false``."""
     # June 2026: June 1 is a Monday — so one leading Sunday (May 31) and
     # several trailing July days fill the grid.
+    # Arrange
+    # Act
     out = _run(
         "console.log(JSON.stringify(monthGridDays(2026, 5, new Date(2026, 5, 14, 12))));"
     )
+    # Assert
     assert len(out) == 42
     # First cell is the leading Sunday before June 1 — May 31, 2026
     # (a Sunday). Out-of-month.
@@ -268,10 +286,13 @@ def test_today_cell_flag_is_set() -> None:
     ``isToday=true`` — drives the accent-border ring on the Calendar."""
     # Render June 2026 with `today` pinned at June 14 — exactly one
     # cell should fire isToday.
+    # Arrange
     out = _run(
         "console.log(JSON.stringify(monthGridDays(2026, 5, new Date(2026, 5, 14, 12))));"
     )
+    # Act
     today_cells = [c for c in out if c["isToday"]]
+    # Assert
     assert len(today_cells) == 1
     assert today_cells[0]["key"] == "2026-06-14"
     assert today_cells[0]["inMonth"] is True
@@ -282,17 +303,23 @@ def test_today_flag_false_when_today_is_in_a_different_month() -> None:
     so the "today" highlight only fires when looking at the live month."""
     # Render May 2026 but pin `today` at June 14 — no May cell should
     # be flagged today.
+    # Arrange
     out = _run(
         "console.log(JSON.stringify(monthGridDays(2026, 4, new Date(2026, 5, 14, 12))));"
     )
+    # Act
     today_cells = [c for c in out if c["isToday"]]
+    # Assert
     assert today_cells == []
 
 
 def test_static_source_contract() -> None:
     """The TS module must continue to expose the canonical names so the
     CalendarView component keeps depending on a stable API."""
+    # Arrange
     src = TS_FILE.read_text(encoding="utf-8")
+    # Act
+    # Assert
     for name in [
         "export function taskDateForCalendar(",
         "export function monthGridDays(",

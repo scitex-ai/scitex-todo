@@ -235,7 +235,9 @@ def test_group_filter_narrows_blocked_list():
 
 
 def test_blocked_reasons_constant_has_four_entries():
-    # Arrange / Act / Assert
+    # Arrange
+    # Act
+    # Assert
     assert BLOCKED_REASONS == frozenset({
         "explicit-blocker", "manual-block", "depends-on", "reverse-blocks",
     })
