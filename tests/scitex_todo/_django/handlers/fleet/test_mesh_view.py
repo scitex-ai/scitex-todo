@@ -37,7 +37,7 @@ from scitex_todo._django.handlers.fleet import fleet_mesh_view  # noqa: E402
 # ─── fail-loud path: missing sac ────────────────────────────────────────
 
 
-def test_mesh_view_returns_500_when_sac_missing(env) -> None:
+def test_mesh_view_returns_500_when_sac_missing_status_code(env) -> None:
     """When sac is artificially unavailable (we clobber PATH), the
     adapter raises and the view returns HTTP 500 with the error in the
     body — fail-loud per the harness contract."""
@@ -47,9 +47,35 @@ def test_mesh_view_returns_500_when_sac_missing(env) -> None:
     # Act
     response = fleet_mesh_view(request)
     # Assert
-    assert response.status_code == 500
     data = json.loads(response.content)
+    # The message must name "sac" so the operator knows what is missing.
+    assert response.status_code == 500
+
+def test_mesh_view_returns_500_when_sac_missing_data_contains(env) -> None:
+    """When sac is artificially unavailable (we clobber PATH), the
+    adapter raises and the view returns HTTP 500 with the error in the
+    body — fail-loud per the harness contract."""
+    # Arrange
+    env.set("PATH", "")
+    request = RequestFactory().get("/fleet/mesh")
+    # Act
+    response = fleet_mesh_view(request)
+    # Assert
+    data = json.loads(response.content)
+    # The message must name "sac" so the operator knows what is missing.
     assert "error" in data
+
+def test_mesh_view_returns_500_when_sac_missing_lower_contains(env) -> None:
+    """When sac is artificially unavailable (we clobber PATH), the
+    adapter raises and the view returns HTTP 500 with the error in the
+    body — fail-loud per the harness contract."""
+    # Arrange
+    env.set("PATH", "")
+    request = RequestFactory().get("/fleet/mesh")
+    # Act
+    response = fleet_mesh_view(request)
+    # Assert
+    data = json.loads(response.content)
     # The message must name "sac" so the operator knows what is missing.
     assert "sac" in data["error"].lower()
 
@@ -57,7 +83,7 @@ def test_mesh_view_returns_500_when_sac_missing(env) -> None:
 # ─── method discipline ──────────────────────────────────────────────────
 
 
-def test_mesh_view_rejects_post_with_405() -> None:
+def test_mesh_view_rejects_post_with_405_status_code() -> None:
     """The endpoint is strictly read-only — mutations route through
     the ``sac a2a grant`` / ``revoke`` CLI, not through scitex-todo.
     POST must come back as 405. No env manipulation needed: the
@@ -67,9 +93,33 @@ def test_mesh_view_rejects_post_with_405() -> None:
     # Act
     response = fleet_mesh_view(request)
     # Assert
+    data = json.loads(response.content)
     assert response.status_code == 405
+
+def test_mesh_view_rejects_post_with_405_data_contains() -> None:
+    """The endpoint is strictly read-only — mutations route through
+    the ``sac a2a grant`` / ``revoke`` CLI, not through scitex-todo.
+    POST must come back as 405. No env manipulation needed: the
+    method check runs before the adapter call."""
+    # Arrange
+    request = RequestFactory().post("/fleet/mesh")
+    # Act
+    response = fleet_mesh_view(request)
+    # Assert
     data = json.loads(response.content)
     assert "error" in data
+
+def test_mesh_view_rejects_post_with_405_case_3() -> None:
+    """The endpoint is strictly read-only — mutations route through
+    the ``sac a2a grant`` / ``revoke`` CLI, not through scitex-todo.
+    POST must come back as 405. No env manipulation needed: the
+    method check runs before the adapter call."""
+    # Arrange
+    request = RequestFactory().post("/fleet/mesh")
+    # Act
+    response = fleet_mesh_view(request)
+    # Assert
+    data = json.loads(response.content)
     assert "POST" in data["error"] or "method" in data["error"].lower()
 
 

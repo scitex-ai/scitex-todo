@@ -164,11 +164,16 @@ class TestViewToggleWiring:
         # Assert
         assert '"graph" | "table" | "recent"' in store_text
 
-    def test_view_toggle_has_recent_button(self, board_text):
+    def test_view_toggle_has_recent_button_board_text_contains(self, board_text):
         # Arrange
         # Act
         # Assert
         assert 'setView("recent")' in board_text
+
+    def test_view_toggle_has_recent_button_board_text_contains_2(self, board_text):
+        # Arrange
+        # Act
+        # Assert
         assert 'view === "recent"' in board_text
 
     def test_recent_view_imported_into_todoboard(self, board_text):
@@ -209,13 +214,20 @@ class TestRecentViewLoadBearingUX:
         # Assert
         assert "Show older" in tsx_text
 
-    def test_empty_state_mentions_created_at(self, tsx_text):
+    def test_empty_state_mentions_created_at_tsx_text_contains(self, tsx_text):
         # The helpful empty-state message tells the operator HOW to
         # backfill a timestamp on an existing task.
         # Arrange
         # Act
         # Assert
         assert "created_at" in tsx_text
+
+    def test_empty_state_mentions_created_at_tsx_text_contains_2(self, tsx_text):
+        # The helpful empty-state message tells the operator HOW to
+        # backfill a timestamp on an existing task.
+        # Arrange
+        # Act
+        # Assert
         assert "scitex-todo update" in tsx_text
 
 

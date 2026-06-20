@@ -88,7 +88,7 @@ class TestP1SearchAsLauncher:
         # Assert
         assert "attachSearchKeyboardLauncher()" in board_text
 
-    def test_kbd_hint_in_search_placeholder(self, board_text):
+    def test_kbd_hint_in_search_placeholder_board_text_contains(self, board_text):
         # Lead `032e41545fcf4ab4b98d864ec1770249` 2026-06-12: the
         # standalone `.filt-search-kbd` pill was operator-judged
         # noise and folded into the search input's placeholder per
@@ -104,6 +104,18 @@ class TestP1SearchAsLauncher:
             "its placeholder (operator UX, lead a2a "
             "`032e41545fcf4ab4b98d864ec1770249`)"
         )
+
+    def test_kbd_hint_in_search_placeholder_board_text_contains_2(self, board_text):
+        # Lead `032e41545fcf4ab4b98d864ec1770249` 2026-06-12: the
+        # standalone `.filt-search-kbd` pill was operator-judged
+        # noise and folded into the search input's placeholder per
+        # operator "just write the kbd in the search box". The pin
+        # now asserts the hint is INSIDE the placeholder text on
+        # `#f-search`, so the affordance is still discoverable but
+        # without the extra DOM chrome.
+        # Arrange
+        # Act
+        # Assert
         assert "Esc to blur" in board_text, (
             "search input must hint at 'Esc to blur' in its placeholder"
         )
@@ -359,13 +371,20 @@ class TestSearchQualifierSyntax:
         # Assert
         assert 'id="filt-qhints"' in board_text
 
-    def test_search_input_advertises_qualifier_syntax(self, board_text):
+    def test_search_input_advertises_qualifier_syntax_board_text_contains(self, board_text):
         # Placeholder + title should mention the new qualifier syntax so
         # the operator's expectation (GitHub-style) is met without docs.
         # Arrange
         # Act
         # Assert
         assert "project:" in board_text
+
+    def test_search_input_advertises_qualifier_syntax_board_text_contains_2(self, board_text):
+        # Placeholder + title should mention the new qualifier syntax so
+        # the operator's expectation (GitHub-style) is met without docs.
+        # Arrange
+        # Act
+        # Assert
         assert "status:" in board_text
 
     def test_fuzzy_match_delegates_to_parser(self, board_text):
@@ -415,13 +434,20 @@ class TestMultiselectBatchOpsStage1:
         # Assert
         assert "data-task-id=" in board_text
 
-    def test_multiselect_state_is_a_set(self, board_text):
+    def test_multiselect_state_is_a_set_board_text_contains(self, board_text):
         # Selection state is client-side only in window.MULTISELECT.
         # The `new Set()` literal is the load-bearing primitive.
         # Arrange
         # Act
         # Assert
         assert "window.MULTISELECT" in board_text
+
+    def test_multiselect_state_is_a_set_board_text_contains_2(self, board_text):
+        # Selection state is client-side only in window.MULTISELECT.
+        # The `new Set()` literal is the load-bearing primitive.
+        # Arrange
+        # Act
+        # Assert
         assert "new Set()" in board_text
 
     def test_toggle_card_selected_helper_defined(self, board_text):

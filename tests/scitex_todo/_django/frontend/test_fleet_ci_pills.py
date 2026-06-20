@@ -116,7 +116,7 @@ def test_css_uses_design_tokens_only() -> None:
         assert token in css, f"missing design token: {token}"
 
 
-def test_css_is_imported_from_board_css() -> None:
+def test_css_is_imported_from_board_css_is_file() -> None:
     """The pills strip only renders correctly when board.css imports
     the partial. Pinning this guards against an accidental removal in
     a future board.css refactor."""
@@ -124,7 +124,17 @@ def test_css_is_imported_from_board_css() -> None:
     # Act
     board_css = _CSS_FILE.parent / "board.css"
     # Assert
+    text = board_css.read_text(encoding="utf-8")
     assert board_css.is_file()
+
+def test_css_is_imported_from_board_css_text_contains() -> None:
+    """The pills strip only renders correctly when board.css imports
+    the partial. Pinning this guards against an accidental removal in
+    a future board.css refactor."""
+    # Arrange
+    # Act
+    board_css = _CSS_FILE.parent / "board.css"
+    # Assert
     text = board_css.read_text(encoding="utf-8")
     assert '@import "./fleet-ci-pills.css";' in text
 
@@ -222,7 +232,7 @@ def _run_pill_helpers(repo: dict) -> dict:
         ("weird-future-state", "unknown"),
     ],
 )
-def test_pill_color_mapping_for_each_overall(
+def test_pill_color_mapping_for_each_overall_modifier(
     overall: str, expected_mod: str
 ) -> None:
     """Pin one pill-modifier per known CiOverall value — these are the
@@ -241,13 +251,141 @@ def test_pill_color_mapping_for_each_overall(
     )
     # Assert
     assert out["modifier"] == expected_mod
+
+@pytest.mark.parametrize(
+    "overall,expected_mod",
+    [
+        ("success", "success"),
+        ("failure", "failure"),
+        ("pending", "pending"),
+        ("unknown", "unknown"),
+        # An overall value the FE doesn't know about must degrade to
+        # "unknown" rather than emit a missing-CSS class. The
+        # ``default:`` branch of the switch pins this.
+        ("weird-future-state", "unknown"),
+    ],
+)
+def test_pill_color_mapping_for_each_overall_iserr(
+    overall: str, expected_mod: str
+) -> None:
+    """Pin one pill-modifier per known CiOverall value — these are the
+    classes the CSS file rules on, so a rename here would silently
+    blank the pill."""
+    # Arrange
+    # Act
+    out = _run_pill_helpers(
+        {
+            "slug": "foo/bar",
+            "branch": "main",
+            "head_sha": "abc1234deadbeef",
+            "overall": overall,
+            "checks": [],
+        }
+    )
+    # Assert
     assert out["isErr"] is False
+
+@pytest.mark.parametrize(
+    "overall,expected_mod",
+    [
+        ("success", "success"),
+        ("failure", "failure"),
+        ("pending", "pending"),
+        ("unknown", "unknown"),
+        # An overall value the FE doesn't know about must degrade to
+        # "unknown" rather than emit a missing-CSS class. The
+        # ``default:`` branch of the switch pins this.
+        ("weird-future-state", "unknown"),
+    ],
+)
+def test_pill_color_mapping_for_each_overall_tooltip_contains(
+    overall: str, expected_mod: str
+) -> None:
+    """Pin one pill-modifier per known CiOverall value — these are the
+    classes the CSS file rules on, so a rename here would silently
+    blank the pill."""
+    # Arrange
+    # Act
+    out = _run_pill_helpers(
+        {
+            "slug": "foo/bar",
+            "branch": "main",
+            "head_sha": "abc1234deadbeef",
+            "overall": overall,
+            "checks": [],
+        }
+    )
+    # Assert
     assert "foo/bar" in out["tooltip"]
+
+@pytest.mark.parametrize(
+    "overall,expected_mod",
+    [
+        ("success", "success"),
+        ("failure", "failure"),
+        ("pending", "pending"),
+        ("unknown", "unknown"),
+        # An overall value the FE doesn't know about must degrade to
+        # "unknown" rather than emit a missing-CSS class. The
+        # ``default:`` branch of the switch pins this.
+        ("weird-future-state", "unknown"),
+    ],
+)
+def test_pill_color_mapping_for_each_overall_tooltip_contains_2(
+    overall: str, expected_mod: str
+) -> None:
+    """Pin one pill-modifier per known CiOverall value — these are the
+    classes the CSS file rules on, so a rename here would silently
+    blank the pill."""
+    # Arrange
+    # Act
+    out = _run_pill_helpers(
+        {
+            "slug": "foo/bar",
+            "branch": "main",
+            "head_sha": "abc1234deadbeef",
+            "overall": overall,
+            "checks": [],
+        }
+    )
+    # Assert
     assert "main" in out["tooltip"]
+
+@pytest.mark.parametrize(
+    "overall,expected_mod",
+    [
+        ("success", "success"),
+        ("failure", "failure"),
+        ("pending", "pending"),
+        ("unknown", "unknown"),
+        # An overall value the FE doesn't know about must degrade to
+        # "unknown" rather than emit a missing-CSS class. The
+        # ``default:`` branch of the switch pins this.
+        ("weird-future-state", "unknown"),
+    ],
+)
+def test_pill_color_mapping_for_each_overall_tooltip_contains_3(
+    overall: str, expected_mod: str
+) -> None:
+    """Pin one pill-modifier per known CiOverall value — these are the
+    classes the CSS file rules on, so a rename here would silently
+    blank the pill."""
+    # Arrange
+    # Act
+    out = _run_pill_helpers(
+        {
+            "slug": "foo/bar",
+            "branch": "main",
+            "head_sha": "abc1234deadbeef",
+            "overall": overall,
+            "checks": [],
+        }
+    )
+    # Assert
     assert "abc1234" in out["tooltip"]  # short sha
 
 
-def test_pill_modifier_for_per_repo_error() -> None:
+def test_pill_modifier_for_per_repo_error_modifier() -> None:
     """A per-repo error (``{slug, error}``) maps to the ``--error``
     modifier with the adapter message in the tooltip."""
     # Arrange
@@ -257,8 +395,38 @@ def test_pill_modifier_for_per_repo_error() -> None:
     )
     # Assert
     assert out["modifier"] == "error"
+
+def test_pill_modifier_for_per_repo_error_iserr() -> None:
+    """A per-repo error (``{slug, error}``) maps to the ``--error``
+    modifier with the adapter message in the tooltip."""
+    # Arrange
+    # Act
+    out = _run_pill_helpers(
+        {"slug": "foo/dead", "error": "gh exited 1: not found"}
+    )
+    # Assert
     assert out["isErr"] is True
+
+def test_pill_modifier_for_per_repo_error_tooltip_contains() -> None:
+    """A per-repo error (``{slug, error}``) maps to the ``--error``
+    modifier with the adapter message in the tooltip."""
+    # Arrange
+    # Act
+    out = _run_pill_helpers(
+        {"slug": "foo/dead", "error": "gh exited 1: not found"}
+    )
+    # Assert
     assert "foo/dead" in out["tooltip"]
+
+def test_pill_modifier_for_per_repo_error_tooltip_contains_2() -> None:
+    """A per-repo error (``{slug, error}``) maps to the ``--error``
+    modifier with the adapter message in the tooltip."""
+    # Arrange
+    # Act
+    out = _run_pill_helpers(
+        {"slug": "foo/dead", "error": "gh exited 1: not found"}
+    )
+    # Assert
     assert "gh exited 1" in out["tooltip"]
 
 

@@ -173,7 +173,7 @@ class TestPropertiesDrawer:
 
 
 class TestNoteBody:
-    def test_indents_note_under_heading(self):
+    def test_indents_note_under_heading_text_contains(self):
         # Arrange
         tasks = [
             {
@@ -185,16 +185,35 @@ class TestNoteBody:
         text = build_org(tasks)
         # Assert
         assert "  line1" in text
+
+    def test_indents_note_under_heading_text_contains_2(self):
+        # Arrange
+        tasks = [
+            {
+                "id": "a", "title": "x", "status": "pending",
+                "note": "line1\nline2",
+            }
+        ]
+        # Act
+        text = build_org(tasks)
+        # Assert
         assert "  line2" in text
 
 
 class TestEmptyTaskList:
-    def test_renders_preamble_only(self):
+    def test_renders_preamble_only_endswith(self):
         # Arrange
         # Act
         text = build_org([])
         # Assert
+        # No headings emitted.
         assert text.endswith("\n")
+
+    def test_renders_preamble_only_text_excludes(self):
+        # Arrange
+        # Act
+        text = build_org([])
+        # Assert
         # No headings emitted.
         assert "* " not in text
 

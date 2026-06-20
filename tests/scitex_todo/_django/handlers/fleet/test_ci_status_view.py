@@ -46,7 +46,7 @@ def _isolate_home(env, tmp_path: Path) -> None:
     env.delete("SCITEX_TODO_FLEET_CI_REPOS")
 
 
-def test_endpoint_returns_200_with_repos_shape(env, tmp_path) -> None:
+def test_endpoint_returns_200_with_repos_shape_status_code(env, tmp_path) -> None:
     """Configure ONE slug. The adapter will RAISE (invalid slug shape,
     so no network is touched) — the per-repo error trap converts that
     into ``{slug, error}``. The OVERALL response is still 200 + a JSON
@@ -63,11 +63,87 @@ def test_endpoint_returns_200_with_repos_shape(env, tmp_path) -> None:
     response = fleet_ci_status_view(request)
 
     # Assert
+    data = json.loads(response.content)
     assert response.status_code == 200
+
+def test_endpoint_returns_200_with_repos_shape_set(env, tmp_path) -> None:
+    """Configure ONE slug. The adapter will RAISE (invalid slug shape,
+    so no network is touched) — the per-repo error trap converts that
+    into ``{slug, error}``. The OVERALL response is still 200 + a JSON
+    document the FE can render."""
+    # Arrange
+    _isolate_home(env, tmp_path)
+    # Use an invalid-shape slug so the adapter raises synchronously on
+    # the input check (no network needed). The shape pin is the same
+    # one tested in ``test__gh_ci.py::test_invalid_slug_shape_raises``.
+    env.set("SCITEX_TODO_FLEET_CI_REPOS", "bad-slug-no-slash")
+
+    request = RequestFactory().get("/fleet/ci-status")
+    # Act
+    response = fleet_ci_status_view(request)
+
+    # Assert
     data = json.loads(response.content)
     assert set(data.keys()) >= {"repos", "config"}
+
+def test_endpoint_returns_200_with_repos_shape_repos(env, tmp_path) -> None:
+    """Configure ONE slug. The adapter will RAISE (invalid slug shape,
+    so no network is touched) — the per-repo error trap converts that
+    into ``{slug, error}``. The OVERALL response is still 200 + a JSON
+    document the FE can render."""
+    # Arrange
+    _isolate_home(env, tmp_path)
+    # Use an invalid-shape slug so the adapter raises synchronously on
+    # the input check (no network needed). The shape pin is the same
+    # one tested in ``test__gh_ci.py::test_invalid_slug_shape_raises``.
+    env.set("SCITEX_TODO_FLEET_CI_REPOS", "bad-slug-no-slash")
+
+    request = RequestFactory().get("/fleet/ci-status")
+    # Act
+    response = fleet_ci_status_view(request)
+
+    # Assert
+    data = json.loads(response.content)
     assert data["config"]["repos"] == ["bad-slug-no-slash"]
+
+def test_endpoint_returns_200_with_repos_shape_isinstance(env, tmp_path) -> None:
+    """Configure ONE slug. The adapter will RAISE (invalid slug shape,
+    so no network is touched) — the per-repo error trap converts that
+    into ``{slug, error}``. The OVERALL response is still 200 + a JSON
+    document the FE can render."""
+    # Arrange
+    _isolate_home(env, tmp_path)
+    # Use an invalid-shape slug so the adapter raises synchronously on
+    # the input check (no network needed). The shape pin is the same
+    # one tested in ``test__gh_ci.py::test_invalid_slug_shape_raises``.
+    env.set("SCITEX_TODO_FLEET_CI_REPOS", "bad-slug-no-slash")
+
+    request = RequestFactory().get("/fleet/ci-status")
+    # Act
+    response = fleet_ci_status_view(request)
+
+    # Assert
+    data = json.loads(response.content)
     assert isinstance(data["repos"], list)
+
+def test_endpoint_returns_200_with_repos_shape_len(env, tmp_path) -> None:
+    """Configure ONE slug. The adapter will RAISE (invalid slug shape,
+    so no network is touched) — the per-repo error trap converts that
+    into ``{slug, error}``. The OVERALL response is still 200 + a JSON
+    document the FE can render."""
+    # Arrange
+    _isolate_home(env, tmp_path)
+    # Use an invalid-shape slug so the adapter raises synchronously on
+    # the input check (no network needed). The shape pin is the same
+    # one tested in ``test__gh_ci.py::test_invalid_slug_shape_raises``.
+    env.set("SCITEX_TODO_FLEET_CI_REPOS", "bad-slug-no-slash")
+
+    request = RequestFactory().get("/fleet/ci-status")
+    # Act
+    response = fleet_ci_status_view(request)
+
+    # Assert
+    data = json.loads(response.content)
     assert len(data["repos"]) == 1
 
 
@@ -97,7 +173,7 @@ def test_per_repo_error_does_not_blank_page(env, tmp_path) -> None:
         assert isinstance(repo["error"], str) and repo["error"]
 
 
-def test_empty_config_returns_200_with_empty_list(env, tmp_path) -> None:
+def test_empty_config_returns_200_with_empty_list_status_code(env, tmp_path) -> None:
     """No repos configured = empty list + 200 (NOT 500). The FE hides
     the strip with a "no CI status configured" footnote."""
     # Arrange
@@ -107,13 +183,37 @@ def test_empty_config_returns_200_with_empty_list(env, tmp_path) -> None:
     # Act
     response = fleet_ci_status_view(request)
     # Assert
+    data = json.loads(response.content)
     assert response.status_code == 200
+
+def test_empty_config_returns_200_with_empty_list_repos(env, tmp_path) -> None:
+    """No repos configured = empty list + 200 (NOT 500). The FE hides
+    the strip with a "no CI status configured" footnote."""
+    # Arrange
+    _isolate_home(env, tmp_path)
+    # No env override, no file -> empty list.
+    request = RequestFactory().get("/fleet/ci-status")
+    # Act
+    response = fleet_ci_status_view(request)
+    # Assert
     data = json.loads(response.content)
     assert data["config"]["repos"] == []
+
+def test_empty_config_returns_200_with_empty_list_repos_2(env, tmp_path) -> None:
+    """No repos configured = empty list + 200 (NOT 500). The FE hides
+    the strip with a "no CI status configured" footnote."""
+    # Arrange
+    _isolate_home(env, tmp_path)
+    # No env override, no file -> empty list.
+    request = RequestFactory().get("/fleet/ci-status")
+    # Act
+    response = fleet_ci_status_view(request)
+    # Assert
+    data = json.loads(response.content)
     assert data["repos"] == []
 
 
-def test_malformed_config_returns_500(env, tmp_path) -> None:
+def test_malformed_config_returns_500_status_code(env, tmp_path) -> None:
     """A broken ``dashboard.yaml`` is the one error that DOES blank the
     strip — the whole thing is unconfigurable. Fail-loud per harness."""
     # Arrange
@@ -130,8 +230,48 @@ def test_malformed_config_returns_500(env, tmp_path) -> None:
     response = fleet_ci_status_view(request)
 
     # Assert
-    assert response.status_code == 500
     data = json.loads(response.content)
+    # The message should mention the file so the operator can find it.
+    assert response.status_code == 500
+
+def test_malformed_config_returns_500_data_contains(env, tmp_path) -> None:
+    """A broken ``dashboard.yaml`` is the one error that DOES blank the
+    strip — the whole thing is unconfigurable. Fail-loud per harness."""
+    # Arrange
+    _isolate_home(env, tmp_path)
+    cfg_dir = tmp_path / ".scitex" / "todo"
+    cfg_dir.mkdir(parents=True)
+    (cfg_dir / "dashboard.yaml").write_text(
+        "fleet:\n  ci_status:\n    repos: [a, b,\n",
+        encoding="utf-8",
+    )
+
+    request = RequestFactory().get("/fleet/ci-status")
+    # Act
+    response = fleet_ci_status_view(request)
+
+    # Assert
+    data = json.loads(response.content)
+    # The message should mention the file so the operator can find it.
     assert "error" in data
+
+def test_malformed_config_returns_500_error_contains(env, tmp_path) -> None:
+    """A broken ``dashboard.yaml`` is the one error that DOES blank the
+    strip — the whole thing is unconfigurable. Fail-loud per harness."""
+    # Arrange
+    _isolate_home(env, tmp_path)
+    cfg_dir = tmp_path / ".scitex" / "todo"
+    cfg_dir.mkdir(parents=True)
+    (cfg_dir / "dashboard.yaml").write_text(
+        "fleet:\n  ci_status:\n    repos: [a, b,\n",
+        encoding="utf-8",
+    )
+
+    request = RequestFactory().get("/fleet/ci-status")
+    # Act
+    response = fleet_ci_status_view(request)
+
+    # Assert
+    data = json.loads(response.content)
     # The message should mention the file so the operator can find it.
     assert "dashboard.yaml" in data["error"]

@@ -126,7 +126,7 @@ def test_timing_view_parses_window_days_query(store_with_done_task):
     assert payload["window_days"] == 7
 
 
-def test_timing_view_aggregates_real_done_task(store_with_done_task):
+def test_timing_view_aggregates_real_done_task_n_tasks_in_window(store_with_done_task):
     # Arrange
     rf = RequestFactory()
     req = rf.get("/fleet/timing")
@@ -134,18 +134,43 @@ def test_timing_view_aggregates_real_done_task(store_with_done_task):
     payload = json.loads(fleet_timing_view(req).content)
     # Assert — the seeded task should be in window and bucketed.
     assert payload["n_tasks_in_window"] == 1
+
+def test_timing_view_aggregates_real_done_task_per_agent_contains(store_with_done_task):
+    # Arrange
+    rf = RequestFactory()
+    req = rf.get("/fleet/timing")
+    # Act
+    payload = json.loads(fleet_timing_view(req).content)
+    # Assert — the seeded task should be in window and bucketed.
     assert "agent-alpha" in payload["per_agent"]
+
+def test_timing_view_aggregates_real_done_task_n_tasks_done(store_with_done_task):
+    # Arrange
+    rf = RequestFactory()
+    req = rf.get("/fleet/timing")
+    # Act
+    payload = json.loads(fleet_timing_view(req).content)
+    # Assert — the seeded task should be in window and bucketed.
     assert payload["per_agent"]["agent-alpha"]["n_tasks_done"] == 1
 
 
-def test_timing_view_rejects_post_with_405(store_with_done_task):
+def test_timing_view_rejects_post_with_405_status_code(store_with_done_task):
     # Arrange
     rf = RequestFactory()
     req = rf.post("/fleet/timing")
     # Act
     response = fleet_timing_view(req)
     # Assert
+    data = json.loads(response.content)
     assert response.status_code == 405
+
+def test_timing_view_rejects_post_with_405_data_contains(store_with_done_task):
+    # Arrange
+    rf = RequestFactory()
+    req = rf.post("/fleet/timing")
+    # Act
+    response = fleet_timing_view(req)
+    # Assert
     data = json.loads(response.content)
     assert "error" in data
 

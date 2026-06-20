@@ -25,7 +25,7 @@ def _store_path(tmp_path) -> str:
 # --------------------------------------------------------------------------- #
 # close                                                                       #
 # --------------------------------------------------------------------------- #
-def test_close_persists_comment_and_status_deferred(tmp_path, env):
+def test_close_persists_comment_and_status_deferred_exit_code(tmp_path, env):
     # Arrange
     runner = CliRunner()
     store = _store_path(tmp_path)
@@ -36,11 +36,63 @@ def test_close_persists_comment_and_status_deferred(tmp_path, env):
         main, ["close", "a", "--reason", "superseded", "--tasks", store]
     )
     # Assert
+    on_disk = _model.load_tasks(store)[0]
     assert result.exit_code == 0, result.output
+
+def test_close_persists_comment_and_status_deferred_status(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    # Act
+    result = runner.invoke(
+        main, ["close", "a", "--reason", "superseded", "--tasks", store]
+    )
+    # Assert
     on_disk = _model.load_tasks(store)[0]
     assert on_disk["status"] == "deferred"
+
+def test_close_persists_comment_and_status_deferred_text(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    # Act
+    result = runner.invoke(
+        main, ["close", "a", "--reason", "superseded", "--tasks", store]
+    )
+    # Assert
+    on_disk = _model.load_tasks(store)[0]
     assert on_disk["comments"][0]["text"] == "[CLOSED] superseded"
+
+def test_close_persists_comment_and_status_deferred_closed_at(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    # Act
+    result = runner.invoke(
+        main, ["close", "a", "--reason", "superseded", "--tasks", store]
+    )
+    # Assert
+    on_disk = _model.load_tasks(store)[0]
     assert on_disk["_log_meta"]["closed_at"]
+
+def test_close_persists_comment_and_status_deferred_closed_by(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    # Act
+    result = runner.invoke(
+        main, ["close", "a", "--reason", "superseded", "--tasks", store]
+    )
+    # Assert
+    on_disk = _model.load_tasks(store)[0]
     assert on_disk["_log_meta"]["closed_by"] == "agent:cli-test"
 
 
@@ -84,7 +136,7 @@ def test_close_unknown_id_nonzero_no_traceback(tmp_path, env):
     assert result.exit_code != 0 and "Traceback" not in result.output
 
 
-def test_close_by_override_flows_into_comment_and_log_meta(tmp_path, env):
+def test_close_by_override_flows_into_comment_and_log_meta_author(tmp_path, env):
     # Arrange
     runner = CliRunner()
     store = _store_path(tmp_path)
@@ -103,10 +155,29 @@ def test_close_by_override_flows_into_comment_and_log_meta(tmp_path, env):
     # Assert
     on_disk = _model.load_tasks(store)[0]
     assert on_disk["comments"][0]["author"] == "agent:explicit"
+
+def test_close_by_override_flows_into_comment_and_log_meta_closed_by(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:env")
+    # Act
+    runner.invoke(
+        main,
+        [
+            "close", "a",
+            "--reason", "manual close",
+            "--by", "agent:explicit",
+            "--tasks", store,
+        ],
+    )
+    # Assert
+    on_disk = _model.load_tasks(store)[0]
     assert on_disk["_log_meta"]["closed_by"] == "agent:explicit"
 
 
-def test_close_dry_run_does_not_mutate(tmp_path, env):
+def test_close_dry_run_does_not_mutate_get(tmp_path, env):
     # Arrange
     runner = CliRunner()
     store = _store_path(tmp_path)
@@ -120,11 +191,39 @@ def test_close_dry_run_does_not_mutate(tmp_path, env):
     # Assert
     on_disk = _model.load_tasks(store)[0]
     assert on_disk.get("status") == "pending"
+
+def test_close_dry_run_does_not_mutate_get_2(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    # Act
+    runner.invoke(
+        main,
+        ["close", "a", "--reason", "ghost", "--tasks", store, "--dry-run"],
+    )
+    # Assert
+    on_disk = _model.load_tasks(store)[0]
     assert on_disk.get("comments", []) == []
+
+def test_close_dry_run_does_not_mutate_value_excludes(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    # Act
+    runner.invoke(
+        main,
+        ["close", "a", "--reason", "ghost", "--tasks", store, "--dry-run"],
+    )
+    # Assert
+    on_disk = _model.load_tasks(store)[0]
     assert "closed_at" not in (on_disk.get("_log_meta") or {})
 
 
-def test_close_json_emits_structured_payload(tmp_path, env):
+def test_close_json_emits_structured_payload_exit_code(tmp_path, env):
     # Arrange
     runner = CliRunner()
     store = _store_path(tmp_path)
@@ -136,13 +235,97 @@ def test_close_json_emits_structured_payload(tmp_path, env):
         ["close", "a", "--reason", "json-shape", "--tasks", store, "--json"],
     )
     # Assert
+    payload = json.loads(result.output.strip())
     assert result.exit_code == 0, result.output
+
+def test_close_json_emits_structured_payload_task_id(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    # Act
+    result = runner.invoke(
+        main,
+        ["close", "a", "--reason", "json-shape", "--tasks", store, "--json"],
+    )
+    # Assert
     payload = json.loads(result.output.strip())
     assert payload["task_id"] == "a"
+
+def test_close_json_emits_structured_payload_status(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    # Act
+    result = runner.invoke(
+        main,
+        ["close", "a", "--reason", "json-shape", "--tasks", store, "--json"],
+    )
+    # Assert
+    payload = json.loads(result.output.strip())
     assert payload["status"] == "deferred"
+
+def test_close_json_emits_structured_payload_reason(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    # Act
+    result = runner.invoke(
+        main,
+        ["close", "a", "--reason", "json-shape", "--tasks", store, "--json"],
+    )
+    # Assert
+    payload = json.loads(result.output.strip())
     assert payload["reason"] == "json-shape"
+
+def test_close_json_emits_structured_payload_text(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    # Act
+    result = runner.invoke(
+        main,
+        ["close", "a", "--reason", "json-shape", "--tasks", store, "--json"],
+    )
+    # Assert
+    payload = json.loads(result.output.strip())
     assert payload["comment"]["text"] == "[CLOSED] json-shape"
+
+def test_close_json_emits_structured_payload_closed_by(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    # Act
+    result = runner.invoke(
+        main,
+        ["close", "a", "--reason", "json-shape", "--tasks", store, "--json"],
+    )
+    # Assert
+    payload = json.loads(result.output.strip())
     assert payload["closed_by"] == "agent:cli-test"
+
+def test_close_json_emits_structured_payload_closed_at(tmp_path, env):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    # Act
+    result = runner.invoke(
+        main,
+        ["close", "a", "--reason", "json-shape", "--tasks", store, "--json"],
+    )
+    # Assert
+    payload = json.loads(result.output.strip())
     assert payload["closed_at"]
 
 

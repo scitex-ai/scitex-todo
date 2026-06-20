@@ -133,7 +133,7 @@ def test_css_uses_design_tokens_only() -> None:
         assert token in css, f"missing design token: {token}"
 
 
-def test_css_is_imported_from_board_css() -> None:
+def test_css_is_imported_from_board_css_is_file() -> None:
     """The panel only renders correctly when board.css imports the
     partial. Pinning this guards against an accidental removal in a
     future board.css refactor."""
@@ -141,7 +141,17 @@ def test_css_is_imported_from_board_css() -> None:
     # Act
     board_css = _CSS_FILE.parent / "board.css"
     # Assert
+    text = board_css.read_text(encoding="utf-8")
     assert board_css.is_file()
+
+def test_css_is_imported_from_board_css_text_contains() -> None:
+    """The panel only renders correctly when board.css imports the
+    partial. Pinning this guards against an accidental removal in a
+    future board.css refactor."""
+    # Arrange
+    # Act
+    board_css = _CSS_FILE.parent / "board.css"
+    # Assert
     text = board_css.read_text(encoding="utf-8")
     assert '@import "./fleet-mesh.css";' in text
 
@@ -241,7 +251,7 @@ def _run_panel_helpers(payload: dict) -> dict:
     return json.loads(proc.stdout.strip())
 
 
-def test_edge_color_token_maps_allow_and_deny() -> None:
+def test_edge_color_token_maps_allow_and_deny_allowclass() -> None:
     """The SINGLE point where allow/deny becomes a CSS token must
     return the two canonical class names. The CSS file defines both;
     a rename here without a CSS-side update would silently break the
@@ -258,10 +268,27 @@ def test_edge_color_token_maps_allow_and_deny() -> None:
     )
     # Assert
     assert out["allowClass"] == "stx-todo-fleet-mesh__edge--allow"
+
+def test_edge_color_token_maps_allow_and_deny_denyclass() -> None:
+    """The SINGLE point where allow/deny becomes a CSS token must
+    return the two canonical class names. The CSS file defines both;
+    a rename here without a CSS-side update would silently break the
+    color mapping."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "agents": [],
+            "edges": [],
+            "config_path": None,
+            "source_versions": {"peers": "x", "grants": "y"},
+        }
+    )
+    # Assert
     assert out["denyClass"] == "stx-todo-fleet-mesh__edge--deny"
 
 
-def test_label_with_agents_and_grants() -> None:
+def test_label_with_agents_and_grants_iserr() -> None:
     """The label pattern matches the spec verbatim:
     ``🕸 <N> agents · <M> grants``. Pin one realistic payload to
     catch a rename or a count-off-by-one downstream."""
@@ -283,17 +310,161 @@ def test_label_with_agents_and_grants() -> None:
         }
     )
     # Assert
+    # Tooltip surfaces the agent list + edge list.
     assert out["isErr"] is False
+
+def test_label_with_agents_and_grants_label_contains() -> None:
+    """The label pattern matches the spec verbatim:
+    ``🕸 <N> agents · <M> grants``. Pin one realistic payload to
+    catch a rename or a count-off-by-one downstream."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "agents": [
+                {"name": "a", "scope": "local", "status": "online"},
+                {"name": "b", "scope": "peer", "status": "online"},
+                {"name": "c", "scope": "peer", "status": "unknown"},
+            ],
+            "edges": [
+                {"source": "a", "target": "b", "allow": True},
+                {"source": "b", "target": "c", "allow": False},
+            ],
+            "config_path": None,
+            "source_versions": {"peers": "x", "grants": "y"},
+        }
+    )
+    # Assert
+    # Tooltip surfaces the agent list + edge list.
     assert "3 agents" in out["label"]
+
+def test_label_with_agents_and_grants_label_contains_2() -> None:
+    """The label pattern matches the spec verbatim:
+    ``🕸 <N> agents · <M> grants``. Pin one realistic payload to
+    catch a rename or a count-off-by-one downstream."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "agents": [
+                {"name": "a", "scope": "local", "status": "online"},
+                {"name": "b", "scope": "peer", "status": "online"},
+                {"name": "c", "scope": "peer", "status": "unknown"},
+            ],
+            "edges": [
+                {"source": "a", "target": "b", "allow": True},
+                {"source": "b", "target": "c", "allow": False},
+            ],
+            "config_path": None,
+            "source_versions": {"peers": "x", "grants": "y"},
+        }
+    )
+    # Assert
+    # Tooltip surfaces the agent list + edge list.
     assert "2 grants" in out["label"]
+
+def test_label_with_agents_and_grants_tooltip_contains() -> None:
+    """The label pattern matches the spec verbatim:
+    ``🕸 <N> agents · <M> grants``. Pin one realistic payload to
+    catch a rename or a count-off-by-one downstream."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "agents": [
+                {"name": "a", "scope": "local", "status": "online"},
+                {"name": "b", "scope": "peer", "status": "online"},
+                {"name": "c", "scope": "peer", "status": "unknown"},
+            ],
+            "edges": [
+                {"source": "a", "target": "b", "allow": True},
+                {"source": "b", "target": "c", "allow": False},
+            ],
+            "config_path": None,
+            "source_versions": {"peers": "x", "grants": "y"},
+        }
+    )
+    # Assert
     # Tooltip surfaces the agent list + edge list.
     assert "a (local) [online]" in out["tooltip"]
+
+def test_label_with_agents_and_grants_tooltip_contains_2() -> None:
+    """The label pattern matches the spec verbatim:
+    ``🕸 <N> agents · <M> grants``. Pin one realistic payload to
+    catch a rename or a count-off-by-one downstream."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "agents": [
+                {"name": "a", "scope": "local", "status": "online"},
+                {"name": "b", "scope": "peer", "status": "online"},
+                {"name": "c", "scope": "peer", "status": "unknown"},
+            ],
+            "edges": [
+                {"source": "a", "target": "b", "allow": True},
+                {"source": "b", "target": "c", "allow": False},
+            ],
+            "config_path": None,
+            "source_versions": {"peers": "x", "grants": "y"},
+        }
+    )
+    # Assert
+    # Tooltip surfaces the agent list + edge list.
     assert "c (peer) [unknown]" in out["tooltip"]
+
+def test_label_with_agents_and_grants_tooltip_contains_3() -> None:
+    """The label pattern matches the spec verbatim:
+    ``🕸 <N> agents · <M> grants``. Pin one realistic payload to
+    catch a rename or a count-off-by-one downstream."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "agents": [
+                {"name": "a", "scope": "local", "status": "online"},
+                {"name": "b", "scope": "peer", "status": "online"},
+                {"name": "c", "scope": "peer", "status": "unknown"},
+            ],
+            "edges": [
+                {"source": "a", "target": "b", "allow": True},
+                {"source": "b", "target": "c", "allow": False},
+            ],
+            "config_path": None,
+            "source_versions": {"peers": "x", "grants": "y"},
+        }
+    )
+    # Assert
+    # Tooltip surfaces the agent list + edge list.
     assert "[allow]" in out["tooltip"]
+
+def test_label_with_agents_and_grants_tooltip_contains_4() -> None:
+    """The label pattern matches the spec verbatim:
+    ``🕸 <N> agents · <M> grants``. Pin one realistic payload to
+    catch a rename or a count-off-by-one downstream."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "agents": [
+                {"name": "a", "scope": "local", "status": "online"},
+                {"name": "b", "scope": "peer", "status": "online"},
+                {"name": "c", "scope": "peer", "status": "unknown"},
+            ],
+            "edges": [
+                {"source": "a", "target": "b", "allow": True},
+                {"source": "b", "target": "c", "allow": False},
+            ],
+            "config_path": None,
+            "source_versions": {"peers": "x", "grants": "y"},
+        }
+    )
+    # Assert
+    # Tooltip surfaces the agent list + edge list.
     assert "[deny]" in out["tooltip"]
 
 
-def test_label_with_empty_mesh() -> None:
+def test_label_with_empty_mesh_iserr() -> None:
     """A fresh install with zero agents + zero grants renders
     ``0 agents · 0 grants`` cleanly — no off-by-one or NaN."""
     # Arrange
@@ -308,13 +479,73 @@ def test_label_with_empty_mesh() -> None:
     )
     # Assert
     assert out["isErr"] is False
+
+def test_label_with_empty_mesh_label_contains() -> None:
+    """A fresh install with zero agents + zero grants renders
+    ``0 agents · 0 grants`` cleanly — no off-by-one or NaN."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "agents": [],
+            "edges": [],
+            "config_path": None,
+            "source_versions": {"peers": "x", "grants": "y"},
+        }
+    )
+    # Assert
     assert "0 agents" in out["label"]
+
+def test_label_with_empty_mesh_label_contains_2() -> None:
+    """A fresh install with zero agents + zero grants renders
+    ``0 agents · 0 grants`` cleanly — no off-by-one or NaN."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "agents": [],
+            "edges": [],
+            "config_path": None,
+            "source_versions": {"peers": "x", "grants": "y"},
+        }
+    )
+    # Assert
     assert "0 grants" in out["label"]
+
+def test_label_with_empty_mesh_tooltip_contains() -> None:
+    """A fresh install with zero agents + zero grants renders
+    ``0 agents · 0 grants`` cleanly — no off-by-one or NaN."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "agents": [],
+            "edges": [],
+            "config_path": None,
+            "source_versions": {"peers": "x", "grants": "y"},
+        }
+    )
+    # Assert
     assert "agents: 0" in out["tooltip"]
+
+def test_label_with_empty_mesh_tooltip_contains_2() -> None:
+    """A fresh install with zero agents + zero grants renders
+    ``0 agents · 0 grants`` cleanly — no off-by-one or NaN."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "agents": [],
+            "edges": [],
+            "config_path": None,
+            "source_versions": {"peers": "x", "grants": "y"},
+        }
+    )
+    # Assert
     assert "grants: 0" in out["tooltip"]
 
 
-def test_error_payload_discriminator() -> None:
+def test_error_payload_discriminator_iserr() -> None:
     """``isMeshPayloadErr`` returns true for an HTTP-500 error body
     so the component branches to the ``--error`` render path."""
     # Arrange
@@ -324,7 +555,27 @@ def test_error_payload_discriminator() -> None:
     )
     # Assert
     assert out["isErr"] is True
+
+def test_error_payload_discriminator_label() -> None:
+    """``isMeshPayloadErr`` returns true for an HTTP-500 error body
+    so the component branches to the ``--error`` render path."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {"error": "sac CLI not found on PATH — install scitex-agent-container"}
+    )
+    # Assert
     assert out["label"] is None
+
+def test_error_payload_discriminator_tooltip() -> None:
+    """``isMeshPayloadErr`` returns true for an HTTP-500 error body
+    so the component branches to the ``--error`` render path."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {"error": "sac CLI not found on PATH — install scitex-agent-container"}
+    )
+    # Assert
     assert out["tooltip"] is None
 
 
@@ -366,7 +617,7 @@ def test_radial_layout_single_node_lands_at_centre() -> None:
     assert pts["only"] == (70.0, 70.0)
 
 
-def test_radial_layout_first_node_at_twelve_oclock() -> None:
+def test_radial_layout_first_node_at_twelve_oclock_isclose() -> None:
     """The first node anchors at the TOP of the circle (12 o'clock) so
     the operator's eye lands on a consistent reference frame across
     polls. ``x ≈ cx`` and ``y < cy`` for the first node."""
@@ -375,7 +626,18 @@ def test_radial_layout_first_node_at_twelve_oclock() -> None:
     # Act
     x, y = pts["a"]
     # Assert
+    # First node is ABOVE the centre (SVG y grows downward).
     assert math.isclose(x, 70.0, abs_tol=1e-9)
+
+def test_radial_layout_first_node_at_twelve_oclock_y() -> None:
+    """The first node anchors at the TOP of the circle (12 o'clock) so
+    the operator's eye lands on a consistent reference frame across
+    polls. ``x ≈ cx`` and ``y < cy`` for the first node."""
+    # Arrange
+    pts = _py_radial_layout(["a", "b", "c", "d"])
+    # Act
+    x, y = pts["a"]
+    # Assert
     # First node is ABOVE the centre (SVG y grows downward).
     assert y < 70.0
 

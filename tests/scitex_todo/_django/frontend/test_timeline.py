@@ -104,7 +104,7 @@ def test_timeline_css_declares_selector(selector: str) -> None:
     )
 
 
-def test_timeline_css_no_hardcoded_colors() -> None:
+def test_timeline_css_no_hardcoded_colors_hex_hits() -> None:
     """No hex / rgb / named-color literals — everything must ride through
     the scitex-ui token variables so the dark/light flip stays clean."""
     # Arrange
@@ -116,13 +116,63 @@ def test_timeline_css_no_hardcoded_colors() -> None:
     # Act
     hex_hits = re.findall(r"#[0-9a-fA-F]{3,8}\b", no_comments)
     # Assert
-    assert hex_hits == [], f"timeline.css has hex colors: {hex_hits!r}"
     # rgb()/rgba()/hsl()/hsla() literals.
     func_hits = re.findall(
         r"\b(?:rgb|rgba|hsl|hsla)\s*\(", no_comments
     )
+    # Common CSS named colors — not exhaustive, but covers the easy
+    # mistakes ("red", "blue", etc.).
+    named = re.findall(
+        r":\s*(red|blue|green|yellow|orange|purple|black|white|gray|grey|"
+        r"pink|cyan|magenta)\b",
+        no_comments,
+        re.IGNORECASE,
+    )
+    assert hex_hits == [], f"timeline.css has hex colors: {hex_hits!r}"
+
+def test_timeline_css_no_hardcoded_colors_func_hits() -> None:
+    """No hex / rgb / named-color literals — everything must ride through
+    the scitex-ui token variables so the dark/light flip stays clean."""
+    # Arrange
+    css = _read(_TIMELINE_CSS)
+    # Strip comments before scanning so /* ...#ffffff... */ doc colour
+    # tokens don't trip the assertion.
+    no_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    # Hex colors.
+    # Act
+    hex_hits = re.findall(r"#[0-9a-fA-F]{3,8}\b", no_comments)
+    # Assert
+    # rgb()/rgba()/hsl()/hsla() literals.
+    func_hits = re.findall(
+        r"\b(?:rgb|rgba|hsl|hsla)\s*\(", no_comments
+    )
+    # Common CSS named colors — not exhaustive, but covers the easy
+    # mistakes ("red", "blue", etc.).
+    named = re.findall(
+        r":\s*(red|blue|green|yellow|orange|purple|black|white|gray|grey|"
+        r"pink|cyan|magenta)\b",
+        no_comments,
+        re.IGNORECASE,
+    )
     assert func_hits == [], (
         f"timeline.css has color function literals: {func_hits!r}"
+    )
+
+def test_timeline_css_no_hardcoded_colors_named() -> None:
+    """No hex / rgb / named-color literals — everything must ride through
+    the scitex-ui token variables so the dark/light flip stays clean."""
+    # Arrange
+    css = _read(_TIMELINE_CSS)
+    # Strip comments before scanning so /* ...#ffffff... */ doc colour
+    # tokens don't trip the assertion.
+    no_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    # Hex colors.
+    # Act
+    hex_hits = re.findall(r"#[0-9a-fA-F]{3,8}\b", no_comments)
+    # Assert
+    # rgb()/rgba()/hsl()/hsla() literals.
+    func_hits = re.findall(
+        r"\b(?:rgb|rgba|hsl|hsla)\s*\(", no_comments
     )
     # Common CSS named colors — not exhaustive, but covers the easy
     # mistakes ("red", "blue", etc.).
@@ -173,7 +223,7 @@ def test_timeline_view_is_a_module() -> None:
     assert "export function TimelineView(" in tsx
 
 
-def test_todoboard_wires_timeline_view() -> None:
+def test_todoboard_wires_timeline_view_tsx_contains() -> None:
     """TodoBoard.tsx mounts TimelineView when ``view === 'timeline'`` and
     the toggle button sets view='timeline'."""
     # Arrange
@@ -181,7 +231,23 @@ def test_todoboard_wires_timeline_view() -> None:
     tsx = _read(_TODOBOARD_TSX)
     # Assert
     assert 'import { TimelineView }' in tsx
+
+def test_todoboard_wires_timeline_view_tsx_contains_2() -> None:
+    """TodoBoard.tsx mounts TimelineView when ``view === 'timeline'`` and
+    the toggle button sets view='timeline'."""
+    # Arrange
+    # Act
+    tsx = _read(_TODOBOARD_TSX)
+    # Assert
     assert 'setView("timeline")' in tsx
+
+def test_todoboard_wires_timeline_view_tsx_contains_3() -> None:
+    """TodoBoard.tsx mounts TimelineView when ``view === 'timeline'`` and
+    the toggle button sets view='timeline'."""
+    # Arrange
+    # Act
+    tsx = _read(_TODOBOARD_TSX)
+    # Assert
     assert 'view === "timeline"' in tsx
 
 

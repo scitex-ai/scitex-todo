@@ -146,7 +146,7 @@ ROWS = [
 ]
 
 
-def test_default_hides_status_and_goal_rows() -> None:
+def test_default_hides_status_and_goal_rows_ids_excludes() -> None:
     """By default (toggle OFF) ``kind=status`` and ``kind=goal`` rows
     disappear from the Table — the operator's actionable-only lens."""
     # Arrange
@@ -155,11 +155,29 @@ def test_default_hides_status_and_goal_rows() -> None:
     ids = [r["id"] for r in out]
     # Assert
     assert "q-scitex-io" not in ids
+
+def test_default_hides_status_and_goal_rows_ids_excludes_2() -> None:
+    """By default (toggle OFF) ``kind=status`` and ``kind=goal`` rows
+    disappear from the Table — the operator's actionable-only lens."""
+    # Arrange
+    out = _run_filter(ROWS, show_structural=False)
+    # Act
+    ids = [r["id"] for r in out]
+    # Assert
     assert "scitex" not in ids
+
+def test_default_hides_status_and_goal_rows_ids_excludes_3() -> None:
+    """By default (toggle OFF) ``kind=status`` and ``kind=goal`` rows
+    disappear from the Table — the operator's actionable-only lens."""
+    # Arrange
+    out = _run_filter(ROWS, show_structural=False)
+    # Act
+    ids = [r["id"] for r in out]
+    # Assert
     assert "proj-clew" not in ids
 
 
-def test_toggle_on_shows_structural_rows() -> None:
+def test_toggle_on_shows_structural_rows_ids_contains() -> None:
     """With the toggle ON the structural cards come back — operator can
     opt in when they need to see the quality + goal anchors."""
     # Arrange
@@ -167,9 +185,39 @@ def test_toggle_on_shows_structural_rows() -> None:
     # Act
     ids = [r["id"] for r in out]
     # Assert
+    # And nothing else is dropped.
     assert "q-scitex-io" in ids
+
+def test_toggle_on_shows_structural_rows_ids_contains_2() -> None:
+    """With the toggle ON the structural cards come back — operator can
+    opt in when they need to see the quality + goal anchors."""
+    # Arrange
+    out = _run_filter(ROWS, show_structural=True)
+    # Act
+    ids = [r["id"] for r in out]
+    # Assert
+    # And nothing else is dropped.
     assert "scitex" in ids
+
+def test_toggle_on_shows_structural_rows_ids_contains_3() -> None:
+    """With the toggle ON the structural cards come back — operator can
+    opt in when they need to see the quality + goal anchors."""
+    # Arrange
+    out = _run_filter(ROWS, show_structural=True)
+    # Act
+    ids = [r["id"] for r in out]
+    # Assert
+    # And nothing else is dropped.
     assert "proj-clew" in ids
+
+def test_toggle_on_shows_structural_rows_len() -> None:
+    """With the toggle ON the structural cards come back — operator can
+    opt in when they need to see the quality + goal anchors."""
+    # Arrange
+    out = _run_filter(ROWS, show_structural=True)
+    # Act
+    ids = [r["id"] for r in out]
+    # Assert
     # And nothing else is dropped.
     assert len(out) == len(ROWS)
 
@@ -189,7 +237,7 @@ def test_actionable_rows_are_unaffected() -> None:
         assert "decision-1" in ids
 
 
-def test_null_kind_is_default_visible() -> None:
+def test_null_kind_is_default_visible_ids_contains() -> None:
     """A row with ``kind=null`` OR no ``kind`` field at all must be
     visible by default — absent kind defaults to ``"task"`` per
     ``types/board.ts``, which is actionable."""
@@ -199,10 +247,20 @@ def test_null_kind_is_default_visible() -> None:
     ids = [r["id"] for r in out]
     # Assert
     assert "legacy-no-kind" in ids
+
+def test_null_kind_is_default_visible_ids_contains_2() -> None:
+    """A row with ``kind=null`` OR no ``kind`` field at all must be
+    visible by default — absent kind defaults to ``"task"`` per
+    ``types/board.ts``, which is actionable."""
+    # Arrange
+    out = _run_filter(ROWS, show_structural=False)
+    # Act
+    ids = [r["id"] for r in out]
+    # Assert
     assert "absent-kind" in ids
 
 
-def test_static_source_contract() -> None:
+def test_static_source_contract_src_contains() -> None:
     """The TS module must continue to expose the documented public API
     so the React component (``TableView.tsx``) can keep importing
     ``isVisibleRow`` by name. Catches accidental rename / removal."""
@@ -211,5 +269,23 @@ def test_static_source_contract() -> None:
     src = TS_FILE.read_text(encoding="utf-8")
     # Assert
     assert "export const STRUCTURAL_KINDS" in src
+
+def test_static_source_contract_src_contains_2() -> None:
+    """The TS module must continue to expose the documented public API
+    so the React component (``TableView.tsx``) can keep importing
+    ``isVisibleRow`` by name. Catches accidental rename / removal."""
+    # Arrange
+    # Act
+    src = TS_FILE.read_text(encoding="utf-8")
+    # Assert
     assert "export function isVisibleRow(" in src
+
+def test_static_source_contract_src_contains_3() -> None:
+    """The TS module must continue to expose the documented public API
+    so the React component (``TableView.tsx``) can keep importing
+    ``isVisibleRow`` by name. Catches accidental rename / removal."""
+    # Arrange
+    # Act
+    src = TS_FILE.read_text(encoding="utf-8")
+    # Assert
     assert "export function filterStructuralRows<T " in src

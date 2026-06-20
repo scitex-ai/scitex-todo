@@ -31,7 +31,7 @@ def _seed(state: WatcherState, tasks: list[dict]) -> None:
 
 
 class TestSeed:
-    def test_first_pass_fires_no_wakes(self):
+    def test_first_pass_fires_no_wakes_out(self):
         # Arrange
         state = WatcherState()
         tasks = [{"id": "a", "title": "A", "status": "pending",
@@ -40,11 +40,20 @@ class TestSeed:
         out = detect_changes(state, tasks, now=0.0)
         # Assert
         assert out == []
+
+    def test_first_pass_fires_no_wakes_seeded(self):
+        # Arrange
+        state = WatcherState()
+        tasks = [{"id": "a", "title": "A", "status": "pending",
+                  "agent": "proj-x"}]
+        # Act
+        out = detect_changes(state, tasks, now=0.0)
+        # Assert
         assert state.seeded is True
 
 
 class TestTaskAdded:
-    def test_new_task_fires_wake(self):
+    def test_new_task_fires_wake_len(self):
         # Arrange
         state = WatcherState()
         _seed(state, [])  # empty seed
@@ -54,8 +63,38 @@ class TestTaskAdded:
         out = detect_changes(state, tasks, now=100.0)
         # Assert
         assert len(out) == 1
+
+    def test_new_task_fires_wake_trigger_kind(self):
+        # Arrange
+        state = WatcherState()
+        _seed(state, [])  # empty seed
+        tasks = [{"id": "a", "title": "A", "status": "pending",
+                  "agent": "proj-x"}]
+        # Act
+        out = detect_changes(state, tasks, now=100.0)
+        # Assert
         assert out[0].trigger_kind == "task_added"
+
+    def test_new_task_fires_wake_agent(self):
+        # Arrange
+        state = WatcherState()
+        _seed(state, [])  # empty seed
+        tasks = [{"id": "a", "title": "A", "status": "pending",
+                  "agent": "proj-x"}]
+        # Act
+        out = detect_changes(state, tasks, now=100.0)
+        # Assert
         assert out[0].agent == "proj-x"
+
+    def test_new_task_fires_wake_task_id(self):
+        # Arrange
+        state = WatcherState()
+        _seed(state, [])  # empty seed
+        tasks = [{"id": "a", "title": "A", "status": "pending",
+                  "agent": "proj-x"}]
+        # Act
+        out = detect_changes(state, tasks, now=100.0)
+        # Assert
         assert out[0].task_id == "a"
 
     def test_unassigned_task_does_not_wake(self):
@@ -69,7 +108,7 @@ class TestTaskAdded:
 
 
 class TestCommentAdded:
-    def test_appended_comment_fires_wake(self):
+    def test_appended_comment_fires_wake_len(self):
         # Arrange
         state = WatcherState()
         prev = [{"id": "a", "title": "A", "status": "pending",
@@ -85,12 +124,44 @@ class TestCommentAdded:
         out = detect_changes(state, cur, now=100.0)
         # Assert
         assert len(out) == 1
+
+    def test_appended_comment_fires_wake_trigger_kind(self):
+        # Arrange
+        state = WatcherState()
+        prev = [{"id": "a", "title": "A", "status": "pending",
+                 "agent": "proj-x", "comments": []}]
+        _seed(state, prev)
+        cur = [{"id": "a", "title": "A", "status": "pending",
+                "agent": "proj-x",
+                "comments": [
+                    {"ts": "2026-06-12T00:00Z", "author": "lead",
+                     "text": "please pick this up"},
+                ]}]
+        # Act
+        out = detect_changes(state, cur, now=100.0)
+        # Assert
         assert out[0].trigger_kind == "comment"
+
+    def test_appended_comment_fires_wake_summary_contains(self):
+        # Arrange
+        state = WatcherState()
+        prev = [{"id": "a", "title": "A", "status": "pending",
+                 "agent": "proj-x", "comments": []}]
+        _seed(state, prev)
+        cur = [{"id": "a", "title": "A", "status": "pending",
+                "agent": "proj-x",
+                "comments": [
+                    {"ts": "2026-06-12T00:00Z", "author": "lead",
+                     "text": "please pick this up"},
+                ]}]
+        # Act
+        out = detect_changes(state, cur, now=100.0)
+        # Assert
         assert "lead" in out[0].summary
 
 
 class TestStatusChanged:
-    def test_status_flip_fires_wake(self):
+    def test_status_flip_fires_wake_len(self):
         # Arrange
         state = WatcherState()
         prev = [{"id": "a", "title": "A", "status": "pending",
@@ -102,13 +173,49 @@ class TestStatusChanged:
         out = detect_changes(state, cur, now=100.0)
         # Assert
         assert len(out) == 1
+
+    def test_status_flip_fires_wake_trigger_kind(self):
+        # Arrange
+        state = WatcherState()
+        prev = [{"id": "a", "title": "A", "status": "pending",
+                 "agent": "proj-x"}]
+        _seed(state, prev)
+        cur = [{"id": "a", "title": "A", "status": "in_progress",
+                "agent": "proj-x"}]
+        # Act
+        out = detect_changes(state, cur, now=100.0)
+        # Assert
         assert out[0].trigger_kind == "status_changed"
+
+    def test_status_flip_fires_wake_summary_contains(self):
+        # Arrange
+        state = WatcherState()
+        prev = [{"id": "a", "title": "A", "status": "pending",
+                 "agent": "proj-x"}]
+        _seed(state, prev)
+        cur = [{"id": "a", "title": "A", "status": "in_progress",
+                "agent": "proj-x"}]
+        # Act
+        out = detect_changes(state, cur, now=100.0)
+        # Assert
         assert "pending" in out[0].summary
+
+    def test_status_flip_fires_wake_summary_contains_2(self):
+        # Arrange
+        state = WatcherState()
+        prev = [{"id": "a", "title": "A", "status": "pending",
+                 "agent": "proj-x"}]
+        _seed(state, prev)
+        cur = [{"id": "a", "title": "A", "status": "in_progress",
+                "agent": "proj-x"}]
+        # Act
+        out = detect_changes(state, cur, now=100.0)
+        # Assert
         assert "in_progress" in out[0].summary
 
 
 class TestDebounce:
-    def test_back_to_back_wakes_collapse_per_agent(self):
+    def test_back_to_back_wakes_collapse_per_agent_len(self):
         # Arrange
         state = WatcherState()
         prev = [{"id": "a", "title": "A", "status": "pending",
@@ -126,7 +233,28 @@ class TestDebounce:
         first = detect_changes(state, cur1, now=100.0,
                                min_wake_interval_s=30.0)
         # Assert
+        second = detect_changes(state, cur2, now=110.0,
+                                min_wake_interval_s=30.0)
         assert len(first) == 1
+
+    def test_back_to_back_wakes_collapse_per_agent_second(self):
+        # Arrange
+        state = WatcherState()
+        prev = [{"id": "a", "title": "A", "status": "pending",
+                 "agent": "proj-x", "comments": []}]
+        _seed(state, prev)
+        # Two comments in quick succession.
+        cur1 = [{"id": "a", "title": "A", "status": "pending",
+                 "agent": "proj-x",
+                 "comments": [{"author": "lead", "text": "1"}]}]
+        cur2 = [{"id": "a", "title": "A", "status": "pending",
+                 "agent": "proj-x",
+                 "comments": [{"author": "lead", "text": "1"},
+                              {"author": "lead", "text": "2"}]}]
+        # Act
+        first = detect_changes(state, cur1, now=100.0,
+                               min_wake_interval_s=30.0)
+        # Assert
         second = detect_changes(state, cur2, now=110.0,
                                 min_wake_interval_s=30.0)
         assert second == []  # debounced
@@ -182,12 +310,23 @@ def http_server():
 
 
 class TestPostWake:
-    def test_round_trip_to_local_server(self, http_server):
+    def test_round_trip_to_local_server_ok(self, http_server):
         # Arrange
         # Act
         ok = post_wake(http_server, {"hello": "world"})
         # Assert
+        # Tiny pause for the daemon thread to flush.
+        for _ in range(20):
+            if _OkHandler.received:
+                break
+            time.sleep(0.02)
         assert ok is True
+
+    def test_round_trip_to_local_server_received(self, http_server):
+        # Arrange
+        # Act
+        ok = post_wake(http_server, {"hello": "world"})
+        # Assert
         # Tiny pause for the daemon thread to flush.
         for _ in range(20):
             if _OkHandler.received:

@@ -73,17 +73,23 @@ def test_task_dataclass_omits_none_group_from_to_dict():
 def test_validate_accepts_non_empty_group_string():
     # Arrange
     tasks = [{"id": "t-a", "title": "x", "status": "pending", "group": "paper-portfolio"}]
+    accepted = False
     # Act
-    # Assert
     _validate_tasks(tasks, source="<test>")
+    accepted = True
+    # Assert — a non-empty group string passes validation (no raise).
+    assert accepted is True
 
 
 def test_validate_accepts_absent_group():
     # Arrange
     tasks = [{"id": "t-a", "title": "x", "status": "pending"}]
+    accepted = False
     # Act
-    # Assert
     _validate_tasks(tasks, source="<test>")
+    accepted = True
+    # Assert — an absent group field passes validation (no raise).
+    assert accepted is True
 
 
 # === _validate_tasks rejects bad `group` shapes ===========================

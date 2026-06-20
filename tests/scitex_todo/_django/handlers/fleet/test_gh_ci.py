@@ -39,7 +39,7 @@ from scitex_todo._django.handlers.fleet import _config as fleet_config_mod
 # ─── FleetAdapterError shape ────────────────────────────────────────────
 
 
-def test_fleet_adapter_error_is_runtime_error_subclass() -> None:
+def test_fleet_adapter_error_is_runtime_error_subclass_issubclass() -> None:
     """The adapter family's failure class is a ``RuntimeError`` subclass
     so callers that ``except RuntimeError`` (e.g. broad Django error
     middleware) keep working — but a dedicated subclass lets the view
@@ -48,6 +48,15 @@ def test_fleet_adapter_error_is_runtime_error_subclass() -> None:
     # Act
     # Assert
     assert issubclass(FleetAdapterError, RuntimeError)
+
+def test_fleet_adapter_error_is_runtime_error_subclass_fleetadaptererror() -> None:
+    """The adapter family's failure class is a ``RuntimeError`` subclass
+    so callers that ``except RuntimeError`` (e.g. broad Django error
+    middleware) keep working — but a dedicated subclass lets the view
+    + tests pin behavior with ``pytest.raises(FleetAdapterError)``."""
+    # Arrange
+    # Act
+    # Assert
     assert FleetAdapterError is not RuntimeError
 
 
@@ -77,7 +86,7 @@ def test_config_missing_file_returns_empty_repos(env, tmp_path) -> None:
     assert out == {"fleet": {"ci_status": {"repos": []}}}
 
 
-def test_config_malformed_yaml_raises(env, tmp_path) -> None:
+def test_config_malformed_yaml_raises_raises_fleetadaptererror(env, tmp_path) -> None:
     """A broken config IS fail-loud so the operator does not stare at
     an empty strip wondering why their config is being ignored."""
     # Arrange
@@ -91,10 +100,10 @@ def test_config_malformed_yaml_raises(env, tmp_path) -> None:
     )
     # Act
     # Assert
-    with pytest.raises(FleetAdapterError) as excinfo:
-        fleet_config_load()
     # The message must name the file path so the operator can find it.
-    assert "dashboard.yaml" in str(excinfo.value)
+    with pytest.raises(FleetAdapterError, match="dashboard.yaml"):
+        fleet_config_load()
+
 
 
 def test_config_env_override_replaces_file_list(env, tmp_path) -> None:
@@ -196,18 +205,18 @@ def test_nonexistent_repo_raises() -> None:
         fetch_repo_ci_status("ywatanabe1989/scitex-todo-test-does-not-exist-xyz123")
 
 
-def test_invalid_slug_shape_raises_without_gh() -> None:
+def test_invalid_slug_shape_raises_without_gh_raises_fleetadaptererror() -> None:
     """Slug validation happens before we touch ``gh``, so this test
     is gh-independent — it pins the input contract on every CI box."""
     # Arrange
     # Act
     # Assert
-    with pytest.raises(FleetAdapterError) as excinfo:
+    with pytest.raises(FleetAdapterError, match="owner/name"):
         fetch_repo_ci_status("not-a-slug")
-    assert "owner/name" in str(excinfo.value)
 
 
-def test_gh_missing_binary_raises(env) -> None:
+
+def test_gh_missing_binary_raises_raises_fleetadaptererror(env) -> None:
     """Surfacing "gh not installed" must NOT silently fall back to an
     empty-checks success — that would lie to the operator about fleet
     health. Simulate the missing binary by clobbering PATH."""
@@ -217,9 +226,9 @@ def test_gh_missing_binary_raises(env) -> None:
 
     # Act
     # Assert
-    with pytest.raises(FleetAdapterError) as excinfo:
+    with pytest.raises(FleetAdapterError, match="(?i)gh"):
         gh_ci_mod.fetch_repo_ci_status("owner/name")
-    assert "gh" in str(excinfo.value).lower()
+
 
 
 # ─── overall-reducer pure unit tests ────────────────────────────────────
@@ -278,7 +287,7 @@ def test_overall_status_reducer_picks_worst(checks, expected) -> None:
 # ─── module-surface contract ────────────────────────────────────────────
 
 
-def test_config_module_constant_paths() -> None:
+def test_config_module_constant_paths_str() -> None:
     """Lock the config-path constant so a rename downstream forces a
     test update. Operators search for this literal when debugging."""
     # Arrange
@@ -287,6 +296,13 @@ def test_config_module_constant_paths() -> None:
     assert str(fleet_config_mod._CONFIG_REL) == str(
         Path(".scitex") / "todo" / "dashboard.yaml"
     )
+
+def test_config_module_constant_paths_env_repos() -> None:
+    """Lock the config-path constant so a rename downstream forces a
+    test update. Operators search for this literal when debugging."""
+    # Arrange
+    # Act
+    # Assert
     assert fleet_config_mod._ENV_REPOS == "SCITEX_TODO_FLEET_CI_REPOS"
 
 

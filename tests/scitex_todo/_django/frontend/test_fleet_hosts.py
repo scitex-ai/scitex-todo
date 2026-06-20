@@ -125,7 +125,7 @@ def test_css_uses_design_tokens_only() -> None:
         assert token in css, f"missing design token: {token}"
 
 
-def test_css_is_imported_from_board_css() -> None:
+def test_css_is_imported_from_board_css_is_file() -> None:
     """The panel only renders correctly when board.css imports the
     partial. Pinning this guards against an accidental removal in a
     future board.css refactor."""
@@ -133,7 +133,17 @@ def test_css_is_imported_from_board_css() -> None:
     # Act
     board_css = _CSS_FILE.parent / "board.css"
     # Assert
+    text = board_css.read_text(encoding="utf-8")
     assert board_css.is_file()
+
+def test_css_is_imported_from_board_css_text_contains() -> None:
+    """The panel only renders correctly when board.css imports the
+    partial. Pinning this guards against an accidental removal in a
+    future board.css refactor."""
+    # Arrange
+    # Act
+    board_css = _CSS_FILE.parent / "board.css"
+    # Assert
     text = board_css.read_text(encoding="utf-8")
     assert '@import "./fleet-hosts.css";' in text
 
@@ -227,7 +237,7 @@ def _run_panel_helpers(payload: dict) -> dict:
     return json.loads(proc.stdout.strip())
 
 
-def test_label_with_interfaces_and_peers() -> None:
+def test_label_with_interfaces_and_peers_iserr() -> None:
     """The label pattern matches the operator's spec verbatim:
     ``🖥 <hostname> · <N> ifaces · <M> peers``. Pin one realistic
     payload to catch a rename or a count-off-by-one downstream."""
@@ -249,18 +259,186 @@ def test_label_with_interfaces_and_peers() -> None:
         }
     )
     # Assert
+    # Tooltip surfaces the full interface list.
     assert out["isErr"] is False
+
+def test_label_with_interfaces_and_peers_label_contains() -> None:
+    """The label pattern matches the operator's spec verbatim:
+    ``🖥 <hostname> · <N> ifaces · <M> peers``. Pin one realistic
+    payload to catch a rename or a count-off-by-one downstream."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "config_path": None,
+            "local": {
+                "name": "test-box",
+                "scope": "local",
+                "aliases": {},
+                "interfaces": [
+                    {"iface": "eth0", "addr": "10.0.0.1", "family": "inet"},
+                    {"iface": "eth1", "addr": "10.0.0.2", "family": "inet"},
+                ],
+            },
+            "peers": [{"name": "p1"}, {"name": "p2"}, {"name": "p3"}],
+        }
+    )
+    # Assert
+    # Tooltip surfaces the full interface list.
     assert "test-box" in out["label"]
+
+def test_label_with_interfaces_and_peers_label_contains_2() -> None:
+    """The label pattern matches the operator's spec verbatim:
+    ``🖥 <hostname> · <N> ifaces · <M> peers``. Pin one realistic
+    payload to catch a rename or a count-off-by-one downstream."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "config_path": None,
+            "local": {
+                "name": "test-box",
+                "scope": "local",
+                "aliases": {},
+                "interfaces": [
+                    {"iface": "eth0", "addr": "10.0.0.1", "family": "inet"},
+                    {"iface": "eth1", "addr": "10.0.0.2", "family": "inet"},
+                ],
+            },
+            "peers": [{"name": "p1"}, {"name": "p2"}, {"name": "p3"}],
+        }
+    )
+    # Assert
+    # Tooltip surfaces the full interface list.
     assert "2 ifaces" in out["label"]
+
+def test_label_with_interfaces_and_peers_label_contains_3() -> None:
+    """The label pattern matches the operator's spec verbatim:
+    ``🖥 <hostname> · <N> ifaces · <M> peers``. Pin one realistic
+    payload to catch a rename or a count-off-by-one downstream."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "config_path": None,
+            "local": {
+                "name": "test-box",
+                "scope": "local",
+                "aliases": {},
+                "interfaces": [
+                    {"iface": "eth0", "addr": "10.0.0.1", "family": "inet"},
+                    {"iface": "eth1", "addr": "10.0.0.2", "family": "inet"},
+                ],
+            },
+            "peers": [{"name": "p1"}, {"name": "p2"}, {"name": "p3"}],
+        }
+    )
+    # Assert
+    # Tooltip surfaces the full interface list.
     assert "3 peers" in out["label"]
+
+def test_label_with_interfaces_and_peers_tooltip_contains() -> None:
+    """The label pattern matches the operator's spec verbatim:
+    ``🖥 <hostname> · <N> ifaces · <M> peers``. Pin one realistic
+    payload to catch a rename or a count-off-by-one downstream."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "config_path": None,
+            "local": {
+                "name": "test-box",
+                "scope": "local",
+                "aliases": {},
+                "interfaces": [
+                    {"iface": "eth0", "addr": "10.0.0.1", "family": "inet"},
+                    {"iface": "eth1", "addr": "10.0.0.2", "family": "inet"},
+                ],
+            },
+            "peers": [{"name": "p1"}, {"name": "p2"}, {"name": "p3"}],
+        }
+    )
+    # Assert
     # Tooltip surfaces the full interface list.
     assert "eth0" in out["tooltip"]
+
+def test_label_with_interfaces_and_peers_tooltip_contains_2() -> None:
+    """The label pattern matches the operator's spec verbatim:
+    ``🖥 <hostname> · <N> ifaces · <M> peers``. Pin one realistic
+    payload to catch a rename or a count-off-by-one downstream."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "config_path": None,
+            "local": {
+                "name": "test-box",
+                "scope": "local",
+                "aliases": {},
+                "interfaces": [
+                    {"iface": "eth0", "addr": "10.0.0.1", "family": "inet"},
+                    {"iface": "eth1", "addr": "10.0.0.2", "family": "inet"},
+                ],
+            },
+            "peers": [{"name": "p1"}, {"name": "p2"}, {"name": "p3"}],
+        }
+    )
+    # Assert
+    # Tooltip surfaces the full interface list.
     assert "10.0.0.1" in out["tooltip"]
+
+def test_label_with_interfaces_and_peers_tooltip_contains_3() -> None:
+    """The label pattern matches the operator's spec verbatim:
+    ``🖥 <hostname> · <N> ifaces · <M> peers``. Pin one realistic
+    payload to catch a rename or a count-off-by-one downstream."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "config_path": None,
+            "local": {
+                "name": "test-box",
+                "scope": "local",
+                "aliases": {},
+                "interfaces": [
+                    {"iface": "eth0", "addr": "10.0.0.1", "family": "inet"},
+                    {"iface": "eth1", "addr": "10.0.0.2", "family": "inet"},
+                ],
+            },
+            "peers": [{"name": "p1"}, {"name": "p2"}, {"name": "p3"}],
+        }
+    )
+    # Assert
+    # Tooltip surfaces the full interface list.
     assert "eth1" in out["tooltip"]
+
+def test_label_with_interfaces_and_peers_tooltip_contains_4() -> None:
+    """The label pattern matches the operator's spec verbatim:
+    ``🖥 <hostname> · <N> ifaces · <M> peers``. Pin one realistic
+    payload to catch a rename or a count-off-by-one downstream."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "config_path": None,
+            "local": {
+                "name": "test-box",
+                "scope": "local",
+                "aliases": {},
+                "interfaces": [
+                    {"iface": "eth0", "addr": "10.0.0.1", "family": "inet"},
+                    {"iface": "eth1", "addr": "10.0.0.2", "family": "inet"},
+                ],
+            },
+            "peers": [{"name": "p1"}, {"name": "p2"}, {"name": "p3"}],
+        }
+    )
+    # Assert
+    # Tooltip surfaces the full interface list.
     assert "scope: local" in out["tooltip"]
 
 
-def test_label_with_no_interfaces_or_peers() -> None:
+def test_label_with_no_interfaces_or_peers_iserr() -> None:
     """A host with zero NICs visible to sac (containerized env) +
     zero peers (fresh install) renders ``0 ifaces · 0 peers`` and the
     tooltip surfaces ``interfaces: (none)``."""
@@ -280,13 +458,93 @@ def test_label_with_no_interfaces_or_peers() -> None:
     )
     # Assert
     assert out["isErr"] is False
+
+def test_label_with_no_interfaces_or_peers_label_contains() -> None:
+    """A host with zero NICs visible to sac (containerized env) +
+    zero peers (fresh install) renders ``0 ifaces · 0 peers`` and the
+    tooltip surfaces ``interfaces: (none)``."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "config_path": None,
+            "local": {
+                "name": "isolated",
+                "scope": "local",
+                "aliases": {},
+                "interfaces": [],
+            },
+            "peers": [],
+        }
+    )
+    # Assert
     assert "isolated" in out["label"]
+
+def test_label_with_no_interfaces_or_peers_label_contains_2() -> None:
+    """A host with zero NICs visible to sac (containerized env) +
+    zero peers (fresh install) renders ``0 ifaces · 0 peers`` and the
+    tooltip surfaces ``interfaces: (none)``."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "config_path": None,
+            "local": {
+                "name": "isolated",
+                "scope": "local",
+                "aliases": {},
+                "interfaces": [],
+            },
+            "peers": [],
+        }
+    )
+    # Assert
     assert "0 ifaces" in out["label"]
+
+def test_label_with_no_interfaces_or_peers_label_contains_3() -> None:
+    """A host with zero NICs visible to sac (containerized env) +
+    zero peers (fresh install) renders ``0 ifaces · 0 peers`` and the
+    tooltip surfaces ``interfaces: (none)``."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "config_path": None,
+            "local": {
+                "name": "isolated",
+                "scope": "local",
+                "aliases": {},
+                "interfaces": [],
+            },
+            "peers": [],
+        }
+    )
+    # Assert
     assert "0 peers" in out["label"]
+
+def test_label_with_no_interfaces_or_peers_tooltip_contains() -> None:
+    """A host with zero NICs visible to sac (containerized env) +
+    zero peers (fresh install) renders ``0 ifaces · 0 peers`` and the
+    tooltip surfaces ``interfaces: (none)``."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {
+            "config_path": None,
+            "local": {
+                "name": "isolated",
+                "scope": "local",
+                "aliases": {},
+                "interfaces": [],
+            },
+            "peers": [],
+        }
+    )
+    # Assert
     assert "interfaces: (none)" in out["tooltip"]
 
 
-def test_error_payload_discriminator() -> None:
+def test_error_payload_discriminator_iserr() -> None:
     """``isHostsPayloadErr`` returns true for an HTTP-500 error body
     so the component branches to the ``--error`` render path."""
     # Arrange
@@ -296,5 +554,25 @@ def test_error_payload_discriminator() -> None:
     )
     # Assert
     assert out["isErr"] is True
+
+def test_error_payload_discriminator_label() -> None:
+    """``isHostsPayloadErr`` returns true for an HTTP-500 error body
+    so the component branches to the ``--error`` render path."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {"error": "sac CLI not found on PATH — install scitex-agent-container"}
+    )
+    # Assert
     assert out["label"] is None
+
+def test_error_payload_discriminator_tooltip() -> None:
+    """``isHostsPayloadErr`` returns true for an HTTP-500 error body
+    so the component branches to the ``--error`` render path."""
+    # Arrange
+    # Act
+    out = _run_panel_helpers(
+        {"error": "sac CLI not found on PATH — install scitex-agent-container"}
+    )
+    # Assert
     assert out["tooltip"] is None

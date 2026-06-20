@@ -86,19 +86,40 @@ def test_react_board_scrollbar_color_uses_token() -> None:
         )
 
 
-def test_react_board_webkit_scrollbar_present() -> None:
+def test_react_board_webkit_scrollbar_present_css_contains() -> None:
     """React board must register ::-webkit-scrollbar pseudo-element rules."""
     # Arrange
     # Act
     css = _read(_BOARD_REACT_CSS)
     # Assert
     assert "::-webkit-scrollbar" in css, "board.css missing ::-webkit-scrollbar"
+
+def test_react_board_webkit_scrollbar_present_css_contains_2() -> None:
+    """React board must register ::-webkit-scrollbar pseudo-element rules."""
+    # Arrange
+    # Act
+    css = _read(_BOARD_REACT_CSS)
+    # Assert
     assert (
         "::-webkit-scrollbar-thumb" in css
     ), "board.css missing ::-webkit-scrollbar-thumb"
+
+def test_react_board_webkit_scrollbar_present_css_contains_3() -> None:
+    """React board must register ::-webkit-scrollbar pseudo-element rules."""
+    # Arrange
+    # Act
+    css = _read(_BOARD_REACT_CSS)
+    # Assert
     assert (
         "::-webkit-scrollbar-thumb:hover" in css
     ), "board.css missing ::-webkit-scrollbar-thumb:hover"
+
+def test_react_board_webkit_scrollbar_present_css_contains_4() -> None:
+    """React board must register ::-webkit-scrollbar pseudo-element rules."""
+    # Arrange
+    # Act
+    css = _read(_BOARD_REACT_CSS)
+    # Assert
     assert (
         "::-webkit-scrollbar-track" in css
     ), "board.css missing ::-webkit-scrollbar-track"
@@ -118,26 +139,80 @@ def test_react_board_global_scrollbar_fallback() -> None:
     )
 
 
-def test_board_v3_global_scrollbar_file_present() -> None:
+def test_board_v3_global_scrollbar_file_present_is_file() -> None:
     """The board_v3 global theming file must exist and be load-bearing."""
     # Arrange
     # Act
     # Assert
+    css = _read(_BOARD_V3_THEME_CSS)
+    # Modern scrollbar properties
+    # WebKit pseudo-elements
     assert _BOARD_V3_THEME_CSS.is_file(), (
         f"new global theming file missing: {_BOARD_V3_THEME_CSS}"
     )
+
+def test_board_v3_global_scrollbar_file_present_css_contains() -> None:
+    """The board_v3 global theming file must exist and be load-bearing."""
+    # Arrange
+    # Act
+    # Assert
     css = _read(_BOARD_V3_THEME_CSS)
     # Modern scrollbar properties
+    # WebKit pseudo-elements
     assert "scrollbar-width" in css, "missing scrollbar-width"
+
+def test_board_v3_global_scrollbar_file_present_css_contains_2() -> None:
+    """The board_v3 global theming file must exist and be load-bearing."""
+    # Arrange
+    # Act
+    # Assert
+    css = _read(_BOARD_V3_THEME_CSS)
+    # Modern scrollbar properties
+    # WebKit pseudo-elements
     assert "scrollbar-color" in css, "missing scrollbar-color"
+
+def test_board_v3_global_scrollbar_file_present_css_contains_3() -> None:
+    """The board_v3 global theming file must exist and be load-bearing."""
+    # Arrange
+    # Act
+    # Assert
+    css = _read(_BOARD_V3_THEME_CSS)
+    # Modern scrollbar properties
     # WebKit pseudo-elements
     assert "::-webkit-scrollbar" in css
+
+def test_board_v3_global_scrollbar_file_present_css_contains_4() -> None:
+    """The board_v3 global theming file must exist and be load-bearing."""
+    # Arrange
+    # Act
+    # Assert
+    css = _read(_BOARD_V3_THEME_CSS)
+    # Modern scrollbar properties
+    # WebKit pseudo-elements
     assert "::-webkit-scrollbar-thumb" in css
+
+def test_board_v3_global_scrollbar_file_present_css_contains_5() -> None:
+    """The board_v3 global theming file must exist and be load-bearing."""
+    # Arrange
+    # Act
+    # Assert
+    css = _read(_BOARD_V3_THEME_CSS)
+    # Modern scrollbar properties
+    # WebKit pseudo-elements
     assert "::-webkit-scrollbar-thumb:hover" in css
+
+def test_board_v3_global_scrollbar_file_present_css_contains_6() -> None:
+    """The board_v3 global theming file must exist and be load-bearing."""
+    # Arrange
+    # Act
+    # Assert
+    css = _read(_BOARD_V3_THEME_CSS)
+    # Modern scrollbar properties
+    # WebKit pseudo-elements
     assert "::-webkit-scrollbar-track" in css
 
 
-def test_board_v3_template_loads_global_theme_first() -> None:
+def test_board_v3_template_loads_global_theme_first_theme_idx() -> None:
     """The template must <link> 00-theme-scrollbar-select.css BEFORE
     01-filterbar.css so its rules form the global fallback, and per-file
     overrides win on specificity."""
@@ -148,7 +223,29 @@ def test_board_v3_template_loads_global_theme_first() -> None:
     filterbar_idx = html.find("01-filterbar.css")
     # Assert
     assert theme_idx != -1, "template never links 00-theme-scrollbar-select.css"
+
+def test_board_v3_template_loads_global_theme_first_filterbar_idx() -> None:
+    """The template must <link> 00-theme-scrollbar-select.css BEFORE
+    01-filterbar.css so its rules form the global fallback, and per-file
+    overrides win on specificity."""
+    # Arrange
+    html = _read(_BOARD_V3_TEMPLATE)
+    theme_idx = html.find("00-theme-scrollbar-select.css")
+    # Act
+    filterbar_idx = html.find("01-filterbar.css")
+    # Assert
     assert filterbar_idx != -1, "template never links 01-filterbar.css"
+
+def test_board_v3_template_loads_global_theme_first_theme_idx_2() -> None:
+    """The template must <link> 00-theme-scrollbar-select.css BEFORE
+    01-filterbar.css so its rules form the global fallback, and per-file
+    overrides win on specificity."""
+    # Arrange
+    html = _read(_BOARD_V3_TEMPLATE)
+    theme_idx = html.find("00-theme-scrollbar-select.css")
+    # Act
+    filterbar_idx = html.find("01-filterbar.css")
+    # Assert
     assert theme_idx < filterbar_idx, (
         "00-theme-scrollbar-select.css must be linked BEFORE 01-filterbar.css"
     )
@@ -159,7 +256,7 @@ def test_board_v3_template_loads_global_theme_first() -> None:
 # ============================================================================
 
 
-def test_react_board_select_rule_present() -> None:
+def test_react_board_select_rule_present_css_contains() -> None:
     """The React board must style `.stx-todo-board select` with token-bound
     background + color so vanilla dropdowns stop falling through to OS
     white."""
@@ -167,18 +264,60 @@ def test_react_board_select_rule_present() -> None:
     # Act
     css = _read(_BOARD_REACT_CSS)
     # Assert
-    assert ".stx-todo-board select" in css, (
-        "board.css missing `.stx-todo-board select` rule"
-    )
     # Pull the rule block out and verify it binds to scitex-ui tokens.
     m = re.search(
         r"\.stx-todo-board select\s*\{([^}]*)\}", css, flags=re.DOTALL
     )
+    block = m.group(1)
+    assert ".stx-todo-board select" in css, (
+        "board.css missing `.stx-todo-board select` rule"
+    )
+
+def test_react_board_select_rule_present_m() -> None:
+    """The React board must style `.stx-todo-board select` with token-bound
+    background + color so vanilla dropdowns stop falling through to OS
+    white."""
+    # Arrange
+    # Act
+    css = _read(_BOARD_REACT_CSS)
+    # Assert
+    # Pull the rule block out and verify it binds to scitex-ui tokens.
+    m = re.search(
+        r"\.stx-todo-board select\s*\{([^}]*)\}", css, flags=re.DOTALL
+    )
+    block = m.group(1)
     assert m is not None, "could not extract `.stx-todo-board select` block"
+
+def test_react_board_select_rule_present_case_3() -> None:
+    """The React board must style `.stx-todo-board select` with token-bound
+    background + color so vanilla dropdowns stop falling through to OS
+    white."""
+    # Arrange
+    # Act
+    css = _read(_BOARD_REACT_CSS)
+    # Assert
+    # Pull the rule block out and verify it binds to scitex-ui tokens.
+    m = re.search(
+        r"\.stx-todo-board select\s*\{([^}]*)\}", css, flags=re.DOTALL
+    )
     block = m.group(1)
     assert "background:" in block and "var(--" in block, (
         f"select background must use a var(--…) token, got block: {block!r}"
     )
+
+def test_react_board_select_rule_present_case_4() -> None:
+    """The React board must style `.stx-todo-board select` with token-bound
+    background + color so vanilla dropdowns stop falling through to OS
+    white."""
+    # Arrange
+    # Act
+    css = _read(_BOARD_REACT_CSS)
+    # Assert
+    # Pull the rule block out and verify it binds to scitex-ui tokens.
+    m = re.search(
+        r"\.stx-todo-board select\s*\{([^}]*)\}", css, flags=re.DOTALL
+    )
+    block = m.group(1)
     assert "color:" in block and "var(--" in block, (
         f"select color must use a var(--…) token, got block: {block!r}"
     )
@@ -197,17 +336,39 @@ def test_react_board_select_focus_state() -> None:
     ), "board.css missing select focus state"
 
 
-def test_board_v3_select_rule_present() -> None:
+def test_board_v3_select_rule_present_css_contains() -> None:
     """Vanilla board_v3 surface must style `body select` so every <select>
     in the filterbar (status, project, agent, sort) gets dark chrome."""
     # Arrange
     # Act
     css = _read(_BOARD_V3_THEME_CSS)
     # Assert
-    assert "body select" in css, "00-theme-scrollbar-select.css missing select rule"
     # Token-bound background + color
     m = re.search(r"body select\s*\{([^}]*)\}", css, flags=re.DOTALL)
+    block = m.group(1)
+    assert "body select" in css, "00-theme-scrollbar-select.css missing select rule"
+
+def test_board_v3_select_rule_present_m() -> None:
+    """Vanilla board_v3 surface must style `body select` so every <select>
+    in the filterbar (status, project, agent, sort) gets dark chrome."""
+    # Arrange
+    # Act
+    css = _read(_BOARD_V3_THEME_CSS)
+    # Assert
+    # Token-bound background + color
+    m = re.search(r"body select\s*\{([^}]*)\}", css, flags=re.DOTALL)
+    block = m.group(1)
     assert m, "could not extract `body select` block"
+
+def test_board_v3_select_rule_present_block_contains() -> None:
+    """Vanilla board_v3 surface must style `body select` so every <select>
+    in the filterbar (status, project, agent, sort) gets dark chrome."""
+    # Arrange
+    # Act
+    css = _read(_BOARD_V3_THEME_CSS)
+    # Assert
+    # Token-bound background + color
+    m = re.search(r"body select\s*\{([^}]*)\}", css, flags=re.DOTALL)
     block = m.group(1)
     assert "var(--" in block, (
         f"body select rule must use var(--…) tokens, got: {block!r}"

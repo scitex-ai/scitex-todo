@@ -119,7 +119,7 @@ def test_timeline_view_payload_has_expected_keys(store_with_timeline_tasks):
     } <= set(payload.keys())
 
 
-def test_timeline_view_event_shape(store_with_timeline_tasks):
+def test_timeline_view_event_shape_events(store_with_timeline_tasks):
     """Each event row carries the operator-brief-mandated keys."""
     # Arrange
     rf = RequestFactory()
@@ -127,7 +127,17 @@ def test_timeline_view_event_shape(store_with_timeline_tasks):
     # Act
     payload = json.loads(timeline_view(req).content)
     # Assert
+    e = payload["events"][0]
     assert payload["events"], "expected at least one event in the window"
+
+def test_timeline_view_event_shape_case_2(store_with_timeline_tasks):
+    """Each event row carries the operator-brief-mandated keys."""
+    # Arrange
+    rf = RequestFactory()
+    req = rf.get("/timeline")
+    # Act
+    payload = json.loads(timeline_view(req).content)
+    # Assert
     e = payload["events"][0]
     assert {
         "id",

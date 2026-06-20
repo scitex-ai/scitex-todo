@@ -220,7 +220,7 @@ def test_no_date_returns_null() -> None:
     assert out == {"isNull": True}
 
 
-def test_tasks_by_date_placement_counts() -> None:
+def test_tasks_by_date_placement_counts_out() -> None:
     """Given a tasks array, ``tasksByDate`` produces a map keyed by
     YYYY-MM-DD with the right task ids on each day — matches the
     operator-facing "this day has N tasks" contract."""
@@ -247,10 +247,33 @@ def test_tasks_by_date_placement_counts() -> None:
         "2026-06-15": ["t3", "t4"],
         "2026-06-20": ["t6"],
     }
+
+def test_tasks_by_date_placement_counts_value_excludes() -> None:
+    """Given a tasks array, ``tasksByDate`` produces a map keyed by
+    YYYY-MM-DD with the right task ids on each day — matches the
+    operator-facing "this day has N tasks" contract."""
+    # Arrange
+    # Act
+    out = _run(
+        textwrap.dedent(
+            """
+            const tasks = [
+              {id: 't1', deadline: '2026-06-14'},
+              {id: 't2', deadline: '2026-06-14'},
+              {id: 't3', deadline: '2026-06-15'},
+              {id: 't4', last_activity: '2026-06-15T08:00:00Z'},
+              {id: 't5'},  // no date — should be skipped
+              {id: 't6', deadline_next: '2026-06-20'},
+            ];
+            console.log(JSON.stringify(tasksByDate(tasks)));
+            """
+        )
+    )
+    # Assert
     assert "t5" not in {tid for ids in out.values() for tid in ids}
 
 
-def test_month_grid_returns_42_cells_with_leading_trailing() -> None:
+def test_month_grid_returns_42_cells_with_leading_trailing_len() -> None:
     """``monthGridDays`` always returns 42 cells (6 weeks × 7 days), so
     the grid height never jitters. Leading + trailing days that fall
     OUTSIDE the requested month must be flagged ``inMonth=false``."""
@@ -262,26 +285,194 @@ def test_month_grid_returns_42_cells_with_leading_trailing() -> None:
         "console.log(JSON.stringify(monthGridDays(2026, 5, new Date(2026, 5, 14, 12))));"
     )
     # Assert
-    assert len(out) == 42
     # First cell is the leading Sunday before June 1 — May 31, 2026
     # (a Sunday). Out-of-month.
-    assert out[0]["key"] == "2026-05-31"
-    assert out[0]["inMonth"] is False
     # Cell 1 (Mon June 1) is the first in-month day.
-    assert out[1]["key"] == "2026-06-01"
-    assert out[1]["inMonth"] is True
     # The last in-month day is June 30 — every later cell is the
     # trailing July fill and must be inMonth=false.
     in_month_keys = [c["key"] for c in out if c["inMonth"]]
+    # Trailing cells (after June 30) are July, inMonth=false.
+    trailing = [c for c in out if not c["inMonth"] and c["key"] > "2026-06-30"]
+    assert len(out) == 42
+
+def test_month_grid_returns_42_cells_with_leading_trailing_key() -> None:
+    """``monthGridDays`` always returns 42 cells (6 weeks × 7 days), so
+    the grid height never jitters. Leading + trailing days that fall
+    OUTSIDE the requested month must be flagged ``inMonth=false``."""
+    # June 2026: June 1 is a Monday — so one leading Sunday (May 31) and
+    # several trailing July days fill the grid.
+    # Arrange
+    # Act
+    out = _run(
+        "console.log(JSON.stringify(monthGridDays(2026, 5, new Date(2026, 5, 14, 12))));"
+    )
+    # Assert
+    # First cell is the leading Sunday before June 1 — May 31, 2026
+    # (a Sunday). Out-of-month.
+    # Cell 1 (Mon June 1) is the first in-month day.
+    # The last in-month day is June 30 — every later cell is the
+    # trailing July fill and must be inMonth=false.
+    in_month_keys = [c["key"] for c in out if c["inMonth"]]
+    # Trailing cells (after June 30) are July, inMonth=false.
+    trailing = [c for c in out if not c["inMonth"] and c["key"] > "2026-06-30"]
+    assert out[0]["key"] == "2026-05-31"
+
+def test_month_grid_returns_42_cells_with_leading_trailing_inmonth() -> None:
+    """``monthGridDays`` always returns 42 cells (6 weeks × 7 days), so
+    the grid height never jitters. Leading + trailing days that fall
+    OUTSIDE the requested month must be flagged ``inMonth=false``."""
+    # June 2026: June 1 is a Monday — so one leading Sunday (May 31) and
+    # several trailing July days fill the grid.
+    # Arrange
+    # Act
+    out = _run(
+        "console.log(JSON.stringify(monthGridDays(2026, 5, new Date(2026, 5, 14, 12))));"
+    )
+    # Assert
+    # First cell is the leading Sunday before June 1 — May 31, 2026
+    # (a Sunday). Out-of-month.
+    # Cell 1 (Mon June 1) is the first in-month day.
+    # The last in-month day is June 30 — every later cell is the
+    # trailing July fill and must be inMonth=false.
+    in_month_keys = [c["key"] for c in out if c["inMonth"]]
+    # Trailing cells (after June 30) are July, inMonth=false.
+    trailing = [c for c in out if not c["inMonth"] and c["key"] > "2026-06-30"]
+    assert out[0]["inMonth"] is False
+
+def test_month_grid_returns_42_cells_with_leading_trailing_key_2() -> None:
+    """``monthGridDays`` always returns 42 cells (6 weeks × 7 days), so
+    the grid height never jitters. Leading + trailing days that fall
+    OUTSIDE the requested month must be flagged ``inMonth=false``."""
+    # June 2026: June 1 is a Monday — so one leading Sunday (May 31) and
+    # several trailing July days fill the grid.
+    # Arrange
+    # Act
+    out = _run(
+        "console.log(JSON.stringify(monthGridDays(2026, 5, new Date(2026, 5, 14, 12))));"
+    )
+    # Assert
+    # First cell is the leading Sunday before June 1 — May 31, 2026
+    # (a Sunday). Out-of-month.
+    # Cell 1 (Mon June 1) is the first in-month day.
+    # The last in-month day is June 30 — every later cell is the
+    # trailing July fill and must be inMonth=false.
+    in_month_keys = [c["key"] for c in out if c["inMonth"]]
+    # Trailing cells (after June 30) are July, inMonth=false.
+    trailing = [c for c in out if not c["inMonth"] and c["key"] > "2026-06-30"]
+    assert out[1]["key"] == "2026-06-01"
+
+def test_month_grid_returns_42_cells_with_leading_trailing_inmonth_2() -> None:
+    """``monthGridDays`` always returns 42 cells (6 weeks × 7 days), so
+    the grid height never jitters. Leading + trailing days that fall
+    OUTSIDE the requested month must be flagged ``inMonth=false``."""
+    # June 2026: June 1 is a Monday — so one leading Sunday (May 31) and
+    # several trailing July days fill the grid.
+    # Arrange
+    # Act
+    out = _run(
+        "console.log(JSON.stringify(monthGridDays(2026, 5, new Date(2026, 5, 14, 12))));"
+    )
+    # Assert
+    # First cell is the leading Sunday before June 1 — May 31, 2026
+    # (a Sunday). Out-of-month.
+    # Cell 1 (Mon June 1) is the first in-month day.
+    # The last in-month day is June 30 — every later cell is the
+    # trailing July fill and must be inMonth=false.
+    in_month_keys = [c["key"] for c in out if c["inMonth"]]
+    # Trailing cells (after June 30) are July, inMonth=false.
+    trailing = [c for c in out if not c["inMonth"] and c["key"] > "2026-06-30"]
+    assert out[1]["inMonth"] is True
+
+def test_month_grid_returns_42_cells_with_leading_trailing_in_month_keys() -> None:
+    """``monthGridDays`` always returns 42 cells (6 weeks × 7 days), so
+    the grid height never jitters. Leading + trailing days that fall
+    OUTSIDE the requested month must be flagged ``inMonth=false``."""
+    # June 2026: June 1 is a Monday — so one leading Sunday (May 31) and
+    # several trailing July days fill the grid.
+    # Arrange
+    # Act
+    out = _run(
+        "console.log(JSON.stringify(monthGridDays(2026, 5, new Date(2026, 5, 14, 12))));"
+    )
+    # Assert
+    # First cell is the leading Sunday before June 1 — May 31, 2026
+    # (a Sunday). Out-of-month.
+    # Cell 1 (Mon June 1) is the first in-month day.
+    # The last in-month day is June 30 — every later cell is the
+    # trailing July fill and must be inMonth=false.
+    in_month_keys = [c["key"] for c in out if c["inMonth"]]
+    # Trailing cells (after June 30) are July, inMonth=false.
+    trailing = [c for c in out if not c["inMonth"] and c["key"] > "2026-06-30"]
     assert in_month_keys[0] == "2026-06-01"
+
+def test_month_grid_returns_42_cells_with_leading_trailing_in_month_keys_2() -> None:
+    """``monthGridDays`` always returns 42 cells (6 weeks × 7 days), so
+    the grid height never jitters. Leading + trailing days that fall
+    OUTSIDE the requested month must be flagged ``inMonth=false``."""
+    # June 2026: June 1 is a Monday — so one leading Sunday (May 31) and
+    # several trailing July days fill the grid.
+    # Arrange
+    # Act
+    out = _run(
+        "console.log(JSON.stringify(monthGridDays(2026, 5, new Date(2026, 5, 14, 12))));"
+    )
+    # Assert
+    # First cell is the leading Sunday before June 1 — May 31, 2026
+    # (a Sunday). Out-of-month.
+    # Cell 1 (Mon June 1) is the first in-month day.
+    # The last in-month day is June 30 — every later cell is the
+    # trailing July fill and must be inMonth=false.
+    in_month_keys = [c["key"] for c in out if c["inMonth"]]
+    # Trailing cells (after June 30) are July, inMonth=false.
+    trailing = [c for c in out if not c["inMonth"] and c["key"] > "2026-06-30"]
     assert in_month_keys[-1] == "2026-06-30"
+
+def test_month_grid_returns_42_cells_with_leading_trailing_len_2() -> None:
+    """``monthGridDays`` always returns 42 cells (6 weeks × 7 days), so
+    the grid height never jitters. Leading + trailing days that fall
+    OUTSIDE the requested month must be flagged ``inMonth=false``."""
+    # June 2026: June 1 is a Monday — so one leading Sunday (May 31) and
+    # several trailing July days fill the grid.
+    # Arrange
+    # Act
+    out = _run(
+        "console.log(JSON.stringify(monthGridDays(2026, 5, new Date(2026, 5, 14, 12))));"
+    )
+    # Assert
+    # First cell is the leading Sunday before June 1 — May 31, 2026
+    # (a Sunday). Out-of-month.
+    # Cell 1 (Mon June 1) is the first in-month day.
+    # The last in-month day is June 30 — every later cell is the
+    # trailing July fill and must be inMonth=false.
+    in_month_keys = [c["key"] for c in out if c["inMonth"]]
+    # Trailing cells (after June 30) are July, inMonth=false.
+    trailing = [c for c in out if not c["inMonth"] and c["key"] > "2026-06-30"]
     assert len(in_month_keys) == 30
+
+def test_month_grid_returns_42_cells_with_leading_trailing_all() -> None:
+    """``monthGridDays`` always returns 42 cells (6 weeks × 7 days), so
+    the grid height never jitters. Leading + trailing days that fall
+    OUTSIDE the requested month must be flagged ``inMonth=false``."""
+    # June 2026: June 1 is a Monday — so one leading Sunday (May 31) and
+    # several trailing July days fill the grid.
+    # Arrange
+    # Act
+    out = _run(
+        "console.log(JSON.stringify(monthGridDays(2026, 5, new Date(2026, 5, 14, 12))));"
+    )
+    # Assert
+    # First cell is the leading Sunday before June 1 — May 31, 2026
+    # (a Sunday). Out-of-month.
+    # Cell 1 (Mon June 1) is the first in-month day.
+    # The last in-month day is June 30 — every later cell is the
+    # trailing July fill and must be inMonth=false.
+    in_month_keys = [c["key"] for c in out if c["inMonth"]]
     # Trailing cells (after June 30) are July, inMonth=false.
     trailing = [c for c in out if not c["inMonth"] and c["key"] > "2026-06-30"]
     assert all(c["key"].startswith("2026-07-") for c in trailing)
 
 
-def test_today_cell_flag_is_set() -> None:
+def test_today_cell_flag_is_set_len() -> None:
     """The cell matching the `today` parameter must carry
     ``isToday=true`` — drives the accent-border ring on the Calendar."""
     # Render June 2026 with `today` pinned at June 14 — exactly one
@@ -294,7 +485,33 @@ def test_today_cell_flag_is_set() -> None:
     today_cells = [c for c in out if c["isToday"]]
     # Assert
     assert len(today_cells) == 1
+
+def test_today_cell_flag_is_set_key() -> None:
+    """The cell matching the `today` parameter must carry
+    ``isToday=true`` — drives the accent-border ring on the Calendar."""
+    # Render June 2026 with `today` pinned at June 14 — exactly one
+    # cell should fire isToday.
+    # Arrange
+    out = _run(
+        "console.log(JSON.stringify(monthGridDays(2026, 5, new Date(2026, 5, 14, 12))));"
+    )
+    # Act
+    today_cells = [c for c in out if c["isToday"]]
+    # Assert
     assert today_cells[0]["key"] == "2026-06-14"
+
+def test_today_cell_flag_is_set_inmonth() -> None:
+    """The cell matching the `today` parameter must carry
+    ``isToday=true`` — drives the accent-border ring on the Calendar."""
+    # Render June 2026 with `today` pinned at June 14 — exactly one
+    # cell should fire isToday.
+    # Arrange
+    out = _run(
+        "console.log(JSON.stringify(monthGridDays(2026, 5, new Date(2026, 5, 14, 12))));"
+    )
+    # Act
+    today_cells = [c for c in out if c["isToday"]]
+    # Assert
     assert today_cells[0]["inMonth"] is True
 
 

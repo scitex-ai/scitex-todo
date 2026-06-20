@@ -152,7 +152,7 @@ def _run(snippet: str):
 # === parseTimelineTs =======================================================
 
 
-def test_parse_timeline_ts_basic_iso() -> None:
+def test_parse_timeline_ts_basic_iso_v() -> None:
     """An ISO-8601 string parses into a finite ms epoch — round-trips
     via ``new Date().getTime()`` (sidesteps any local-tz math)."""
     # Arrange
@@ -165,6 +165,19 @@ def test_parse_timeline_ts_basic_iso() -> None:
     )
     # Assert
     assert out["v"] == out["ref"]
+
+def test_parse_timeline_ts_basic_iso_isinstance() -> None:
+    """An ISO-8601 string parses into a finite ms epoch — round-trips
+    via ``new Date().getTime()`` (sidesteps any local-tz math)."""
+    # Arrange
+    # Act
+    out = _run(
+        "console.log(JSON.stringify({"
+        "v: parseTimelineTs('2026-06-14T12:00:00Z'),"
+        "ref: new Date('2026-06-14T12:00:00Z').getTime(),"
+        "}));"
+    )
+    # Assert
     assert isinstance(out["v"], int)
 
 
@@ -186,7 +199,7 @@ def test_parse_timeline_ts_null_on_empty() -> None:
 # === groupEventsByLane =====================================================
 
 
-def test_group_events_by_lane_buckets() -> None:
+def test_group_events_by_lane_buckets_order() -> None:
     """Events bucket into a Map keyed by lane; insertion order preserved."""
     # Arrange
     # Act
@@ -204,6 +217,24 @@ def test_group_events_by_lane_buckets() -> None:
     )
     # Assert
     assert out["order"] == ["x", "y"]
+
+def test_group_events_by_lane_buckets_bylane() -> None:
+    """Events bucket into a Map keyed by lane; insertion order preserved."""
+    # Arrange
+    # Act
+    out = _run(
+        textwrap.dedent(
+            """
+            const evs = [
+              {id: 'a', lane: 'x'},
+              {id: 'b', lane: 'y'},
+              {id: 'c', lane: 'x'},
+            ];
+            console.log(JSON.stringify(groupEventsByLane(evs)));
+            """
+        )
+    )
+    # Assert
     assert out["byLane"] == {"x": ["a", "c"], "y": ["b"]}
 
 
@@ -340,7 +371,7 @@ def test_event_bar_geometry_null_when_no_started() -> None:
 # === makeTicks =============================================================
 
 
-def test_make_ticks_endpoints_and_spacing() -> None:
+def test_make_ticks_endpoints_and_spacing_len() -> None:
     """N evenly-spaced ticks span from 0 to width with N-1 segments."""
     # Arrange
     # Act
@@ -348,9 +379,39 @@ def test_make_ticks_endpoints_and_spacing() -> None:
         "console.log(JSON.stringify(makeTicks(0, 1000, 100, 6)));"
     )
     # Assert
+    # Middle tick is at width/2.
     assert len(out) == 6
+
+def test_make_ticks_endpoints_and_spacing_x() -> None:
+    """N evenly-spaced ticks span from 0 to width with N-1 segments."""
+    # Arrange
+    # Act
+    out = _run(
+        "console.log(JSON.stringify(makeTicks(0, 1000, 100, 6)));"
+    )
+    # Assert
+    # Middle tick is at width/2.
     assert out[0]["x"] == 0
+
+def test_make_ticks_endpoints_and_spacing_x_2() -> None:
+    """N evenly-spaced ticks span from 0 to width with N-1 segments."""
+    # Arrange
+    # Act
+    out = _run(
+        "console.log(JSON.stringify(makeTicks(0, 1000, 100, 6)));"
+    )
+    # Assert
+    # Middle tick is at width/2.
     assert out[-1]["x"] == 100
+
+def test_make_ticks_endpoints_and_spacing_case_4() -> None:
+    """N evenly-spaced ticks span from 0 to width with N-1 segments."""
+    # Arrange
+    # Act
+    out = _run(
+        "console.log(JSON.stringify(makeTicks(0, 1000, 100, 6)));"
+    )
+    # Assert
     # Middle tick is at width/2.
     assert abs(out[len(out) // 2]["x"] - 50.0) < 0.001 or out[2]["x"] == 40.0
 

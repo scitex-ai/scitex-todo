@@ -144,7 +144,7 @@ def test_chat_view_post_returns_200(store_with_chat_task):
     assert response.status_code == 200
 
 
-def test_chat_view_post_returns_new_comment(store_with_chat_task):
+def test_chat_view_post_returns_new_comment_text(store_with_chat_task):
     """The 200 payload carries the appended comment so the FE can
     optimistic-append without a follow-up GET."""
     # Arrange
@@ -158,6 +158,20 @@ def test_chat_view_post_returns_new_comment(store_with_chat_task):
     payload = json.loads(chat_view(req, card_id="t-chat").content)
     # Assert
     assert payload["comment"]["text"] == "ping"
+
+def test_chat_view_post_returns_new_comment_author(store_with_chat_task):
+    """The 200 payload carries the appended comment so the FE can
+    optimistic-append without a follow-up GET."""
+    # Arrange
+    rf = RequestFactory()
+    req = rf.post(
+        "/chat/t-chat",
+        data=json.dumps({"text": "ping", "author": "operator"}),
+        content_type="application/json",
+    )
+    # Act
+    payload = json.loads(chat_view(req, card_id="t-chat").content)
+    # Assert
     assert payload["comment"]["author"] == "operator"
 
 
@@ -255,7 +269,7 @@ def test_chat_view_post_unknown_card_404(store_with_chat_task):
     assert response.status_code == 404
 
 
-def test_chat_view_post_default_author_used_when_missing(
+def test_chat_view_post_default_author_used_when_missing_isinstance(
     store_with_chat_task,
 ):
     """When ``author`` is omitted the view uses the fallback sentinel
@@ -274,6 +288,25 @@ def test_chat_view_post_default_author_used_when_missing(
     # pin the exact sentinel here so the underlying $USER fallback
     # (when the env happens to be set) still passes.
     assert isinstance(payload["comment"]["author"], str)
+
+def test_chat_view_post_default_author_used_when_missing_len(
+    store_with_chat_task,
+):
+    """When ``author`` is omitted the view uses the fallback sentinel
+    (display token, not a literal name) — no hardcoded proper nouns
+    leak into the wire."""
+    # Arrange
+    rf = RequestFactory()
+    req = rf.post(
+        "/chat/t-chat",
+        data=json.dumps({"text": "ping"}),
+        content_type="application/json",
+    )
+    # Act
+    payload = json.loads(chat_view(req, card_id="t-chat").content)
+    # Assert — the author value is at minimum a non-empty string; we don't
+    # pin the exact sentinel here so the underlying $USER fallback
+    # (when the env happens to be set) still passes.
     assert len(payload["comment"]["author"]) > 0
 
 

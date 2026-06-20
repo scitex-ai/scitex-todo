@@ -466,7 +466,7 @@ def test_template_group_by_time_checkbox_present() -> None:
     )
 
 
-def test_template_group_by_time_lives_in_view_group() -> None:
+def test_template_group_by_time_lives_in_view_group_m() -> None:
     """The Group-by-time checkbox must live inside the existing
     ``.stx-todo-filterbar__group--view`` so the operator's time
     controls cluster with Layout/Sort/Group."""
@@ -479,7 +479,22 @@ def test_template_group_by_time_lives_in_view_group() -> None:
         flags=re.DOTALL,
     )
     # Assert
+    view_body = m.group(1)
     assert m, "could not locate VIEW group block in template"
+
+def test_template_group_by_time_lives_in_view_group_view_body_contains() -> None:
+    """The Group-by-time checkbox must live inside the existing
+    ``.stx-todo-filterbar__group--view`` so the operator's time
+    controls cluster with Layout/Sort/Group."""
+    # Arrange
+    html = _read(_BOARD_V3_TEMPLATE)
+    # Act
+    m = re.search(
+        r"stx-todo-filterbar__group--view[^>]*>(.*?)\{#\s*end VIEW group",
+        html,
+        flags=re.DOTALL,
+    )
+    # Assert
     view_body = m.group(1)
     assert 'id="stx-toggle-group-by-time"' in view_body, (
         "Group-by-time checkbox not inside the VIEW group"
@@ -497,7 +512,7 @@ def test_template_loads_time_grouping_css() -> None:
     )
 
 
-def test_template_wires_on_group_by_time_change_handler() -> None:
+def test_template_wires_on_group_by_time_change_handler_html_contains() -> None:
     """The checkbox must wire onchange → onGroupByTimeChange, and the
     handler function must be defined in the inline <script>."""
     # Arrange
@@ -507,12 +522,20 @@ def test_template_wires_on_group_by_time_change_handler() -> None:
     assert "onGroupByTimeChange" in html, (
         "board_v3.html missing onGroupByTimeChange handler reference"
     )
+
+def test_template_wires_on_group_by_time_change_handler_html_contains_2() -> None:
+    """The checkbox must wire onchange → onGroupByTimeChange, and the
+    handler function must be defined in the inline <script>."""
+    # Arrange
+    # Act
+    html = _read(_BOARD_V3_TEMPLATE)
+    # Assert
     assert "function onGroupByTimeChange" in html, (
         "board_v3.html missing onGroupByTimeChange function definition"
     )
 
 
-def test_template_defines_time_bucket_helper() -> None:
+def test_template_defines_time_bucket_helper_html_contains() -> None:
     """The bucket classifier ``timeBucketForCard`` must be defined in
     the inline <script> — the test JS RUNTIME mirrors its body, so the
     name must continue to exist for the mirror to be load-bearing."""
@@ -523,6 +546,15 @@ def test_template_defines_time_bucket_helper() -> None:
     assert "function timeBucketForCard" in html, (
         "board_v3.html missing timeBucketForCard helper"
     )
+
+def test_template_defines_time_bucket_helper_html_contains_2() -> None:
+    """The bucket classifier ``timeBucketForCard`` must be defined in
+    the inline <script> — the test JS RUNTIME mirrors its body, so the
+    name must continue to exist for the mirror to be load-bearing."""
+    # Arrange
+    # Act
+    html = _read(_BOARD_V3_TEMPLATE)
+    # Assert
     assert "function timeSortKey" in html, (
         "board_v3.html missing timeSortKey helper"
     )
@@ -618,16 +650,25 @@ def test_time_css_balanced_braces() -> None:
     )
 
 
-def test_time_css_chevron_signals_collapsible() -> None:
+def test_time_css_chevron_signals_collapsible_css_contains() -> None:
     """The chevron class must exist — collapsibility cue for the
     operator. Spec calls out ``▸`` / ``▾`` glyphs in the inline JS."""
     # Arrange
     # Act
     css = _read(_TIME_CSS)
     # Assert
+    html = _read(_BOARD_V3_TEMPLATE)
     assert ".stx-todo-time-bucket-chevron" in css, (
         "08-time-grouping.css missing chevron rule"
     )
+
+def test_time_css_chevron_signals_collapsible_case_2() -> None:
+    """The chevron class must exist — collapsibility cue for the
+    operator. Spec calls out ``▸`` / ``▾`` glyphs in the inline JS."""
+    # Arrange
+    # Act
+    css = _read(_TIME_CSS)
+    # Assert
     html = _read(_BOARD_V3_TEMPLATE)
     assert "▸" in html and "▾" in html, (
         "board_v3.html chevron glyphs ▸ / ▾ missing from template"

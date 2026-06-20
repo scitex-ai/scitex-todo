@@ -111,7 +111,7 @@ def test_author_color_token_deterministic() -> None:
     assert a == b
 
 
-def test_author_color_token_empty_input_uses_muted_slot() -> None:
+def test_author_color_token_empty_input_uses_muted_slot_tokens() -> None:
     """Empty / null input lands in the muted slot (index 2) so
     unlabeled comments still render legibly. The exact slot is the
     contract — no hardcoded literal here in the test, we just pin
@@ -127,7 +127,39 @@ def test_author_color_token_empty_input_uses_muted_slot() -> None:
     tokens = json.loads(out)
     # Assert
     assert tokens[0] == "var(--stx-text-muted)"
+
+def test_author_color_token_empty_input_uses_muted_slot_tokens_2() -> None:
+    """Empty / null input lands in the muted slot (index 2) so
+    unlabeled comments still render legibly. The exact slot is the
+    contract — no hardcoded literal here in the test, we just pin
+    "it picks index 2 = the muted token"."""
+    # Arrange
+    out = _run(
+        "console.log(JSON.stringify("
+        "[authorColorToken(''), authorColorToken(null), "
+        "authorColorToken(undefined)]"
+        "));"
+    )
+    # Act
+    tokens = json.loads(out)
+    # Assert
     assert tokens[1] == "var(--stx-text-muted)"
+
+def test_author_color_token_empty_input_uses_muted_slot_tokens_3() -> None:
+    """Empty / null input lands in the muted slot (index 2) so
+    unlabeled comments still render legibly. The exact slot is the
+    contract — no hardcoded literal here in the test, we just pin
+    "it picks index 2 = the muted token"."""
+    # Arrange
+    out = _run(
+        "console.log(JSON.stringify("
+        "[authorColorToken(''), authorColorToken(null), "
+        "authorColorToken(undefined)]"
+        "));"
+    )
+    # Act
+    tokens = json.loads(out)
+    # Assert
     assert tokens[2] == "var(--stx-text-muted)"
 
 
@@ -151,7 +183,7 @@ def test_author_color_token_returns_known_token() -> None:
     }
 
 
-def test_author_color_token_different_authors_can_collide() -> None:
+def test_author_color_token_different_authors_can_collide_case_1() -> None:
     """The hash space is finite (6 slots) and the mapping is content-
     agnostic; we only assert the predicate doesn't throw and returns a
     token for two different inputs."""
@@ -165,6 +197,20 @@ def test_author_color_token_different_authors_can_collide() -> None:
     a, b = json.loads(out)
     # Assert
     assert isinstance(a, str) and a.startswith("var(--stx-")
+
+def test_author_color_token_different_authors_can_collide_case_2() -> None:
+    """The hash space is finite (6 slots) and the mapping is content-
+    agnostic; we only assert the predicate doesn't throw and returns a
+    token for two different inputs."""
+    # Arrange
+    out = _run(
+        "console.log(JSON.stringify("
+        "[authorColorToken('agent-a'), authorColorToken('agent-b')]"
+        "));"
+    )
+    # Act
+    a, b = json.loads(out)
+    # Assert
     assert isinstance(b, str) and b.startswith("var(--stx-")
 
 
