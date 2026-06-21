@@ -1,0 +1,56 @@
+name: quality
+
+# Single-package quality gate — runs `scitex-dev ecosystem audit-all`
+# against this package. Mirrors the canonical audit that
+# `tests/develop/test_audit.py` runs inside the test suite, but as a
+# standalone gate so an audit regression is visible even when the matrix
+# is skipped.
+#
+# `--new-only` is the key flag: scitex-todo carries a known body of
+# pre-existing PA-306 (no-mocks) / PA-307 (test-quality) findings that
+# are being retired in their own focused PRs. `--new-only` diffs against
+# the base ref (default `develop`) and reports ONLY net-new violations,
+# so the existing backlog is ratcheted as the baseline (0 net-new ->
+# GREEN) while still failing CI the instant a NEW violation is
+# introduced. Project-type + rule skips live in `.scitex/dev/config.yaml`
+# in this checkout and are applied automatically.
+
+on:
+  schedule:
+    - cron: "0 18 * * *"  # 18:00 UTC (~03:00 JST), after the test run
+  workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - ".scitex/dev/config.yaml"
+      - ".github/workflows/scitex-todo-quality-audit-on-ubuntu-latest.yml"
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch develop ref for --new-only baseline
+        run: git fetch origin develop:develop || true
+
+      - name: Install package + audit tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all,dev]" || pip install -e ".[dev]" || pip install -e .
+          pip install "scitex-dev[cli-audit]>=0.17.14"
+
+      - name: Run scitex-dev ecosystem audit-all (net-new only)
+        run: scitex-dev ecosystem audit-all scitex-todo --new-only --no-version-check
