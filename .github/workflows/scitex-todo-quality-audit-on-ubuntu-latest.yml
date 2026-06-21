@@ -14,6 +14,16 @@ name: quality
 # GREEN) while still failing CI the instant a NEW violation is
 # introduced. Project-type + rule skips live in `.scitex/dev/config.yaml`
 # in this checkout and are applied automatically.
+#
+# Runner: scitex-todo's self-hosted Spartan CPU runners
+#   (spartan-cpu-todo-01 / -02). GitHub-hosted `ubuntu-latest` is
+#   unavailable on this account (Actions billing block), and todo runs
+#   ALL compute on the dedicated Spartan runners anyway. The
+#   `-on-ubuntu-latest` filename is kept for fleet naming consistency
+#   (cf. scitex-io / scitex-app / scitex-plt); it is a naming convention,
+#   not a runtime assertion — same as rtd-sphinx-build-on-ubuntu-latest.
+#   `actions/setup-python` has no tool cache on a self-hosted runner, so
+#   `uv` provisions the interpreter and the venv.
 
 on:
   schedule:
@@ -32,25 +42,34 @@ on:
 
 jobs:
   audit:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, spartan-cpu]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v3
         with:
-          python-version: "3.12"
+          cache-dependency-glob: pyproject.toml
 
       - name: Fetch develop ref for --new-only baseline
         run: git fetch origin develop:develop || true
 
       - name: Install package + audit tooling
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[all,dev]" || pip install -e ".[dev]" || pip install -e .
-          pip install "scitex-dev[cli-audit]>=0.17.14"
+          set -euo pipefail
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python -e ".[all,dev]" \
+            || uv pip install --python .venv/bin/python -e ".[dev]" \
+            || uv pip install --python .venv/bin/python -e .
+          uv pip install --python .venv/bin/python "scitex-dev[cli-audit]>=0.17.14"
 
       - name: Run scitex-dev ecosystem audit-all (net-new only)
-        run: scitex-dev ecosystem audit-all scitex-todo --new-only --no-version-check
+        # .venv/bin on PATH so the auditor's `shutil.which("scitex-dev")`
+        # and the per-auditor subprocess spawns resolve to THIS venv
+        # (where scitex-todo's console-script is installed).
+        run: |
+          set -euo pipefail
+          export PATH="$PWD/.venv/bin:$PATH"
+          scitex-dev ecosystem audit-all scitex-todo --path "$PWD" --new-only --no-version-check
