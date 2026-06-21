@@ -30,13 +30,17 @@ from scitex_todo._store import add_task, list_tasks
 
 
 def test_entry_point_group_name_is_canonical():
-    # Arrange / Act / Assert — external producers grep this string.
+    # Arrange
+    # Act
+    # Assert
     assert ENTRY_POINT_GROUP == "scitex_todo.hooks"
 
 
 def test_valid_event_kinds_set():
-    # Arrange / Act / Assert — `card-message` added in the Phase-6
     # chat-channel PR (lead a2a `1e8e33d0`, 2026-06-14).
+    # Arrange
+    # Act
+    # Assert
     assert VALID_EVENT_KINDS == frozenset({"push", "done", "card-message"})
 
 
@@ -46,22 +50,25 @@ def test_valid_event_kinds_set():
 def test_event_validate_rejects_unknown_kind():
     # Arrange
     bad = {"kind": "fart"}
-    # Act / Assert
+    # Act
+    # Assert
     with pytest.raises(HookEventError):
         event_validate(bad)
 
 
 def test_event_validate_rejects_non_dict():
     # Arrange
-    # Act / Assert
+    # Act
+    # Assert
     with pytest.raises(HookEventError):
         event_validate(["push"])
 
 
 def test_event_validate_push_requires_repo():
-    # Arrange — missing `repo`.
+    # Arrange
     bad = {"kind": "push", "branch": "develop", "commit_sha": "abc"}
-    # Act / Assert
+    # Act
+    # Assert
     with pytest.raises(HookEventError):
         event_validate(bad)
 
@@ -69,7 +76,8 @@ def test_event_validate_push_requires_repo():
 def test_event_validate_push_requires_branch():
     # Arrange
     bad = {"kind": "push", "repo": "owner/repo", "commit_sha": "abc"}
-    # Act / Assert
+    # Act
+    # Assert
     with pytest.raises(HookEventError):
         event_validate(bad)
 
@@ -77,18 +85,22 @@ def test_event_validate_push_requires_branch():
 def test_event_validate_push_requires_commit_sha():
     # Arrange
     bad = {"kind": "push", "repo": "owner/repo", "branch": "develop"}
-    # Act / Assert
+    # Act
+    # Assert
     with pytest.raises(HookEventError):
         event_validate(bad)
 
 
 def test_event_validate_done_requires_pr_number_int():
-    # Arrange — pr_number must be int, not string.
+    # Arrange
     bad = {
-        "kind": "done", "repo": "owner/repo",
-        "pr_number": "187", "pr_url": "https://x.test/pull/187",
+        "kind": "done",
+        "repo": "owner/repo",
+        "pr_number": "187",
+        "pr_url": "https://x.test/pull/187",
     }
-    # Act / Assert
+    # Act
+    # Assert
     with pytest.raises(HookEventError):
         event_validate(bad)
 
@@ -96,7 +108,8 @@ def test_event_validate_done_requires_pr_number_int():
 def test_event_validate_done_requires_pr_url():
     # Arrange
     bad = {"kind": "done", "repo": "owner/repo", "pr_number": 187}
-    # Act / Assert
+    # Act
+    # Assert
     with pytest.raises(HookEventError):
         event_validate(bad)
 
@@ -104,10 +117,14 @@ def test_event_validate_done_requires_pr_url():
 def test_event_validate_card_ids_must_be_list():
     # Arrange
     bad = {
-        "kind": "push", "repo": "owner/repo", "branch": "develop",
-        "commit_sha": "abc", "card_ids": "card-1",
+        "kind": "push",
+        "repo": "owner/repo",
+        "branch": "develop",
+        "commit_sha": "abc",
+        "card_ids": "card-1",
     }
-    # Act / Assert
+    # Act
+    # Assert
     with pytest.raises(HookEventError):
         event_validate(bad)
 
@@ -115,8 +132,12 @@ def test_event_validate_card_ids_must_be_list():
 def test_event_validate_passes_valid_push():
     # Arrange
     good = {
-        "kind": "push", "repo": "owner/repo", "branch": "develop",
-        "commit_sha": "abc123def", "author": "me", "message": "x",
+        "kind": "push",
+        "repo": "owner/repo",
+        "branch": "develop",
+        "commit_sha": "abc123def",
+        "author": "me",
+        "message": "x",
         "card_ids": ["card-1"],
     }
     # Act
@@ -128,8 +149,11 @@ def test_event_validate_passes_valid_push():
 def test_event_validate_passes_valid_done():
     # Arrange
     good = {
-        "kind": "done", "repo": "owner/repo", "pr_number": 187,
-        "pr_url": "https://x.test/pull/187", "card_ids": ["card-1"],
+        "kind": "done",
+        "repo": "owner/repo",
+        "pr_number": 187,
+        "pr_url": "https://x.test/pull/187",
+        "card_ids": ["card-1"],
     }
     # Act
     out = event_validate(good)
@@ -140,7 +164,9 @@ def test_event_validate_passes_valid_done():
 def test_event_validate_card_ids_default_to_empty_list():
     # Arrange — card_ids absent in payload.
     payload = {
-        "kind": "push", "repo": "owner/repo", "branch": "develop",
+        "kind": "push",
+        "repo": "owner/repo",
+        "branch": "develop",
         "commit_sha": "abc",
     }
     # Act
@@ -158,15 +184,20 @@ def _store_with(tmp_path: Path) -> Path:
     return store
 
 
-def test_push_appends_comment_to_card(tmp_path: Path, monkeypatch):
+def test_push_appends_comment_to_card(tmp_path: Path, env):
     # Arrange
     store = _store_with(tmp_path)
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
-    event = event_validate({
-        "kind": "push", "repo": "owner/repo", "branch": "develop",
-        "commit_sha": "abc123def456", "message": "first push",
-        "card_ids": ["card-1"],
-    })
+    env.set("SCITEX_TODO_TASKS", str(store))
+    event = event_validate(
+        {
+            "kind": "push",
+            "repo": "owner/repo",
+            "branch": "develop",
+            "commit_sha": "abc123def456",
+            "message": "first push",
+            "card_ids": ["card-1"],
+        }
+    )
     # Act
     summary = dispatch_event(event)
     # Assert
@@ -174,17 +205,23 @@ def test_push_appends_comment_to_card(tmp_path: Path, monkeypatch):
 
 
 def test_push_is_idempotent_when_commit_sha_already_recorded(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    env,
 ):
     # Arrange — first push recorded; second one with same commit_sha
     # must be a noop.
     store = _store_with(tmp_path)
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
-    event = event_validate({
-        "kind": "push", "repo": "owner/repo", "branch": "develop",
-        "commit_sha": "abc123def456", "message": "first push",
-        "card_ids": ["card-1"],
-    })
+    env.set("SCITEX_TODO_TASKS", str(store))
+    event = event_validate(
+        {
+            "kind": "push",
+            "repo": "owner/repo",
+            "branch": "develop",
+            "commit_sha": "abc123def456",
+            "message": "first push",
+            "card_ids": ["card-1"],
+        }
+    )
     dispatch_event(event)
     # Act
     summary = dispatch_event(event)
@@ -192,14 +229,19 @@ def test_push_is_idempotent_when_commit_sha_already_recorded(
     assert summary["card_writes"][0]["action"] == "already-recorded"
 
 
-def test_push_unknown_card_id_is_soft_noop(tmp_path: Path, monkeypatch):
+def test_push_unknown_card_id_is_soft_noop(tmp_path: Path, env):
     # Arrange — producer hinted at a card that doesn't exist.
     store = _store_with(tmp_path)
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
-    event = event_validate({
-        "kind": "push", "repo": "owner/repo", "branch": "develop",
-        "commit_sha": "abc", "card_ids": ["never-existed"],
-    })
+    env.set("SCITEX_TODO_TASKS", str(store))
+    event = event_validate(
+        {
+            "kind": "push",
+            "repo": "owner/repo",
+            "branch": "develop",
+            "commit_sha": "abc",
+            "card_ids": ["never-existed"],
+        }
+    )
     # Act
     summary = dispatch_event(event)
     # Assert
@@ -209,14 +251,19 @@ def test_push_unknown_card_id_is_soft_noop(tmp_path: Path, monkeypatch):
 # === Built-in done handler — idempotent done+pr_url ========================
 
 
-def test_done_flips_card_to_done_with_pr_url(tmp_path: Path, monkeypatch):
+def test_done_flips_card_to_done_with_pr_url(tmp_path: Path, env):
     # Arrange
     store = _store_with(tmp_path)
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
-    event = event_validate({
-        "kind": "done", "repo": "owner/repo", "pr_number": 187,
-        "pr_url": "https://x.test/pull/187", "card_ids": ["card-1"],
-    })
+    env.set("SCITEX_TODO_TASKS", str(store))
+    event = event_validate(
+        {
+            "kind": "done",
+            "repo": "owner/repo",
+            "pr_number": 187,
+            "pr_url": "https://x.test/pull/187",
+            "card_ids": ["card-1"],
+        }
+    )
     # Act
     dispatch_event(event)
     # Assert
@@ -224,14 +271,19 @@ def test_done_flips_card_to_done_with_pr_url(tmp_path: Path, monkeypatch):
     assert loaded.get("status") == "done"
 
 
-def test_done_records_pr_url_on_card(tmp_path: Path, monkeypatch):
+def test_done_records_pr_url_on_card(tmp_path: Path, env):
     # Arrange
     store = _store_with(tmp_path)
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
-    event = event_validate({
-        "kind": "done", "repo": "owner/repo", "pr_number": 187,
-        "pr_url": "https://x.test/pull/187", "card_ids": ["card-1"],
-    })
+    env.set("SCITEX_TODO_TASKS", str(store))
+    event = event_validate(
+        {
+            "kind": "done",
+            "repo": "owner/repo",
+            "pr_number": 187,
+            "pr_url": "https://x.test/pull/187",
+            "card_ids": ["card-1"],
+        }
+    )
     # Act
     dispatch_event(event)
     # Assert
@@ -240,15 +292,21 @@ def test_done_records_pr_url_on_card(tmp_path: Path, monkeypatch):
 
 
 def test_done_is_idempotent_when_already_done_with_same_pr_url(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    env,
 ):
     # Arrange — first done recorded; second is a noop.
     store = _store_with(tmp_path)
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
-    event = event_validate({
-        "kind": "done", "repo": "owner/repo", "pr_number": 187,
-        "pr_url": "https://x.test/pull/187", "card_ids": ["card-1"],
-    })
+    env.set("SCITEX_TODO_TASKS", str(store))
+    event = event_validate(
+        {
+            "kind": "done",
+            "repo": "owner/repo",
+            "pr_number": 187,
+            "pr_url": "https://x.test/pull/187",
+            "card_ids": ["card-1"],
+        }
+    )
     dispatch_event(event)
     # Act
     summary = dispatch_event(event)
@@ -259,31 +317,31 @@ def test_done_is_idempotent_when_already_done_with_same_pr_url(
 # === Plugin failures are caught + reported, never propagated ==============
 
 
-def test_dispatch_event_handles_plugin_error_gracefully(tmp_path: Path, monkeypatch):
-    # Arrange — register a plugin that raises. We can't add a real
-    # entry-point at runtime cleanly without packaging machinery, so
-    # we directly patch the iterator to inject one. (This is fault
-    # injection — the same pattern PR #166 used for the kill-mid-write
-    # tests. The PRODUCTION code path is what's being tested.)
-    from scitex_todo import _hooks as hooks_module
-
+def test_dispatch_event_handles_plugin_error_gracefully(tmp_path: Path, env):
+    # Arrange — register a real fake entry point whose handler raises,
+    # injected through the dispatcher's `entry_points=` seam (no mock /
+    # no monkeypatch; the PRODUCTION code path is what's being tested).
     class _FakeEP:
         name = "fake-failing"
 
         def load(self):
             def _bad(_event):
                 raise RuntimeError("plugin exploded")
+
             return _bad
 
-    monkeypatch.setattr(hooks_module, "_iter_entry_points", lambda: [_FakeEP()])
-
     store = _store_with(tmp_path)
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
-    event = event_validate({
-        "kind": "push", "repo": "owner/repo", "branch": "develop",
-        "commit_sha": "xyz", "card_ids": ["card-1"],
-    })
+    env.set("SCITEX_TODO_TASKS", str(store))
+    event = event_validate(
+        {
+            "kind": "push",
+            "repo": "owner/repo",
+            "branch": "develop",
+            "commit_sha": "xyz",
+            "card_ids": ["card-1"],
+        }
+    )
     # Act — must NOT raise.
-    summary = dispatch_event(event)
+    summary = dispatch_event(event, entry_points=[_FakeEP()])
     # Assert
     assert summary["plugin_errors"][0]["plugin"] == "fake-failing"

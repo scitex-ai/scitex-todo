@@ -20,30 +20,34 @@ SKILL_MD = _skills_root() / "SKILL.md"
 
 
 def test_skill_md_has_no_hand_edit_mandate_header():
-    # Arrange / Act
+    # Arrange
+    # Act
     text = SKILL_MD.read_text(encoding="utf-8")
     # Assert
     assert "MANDATE — NEVER hand-edit" in text
 
 
 def test_skill_md_names_the_canonical_path():
-    # Arrange / Act
+    # Arrange
+    # Act
     text = SKILL_MD.read_text(encoding="utf-8")
-    # Assert — the rule has to name the file it's protecting.
+    # Assert
     assert "~/.scitex/todo/tasks.yaml" in text
 
 
 def test_skill_md_documents_emergency_repair_exception():
-    # Arrange / Act
+    # Arrange
+    # Act
     text = SKILL_MD.read_text(encoding="utf-8")
-    # Assert — the exception is load-bearing; agents need to know when
     # a hand-edit IS justified (an already-broken file that won't parse).
+    # Assert
     assert "Emergency repair exception" in text
 
 
 def test_skill_md_cites_pr_166_safety_net():
-    # Arrange / Act
+    # Arrange
+    # Act
     text = SKILL_MD.read_text(encoding="utf-8")
-    # Assert — provenance link to the writer-safety PR keeps the audit
     # trail discoverable.
+    # Assert
     assert "PR-#166" in text or "PR #166" in text

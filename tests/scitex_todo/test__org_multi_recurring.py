@@ -14,42 +14,101 @@ from scitex_todo._org import build_org
 
 class TestExportRepeaterSuffix:
     def test_emits_weekly_repeater(self):
-        tasks = [{
-            "id": "a", "title": "X", "status": "pending",
-            "deadline": "2026-06-15 +1w",
-        }]
+        # Arrange
+        tasks = [
+            {
+                "id": "a",
+                "title": "X",
+                "status": "pending",
+                "deadline": "2026-06-15 +1w",
+            }
+        ]
+        # Act
         text = build_org(tasks)
+        # Assert
         assert "DEADLINE: <2026-06-15 +1w>" in text
 
     def test_emits_catchup_monthly(self):
-        tasks = [{
-            "id": "a", "title": "X", "status": "pending",
-            "deadline": "2026-06-15 ++2m",
-        }]
+        # Arrange
+        tasks = [
+            {
+                "id": "a",
+                "title": "X",
+                "status": "pending",
+                "deadline": "2026-06-15 ++2m",
+            }
+        ]
+        # Act
         text = build_org(tasks)
+        # Assert
         assert "DEADLINE: <2026-06-15 ++2m>" in text
 
 
 class TestExportMultipleDeadlines:
-    def test_emits_two_deadline_tokens_on_same_line(self):
-        tasks = [{
-            "id": "a", "title": "X", "status": "pending",
-            "deadlines": ["2026-06-15", "2026-07-01 +1m"],
-        }]
+    def test_emits_two_deadline_tokens_on_same_line_text_contains(self):
+        # Arrange
+        tasks = [
+            {
+                "id": "a",
+                "title": "X",
+                "status": "pending",
+                "deadlines": ["2026-06-15", "2026-07-01 +1m"],
+            }
+        ]
+        # Act
         text = build_org(tasks)
+        # Assert
         assert "DEADLINE: <2026-06-15>" in text
+
+    def test_emits_two_deadline_tokens_on_same_line_text_contains_2(self):
+        # Arrange
+        tasks = [
+            {
+                "id": "a",
+                "title": "X",
+                "status": "pending",
+                "deadlines": ["2026-06-15", "2026-07-01 +1m"],
+            }
+        ]
+        # Act
+        text = build_org(tasks)
+        # Assert
         assert "DEADLINE: <2026-07-01 +1m>" in text
 
-    def test_deadlines_takes_precedence_over_deadline(self):
+    def test_deadlines_takes_precedence_over_deadline_text_contains(self):
         # When both happen to be present (validator would normally
         # reject; assert the adapter is robust).
-        tasks = [{
-            "id": "a", "title": "X", "status": "pending",
-            "deadline": "2026-09-01",
-            "deadlines": ["2026-06-15"],
-        }]
+        # Arrange
+        tasks = [
+            {
+                "id": "a",
+                "title": "X",
+                "status": "pending",
+                "deadline": "2026-09-01",
+                "deadlines": ["2026-06-15"],
+            }
+        ]
+        # Act
         text = build_org(tasks)
+        # Assert
         assert "DEADLINE: <2026-06-15>" in text
+
+    def test_deadlines_takes_precedence_over_deadline_text_excludes(self):
+        # When both happen to be present (validator would normally
+        # reject; assert the adapter is robust).
+        # Arrange
+        tasks = [
+            {
+                "id": "a",
+                "title": "X",
+                "status": "pending",
+                "deadline": "2026-09-01",
+                "deadlines": ["2026-06-15"],
+            }
+        ]
+        # Act
+        text = build_org(tasks)
+        # Assert
         assert "DEADLINE: <2026-09-01>" not in text
 
 

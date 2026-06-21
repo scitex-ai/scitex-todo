@@ -47,12 +47,33 @@ def hook_group() -> None:
     ),
 )
 @click.option(
-    "--payload", "payload_path", required=True,
+    "--payload",
+    "payload_path",
+    required=True,
     type=click.Path(exists=False),
     help="Path to a JSON file with the push event payload, or '-' for stdin.",
 )
-def hook_push_cmd(payload_path: str) -> None:
-    _run_hook(payload_path, expected_kind="push")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Validate + print the event WITHOUT recording it on the board.",
+)
+@click.option(
+    "-y",
+    "--yes",
+    is_flag=True,
+    help=(
+        "Accepted for CLI-convention uniformity (mutating verbs offer"
+        " --yes); `hook push` is idempotent + non-interactive, so there"
+        " is no prompt to skip."
+    ),
+)
+def hook_push_cmd(payload_path: str, dry_run: bool, yes: bool) -> None:
+    # `yes` is intentionally unused — hook push is idempotent and runs
+    # non-interactively (git hooks / CI), so there is no destructive
+    # prompt to gate; the flag exists for convention uniformity.
+    del yes
+    _run_hook(payload_path, expected_kind="push", dry_run=dry_run)
 
 
 @hook_group.command(
@@ -67,7 +88,9 @@ def hook_push_cmd(payload_path: str) -> None:
     ),
 )
 @click.option(
-    "--payload", "payload_path", required=True,
+    "--payload",
+    "payload_path",
+    required=True,
     type=click.Path(exists=False),
     help="Path to a JSON file with the done event payload, or '-' for stdin.",
 )
@@ -75,7 +98,7 @@ def hook_done_cmd(payload_path: str) -> None:
     _run_hook(payload_path, expected_kind="done")
 
 
-def _run_hook(payload_path: str, *, expected_kind: str) -> None:
+def _run_hook(payload_path: str, *, expected_kind: str, dry_run: bool = False) -> None:
     """Shared body for the push / done verbs."""
     from .._hooks import HookEventError, dispatch_event, event_validate
 
@@ -100,6 +123,9 @@ def _run_hook(payload_path: str, *, expected_kind: str) -> None:
         event = event_validate(body)
     except HookEventError as exc:
         raise click.ClickException(str(exc)) from None
+    if dry_run:
+        click.echo(json.dumps({"dry_run": True, "would_dispatch": event}, default=str))
+        return
     summary = dispatch_event(event)
     click.echo(json.dumps(summary, default=str))
 

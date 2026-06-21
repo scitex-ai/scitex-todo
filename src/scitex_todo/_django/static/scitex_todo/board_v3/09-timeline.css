@@ -1,0 +1,223 @@
+/* 09-timeline.css — board_v3 "Timeline" layout (operator TODO 2026-06-17).
+ *
+ * Themed via the same --* vars the other board_v3 modules use, so it flips
+ * with the dark/light shell theme. Covers: the controls row, the SVG time-
+ * raster (agent / project views), and the rich per-task "simple" cards.
+ * Status colours reuse the card palette (--green/--amber/--grey/--red). */
+
+.tl-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 10px 16px;
+  min-height: 0;
+}
+
+/* ── controls row ──────────────────────────────────────────────────── */
+.tl-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 0.8rem;
+  color: var(--text-muted, #8a96a8);
+}
+.tl-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text, #e0e6f0);
+}
+.tl-ctl select {
+  background: var(--card-bg, #1a1f29);
+  color: var(--text, #e0e6f0);
+  border: 1px solid var(--border, #2a3140);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 0.8rem;
+}
+.tl-count {
+  color: var(--text-muted, #8a96a8);
+}
+.tl-error {
+  color: var(--red, #e5484d);
+  font-weight: 600;
+  max-width: 40ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── raster SVG ────────────────────────────────────────────────────── */
+.tl-scroll {
+  overflow: auto;
+  border: 1px solid var(--border, #2a3140);
+  border-radius: 8px;
+  background: var(--col-bg, #131820);
+}
+.tl-svg {
+  display: block;
+  font-family: -apple-system, system-ui, sans-serif;
+}
+.tl-tickline {
+  stroke: var(--border, #2a3140);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+.tl-ticktext {
+  fill: var(--text-muted, #8a96a8);
+  font-size: 10px;
+}
+.tl-lane-bg {
+  fill: transparent;
+}
+.tl-lane-bg--even {
+  fill: var(--card-bg, #1a1f29);
+  opacity: 0.4;
+}
+.tl-lane-label {
+  fill: var(--text, #e0e6f0);
+  font-size: 11px;
+  font-weight: 600;
+}
+.tl-edge {
+  stroke-width: 1.4;
+  fill: none;
+  opacity: 0.55;
+}
+.tl-edge--depends {
+  stroke: var(--text-muted, #8a96a8);
+  stroke-dasharray: 3 2;
+}
+.tl-edge--blocks {
+  stroke: var(--red, #e5484d);
+}
+.tl-dot {
+  cursor: pointer;
+  stroke-width: 1.5;
+  transition: r 0.08s ease;
+}
+.tl-dot:hover {
+  r: 8;
+  filter: brightness(1.2);
+}
+.tl-dot--working {
+  fill: var(--green, #30a46c);
+  stroke: var(--green, #30a46c);
+}
+.tl-dot--waiting {
+  fill: var(--amber, #f5a524);
+  stroke: var(--amber, #f5a524);
+}
+.tl-dot--blocked {
+  fill: var(--red, #e5484d);
+  stroke: var(--red, #e5484d);
+}
+.tl-dot--done {
+  fill: var(--grey, #6b7280);
+  stroke: var(--grey, #6b7280);
+  opacity: 0.5;
+}
+/* Live (still-running) tasks get a bright ring so the operator can spot
+   what's being processed at a glance. */
+.tl-dot--live {
+  stroke: var(--text, #e0e6f0);
+  stroke-width: 2;
+}
+
+/* ── simple per-task cards ─────────────────────────────────────────── */
+.tl-simple {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 760px;
+}
+.tl-card {
+  background: var(--card-bg, #1a1f29);
+  border: 1px solid var(--border, #2a3140);
+  border-left: 3px solid var(--grey, #6b7280);
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: border-color 0.12s ease;
+}
+.tl-card:hover {
+  border-color: var(--text-muted, #8a96a8);
+}
+.tl-card--working {
+  border-left-color: var(--green, #30a46c);
+}
+.tl-card--waiting {
+  border-left-color: var(--amber, #f5a524);
+}
+.tl-card--blocked {
+  border-left-color: var(--red, #e5484d);
+}
+.tl-card--done {
+  border-left-color: var(--grey, #6b7280);
+  opacity: 0.72;
+}
+.tl-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.tl-card-status {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  font-size: 0.62rem;
+  color: var(--text-muted, #8a96a8);
+}
+.tl-card--working .tl-card-status {
+  color: var(--green, #30a46c);
+}
+.tl-card--waiting .tl-card-status {
+  color: var(--amber, #f5a524);
+}
+.tl-card--blocked .tl-card-status {
+  color: var(--red, #e5484d);
+}
+.tl-card-time {
+  font-size: 0.72rem;
+  color: var(--text-muted, #8a96a8);
+  white-space: nowrap;
+}
+.tl-card-title {
+  color: var(--text, #e0e6f0);
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin: 2px 0;
+  line-height: 1.3;
+}
+.tl-card-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted, #8a96a8);
+  margin-bottom: 4px;
+}
+.tl-card-comment {
+  font-size: 0.8rem;
+  color: var(--text, #e0e6f0);
+  background: var(--col-bg, #131820);
+  border-radius: 6px;
+  padding: 5px 8px;
+  line-height: 1.4;
+}
+.tl-card-comment-author {
+  color: var(--text-muted, #8a96a8);
+  font-weight: 600;
+}
+.tl-card-comment--none {
+  color: var(--text-muted, #8a96a8);
+  font-style: italic;
+  background: transparent;
+  padding: 2px 0;
+}
+.tl-card-count {
+  font-size: 0.7rem;
+  color: var(--text-muted, #8a96a8);
+  margin-top: 4px;
+}
+
+/* EOF */

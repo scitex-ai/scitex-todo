@@ -1,0 +1,146 @@
+name: ci
+
+# ============================================================================
+# CANONICAL CI — aligned with the scitex ecosystem fleet standard
+# (cf. scitex-datetime `.github/workflows/ci.yml`).
+#
+# WHY THIS FILE EXISTS: previously scitex-todo split validation across
+# `pr-ci.yml` (pull_request ONLY) and `release-ci.yml` (push). The PR-only
+# gate meant the develop HEAD commit produced by a squash-merge was never
+# itself validated by the per-PR matrix. This single `ci.yml` runs on BOTH
+# push and pull_request to the protected branches, so develop HEAD always
+# gets checks — exactly like every other ecosystem repo.
+#
+# Runner: the self-hosted Spartan CPU runner. scitex-todo's runner advertises
+#   both the legacy `scitex-ci` label and the canonical `spartan-cpu` label
+#   (gh api repos/.../actions/runners), so the canonical label set works.
+# Deps: installed per run with `uv` (cached) — `.[all,dev]` so optional-dep
+#   code paths are exercised; no baked-SIF completeness to maintain.
+#
+# Audit job note: scitex-todo defers PA-307 (test-quality) + relaxes PA-306
+#   (no-mocks, via the `django` project-type) in `.scitex/dev/config.yaml`,
+#   and treats audit-skills as warn-only. This mirrors the lead-sanctioned
+#   scope-down already used by the superseded release-ci.yml (a2a
+#   `fb413fb038da49d1b18262b237385c33`, PR #110 fix-forward). The PA-307
+#   sweep + SK-301/401 skills-modularize are tracked as their own PRs; until
+#   they land the bare `audit-all` rollup (which fails on undeferrable
+#   audit-skills WARNINGS) is not yet green, so the audit job runs the
+#   per-auditor set that IS green rather than faking a clean rollup.
+# ============================================================================
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  schedule:
+    - cron: "0 17 * * *" # nightly 17:00 UTC (~02:00 JST), off-peak
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pytest-matrix:
+    # Job name is a REQUIRED status check — keep verbatim fleet-wide.
+    name: pytest-matrix-on-ubuntu-py${{ matrix.python-version }}
+    runs-on: [self-hosted, Linux, X64, spartan-cpu]
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          cache-dependency-glob: pyproject.toml
+      - name: Install (.[all,dev]) + pytest
+        run: |
+          set -euo pipefail
+          uv venv --python ${{ matrix.python-version }} .venv
+          uv pip install --python .venv/bin/python -e ".[all,dev]" \
+            || uv pip install --python .venv/bin/python -e ".[dev]" \
+            || uv pip install --python .venv/bin/python -e .
+          PKG=$(basename "$(find src -maxdepth 1 -mindepth 1 -type d ! -name '*.egg-info' | sort | head -1)")
+          export PATH="$PWD/.venv/bin:$PATH"
+          .venv/bin/python -m pytest tests/ --cov="src/$PKG" --cov-report=xml --cov-report=term
+      - name: Upload coverage to Codecov
+        if: always() && matrix.python-version == '3.12'
+        continue-on-error: true # codecov-action can fail on the self-hosted runner; coverage upload must never gate CI
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          fail_ci_if_error: false
+
+  import-smoke:
+    name: import-smoke-on-ubuntu-py3-12
+    runs-on: [self-hosted, Linux, X64, spartan-cpu]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          cache-dependency-glob: pyproject.toml
+      - name: Install (no extras) + import
+        run: |
+          set -euo pipefail
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python -e .
+          PKG=$(basename "$(find src -maxdepth 1 -mindepth 1 -type d ! -name '*.egg-info' | sort | head -1)")
+          .venv/bin/python -c "import importlib; m = importlib.import_module('$PKG'); print('import OK:', '$PKG', getattr(m, '__version__', 'unversioned'))"
+          .venv/bin/scitex-todo --help >/dev/null && echo "console-script OK: scitex-todo --help"
+
+  audit:
+    name: audit
+    runs-on: [self-hosted, Linux, X64, spartan-cpu]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          cache-dependency-glob: pyproject.toml
+      - name: Install + audit the workspace
+        # Per-auditor invocation (NOT bare `audit-all`) because audit-skills
+        # returns rc=1 on WARNING-only findings it cannot defer via
+        # `.scitex/dev/config.yaml`, which would make the rollup non-green
+        # while the SK-301/401 skills-modularize PR is still queued. The
+        # set below is exactly the green, lead-sanctioned scope (a2a
+        # `fb413fb038da49d1b18262b237385c33`). PA-306/PA-307 are deferred /
+        # relaxed in config and so are also clean if audited directly.
+        run: |
+          set -euo pipefail
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python -e ".[all,dev]" \
+            || uv pip install --python .venv/bin/python -e ".[dev]" \
+            || uv pip install --python .venv/bin/python -e .
+          uv pip install --python .venv/bin/python scitex-dev
+          # .venv/bin on PATH so the auditor's `shutil.which("scitex-dev")`
+          # resolves to THIS venv (where scitex-todo's console-script entry
+          # point is installed) — otherwise audit-cli reports
+          # `not-auditable` against an env that lacks the package.
+          export PATH="$PWD/.venv/bin:$PATH"
+          DIST=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['name'])")
+          # Hard gates (must be 0 errors). --path audits THIS checkout (PR
+          # code), not the runner's shared ~/proj state.
+          scitex-dev ecosystem audit-cli        "$DIST"
+          scitex-dev ecosystem audit-mcp-tools  "$DIST"
+          scitex-dev ecosystem audit-project    "$DIST" --path "$PWD"
+          scitex-dev ecosystem audit-django     "$DIST" --path "$PWD"
+          # audit-python-apis: PA-307 deferred + PA-306 django-relaxed in
+          # config, so this is errors-clean. Kept in the gate so any NEW
+          # error-severity PA violation (a real regression) fails CI.
+          scitex-dev ecosystem audit-python-apis "$DIST" --path "$PWD"
+          # audit-skills: warn-only until the SK-301/401 modularize PR lands.
+          # Echo findings so they stay visible in the log, then continue.
+          scitex-dev ecosystem audit-skills     "$DIST" || \
+            echo "::warning::audit-skills reported WARNINGS (SK-301/401 modularize tracked separately) — not gating CI"
+
+  # NOTE: the Sphinx docs build lives in the dedicated `docs` workflow
+  # (rtd-sphinx-build-on-ubuntu-latest.yml). It already runs on push +
+  # pull_request to main/develop and builds docs/sphinx with `-W`, plus the
+  # in-wheel `_sphinx_html` refresh-commit on push (PS-121, scitex-cloud
+  # serving). Duplicating it here would just double-build, so this canonical
+  # `ci.yml` intentionally omits the docs-sphinx job for scitex-todo.

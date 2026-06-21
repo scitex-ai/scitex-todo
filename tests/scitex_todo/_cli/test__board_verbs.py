@@ -64,25 +64,29 @@ class TestGroupShape:
     """The group has the four lifecycle verbs the operator asked for."""
 
     def test_start_subcommand_registered(self):
-        # Arrange / Act
+        # Arrange
+        # Act
         names = board_group.commands.keys()
         # Assert
         assert "start" in names
 
     def test_stop_subcommand_registered(self):
-        # Arrange / Act
+        # Arrange
+        # Act
         names = board_group.commands.keys()
         # Assert
         assert "stop" in names
 
     def test_restart_subcommand_registered(self):
-        # Arrange / Act
+        # Arrange
+        # Act
         names = board_group.commands.keys()
         # Assert
         assert "restart" in names
 
     def test_status_subcommand_registered(self):
-        # Arrange / Act
+        # Arrange
+        # Act
         names = board_group.commands.keys()
         # Assert
         assert "status" in names
@@ -102,7 +106,8 @@ class TestStatus:
         assert "NOT running" in result.output
 
     def test_status_when_pidfile_points_at_live_process(
-        self, pidfile_path,
+        self,
+        pidfile_path,
     ):
         # Arrange — spawn a sleeper subprocess + write its PID.
         sleeper = subprocess.Popen(

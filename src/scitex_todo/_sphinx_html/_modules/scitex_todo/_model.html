@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>scitex_todo._model &mdash; scitex-todo v0.7.10</title>
+  <title>scitex_todo._model &mdash; scitex-todo v0.7.25</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -13,7 +13,7 @@
   
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../_static/documentation_options.js?v=d46e566c"></script>
+      <script src="../../_static/documentation_options.js?v=2137b81e"></script>
       <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -70,9 +70,16 @@
 <li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.TaskNotFoundError"><code class="docutils literal notranslate"><span class="pre">TaskNotFoundError</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.TaskValidationError"><code class="docutils literal notranslate"><span class="pre">TaskValidationError</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.add_task"><code class="docutils literal notranslate"><span class="pre">add_task()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.comment_task"><code class="docutils literal notranslate"><span class="pre">comment_task()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.complete_task"><code class="docutils literal notranslate"><span class="pre">complete_task()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.delete_task"><code class="docutils literal notranslate"><span class="pre">delete_task()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.get_task"><code class="docutils literal notranslate"><span class="pre">get_task()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.list_tasks"><code class="docutils literal notranslate"><span class="pre">list_tasks()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.reopen_task"><code class="docutils literal notranslate"><span class="pre">reopen_task()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.resolve_store"><code class="docutils literal notranslate"><span class="pre">resolve_store()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.resolve_task"><code class="docutils literal notranslate"><span class="pre">resolve_task()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.restore_task"><code class="docutils literal notranslate"><span class="pre">restore_task()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.set_edge"><code class="docutils literal notranslate"><span class="pre">set_edge()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.summarize_tasks"><code class="docutils literal notranslate"><span class="pre">summarize_tasks()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../api/scitex_todo.html#scitex_todo.update_task"><code class="docutils literal notranslate"><span class="pre">update_task()</span></code></a></li>
 </ul>
@@ -347,6 +354,16 @@
                                 <span class="c1"># schema. See ADR-0007 Consequences for the</span>
                                 <span class="c1"># deferred 7→4 schema migration.</span>
     <span class="n">agent</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>     <span class="c1"># owning agent (distinct from `assignee` legacy field)</span>
+    <span class="c1"># `group` is the logical CLUSTER OF AGENTS this task belongs to —</span>
+    <span class="c1"># the parallelism-engine dispatcher (TRACK 1, lead a2a `74db4f2d`,</span>
+    <span class="c1"># 2026-06-14) uses it to ask &quot;what&#39;s runnable now in group &lt;G&gt;&quot;</span>
+    <span class="c1"># so the operator&#39;s &quot;independent (dep-free) tasks run concurrently</span>
+    <span class="c1"># across groups&quot; model works. Free-form non-empty string when</span>
+    <span class="c1"># present; absent = ungrouped. Distinct concept from `_groups.py`&#39;s</span>
+    <span class="c1"># project-cluster `Group` dataclass (that&#39;s a VIEWER aggregation</span>
+    <span class="c1"># for the board&#39;s column collapser; this is a DISPATCH concept on</span>
+    <span class="c1"># the task itself).</span>
+    <span class="n">group</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">last_activity</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># ISO-8601 UTC; recency drives green/amber/red coloring</span>
     <span class="n">blocker</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>        <span class="c1"># one of VALID_BLOCKERS or absent; only on status=blocked</span>
     <span class="n">pr_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>         <span class="c1"># optional GH/Gitea PR link</span>
@@ -928,7 +945,13 @@
         <span class="c1"># non-empty strings — no enum, no referential integrity. Convention is</span>
         <span class="c1"># `agent:&lt;name&gt;` / `project:&lt;name&gt;` / `private` but that&#39;s a</span>
         <span class="c1"># docs/skills convention, not enforced here (Req 8: be generic).</span>
-        <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;scope&quot;</span><span class="p">,</span> <span class="s2">&quot;assignee&quot;</span><span class="p">):</span>
+        <span class="c1"># `group` is the TRACK-1 dispatch-cluster field (lead a2a</span>
+        <span class="c1"># `74db4f2d`, 2026-06-14). Same shape as `scope`/`assignee` —</span>
+        <span class="c1"># free-form non-empty string, no closed enum, no referential</span>
+        <span class="c1"># integrity. Drives the `runnable(group=...)` query that the</span>
+        <span class="c1"># parallelism dispatcher consumes. Distinct from `_groups.py`&#39;s</span>
+        <span class="c1"># project-cluster concept (which is a viewer aggregation).</span>
+        <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;scope&quot;</span><span class="p">,</span> <span class="s2">&quot;assignee&quot;</span><span class="p">,</span> <span class="s2">&quot;group&quot;</span><span class="p">):</span>
             <span class="n">value</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">value</span><span class="p">):</span>
                 <span class="k">raise</span> <span class="n">TaskValidationError</span><span class="p">(</span>

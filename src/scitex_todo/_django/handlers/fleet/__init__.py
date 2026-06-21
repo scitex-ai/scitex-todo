@@ -26,7 +26,9 @@ Public API (this ``__init__``):
 - :class:`FleetAdapterError`
 - :func:`fleet_config_load`   — read the dashboard config (no raise on
   absence; raises on malformed YAML)
-- :func:`fetch_repo_ci_status` — fetch one repo's CI summary via ``gh``
+- :func:`fetch_repo_ci_status` — fetch ONE repo's CI summary via ``gh`` REST
+- :func:`fetch_many_ci_status` — fetch MANY repos in ONE ``gh`` GraphQL call
+  (the rate-safe ecosystem-scale path the pills use)
 - :func:`fleet_ci_status_view` — Django view for ``/fleet/ci-status``
 - :func:`fetch_hosts`          — fetch the local + peer host registry
   via ``sac host list --json``
@@ -36,7 +38,7 @@ Public API (this ``__init__``):
 from ._config import fleet_config_load
 from ._errors import FleetAdapterError
 from .ci_status_view import fleet_ci_status_view
-from .gh_ci import fetch_repo_ci_status
+from .gh_ci import fetch_many_ci_status, fetch_repo_ci_status
 from .hosts_view import fleet_hosts_view
 from .mesh_view import fleet_mesh_view
 from .sac_hosts import fetch_hosts
@@ -48,6 +50,7 @@ __all__ = [
     "FleetAdapterError",
     "compute_timing",
     "fetch_hosts",
+    "fetch_many_ci_status",
     "fetch_mesh",
     "fetch_repo_ci_status",
     "fleet_ci_status_view",

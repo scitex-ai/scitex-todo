@@ -4,6 +4,98 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.25] - 2026-06-15 — `scitex-todo ci-watch` (record-only CI poller)
+
+### Added
+
+- **`scitex-todo ci-watch`** + **`scitex-todo.ci-watch` cron JobSpec**
+  (PR #206, lead a2a `b4c10158` / operator decoupled-pollers override
+  via dev a2a `96afacc7`). Record-only CI poller — server-side
+  `*/5 * * * *` cron that sweeps every repo in
+  `dashboard.yaml → fleet.ci_status.repos` (or env override
+  `SCITEX_TODO_FLEET_CI_REPOS=owner/a,owner/b`), diffs against the
+  local state cache at `~/.scitex/todo/ci-state.json` (override via
+  `SCITEX_TODO_CI_STATE`), classifies the transition
+  (`first-seen` / `newly-green` / `newly-red` / `still-pending` /
+  `unchanged`), and logs one stderr line per repo.
+
+  Lane: **todo records, SAC delivers** — todo writes no a2a sends
+  and emits no bus events; SAC has its own independent poller for the
+  delivery side. Either side can crash without breaking the other.
+  The dedupe key (`head_sha`, `overall`) is content-keyed so SAC's
+  poller can run at a different cadence (10 / 15 / 30 min) without
+  breaking parity.
+
+  CLI:
+
+      scitex-todo ci-watch --once                # cron mode (one sweep)
+      scitex-todo ci-watch --interval 600        # loop with custom cadence
+      scitex-todo ci-watch --once --dry-run      # plan + summary, no state write
+      SCITEX_TODO_FLEET_CI_REPOS=owner/a scitex-todo ci-watch --once
+
+  Wired into the ecosystem federation via `_jobs_provider.py`; after
+  `scitex-dev ecosystem up`, the `scitex-todo.ci-watch.timer`
+  systemd-user unit fires every 5 min. 18 mock-free tests
+  (classifier purity, state load/save round-trip + atomic-write, CLI
+  dry-run, JobSpec registration).
+
+## [0.7.24] - 2026-06-14 — `scitex-todo mcp install-fleet` (P3a one-liner)
+
+### Added
+
+- **`scitex-todo mcp install-fleet --agents-dir <DIR>`** (PR #204,
+  lead a2a `1ab212f3`). One-shot fleet sweep — walks every
+  ``<agents-dir>/*/to_home/.mcp.json`` (the agent-container spec
+  convention) and idempotently applies the scitex-todo MCP entry to
+  each. Sibling MCP server entries preserved; per-agent corrupt JSON
+  reported + sweep continues; final summary line carries
+  ``agents=N updated=K noop=M errors=E``. Closes the missing-MCP gap
+  that ripple-wm hit (had to a2a-relay through me for card add
+  because their container's `.mcp.json` was bare). 12 mock-free
+  CliRunner tests.
+
+  Sweep one-liner for agent-container:
+
+      scitex-todo mcp install-fleet \\
+          --agents-dir ~/.dotfiles/src/.scitex/agent-container/agents \\
+          --env-tasks-path /home/agent/.scitex/todo/tasks.yaml -y
+
+  Mirrors the single-file ``install --apply`` semantics (PR #155 +
+  #158) — same backup, same idempotency, same env-pin.
+
+## [0.7.23] - 2026-06-14 — Board v3: time-based view (sort + group by time)
+
+### Added
+
+- **Sort by time + Group by time on the v3 board** (PR #201
+  cherry-picked via #202; lead a2a `ff1441d7`, operator request
+  「時間でのビュー」). The v3 board at `/` (the operator's home view)
+  now exposes time-based controls in the existing
+  `.stx-todo-filterbar__group--view` group:
+  - Sort dropdown extends with `created_at` + `completed_at` options
+    (newest first) plus the reworked `last_activity` comparator.
+  - New "Group by time" checkbox (`#stx-toggle-group-by-time`) folds
+    each project column's cards under collapsible bucket headers:
+    TODAY / THIS WEEK / THIS MONTH / OLDER. State persists in
+    localStorage (`scitex-todo:group-by-time`,
+    `scitex-todo:time-buckets-collapsed`).
+  - New `board_v3/08-time-grouping.css` with token-only styling
+    (bucket headers, chevrons, collapsed state, body left-rail).
+  - 43 mock-free test cases pin the bucket classifier + sort-key
+    helper + CSS contract.
+
+  The existing Time View raster (PR #186) on `/legacy/` is
+  untouched — this is a complementary control on the v3 board so
+  the operator can sort/group by time WITHOUT switching to the
+  React-SPA route.
+
+### Notes for ops
+
+PR #201 originally landed on `main` (subagent missed `--base develop`).
+#202 cherry-picked the change onto develop and re-fixed the multi-line
+Django comment that the cherry-pick re-introduced (regression caught
+by `test__no_multiline_django_short_comments.py` from PR #199).
+
 ## [0.7.22] - 2026-06-14 — Hotfix: operator-visible Django template comment leak
 
 ### Fixed
@@ -1390,7 +1482,7 @@ conventions (Convention A: tool_name == python_api_name).
   task-store functions (plus errors / env constants) to satisfy audit §6
   (Convention A: tool_name == python_api_name). The mermaid / render /
   model / paths helpers remain importable from their submodules
-  (`scitex_todo._mermaid`, `scitex_todo._render`, `scitex_todo._model`,
+  (`scitex_todo._diagram`, `scitex_todo._diagram`, `scitex_todo._model`,
   `scitex_todo._paths`).
 - **CLI write / admin verbs**: `add`, `update`, `done`, `summary`, plus
   `list-tasks` (extended with `--scope` / `--assignee` / `--status`

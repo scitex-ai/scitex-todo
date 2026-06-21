@@ -59,9 +59,7 @@ def _load_yaml(path: Path) -> dict:
     try:
         import yaml  # type: ignore[import-untyped]
     except ImportError as exc:  # pragma: no cover — yaml is a hard dep
-        raise FleetAdapterError(
-            f"PyYAML is required to load {path}: {exc}"
-        ) from exc
+        raise FleetAdapterError(f"PyYAML is required to load {path}: {exc}") from exc
 
     try:
         text = path.read_text(encoding="utf-8")
@@ -88,6 +86,75 @@ def _load_yaml(path: Path) -> dict:
     return data
 
 
+# Ecosystem spin-out flag (operator opt-in). When truthy in dashboard.yaml
+# (``fleet.ci_status.ecosystem: true``) or via this env var, the watched-repo
+# list is UNIONed with the live SciTeX ecosystem registry.
+_ENV_ECOSYSTEM = "SCITEX_TODO_FLEET_CI_ECOSYSTEM"
+
+# The ecosystem roster changes rarely but ``fleet_config_load`` runs on every
+# 30s poll — so resolve the registry at most once per TTL.
+_ECO_TTL_SEC = 3600.0
+_eco_cache: dict[str, Any] = {"ts": 0.0, "repos": []}
+
+
+def _truthy(val: Any) -> bool:
+    """Loose truthiness for a YAML / env flag (``true`` / ``1`` / ``yes`` / ``on``)."""
+    if isinstance(val, bool):
+        return val
+    return str(val).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _ecosystem_repos() -> list[str]:
+    """``owner/name`` slugs for every SciTeX ecosystem package.
+
+    Sourced from ``scitex-dev ecosystem list --json`` — the canonical
+    registry — so the watch-list "spins out" across the whole ecosystem with
+    NO hardcoded roster here (this module's "no proper nouns" contract).
+    Loose-coupled BY DESIGN: a SUBPROCESS, not an import, so a missing / old
+    scitex-dev degrades to an empty list (the operator's explicit repos still
+    apply) instead of crashing the dashboard. Cached for ``_ECO_TTL_SEC``.
+    """
+    import time
+
+    now = time.time()
+    cached = _eco_cache.get("repos") or []
+    if cached and now - float(_eco_cache.get("ts") or 0.0) < _ECO_TTL_SEC:
+        return list(cached)
+
+    repos: list[str] = []
+    try:
+        import json
+        import shutil
+        import subprocess
+
+        exe = shutil.which("scitex-dev")
+        if exe:
+            proc = subprocess.run(
+                [exe, "ecosystem", "list", "--json"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            if proc.returncode == 0 and (proc.stdout or "").strip():
+                parsed: Any = json.loads(proc.stdout)
+                packages = parsed.get("packages") if isinstance(parsed, dict) else None
+                if isinstance(packages, list):
+                    for pkg in packages:
+                        if not isinstance(pkg, dict):
+                            continue
+                        slug = pkg.get("github_repo")
+                        if isinstance(slug, str) and "/" in slug:
+                            repos.append(slug)
+    except Exception:  # noqa: BLE001 — discovery is best-effort, never fatal
+        repos = []
+
+    if repos:
+        _eco_cache["ts"] = now
+        _eco_cache["repos"] = list(repos)
+    return repos
+
+
 def fleet_config_load() -> dict[str, Any]:
     """Return the dashboard config as a nested ``dict``.
 
@@ -97,6 +164,10 @@ def fleet_config_load() -> dict[str, Any]:
        config, NOT an error)
     2. ``SCITEX_TODO_FLEET_CI_REPOS`` env var — when set, replaces
        ``fleet.ci_status.repos`` regardless of file contents
+    3. ``fleet.ci_status.ecosystem: true`` (or env
+       ``SCITEX_TODO_FLEET_CI_ECOSYSTEM``) — UNION the result with every
+       SciTeX ecosystem repo from ``scitex-dev ecosystem list``, so the
+       pills "spin out" across the whole ecosystem.
 
     The returned shape is always normalized to::
 
@@ -110,15 +181,29 @@ def fleet_config_load() -> dict[str, Any]:
     else:
         data = {}
 
-    # Normalize the nested shape.
-    fleet = data.get("fleet") if isinstance(data.get("fleet"), dict) else {}
-    ci = fleet.get("ci_status") if isinstance(fleet.get("ci_status"), dict) else {}
-    repos_raw = ci.get("repos") if isinstance(ci.get("repos"), list) else []
-    repos = [str(r) for r in repos_raw if isinstance(r, str) and r.strip()]
+    # Normalize the nested shape (assign-then-guard so each level narrows
+    # cleanly — no re-evaluated `.get` chains).
+    fleet_raw = data.get("fleet")
+    fleet = fleet_raw if isinstance(fleet_raw, dict) else {}
+    ci_raw = fleet.get("ci_status")
+    ci = ci_raw if isinstance(ci_raw, dict) else {}
+    repos_raw = ci.get("repos")
+    repos_list = repos_raw if isinstance(repos_raw, list) else []
+    repos = [str(r) for r in repos_list if isinstance(r, str) and r.strip()]
 
     env_override = os.environ.get(_ENV_REPOS)
     if env_override is not None:
         repos = _split_env(env_override)
+
+    # Ecosystem spin-out (operator opt-in): union the explicit list with the
+    # live SciTeX ecosystem registry when the flag is truthy. Order-stable +
+    # de-duped (explicit repos lead, so a pinned repo keeps its position).
+    if _truthy(ci.get("ecosystem")) or _truthy(os.environ.get(_ENV_ECOSYSTEM)):
+        seen = set(repos)
+        for slug in _ecosystem_repos():
+            if slug not in seen:
+                seen.add(slug)
+                repos.append(slug)
 
     return {"fleet": {"ci_status": {"repos": repos}}}
 

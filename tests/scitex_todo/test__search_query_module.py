@@ -38,16 +38,28 @@ def js_text() -> str:
 class TestSearchQueryModuleSurface:
     """Static pins on the parser module's public API."""
 
-    def test_module_exists(self):
+    def test_query_module_exists_on_disk(self):
+        # Arrange
+        # Act
+        # Assert
         assert SEARCH_QUERY_JS.exists()
 
     def test_parse_search_query_exported(self, js_text):
+        # Arrange
+        # Act
+        # Assert
         assert "parseSearchQuery" in js_text
 
     def test_matches_search_query_exported(self, js_text):
+        # Arrange
+        # Act
+        # Assert
         assert "matchesSearchQuery" in js_text
 
-    def test_tokenize_exported(self, js_text):
+    def test_tokenize_symbol_is_exported(self, js_text):
+        # Arrange
+        # Act
+        # Assert
         assert "function tokenize" in js_text
 
 
@@ -70,10 +82,13 @@ class TestQualifierDictionary:
             "host",
         ],
     )
-    def test_qualifier_present(self, js_text, qualifier):
+    def test_qualifier_keyword_present_in_source(self, js_text, qualifier):
         # Each qualifier name should appear as a key in the QUALIFIERS
         # dictionary literal — substring pin is enough; the JS test
         # suite verifies the actual matching.
+        # Arrange
+        # Act
+        # Assert
         assert qualifier in js_text
 
 
@@ -83,16 +98,22 @@ class TestClosedEnumsMirror:
     forgets to thread it through to the FE parser."""
 
     def test_valid_statuses_synced(self, js_text):
+        # Arrange
         from scitex_todo._model import VALID_STATUSES
 
+        # Act
+        # Assert
         for status in VALID_STATUSES:
             assert (
                 f'"{status}"' in js_text
             ), f"VALID_STATUSES drift: {status!r} not in searchQuery.js"
 
     def test_valid_kinds_synced(self, js_text):
+        # Arrange
         from scitex_todo._model import VALID_KINDS
 
+        # Act
+        # Assert
         for kind in VALID_KINDS:
             assert (
                 f'"{kind}"' in js_text
@@ -108,4 +129,7 @@ class TestSpaceAfterColonTolerance:
     def test_tolerates_space_after_colon(self, js_text):
         # The tokenizer's "if (value === '')" branch is what eats the
         # following whitespace + next token; pin its presence.
+        # Arrange
+        # Act
+        # Assert
         assert 'if (value === ""' in js_text or "if (value === '')" in js_text

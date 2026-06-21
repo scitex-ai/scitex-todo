@@ -8,6 +8,12 @@ dist/
 build/
 .eggs/
 *.whl
+
+# Vendored OS packages — e.g. the Chromium/Playwright browser system
+# libraries pulled in by `playwright install-deps` (libgtk, libnss,
+# libcairo, …). Runtime artifacts re-fetched via apt; never source.
+*.deb
+
 .venv/
 venv/
 env/

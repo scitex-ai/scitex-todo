@@ -116,7 +116,7 @@ def test_explicit_path_string_is_expanded(tmp_path, clean_tasks_env):
     assert resolved == target
 
 
-def test_project_scope_wins_over_user_scope(tmp_path, clean_tasks_env, monkeypatch):
+def test_project_scope_wins_over_user_scope(tmp_path, clean_tasks_env, env):
     """Resolution precedence 3 — project (.git found) beats user scope."""
     # Arrange — a fake project root with a real .git + tasks.yaml.
     project = tmp_path / "repo"
@@ -132,15 +132,15 @@ def test_project_scope_wins_over_user_scope(tmp_path, clean_tasks_env, monkeypat
     user_dir.mkdir(parents=True)
     user_store = user_dir / "tasks.yaml"
     user_store.write_text("tasks: []\n", encoding="utf-8")
-    monkeypatch.setenv("SCITEX_DIR", str(user_root))
-    monkeypatch.chdir(project)
+    env.set("SCITEX_DIR", str(user_root))
+    env.chdir(project)
     # Act
     resolved = resolve_tasks_path(None)
     # Assert
     assert resolved == proj_store
 
 
-def test_user_scope_used_when_no_project_store(tmp_path, clean_tasks_env, monkeypatch):
+def test_user_scope_used_when_no_project_store(tmp_path, clean_tasks_env, env):
     """Resolution precedence 4 — user scope when no project scope."""
     # Arrange — no .git ancestor at cwd; SCITEX_DIR has the store.
     work = tmp_path / "work"
@@ -150,15 +150,15 @@ def test_user_scope_used_when_no_project_store(tmp_path, clean_tasks_env, monkey
     user_dir.mkdir(parents=True)
     user_store = user_dir / "tasks.yaml"
     user_store.write_text("tasks: []\n", encoding="utf-8")
-    monkeypatch.setenv("SCITEX_DIR", str(user_root))
-    monkeypatch.chdir(work)
+    env.set("SCITEX_DIR", str(user_root))
+    env.chdir(work)
     # Act
     resolved = resolve_tasks_path(None)
     # Assert
     assert resolved == user_store
 
 
-def test_find_git_root_walks_up(tmp_path, clean_tasks_env, monkeypatch):
+def test_find_git_root_walks_up(tmp_path, clean_tasks_env, env):
     """`_find_git_root` ascends parents; runs from a deep subdir of repo."""
     # Arrange — repo at tmp_path/repo, subdir at tmp_path/repo/a/b/c.
     repo = tmp_path / "repo"
@@ -169,7 +169,7 @@ def test_find_git_root_walks_up(tmp_path, clean_tasks_env, monkeypatch):
     proj_store.write_text("tasks: []\n", encoding="utf-8")
     deep = repo / "a" / "b" / "c"
     deep.mkdir(parents=True)
-    monkeypatch.chdir(deep)
+    env.chdir(deep)
     # Act
     resolved = resolve_tasks_path(None)
     # Assert

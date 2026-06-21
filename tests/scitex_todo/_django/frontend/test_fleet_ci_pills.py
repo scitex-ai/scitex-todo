@@ -56,13 +56,19 @@ _TSX_FILE = (
 
 
 def test_css_file_exists() -> None:
+    # Arrange
+    # Act
+    # Assert
     assert _CSS_FILE.is_file(), f"missing CSS file: {_CSS_FILE}"
 
 
 def test_css_has_canonical_selectors() -> None:
     """The component generates these class names — the CSS file MUST
     define each one or the pills will silently render unstyled."""
+    # Arrange
     css = _CSS_FILE.read_text(encoding="utf-8")
+    # Act
+    # Assert
     for selector in (
         ".stx-todo-fleet-ci",
         ".stx-todo-fleet-ci__pill",
@@ -78,41 +84,56 @@ def test_css_has_canonical_selectors() -> None:
         assert selector in css, f"missing CSS selector: {selector}"
 
 
-def test_css_uses_design_tokens_only() -> None:
-    """Colors must come from CSS variables — NO hardcoded hex literals.
-
-    Hex literals would freeze the pills to one theme (dark) and break
-    the operator's light-mode view. The board's design-token chain is
-    ``board.css`` → ``--stx-*`` board-local aliases (which fall back to
-    the scitex-ui shell variables ``--status-success``,
-    ``--status-error``, ``--status-warning``, ``--text-muted``).
-    """
+def test_css_has_no_hardcoded_hex_colors() -> None:
+    """Hex literals freeze the panel to one theme; colors must come
+    from design tokens."""
+    # Arrange
     css = _CSS_FILE.read_text(encoding="utf-8")
-    # Strip /* ... */ comments before scanning — the comment block at
-    # the top of the file documents the token names verbatim and would
-    # falsely trip the hex detector otherwise.
+    # Strip /* ... */ comments so the doc block (which names the
+    # tokens verbatim) does not trip the hex / named-color scan.
     no_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
-    # 3-, 4-, 6-, or 8-digit hex.
+    # Act
     hex_matches = re.findall(r"#[0-9A-Fa-f]{3,8}\b", no_comments)
-    assert not hex_matches, (
-        f"hardcoded hex colors in fleet-ci-pills.css (breaks theming): "
-        f"{hex_matches!r}"
-    )
-    # Required token references — at least one occurrence each.
-    for token in (
+    # Assert
+    assert (
+        not hex_matches
+    ), f"hardcoded hex colors in fleet-ci-pills.css: {hex_matches!r}"
+
+
+def test_css_references_all_required_tokens() -> None:
+    """Every required design token must be referenced at least once."""
+    # Arrange
+    css = _CSS_FILE.read_text(encoding="utf-8")
+    # Act
+    required = (
         "--status-success",
         "--status-error",
         "--status-warning",
-    ):
-        assert token in css, f"missing design token: {token}"
+    )
+    # Assert
+    assert all(token in css for token in required)
 
 
-def test_css_is_imported_from_board_css() -> None:
+def test_css_is_imported_from_board_css_is_file() -> None:
     """The pills strip only renders correctly when board.css imports
     the partial. Pinning this guards against an accidental removal in
     a future board.css refactor."""
+    # Arrange
+    # Act
     board_css = _CSS_FILE.parent / "board.css"
+    # Assert
+    text = board_css.read_text(encoding="utf-8")
     assert board_css.is_file()
+
+
+def test_css_is_imported_from_board_css_text_contains() -> None:
+    """The pills strip only renders correctly when board.css imports
+    the partial. Pinning this guards against an accidental removal in
+    a future board.css refactor."""
+    # Arrange
+    # Act
+    board_css = _CSS_FILE.parent / "board.css"
+    # Assert
     text = board_css.read_text(encoding="utf-8")
     assert '@import "./fleet-ci-pills.css";' in text
 
@@ -210,12 +231,14 @@ def _run_pill_helpers(repo: dict) -> dict:
         ("weird-future-state", "unknown"),
     ],
 )
-def test_pill_color_mapping_for_each_overall(
+def test_pill_color_mapping_for_each_overall_modifier(
     overall: str, expected_mod: str
 ) -> None:
     """Pin one pill-modifier per known CiOverall value — these are the
     classes the CSS file rules on, so a rename here would silently
     blank the pill."""
+    # Arrange
+    # Act
     out = _run_pill_helpers(
         {
             "slug": "foo/bar",
@@ -225,22 +248,183 @@ def test_pill_color_mapping_for_each_overall(
             "checks": [],
         }
     )
+    # Assert
     assert out["modifier"] == expected_mod
+
+
+@pytest.mark.parametrize(
+    "overall,expected_mod",
+    [
+        ("success", "success"),
+        ("failure", "failure"),
+        ("pending", "pending"),
+        ("unknown", "unknown"),
+        # An overall value the FE doesn't know about must degrade to
+        # "unknown" rather than emit a missing-CSS class. The
+        # ``default:`` branch of the switch pins this.
+        ("weird-future-state", "unknown"),
+    ],
+)
+def test_pill_color_mapping_for_each_overall_iserr(
+    overall: str, expected_mod: str
+) -> None:
+    """Pin one pill-modifier per known CiOverall value — these are the
+    classes the CSS file rules on, so a rename here would silently
+    blank the pill."""
+    # Arrange
+    # Act
+    out = _run_pill_helpers(
+        {
+            "slug": "foo/bar",
+            "branch": "main",
+            "head_sha": "abc1234deadbeef",
+            "overall": overall,
+            "checks": [],
+        }
+    )
+    # Assert
     assert out["isErr"] is False
+
+
+@pytest.mark.parametrize(
+    "overall,expected_mod",
+    [
+        ("success", "success"),
+        ("failure", "failure"),
+        ("pending", "pending"),
+        ("unknown", "unknown"),
+        # An overall value the FE doesn't know about must degrade to
+        # "unknown" rather than emit a missing-CSS class. The
+        # ``default:`` branch of the switch pins this.
+        ("weird-future-state", "unknown"),
+    ],
+)
+def test_pill_color_mapping_for_each_overall_tooltip_contains(
+    overall: str, expected_mod: str
+) -> None:
+    """Pin one pill-modifier per known CiOverall value — these are the
+    classes the CSS file rules on, so a rename here would silently
+    blank the pill."""
+    # Arrange
+    # Act
+    out = _run_pill_helpers(
+        {
+            "slug": "foo/bar",
+            "branch": "main",
+            "head_sha": "abc1234deadbeef",
+            "overall": overall,
+            "checks": [],
+        }
+    )
+    # Assert
     assert "foo/bar" in out["tooltip"]
+
+
+@pytest.mark.parametrize(
+    "overall,expected_mod",
+    [
+        ("success", "success"),
+        ("failure", "failure"),
+        ("pending", "pending"),
+        ("unknown", "unknown"),
+        # An overall value the FE doesn't know about must degrade to
+        # "unknown" rather than emit a missing-CSS class. The
+        # ``default:`` branch of the switch pins this.
+        ("weird-future-state", "unknown"),
+    ],
+)
+def test_pill_color_mapping_for_each_overall_tooltip_contains_2(
+    overall: str, expected_mod: str
+) -> None:
+    """Pin one pill-modifier per known CiOverall value — these are the
+    classes the CSS file rules on, so a rename here would silently
+    blank the pill."""
+    # Arrange
+    # Act
+    out = _run_pill_helpers(
+        {
+            "slug": "foo/bar",
+            "branch": "main",
+            "head_sha": "abc1234deadbeef",
+            "overall": overall,
+            "checks": [],
+        }
+    )
+    # Assert
     assert "main" in out["tooltip"]
+
+
+@pytest.mark.parametrize(
+    "overall,expected_mod",
+    [
+        ("success", "success"),
+        ("failure", "failure"),
+        ("pending", "pending"),
+        ("unknown", "unknown"),
+        # An overall value the FE doesn't know about must degrade to
+        # "unknown" rather than emit a missing-CSS class. The
+        # ``default:`` branch of the switch pins this.
+        ("weird-future-state", "unknown"),
+    ],
+)
+def test_pill_color_mapping_for_each_overall_tooltip_contains_3(
+    overall: str, expected_mod: str
+) -> None:
+    """Pin one pill-modifier per known CiOverall value — these are the
+    classes the CSS file rules on, so a rename here would silently
+    blank the pill."""
+    # Arrange
+    # Act
+    out = _run_pill_helpers(
+        {
+            "slug": "foo/bar",
+            "branch": "main",
+            "head_sha": "abc1234deadbeef",
+            "overall": overall,
+            "checks": [],
+        }
+    )
+    # Assert
     assert "abc1234" in out["tooltip"]  # short sha
 
 
-def test_pill_modifier_for_per_repo_error() -> None:
+def test_pill_modifier_for_per_repo_error_modifier() -> None:
     """A per-repo error (``{slug, error}``) maps to the ``--error``
     modifier with the adapter message in the tooltip."""
-    out = _run_pill_helpers(
-        {"slug": "foo/dead", "error": "gh exited 1: not found"}
-    )
+    # Arrange
+    # Act
+    out = _run_pill_helpers({"slug": "foo/dead", "error": "gh exited 1: not found"})
+    # Assert
     assert out["modifier"] == "error"
+
+
+def test_pill_modifier_for_per_repo_error_iserr() -> None:
+    """A per-repo error (``{slug, error}``) maps to the ``--error``
+    modifier with the adapter message in the tooltip."""
+    # Arrange
+    # Act
+    out = _run_pill_helpers({"slug": "foo/dead", "error": "gh exited 1: not found"})
+    # Assert
     assert out["isErr"] is True
+
+
+def test_pill_modifier_for_per_repo_error_tooltip_contains() -> None:
+    """A per-repo error (``{slug, error}``) maps to the ``--error``
+    modifier with the adapter message in the tooltip."""
+    # Arrange
+    # Act
+    out = _run_pill_helpers({"slug": "foo/dead", "error": "gh exited 1: not found"})
+    # Assert
     assert "foo/dead" in out["tooltip"]
+
+
+def test_pill_modifier_for_per_repo_error_tooltip_contains_2() -> None:
+    """A per-repo error (``{slug, error}``) maps to the ``--error``
+    modifier with the adapter message in the tooltip."""
+    # Arrange
+    # Act
+    out = _run_pill_helpers({"slug": "foo/dead", "error": "gh exited 1: not found"})
+    # Assert
     assert "gh exited 1" in out["tooltip"]
 
 
@@ -248,6 +432,8 @@ def test_pill_tooltip_handles_missing_sha() -> None:
     """If the back-end emits an OK pill without a ``head_sha`` (e.g. a
     fresh repo with zero commits — defensive), the tooltip shows
     ``(no sha)`` rather than a misleading empty truncation."""
+    # Arrange
+    # Act
     out = _run_pill_helpers(
         {
             "slug": "foo/bar",
@@ -257,4 +443,5 @@ def test_pill_tooltip_handles_missing_sha() -> None:
             "checks": [],
         }
     )
+    # Assert
     assert "(no sha)" in out["tooltip"]

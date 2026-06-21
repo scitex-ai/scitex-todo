@@ -46,10 +46,8 @@
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/05-responsive.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/06-layout-and-recent.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/07-toolbar-groups.css' %}">
-{# 08-time-grouping.css — bucket headers (TODAY / WEEK / MONTH / OLDER)
-   rendered inside .col-body when the Group-by-time toggle is on. Lead
-   a2a `ff1441d7` (2026-06-14) operator TIME-BASED VIEW request. #}
-<link rel="stylesheet" href="{% static 'scitex_todo/board_v3/08-time-grouping.css' %}">
+<link rel="stylesheet" href="{% static 'scitex_todo/board_v3/08-time-grouping.css' %}">{# 08-time-grouping.css: bucket headers TODAY/WEEK/MONTH/OLDER for Group-by-time (a2a `ff1441d7`) #}
+<link rel="stylesheet" href="{% static 'scitex_todo/board_v3/09-timeline.css' %}">{# 09-timeline.css: Timeline layout — raster + per-task simple cards (operator TODO 2026-06-17) #}
 {# combobox.css (loaded below the page-CSS so its specificity sits ON TOP if needed) #}
 <link rel="stylesheet" href="{% static 'scitex_ui/css/app/combobox.css' %}">
 <script defer src="{% static 'scitex_ui/js/app/combobox.js' %}"></script>
@@ -73,6 +71,14 @@
   #f-search input. Exposes window.STX.searchSuggest. Operator TG 12318.
 {% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/searchSuggest.js' %}"></script>
+{% comment %}
+  timeline.js — the Timeline layout renderer (raster by agent/project +
+  a rich per-task "simple" list). Classic <script defer> so it shares the
+  page globals (STATE / escapeHtml / openDetail / bucket / render); it
+  exposes its entry points on window for the inline render() dispatch.
+  Operator TODO 2026-06-17.
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/timeline.js' %}"></script>
 <style>
   /* P12 (operator TG, lead a2a 2026-06-12) — board reclaims the left
      IDE-style panes. The scitex-ui standalone shell renders an AI
@@ -255,6 +261,14 @@
                 data-layout="stale" onclick="onLayoutChange('stale')"
                 role="radio" aria-checked="false"
                 title="Stale cards review — archive obsolete pending cards with a reason">🧹 Stale</button>
+        <!-- Timeline (operator TODO 2026-06-17) — live time raster (by
+             agent / by project) + a rich per-task "simple" list. Own-data
+             layout, sibling of Stale: agent/project rasters pull /timeline;
+             the simple list projects STATE.graph by time. -->
+        <button type="button" class="filt-layout-btn" id="f-layout-timeline"
+                data-layout="timeline" onclick="onLayoutChange('timeline')"
+                role="radio" aria-checked="false"
+                title="Timeline — time raster by agent/project, or a per-task simple list (day/week/month windows)">⏱ Timeline</button>
       </div>
     </span>
     <span class="filt-sort">
@@ -479,7 +493,7 @@
            per lead a2a a7e53184). All comments[] entries render here;
            Post appends via /comment + refreshes. -->
       <div class="d-comments-section">
-        <h3>💬 Comments</h3>
+        <h3>🛤 Route <span class="route-hint">— how this card was handled (newest last)</span></h3>
         <div class="comment-list" id="d-comment-list">
           <div class="comment-empty">…</div>
         </div>
@@ -1805,6 +1819,11 @@
         // the filtered `visible` set) because the criteria are
         // age/orphan-driven, not the same filter-bar predicates.
         _renderStaleView(canvas);
+      } else if (layout === "timeline") {
+        // Timeline layout — own-data like Stale. agent/project rasters
+        // pull /timeline; the per-task "simple" list projects STATE.graph
+        // by time. Ignores the kanban `visible` filter set by design.
+        _renderTimelineView(canvas);
       } else {
         _renderColumnView(canvas, visible);
       }
@@ -2820,7 +2839,11 @@
     // selected layout is persisted in localStorage so the operator's
     // choice survives reloads. (hook-bypass: line-limit.)
     function onLayoutChange(mode) {
-      const m = (mode === "graph" || mode === "table") ? mode : "column";
+      // Whitelist every real layout. The old `graph||table` guard silently
+      // coerced `stale` AND `timeline` → `column` (a latent bug that broke
+      // the Stale button); unknown values still fall back to the kanban.
+      const VALID_LAYOUTS = ["graph", "table", "column", "stale", "timeline"];
+      const m = VALID_LAYOUTS.includes(mode) ? mode : "column";
       STATE.layout = m;
       try { localStorage.setItem("scitex-todo:layout", m); } catch {}
       // Repaint the segment buttons' active state without a full render.
@@ -3336,36 +3359,62 @@
     // ─────────────────────────────────────────────────────────────────────
     // Renders all comments[] chronologically (oldest first like a chat),
     // colors operator/system trails distinctly, scrolls newest into view.
+    // Route trace (operator 2026-06-17): render the card's event stream as
+    // a chronological journey — "how it was routed". Built from created_at +
+    // comments[] (each carrying an optional `kind` ring tag the hooks stamp)
+    // + a synthetic done hop from status/completed_at. Derived from the event
+    // stream, so it adapts automatically as the workflow's rings change.
+    const ROUTE_RING = {
+      created: { label: "✦ created", cls: "created" },
+      push: { label: "⬆ push", cls: "push" },
+      "ci-result": { label: "✓ CI", cls: "ci" },
+      ci: { label: "✓ CI", cls: "ci" },
+      done: { label: "✅ done", cls: "done" },
+      "card-message": { label: "💬 message", cls: "message" },
+      message: { label: "💬 message", cls: "message" },
+      system: { label: "⚙ system", cls: "system" },
+      escalate: { label: "⚠ escalate", cls: "escalate" },
+    };
+    function _routeHops(task) {
+      const hops = [];
+      if (task.created_at) {
+        hops.push({ ts: String(task.created_at), actor: task.agent || task.assignee || "—", kind: "created", text: "card created" });
+      }
+      (Array.isArray(task.comments) ? task.comments : []).forEach(c => {
+        let kind = c.kind || "";
+        if (!kind) {
+          // untagged legacy entries: [RESOLVED]/[CLOSED]/… are system trail;
+          // everything else is a board-card message (operator/agent).
+          kind = /^\[(RESOLVED|UNDONE|re-opened|CLOSED)/i.test(String(c.text || "")) ? "system" : "message";
+        }
+        hops.push({ ts: String(c.ts || ""), actor: String(c.author || "?"), kind, text: String(c.text || "") });
+      });
+      if (task.status === "done") {
+        const dts = (task._log_meta && task._log_meta.completed_at) || task.last_activity || "";
+        hops.push({ ts: String(dts), actor: "—", kind: "done", text: task.pr_url ? ("merged " + task.pr_url) : "marked done" });
+      }
+      hops.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+      return hops;
+    }
     function renderComments(task) {
       const list = document.getElementById("d-comment-list");
       if (!list) return;
-      const comments = Array.isArray(task.comments) ? task.comments : [];
-      if (!comments.length) {
-        list.innerHTML = `<div class="comment-empty">No comments yet — be the first.</div>`;
+      const hops = _routeHops(task);
+      if (!hops.length) {
+        list.innerHTML = `<div class="comment-empty">No route activity yet.</div>`;
         return;
       }
-      const sorted = [...comments].sort((a, b) => {
-        const ta = String(a.ts || ""), tb = String(b.ts || "");
-        return ta < tb ? -1 : ta > tb ? 1 : 0;
-      });
-      list.innerHTML = sorted.map(c => {
-        const author = String(c.author || "?");
-        const ts = String(c.ts || "");
-        const text = String(c.text || "");
-        const isOperator = author === "operator";
-        // System-trail comments are the [RESOLVED]/[UNDONE]/[re-opened]
-        // entries the resolve/reopen handlers append. They render in
-        // monospace + amber so they read as machine-history, not chat.
-        const isSystem = /^\[(RESOLVED|UNDONE|re-opened)/i.test(text);
-        const cls = "comment-bubble" +
-          (isOperator ? " comment-bubble--operator" : "") +
-          (isSystem ? " comment-bubble--system" : "");
-        return `<div class="${cls}">
-          <div class="comment-meta">
-            <span class="comment-author">${escapeHtml(author)}</span>
-            <span class="comment-ts">${escapeHtml(ts)}</span>
+      list.innerHTML = hops.map(h => {
+        const r = ROUTE_RING[h.kind] || { label: String(h.kind || "·"), cls: "message" };
+        return `<div class="route-hop route-hop--${r.cls}">
+          <span class="route-badge route-badge--${r.cls}">${escapeHtml(r.label)}</span>
+          <div class="route-body">
+            <div class="route-meta">
+              <span class="route-actor">${escapeHtml(h.actor)}</span>
+              <span class="route-ts">${escapeHtml(h.ts)}</span>
+            </div>
+            <div class="route-text">${escapeHtml(h.text)}</div>
           </div>
-          <div class="comment-text">${escapeHtml(text)}</div>
         </div>`;
       }).join("");
       list.scrollTop = list.scrollHeight;
@@ -3467,6 +3516,11 @@
         if (key !== STATE.lastMtime) {
           STATE.lastMtime = key;
           await loadGraph();
+          // Keep the Timeline raster live on a store change (the simple
+          // view already re-rendered from STATE.graph inside loadGraph).
+          if (typeof window.timelineOnStoreChange === "function") {
+            window.timelineOnStoreChange();
+          }
         }
       } catch { /* transient; try next tick */ }
     }

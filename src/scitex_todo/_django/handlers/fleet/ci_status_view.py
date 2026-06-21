@@ -34,9 +34,9 @@ import logging
 
 from django.http import JsonResponse
 
-from ._errors import FleetAdapterError
 from ._config import fleet_config_load
-from .gh_ci import fetch_repo_ci_status
+from ._errors import FleetAdapterError
+from .gh_ci import fetch_many_ci_status
 
 logger = logging.getLogger(__name__)
 
@@ -50,16 +50,16 @@ def fleet_ci_status_view(request):  # noqa: ARG001 — request unused (GET only)
         return JsonResponse({"error": str(exc)}, status=500)
 
     repos: list[str] = config["fleet"]["ci_status"]["repos"]
-    per_repo: list[dict] = []
-    for slug in repos:
-        try:
-            per_repo.append(fetch_repo_ci_status(slug))
-        except FleetAdapterError as exc:
-            # Per-repo trap — one dead adapter mustn't blank the strip.
-            # The FE renders this as a red `!` pill with the message in
-            # the tooltip so the operator sees exactly what broke.
-            logger.info("[fleet/ci-status] %s -> adapter error: %s", slug, exc)
-            per_repo.append({"slug": slug, "error": str(exc)})
+    # ONE bulk GraphQL call for the whole watch-list (was N×2 REST calls —
+    # which blew GitHub's rate limit at ecosystem scale). Per-repo failures
+    # come back as ``{"slug","error"}`` entries INSIDE the batch; a WHOLE-
+    # batch failure (gh missing / auth / network) raises and we degrade to
+    # one visible error row per repo — never a blank strip.
+    try:
+        per_repo: list[dict] = fetch_many_ci_status(repos)
+    except FleetAdapterError as exc:
+        logger.warning("[fleet/ci-status] bulk fetch failed: %s", exc)
+        per_repo = [{"slug": slug, "error": str(exc)} for slug in repos]
 
     return JsonResponse(
         {

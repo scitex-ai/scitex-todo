@@ -25,9 +25,7 @@ from pathlib import Path
 import scitex_todo
 
 
-_TEMPLATES_ROOT = (
-    Path(scitex_todo.__file__).parent / "_django" / "templates"
-)
+_TEMPLATES_ROOT = Path(scitex_todo.__file__).parent / "_django" / "templates"
 
 
 def _iter_template_files():
@@ -35,24 +33,29 @@ def _iter_template_files():
 
 
 def test_templates_root_actually_exists():
-    # Arrange / Act / Assert — guard against a path refactor
     # silently turning this whole module into a no-op.
+    # Arrange
+    # Act
+    # Assert
     assert _TEMPLATES_ROOT.is_dir()
 
 
 def test_at_least_one_template_present():
-    # Arrange / Act / Assert
+    # Arrange
+    # Act
+    # Assert
     assert _iter_template_files()
 
 
 def test_no_template_contains_multi_line_django_short_comment():
-    # Arrange — for each template line, every `{#` token MUST be
     # closed by `#}` on the SAME line. If `{#` appears with no `#}`
     # after it on the same line, the comment spans lines and Django
     # will NOT strip it (single-line-only syntax).
+    # Arrange
     offenders: list[str] = []
     short_open = "{#"
     short_close = "#}"
+    # Act
     for path in _iter_template_files():
         text = path.read_text(encoding="utf-8")
         for line_no, line in enumerate(text.splitlines(), start=1):
@@ -71,7 +74,7 @@ def test_no_template_contains_multi_line_django_short_comment():
                     )
                     break  # one report per line is enough
                 idx = close + len(short_close)
-    # Assert — single, readable failure listing every offender.
+    # Assert
     assert not offenders, (
         "Multi-line Django `{# … #}` comments leak as literal text "
         "(operator-visible bug, lead a2a `f7a5d37930b9479ca7e53a7e316c132d`):\n  - "

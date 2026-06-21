@@ -195,12 +195,12 @@ def _match(
     if allowed and task.get("status") not in allowed:
         return False
     if blocking_me and not (
-        task.get("status") == "blocked"
-        and task.get("blocker") == "operator-decision"
+        task.get("status") == "blocked" and task.get("blocker") == "operator-decision"
     ):
         return False
     if overdue:
         from ._model import is_overdue as _is_overdue
+
         if not _is_overdue(task):
             return False
     return True
@@ -564,7 +564,9 @@ def resolve_store(store: str | Path | None = None) -> dict:
         resolve_tasks_path,
     )
 
-    resolved = resolve_tasks_path(store if isinstance(store, (str, type(None))) else str(store))
+    resolved = resolve_tasks_path(
+        store if isinstance(store, (str, type(None))) else str(store)
+    )
     return {
         "resolved": str(resolved),
         "explicit": str(store) if store is not None else None,
@@ -688,12 +690,27 @@ def comment_task(
     task_id: str | None = None,
     text: str | None = None,
     by: str | None = None,
+    kind: str | None = None,
+    entry_points=None,
 ) -> dict:
     """Append an entry to ``task.comments[]`` (the established Issue-
     activity-log shape from skill 30, Gitea-compatible field).
 
     `by` overrides the $SCITEX_TODO_AGENT → $USER precedence used by
     add_task / complete_task.
+
+    `kind` is an optional feedback-ring / event tag (e.g. ``push`` /
+    ``done`` / ``card-message``) stamped onto the entry so the board can
+    render "how the card was routed" (operator 2026-06-17). Lenient: the
+    model only requires ``text``, so the extra key round-trips cleanly.
+
+    `entry_points` is forwarded to :func:`scitex_todo._hooks.dispatch_event`
+    for the ``card-message`` bus emit below: an explicit iterable of
+    entry-point-shaped objects to receive the event instead of the ones
+    discovered from packaging metadata. ``None`` (the default) uses the
+    real installed plugins. This is the in-process injection seam used by
+    in-process consumers and by no-mock tests (PA-306-compliant) that
+    observe the emitted event via a real fake handler.
     """
     from . import _model
 
@@ -708,6 +725,8 @@ def comment_task(
         "ts": _utc_now_iso(),
         "text": str(text),
     }
+    if kind:
+        entry["kind"] = str(kind)
     with _model._store_lock(tasks_path):
         tasks = _model.load_tasks(tasks_path)
         target = None
@@ -747,21 +766,25 @@ def comment_task(
                 collaborators.append(a)
                 seen.add(a)
 
-        _hooks.dispatch_event({
-            "kind": "card-message",
-            "card_id": task_id,
-            "author": author,
-            "body": str(text),
-            "owner": owner,
-            "collaborators": collaborators,
-            "created_at": entry["ts"],
-        })
+        _hooks.dispatch_event(
+            {
+                "kind": "card-message",
+                "card_id": task_id,
+                "author": author,
+                "body": str(text),
+                "owner": owner,
+                "collaborators": collaborators,
+                "created_at": entry["ts"],
+            },
+            entry_points=entry_points,
+        )
     except Exception:  # noqa: BLE001 — bus must not break comment_task
         import logging
 
         logging.getLogger(__name__).warning(
             "comment_task: card-message bus dispatch failed for %r",
-            task_id, exc_info=True,
+            task_id,
+            exc_info=True,
         )
     return {"task_id": task_id, "comment": entry}
 

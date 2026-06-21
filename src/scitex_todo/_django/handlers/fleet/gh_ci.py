@@ -51,10 +51,12 @@ def _gh_binary() -> str:
     return exe
 
 
-def _gh_json(args: list[str]) -> Any:
+def _gh_json(args: list[str], timeout: int = _GH_TIMEOUT) -> Any:
     """Run ``gh`` with ``args``, parse stdout as JSON, raise on any
     failure mode (non-zero exit, timeout, malformed JSON, empty body).
 
+    ``timeout`` defaults to the per-call REST budget; the bulk GraphQL
+    path passes a longer one (one request, many repos resolved server-side).
     The error message includes the command and a trimmed stderr so the
     operator can copy-paste and reproduce.
     """
@@ -66,11 +68,11 @@ def _gh_json(args: list[str]) -> Any:
             check=False,
             capture_output=True,
             text=True,
-            timeout=_GH_TIMEOUT,
+            timeout=timeout,
         )
     except subprocess.TimeoutExpired as exc:
         raise FleetAdapterError(
-            f"gh call timed out after {_GH_TIMEOUT}s: {' '.join(cmd)}"
+            f"gh call timed out after {timeout}s: {' '.join(cmd)}"
         ) from exc
     except OSError as exc:
         raise FleetAdapterError(
@@ -87,9 +89,7 @@ def _gh_json(args: list[str]) -> Any:
 
     out = (proc.stdout or "").strip()
     if not out:
-        raise FleetAdapterError(
-            f"gh returned empty body for {' '.join(cmd)}"
-        )
+        raise FleetAdapterError(f"gh returned empty body for {' '.join(cmd)}")
     try:
         return json.loads(out)
     except json.JSONDecodeError as exc:
@@ -100,9 +100,7 @@ def _gh_json(args: list[str]) -> Any:
 
 def _default_branch(slug: str) -> str:
     """Return the repo's default branch name (e.g. ``main``)."""
-    payload = _gh_json(
-        ["repo", "view", slug, "--json", "defaultBranchRef"]
-    )
+    payload = _gh_json(["repo", "view", slug, "--json", "defaultBranchRef"])
     if not isinstance(payload, dict):
         raise FleetAdapterError(
             f"unexpected payload shape from `gh repo view {slug}`: "
@@ -233,6 +231,210 @@ def fetch_repo_ci_status(repo_slug: str) -> dict[str, Any]:
     }
 
 
-__all__ = ["fetch_repo_ci_status"]
+# --------------------------------------------------------------------------
+# Bulk GraphQL path — ONE request for MANY repos.
+# --------------------------------------------------------------------------
+#
+# The per-repo REST path above costs TWO gh calls (default-branch +
+# check-runs) PER repo. The fleet pills poll every 30s; at ecosystem scale
+# (~70 repos) that is ~140 REST calls per poll → it blows GitHub's
+# 5,000-requests/hr limit and the strip starts erroring.
+#
+# GitHub's GraphQL API bills by node cost, not per call: aliasing N repos
+# into ONE query returns every repo's default-branch CI rollup for ~1
+# point (measured: cost=1 for a 5-repo batch). One query every 30s for the
+# whole ecosystem is ~120 points/hr — a rounding error against the
+# 5,000-point/hr budget. So the pills + poller use this bulk path; the
+# per-repo `fetch_repo_ci_status` stays for lazy on-demand per-check detail.
+
+# Repos per GraphQL request. One query handles the whole ecosystem fine,
+# but we chunk so an unusually large watch-list stays under GitHub's
+# per-query node ceiling.
+_GRAPHQL_CHUNK = 50
+
+# Longer timeout for the bulk call — still ONE request, but it resolves
+# many repos server-side.
+_GRAPHQL_TIMEOUT = 20
+
+
+def _valid_slug_part(part: str) -> bool:
+    """True if ``part`` is a safe GitHub owner/repo token.
+
+    Restricting to ``[alnum] . _ -`` means a stray config entry can never be
+    interpolated into the GraphQL string as anything but a literal name.
+    """
+    return bool(part) and all(ch.isalnum() or ch in "._-" for ch in part)
+
+
+def _split_slug(slug: str) -> tuple[str, str] | None:
+    """Split ``owner/name`` into validated parts, or ``None`` if malformed."""
+    if not isinstance(slug, str) or slug.count("/") != 1:
+        return None
+    owner, name = slug.split("/", 1)
+    if not _valid_slug_part(owner) or not _valid_slug_part(name):
+        return None
+    return owner, name
+
+
+def _overall_from_rollup(state: str | None) -> str:
+    """Map a GraphQL ``statusCheckRollup.state`` to our 4-value overall.
+
+    GitHub's ``StatusState`` enum is EXPECTED / ERROR / FAILURE / PENDING /
+    SUCCESS. ``None`` = the head commit has no rollup (no CI on the branch),
+    the same "unknown / grey" steady state the REST path returns for an
+    empty check list.
+    """
+    s = (state or "").upper()
+    if s == "SUCCESS":
+        return "success"
+    if s in ("FAILURE", "ERROR"):
+        return "failure"
+    if s in ("PENDING", "EXPECTED"):
+        return "pending"
+    return "unknown"
+
+
+def _build_graphql_query(chunk: list[str]) -> str:
+    """Build one aliased GraphQL query for a chunk of validated slugs."""
+    lines = ["{", "  rateLimit { cost remaining }"]
+    for i, slug in enumerate(chunk):
+        owner, name = slug.split("/", 1)
+        lines.append(
+            f'  r{i}: repository(owner: "{owner}", name: "{name}") {{ '
+            "nameWithOwner defaultBranchRef { name target { "
+            "... on Commit { oid statusCheckRollup { state } } } } }"
+        )
+    lines.append("}")
+    return "\n".join(lines)
+
+
+def _parse_graphql_repo(node: Any, slug: str) -> dict[str, Any]:
+    """Map one GraphQL ``repository`` node to the per-repo pills shape."""
+    if not isinstance(node, dict):
+        # null node — repo not found or not visible to the token.
+        return {
+            "slug": slug,
+            "error": "repository not found or not accessible",
+        }
+    ref = node.get("defaultBranchRef")
+    if not isinstance(ref, dict):
+        # Empty repo / no default branch — legitimate; render as unknown.
+        return {
+            "slug": slug,
+            "branch": "",
+            "head_sha": "",
+            "checks": [],
+            "overall": "unknown",
+        }
+    target_raw = ref.get("target")
+    target = target_raw if isinstance(target_raw, dict) else {}
+    rollup = target.get("statusCheckRollup")
+    state = rollup.get("state") if isinstance(rollup, dict) else None
+    return {
+        "slug": slug,
+        "branch": str(ref.get("name") or ""),
+        "head_sha": str(target.get("oid") or ""),
+        # Bulk path returns the rollup overall only; the individual check
+        # rows are a lazy per-repo `fetch_repo_ci_status` call on demand.
+        "checks": [],
+        "overall": _overall_from_rollup(state),
+    }
+
+
+def _gh_graphql(query: str, timeout: int = _GRAPHQL_TIMEOUT) -> dict[str, Any]:
+    """Run ``gh api graphql`` and return the parsed response body.
+
+    GraphQL is partial-success by design: when SOME aliases fail (e.g. a
+    repo doesn't exist) GitHub returns the resolved data ALONGSIDE an
+    ``errors`` array, and ``gh`` exits non-zero. We therefore parse the
+    body REGARDLESS of exit code and only raise when there is no usable
+    ``data`` object (gh missing, auth dead, network, malformed query) — so
+    one missing repo never blanks the whole batch.
+    """
+    exe = _gh_binary()
+    cmd = [exe, "api", "graphql", "-f", f"query={query}"]
+    try:
+        proc = subprocess.run(
+            cmd, check=False, capture_output=True, text=True, timeout=timeout
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise FleetAdapterError(f"gh graphql timed out after {timeout}s") from exc
+    except OSError as exc:
+        raise FleetAdapterError(f"gh graphql failed to start: {exc}") from exc
+
+    body: Any = None
+    out = (proc.stdout or "").strip()
+    if out:
+        try:
+            body = json.loads(out)
+        except json.JSONDecodeError:
+            body = None
+    # Usable data (full OR partial) → return it; the caller maps per-alias
+    # nulls to error entries via the `errors` array.
+    if isinstance(body, dict) and isinstance(body.get("data"), dict):
+        return body
+    # No usable data → a genuine whole-batch failure. Surface GraphQL error
+    # messages if present, else the gh stderr.
+    if isinstance(body, dict) and body.get("errors"):
+        msgs = "; ".join(
+            str(e.get("message")) for e in body["errors"][:3] if isinstance(e, dict)
+        )
+        raise FleetAdapterError(f"gh graphql errored: {msgs}")
+    stderr = " | ".join((proc.stderr or "").strip().splitlines()[:3])
+    raise FleetAdapterError(
+        f"gh graphql exited {proc.returncode}: {stderr or '(no stderr)'}"
+    )
+
+
+def fetch_many_ci_status(slugs: list[str]) -> list[dict[str, Any]]:
+    """Fetch CI summaries for MANY repos in one (chunked) GraphQL request.
+
+    Returns one entry per input slug, in input order, each shaped exactly
+    like :func:`fetch_repo_ci_status` (``slug`` / ``branch`` / ``head_sha``
+    / ``checks`` / ``overall``) OR a ``{"slug", "error"}`` sub-document —
+    the SAME contract the view already renders, so nothing downstream
+    changes.
+
+    Per-repo robustness mirrors the view's old per-repo trap: a malformed
+    slug or a missing repo becomes an error entry rather than blanking the
+    batch. A WHOLE-batch failure (gh missing, auth dead, network) still
+    raises :class:`FleetAdapterError`.
+    """
+    results: dict[str, dict[str, Any]] = {}
+    valid: list[str] = []
+    for slug in slugs:
+        if _split_slug(slug) is None:
+            results[slug] = {
+                "slug": slug,
+                "error": "invalid slug — expected 'owner/name'",
+            }
+        else:
+            valid.append(slug)
+
+    for start in range(0, len(valid), _GRAPHQL_CHUNK):
+        chunk = valid[start : start + _GRAPHQL_CHUNK]
+        body = _gh_graphql(_build_graphql_query(chunk))
+        data = body.get("data") or {}
+        # Map GraphQL per-alias errors (e.g. NOT_FOUND) back to their slug
+        # so a missing repo shows its real reason, not a generic null.
+        err_by_alias: dict[str, str] = {}
+        for e in body.get("errors") or []:
+            if not isinstance(e, dict):
+                continue
+            path = e.get("path")
+            if isinstance(path, list) and path and isinstance(path[0], str):
+                err_by_alias[path[0]] = str(e.get("message") or "GraphQL error")
+        for i, slug in enumerate(chunk):
+            alias = f"r{i}"
+            node = data.get(alias)
+            if node is None and alias in err_by_alias:
+                results[slug] = {"slug": slug, "error": err_by_alias[alias]}
+            else:
+                results[slug] = _parse_graphql_repo(node, slug)
+
+    return [results[s] for s in slugs]
+
+
+__all__ = ["fetch_repo_ci_status", "fetch_many_ci_status"]
 
 # EOF
