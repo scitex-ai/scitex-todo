@@ -1,0 +1,73 @@
+name: tests
+
+# Full pytest matrix for scitex-todo across the supported Python line.
+#
+# Runner: scitex-todo's self-hosted Spartan CPU runners
+#   (spartan-cpu-todo-01 / -02). They advertise the canonical
+#   `[self-hosted, Linux, X64, spartan-cpu]` label set, so this matches
+#   the fleet label convention while staying on the dedicated compute.
+#   `actions/setup-python` has no tool cache on a self-hosted runner, so
+#   `uv` provisions the interpreter and the venv per leg.
+#
+# This file replaces the vague combined `ci.yml`. The job NAME
+# (`pytest-matrix-on-ubuntu-py${{ matrix.python-version }}`) is a REQUIRED
+# branch-protection status check — keep it verbatim fleet-wide.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: "0 17 * * *"  # nightly 17:00 UTC (~02:00 JST), off-peak
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    # Job name is a REQUIRED status check — keep verbatim fleet-wide.
+    name: pytest-matrix-on-ubuntu-py${{ matrix.python-version }}
+    runs-on: [self-hosted, Linux, X64, spartan-cpu]
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          cache-dependency-glob: pyproject.toml
+      - name: Install (.[all,dev]) + pytest
+        run: |
+          set -euo pipefail
+          uv venv --python ${{ matrix.python-version }} .venv
+          # Fallback chain: prefer [all,dev] so optional-dep code paths
+          # (yaml, fastmcp, textual) get exercised. Falls back to [dev]
+          # then plain editable so a packaging hiccup doesn't strand CI.
+          uv pip install --python .venv/bin/python -e ".[all,dev]" \
+            || uv pip install --python .venv/bin/python -e ".[dev]" \
+            || uv pip install --python .venv/bin/python -e .
+          .venv/bin/python -m pytest tests/ \
+            --cov=src/scitex_todo --cov-report=xml --cov-report=term
+      - name: Upload coverage to Codecov
+        if: always() && matrix.python-version == '3.12'
+        # codecov-action can flake on the self-hosted runner; coverage
+        # upload must never gate CI.
+        continue-on-error: true
+        # Per-job isolated HOME so the parallel matrix legs never race on
+        # the shared ~/.gitconfig that codecov-action writes for its
+        # `safe.directory` handling; disable_safe_directory because each
+        # job already has an isolated HOME and the codecov step owns the
+        # checkout (the Spartan runners run jobs against a shared work dir).
+        env:
+          HOME: ${{ runner.temp }}/codecov-home-${{ matrix.python-version }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          fail_ci_if_error: false
+          disable_safe_directory: true
