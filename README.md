@@ -202,6 +202,27 @@ scitex-todo board                          # opens http://127.0.0.1:8051/
 
 </details>
 
+<details>
+<summary><strong>Git hooks (git → card)</strong></summary>
+
+Record local git mutations onto the matching card automatically. Install the
+`post-commit` + `pre-push` hooks into any repo:
+
+```bash
+scripts/install-todo-git-hooks.sh          # wires hooks into the current repo
+scripts/install-todo-git-hooks.sh --copy   # vendor hooks into <repo>/.githooks
+scripts/install-todo-git-hooks.sh --uninstall
+```
+
+The hooks **soft-link**: a commit/push on a `<type>/<card-id>-…` branch (e.g.
+`feat/tcfb-p3-git-to-card`) appends a `[push]` comment to that card via
+`scitex-todo hook push`. Commits on ad-hoc branches are skipped silently — no
+card id, no error. To link a one-off commit on an ad-hoc branch, add a
+`Card: <id>` trailer to the commit message. The hooks are best-effort and
+never block a commit or push.
+
+</details>
+
 ## Task store schema
 
 A YAML document with a top-level `tasks:` list. Each task:
