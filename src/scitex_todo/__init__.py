@@ -65,7 +65,9 @@ _LAZY_IMPORTS = {
     "resolve_store": ("._store", "resolve_store"),
     "resolve_task": ("._store", "resolve_task"),
     "restore_task": ("._store", "restore_task"),
+    "set_collaborator": ("._store", "set_collaborator"),
     "set_edge": ("._store", "set_edge"),
+    "set_subscriber": ("._store", "set_subscriber"),
     "summarize_tasks": ("._store", "summarize_tasks"),
     "update_task": ("._store", "update_task"),
 }
@@ -111,7 +113,9 @@ __all__ = [
     "resolve_store",
     "resolve_task",
     "restore_task",
+    "set_collaborator",
     "set_edge",
+    "set_subscriber",
     "summarize_tasks",
     "update_task",
 ]
