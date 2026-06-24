@@ -357,10 +357,13 @@ def update_task(
     if not task_id:
         raise TypeError("update_task() requires a non-empty task_id")
     resolved = _resolved_store(store)
+    result: dict | None = None
+    transitioned_to_done = False
     with _store_lock(resolved):
         tasks = load_tasks(resolved)
         for task in tasks:
             if task.get("id") == task_id:
+                prior_status = task.get("status")
                 for key, value in fields.items():
                     if value is None:
                         task.pop(key, None)
@@ -374,8 +377,20 @@ def update_task(
                 if "last_activity" not in fields:
                     task["last_activity"] = _utc_now_iso()
                 _save_tasks_unlocked(tasks, resolved)
-                return dict(task)
-    raise TaskNotFoundError(f"task id {task_id!r} not found in {resolved}")
+                result = dict(task)
+                transitioned_to_done = (
+                    fields.get("status") == "done" and prior_status != "done"
+                )
+                break
+    if result is None:
+        raise TaskNotFoundError(f"task id {task_id!r} not found in {resolved}")
+    # Active-unblock DRIVE (ADR-0009) — a direct status→done via
+    # update_task() drives the same unblock as complete_task(). Outside
+    # the lock; the handler's per-card token dedupe makes a double-path
+    # (e.g. update_task then complete_task) idempotent.
+    if transitioned_to_done:
+        _emit_unblock_for_dependents(resolved, task_id, by=None)
+    return result
 
 
 def complete_task(
@@ -401,12 +416,15 @@ def complete_task(
     if not task_id:
         raise TypeError("complete_task() requires a non-empty task_id")
     resolved = _resolved_store(store)
+    result: dict | None = None
+    transitioned = False
     with _store_lock(resolved):
         tasks = load_tasks(resolved)
         for task in tasks:
             if task.get("id") == task_id:
                 if task.get("status") == "done":
                     # Idempotent: don't refresh the stamp, just return.
+                    # No unblock emit — re-completing changed nothing.
                     return dict(task)
                 task["status"] = "done"
                 log_meta = task.get("_log_meta")
@@ -416,8 +434,93 @@ def complete_task(
                 log_meta["completed_at"] = _utc_now_iso()
                 log_meta["completed_by"] = _default_agent(by)
                 _save_tasks_unlocked(tasks, resolved)
-                return dict(task)
-    raise TaskNotFoundError(f"task id {task_id!r} not found in {resolved}")
+                result = dict(task)
+                transitioned = True
+                break
+    if result is None:
+        raise TaskNotFoundError(f"task id {task_id!r} not found in {resolved}")
+    # Active-unblock DRIVE (ADR-0009) — OUTSIDE the file lock (the emit
+    # re-loads the store + may comment on dependents, which take the
+    # same lock). Only on a real pending→done transition.
+    if transitioned:
+        _emit_unblock_for_dependents(resolved, task_id, by=by)
+    return result
+
+
+def _emit_unblock_for_dependents(
+    tasks_path: Path,
+    completed_id: str,
+    *,
+    by: str | None = None,
+    entry_points=None,
+) -> list[str]:
+    """Active-unblock DRIVE (ADR-0009).
+
+    A card just flipped to ``done``. Find its DIRECT dependents whose
+    last blocking dependency this completion just cleared — i.e. the
+    dependents that are NOW runnable — and emit ONE ``unblock`` event
+    naming them. A consumer (SAC) notifies each unblocked card's
+    assignee + subscribers (*"your task is now unblocked"*).
+
+    "Direct dependent" = a card D with ``completed_id`` in its
+    ``depends_on``, OR a card D that ``completed_id`` lists in its
+    ``blocks``. "Now runnable" reuses :func:`_runnable.runnable_tasks`
+    verbatim (DRY — same dep-satisfied predicate the dispatcher uses):
+    a direct dependent that is runnable now could not have been runnable
+    before (``completed_id`` was an unresolved upstream), so its presence
+    in the runnable set means *this* completion unblocked it.
+
+    Returns the unblocked card ids (possibly empty). Best-effort: this is
+    called AFTER the completion is durably saved, so any compute/bus
+    error is caught + logged, never raised — feedback must not break the
+    done transition it reports on.
+    """
+    try:
+        from . import _hooks, _model, _runnable
+
+        tasks = _model.load_tasks(tasks_path)
+        unlocker = next(
+            (t for t in tasks if isinstance(t, dict) and t.get("id") == completed_id),
+            None,
+        )
+        downstream_via_blocks = set(unlocker.get("blocks") or ()) if unlocker else set()
+        dependents = {
+            t.get("id")
+            for t in tasks
+            if isinstance(t, dict)
+            and t.get("id")
+            and (
+                completed_id in (t.get("depends_on") or ())
+                or t.get("id") in downstream_via_blocks
+            )
+        }
+        if not dependents:
+            return []
+        runnable_now = {t.get("id") for t in _runnable.runnable_tasks(tasks).tasks}
+        unblocked = sorted(str(i) for i in (dependents & runnable_now) if i)
+        if not unblocked:
+            return []
+        _hooks.dispatch_event(
+            {
+                "kind": "unblock",
+                "unlocker_id": completed_id,
+                "card_ids": unblocked,
+                "author": _default_agent(by),
+                "unblocked_at": _utc_now_iso(),
+            },
+            # Pass the SAME store so the built-in `_handle_unblock` writes
+            # the `[unblocked]` comment to this store, not the default one.
+            store=tasks_path,
+            entry_points=entry_points,
+        )
+        return unblocked
+    except Exception:  # noqa: BLE001 — unblock drive must not break `done`
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "unblock drive failed for completed card %r", completed_id, exc_info=True
+        )
+        return []
 
 
 def list_tasks(
@@ -747,6 +850,14 @@ def comment_task(
         comments.append(entry)
         _model._save_tasks_unlocked(tasks, tasks_path)
         owner = target.get("agent") or target.get("assignee")
+        # Persistent role lists (ADR-0009) — captured under the lock so
+        # the bus emit below works off a consistent snapshot.
+        persistent_collaborators = [
+            c for c in (target.get("collaborators") or []) if isinstance(c, str) and c
+        ]
+        persistent_subscribers = [
+            s for s in (target.get("subscribers") or []) if isinstance(s, str) and s
+        ]
 
     # card-message bus emit (lead a2a `1e8e33d0`, 2026-06-14) — done
     # OUTSIDE the file lock so a slow bus handler can't extend the
@@ -761,10 +872,24 @@ def comment_task(
         if owner:
             seen.add(owner)
         seen.add(author)
-        for a in prior_authors:
+        for a in list(prior_authors) + persistent_collaborators:
             if a and a not in seen:
                 collaborators.append(a)
                 seen.add(a)
+
+        # Effective notify list (ADR-0009): the card's explicit
+        # subscribers if any, else default to owner + collaborators.
+        # P2's consumer fans the card-message to these. (Creator-auto-
+        # subscribe is a later phase — needs an author param on add_task.)
+        subscribers: list[str] = []
+        sub_seen: set[str] = set()
+        candidate_subs = persistent_subscribers or (
+            ([owner] if owner else []) + collaborators
+        )
+        for s in candidate_subs:
+            if s and s not in sub_seen:
+                subscribers.append(s)
+                sub_seen.add(s)
 
         _hooks.dispatch_event(
             {
@@ -774,6 +899,7 @@ def comment_task(
                 "body": str(text),
                 "owner": owner,
                 "collaborators": collaborators,
+                "subscribers": subscribers,
                 "created_at": entry["ts"],
             },
             entry_points=entry_points,
@@ -833,6 +959,85 @@ def set_edge(
     return {"action": action, "kind": kind, "source": source, "target": target}
 
 
+def _set_list_member(
+    tasks_path: Path,
+    task_id: str,
+    field: str,
+    who: str,
+    action: str,
+) -> dict:
+    """Idempotent add / remove of ``who`` in ``task[field]`` (a str list).
+
+    Adds only if absent; removes every occurrence. Drops the key when the
+    list becomes empty (same convention as :func:`set_edge` on edges, so
+    the YAML stays sparse). Stamps ``last_activity``. Returns the task.
+    """
+    with _store_lock(tasks_path):
+        tasks = load_tasks(tasks_path)
+        for task in tasks:
+            if task.get("id") == task_id:
+                members = [m for m in (task.get(field) or []) if m != who]
+                if action == "add":
+                    members.append(who)
+                if members:
+                    task[field] = members
+                else:
+                    task.pop(field, None)
+                task["last_activity"] = _utc_now_iso()
+                _save_tasks_unlocked(tasks, tasks_path)
+                return dict(task)
+    raise TaskNotFoundError(f"task id {task_id!r} not found in {tasks_path}")
+
+
+def set_collaborator(
+    store: str | Path | None = None,
+    *,
+    task_id: str | None = None,
+    who: str | None = None,
+    action: str = "add",
+) -> dict:
+    """Add or remove ``who`` on a card's ``collaborators`` (ADR-0009).
+
+    ``action`` in {"add", "remove"}. Adding a collaborator ALSO subscribes
+    them (the ADR default — subscribers ⊇ collaborators), so they get
+    feedback by default. Removing a collaborator leaves their subscription
+    intact; call :func:`set_subscriber` with ``action="remove"`` to also
+    stop their notices. Returns the (post-mutation) task mapping.
+    """
+    if not task_id or not who:
+        raise ValueError("set_collaborator: 'task_id' and 'who' are required")
+    if action not in ("add", "remove"):
+        raise ValueError("set_collaborator: action must be 'add' or 'remove'")
+    tasks_path = _resolved_store(store)
+    task = _set_list_member(tasks_path, task_id, "collaborators", who, action)
+    if action == "add":
+        task = _set_list_member(tasks_path, task_id, "subscribers", who, "add")
+    return task
+
+
+def set_subscriber(
+    store: str | Path | None = None,
+    *,
+    task_id: str | None = None,
+    who: str | None = None,
+    action: str = "add",
+) -> dict:
+    """Add or remove ``who`` on a card's ``subscribers`` — the notify list
+    (ADR-0009).
+
+    ``action`` in {"add", "remove"}. Anyone may unsubscribe — even a
+    collaborator (the ADR's "always unsubscribable" rule): a ``remove``
+    here drops them from the notify list without touching collaborators.
+    Returns the (post-mutation) task mapping.
+    """
+    if not task_id or not who:
+        raise ValueError("set_subscriber: 'task_id' and 'who' are required")
+    if action not in ("add", "remove"):
+        raise ValueError("set_subscriber: action must be 'add' or 'remove'")
+    tasks_path = _resolved_store(store)
+    return _set_list_member(tasks_path, task_id, "subscribers", who, action)
+
+
 def resolve_task(
     store: str | Path | None = None,
     task_id: str | None = None,
@@ -872,6 +1077,11 @@ def resolve_task(
             }
         )
         _model._save_tasks_unlocked(tasks, tasks_path)
+    # Active-unblock DRIVE (ADR-0009) — resolving a blocker card to done
+    # can free its dependents too. Outside the lock; skip the noop
+    # (already-done) path. Handler token-dedupe keeps it idempotent.
+    if not was_done:
+        _emit_unblock_for_dependents(tasks_path, task_id, by=who)
     return {"task_id": task_id, "actor": who, "task": dict(target)}
 
 
@@ -924,7 +1134,9 @@ __all__ = [
     "resolve_store",
     "resolve_task",
     "restore_task",
+    "set_collaborator",
     "set_edge",
+    "set_subscriber",
     "summarize_tasks",
     "update_task",
 ]

@@ -151,7 +151,16 @@ ENTRY_POINT_GROUP = "scitex_todo.hooks"
 #:                      the bus. SAC's consumer a2a-delivers to the
 #:                      card's owner + collaborators (lead a2a
 #:                      ``1e8e33d0``, 2026-06-14).
-VALID_EVENT_KINDS = frozenset({"push", "done", "card-message"})
+#:   - ``unblock``      a card that others ``depends_on`` flipped to
+#:                      ``done``, so its dependents are now runnable.
+#:                      Emitted by :func:`scitex_todo._store.complete_task`
+#:                      (the active-unblock DRIVE, ADR-0009). Carries the
+#:                      ``unlocker_id`` (the finished card) and ``card_ids``
+#:                      (the newly-unblocked dependents). The built-in
+#:                      handler records a ``[unblocked]`` ROUTE comment on
+#:                      each; SAC's consumer notifies their assignee +
+#:                      subscribers ("your task is now unblocked").
+VALID_EVENT_KINDS = frozenset({"push", "done", "card-message", "unblock"})
 
 
 class HookEventError(ValueError):
@@ -231,13 +240,39 @@ def event_validate(event: Any) -> dict:
                 )
             norm_collab.append(c)
         out["collaborators"] = norm_collab
+        # subscribers — optional notify list (ADR-0009). Same shape as
+        # collaborators; empty/absent is valid (the consumer falls back
+        # to owner + collaborators).
+        subscribers = event.get("subscribers") or []
+        if not isinstance(subscribers, list):
+            raise HookEventError(
+                f"card-message event: 'subscribers' must be a list "
+                f"(got {type(subscribers).__name__})"
+            )
+        norm_subs: list[str] = []
+        for s in subscribers:
+            if not isinstance(s, str) or not s:
+                raise HookEventError(
+                    f"card-message event: 'subscribers' entry "
+                    f"{s!r} is not a non-empty string"
+                )
+            norm_subs.append(s)
+        out["subscribers"] = norm_subs
         out["created_at"] = event.get("created_at")
         # `card-message` does NOT use `card_ids` (singular `card_id`
         # above); return early so the trailing card_ids normalisation
         # block doesn't add an empty list to the payload.
         return out
-    # card_ids — optional in both kinds; coerce to list[str] of non-
-    # empty strings. Anything else is malformed.
+    elif kind == "unblock":
+        # The card that just flipped to done (the "unlocker"). Required
+        # so consumers can say *who* unblocked the dependents.
+        out["unlocker_id"] = _require("unlocker_id")
+        out["author"] = event.get("author")
+        out["unblocked_at"] = event.get("unblocked_at")
+        # `card_ids` here = the newly-unblocked dependents; normalised
+        # by the shared block below (NOT returned early).
+    # card_ids — optional for push/done/unblock; coerce to list[str] of
+    # non-empty strings. Anything else is malformed.
     card_ids = event.get("card_ids") or []
     if not isinstance(card_ids, list):
         raise HookEventError(
@@ -304,6 +339,8 @@ def dispatch_event(
         card_writes = _handle_push(event, store=store)
     elif kind == "done":
         card_writes = _handle_done(event, store=store)
+    elif kind == "unblock":
+        card_writes = _handle_unblock(event, store=store)
 
     plugin_count, plugin_errors = _run_plugins(event, entry_points=entry_points)
     return {
@@ -371,6 +408,56 @@ def _handle_done(event: dict, *, store: Any | None) -> list[dict]:
         except _store.TaskNotFoundError:
             out.append({"card_id": card_id, "action": "card-not-found"})
     return out
+
+
+def _handle_unblock(event: dict, *, store: Any | None) -> list[dict]:
+    """Built-in `unblock` handler — idempotent `[unblocked]` comment per card.
+
+    Records on each newly-runnable dependent that ``unlocker_id`` (the
+    card that just finished) cleared its last blocking dependency. The
+    actual *notification* of the dependent's assignee + subscribers is a
+    consumer concern (SAC's plugin); this only writes the durable trail
+    so the board shows why a card became runnable even with no consumer.
+    """
+    out: list[dict] = []
+    unlocker_id = event["unlocker_id"]
+    by = event.get("author") or "<unknown>"
+    # The unlocker id is the dedupe token — re-emitting the same unblock
+    # (e.g. a `done` event replayed) must not append duplicate comments.
+    token = f"[unblocked by {unlocker_id}]"
+    for card_id in event["card_ids"]:
+        if _comment_token_present(card_id, token, store=store):
+            out.append({"card_id": card_id, "action": "already-recorded"})
+            continue
+        try:
+            _store.comment_task(
+                store=store, task_id=card_id, text=token, by=by, kind="unblock"
+            )
+            out.append({"card_id": card_id, "action": "comment-appended"})
+        except _store.TaskNotFoundError:
+            out.append({"card_id": card_id, "action": "card-not-found"})
+    return out
+
+
+def _comment_token_present(
+    card_id: str,
+    token: str,
+    *,
+    store: Any | None,
+) -> bool:
+    """True iff some existing comment on ``card_id`` contains ``token``."""
+    try:
+        existing = _store.get_task(store=store, task_id=card_id)
+    except (AttributeError, _store.TaskNotFoundError):
+        return False
+    if existing is None:
+        return False
+    for c in existing.get("comments") or ():
+        if not isinstance(c, dict):
+            continue
+        if token in (c.get("text") or ""):
+            return True
+    return False
 
 
 def _push_already_recorded(

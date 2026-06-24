@@ -25,7 +25,6 @@ from scitex_todo._hooks import (
 )
 from scitex_todo._store import add_task, list_tasks
 
-
 # === Wire-shape constants ==================================================
 
 
@@ -41,7 +40,7 @@ def test_valid_event_kinds_set():
     # Arrange
     # Act
     # Assert
-    assert VALID_EVENT_KINDS == frozenset({"push", "done", "card-message"})
+    assert VALID_EVENT_KINDS == frozenset({"push", "done", "card-message", "unblock"})
 
 
 # === event_validate — fail-loud on shape violations ========================
@@ -345,3 +344,134 @@ def test_dispatch_event_handles_plugin_error_gracefully(tmp_path: Path, env):
     summary = dispatch_event(event, entry_points=[_FakeEP()])
     # Assert
     assert summary["plugin_errors"][0]["plugin"] == "fake-failing"
+
+
+# === unblock event — validate (ADR-0009) ==================================
+
+
+def test_event_validate_unblock_requires_unlocker_id():
+    # Arrange
+    bad = {"kind": "unblock", "card_ids": ["b"]}
+    # Act
+    # Assert
+    with pytest.raises(HookEventError):
+        event_validate(bad)
+
+
+def test_event_validate_unblock_carries_unlocker_id():
+    # Arrange
+    payload = {"kind": "unblock", "unlocker_id": "a", "card_ids": ["b"]}
+    # Act
+    out = event_validate(payload)
+    # Assert
+    assert out["unlocker_id"] == "a"
+
+
+def test_event_validate_unblock_normalizes_card_ids():
+    # Arrange
+    payload = {"kind": "unblock", "unlocker_id": "a", "card_ids": ["b", "c"]}
+    # Act
+    out = event_validate(payload)
+    # Assert
+    assert out["card_ids"] == ["b", "c"]
+
+
+# === unblock built-in handler — idempotent [unblocked] comment ============
+
+
+def test_unblock_handler_appends_comment_to_dependent(tmp_path: Path, env):
+    # Arrange
+    store = _store_with(tmp_path)
+    env.set("SCITEX_TODO_TASKS", str(store))
+    event = event_validate(
+        {"kind": "unblock", "unlocker_id": "blocker-x", "card_ids": ["card-1"]}
+    )
+    # Act
+    summary = dispatch_event(event)
+    # Assert
+    assert summary["card_writes"][0]["action"] == "comment-appended"
+
+
+def test_unblock_handler_is_idempotent_on_same_unlocker(tmp_path: Path, env):
+    # Arrange — re-emitting the same unblock must not double-comment.
+    store = _store_with(tmp_path)
+    env.set("SCITEX_TODO_TASKS", str(store))
+    event = event_validate(
+        {"kind": "unblock", "unlocker_id": "blocker-x", "card_ids": ["card-1"]}
+    )
+    dispatch_event(event)
+    # Act
+    summary = dispatch_event(event)
+    # Assert
+    assert summary["card_writes"][0]["action"] == "already-recorded"
+
+
+def test_unblock_handler_unknown_card_is_soft_noop(tmp_path: Path, env):
+    # Arrange
+    store = _store_with(tmp_path)
+    env.set("SCITEX_TODO_TASKS", str(store))
+    event = event_validate(
+        {
+            "kind": "unblock",
+            "unlocker_id": "blocker-x",
+            "card_ids": ["never-existed"],
+        }
+    )
+    # Act
+    summary = dispatch_event(event)
+    # Assert
+    assert summary["card_writes"][0]["action"] == "card-not-found"
+
+
+# === card-message subscribers — optional notify list (ADR-0009) ===========
+
+
+def test_event_validate_card_message_subscribers_default_empty():
+    # Arrange — subscribers absent.
+    payload = {"kind": "card-message", "card_id": "c", "body": "hi"}
+    # Act
+    out = event_validate(payload)
+    # Assert
+    assert out["subscribers"] == []
+
+
+def test_event_validate_card_message_rejects_non_list_subscribers():
+    # Arrange
+    bad = {
+        "kind": "card-message",
+        "card_id": "c",
+        "body": "hi",
+        "subscribers": "alice",
+    }
+    # Act
+    # Assert
+    with pytest.raises(HookEventError):
+        event_validate(bad)
+
+
+def test_event_validate_card_message_rejects_empty_subscriber_entry():
+    # Arrange
+    bad = {
+        "kind": "card-message",
+        "card_id": "c",
+        "body": "hi",
+        "subscribers": [""],
+    }
+    # Act
+    # Assert
+    with pytest.raises(HookEventError):
+        event_validate(bad)
+
+
+def test_event_validate_card_message_passes_valid_subscribers():
+    # Arrange
+    payload = {
+        "kind": "card-message",
+        "card_id": "c",
+        "body": "hi",
+        "subscribers": ["alice", "bob"],
+    }
+    # Act
+    out = event_validate(payload)
+    # Assert
+    assert out["subscribers"] == ["alice", "bob"]

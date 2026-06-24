@@ -304,7 +304,9 @@ async def summarize_tasks(
     tasks_path: str | None = None,
 ) -> str:
     """Numeric progress: counts by status / scope / assignee."""
-    return json.dumps(_store.summarize_tasks(tasks_path, scope=scope, assignee=assignee))
+    return json.dumps(
+        _store.summarize_tasks(tasks_path, scope=scope, assignee=assignee)
+    )
 
 
 @mcp.tool()
@@ -426,7 +428,9 @@ async def set_edge(
       source / target: task ids on the edge.
     """
     return json.dumps(
-        _store.set_edge(tasks_path, action=action, kind=kind, source=source, target=target)
+        _store.set_edge(
+            tasks_path, action=action, kind=kind, source=source, target=target
+        )
     )
 
 
@@ -457,6 +461,53 @@ async def reopen_task(
     return json.dumps(_store.reopen_task(tasks_path, task_id, by=by))
 
 
+@mcp.tool()
+async def set_collaborator(
+    task_id: str,
+    who: str,
+    action: str = "add",
+    tasks_path: str | None = None,
+) -> str:
+    """Add or remove a collaborator on a card (ADR-0009 roles).
+
+    Args:
+      task_id: the card id.
+      who: the agent/human to add or remove.
+      action: ``"add"`` (default) or ``"remove"``.
+
+    Adding a collaborator also subscribes them to the card's feedback
+    (the default — subscribers include collaborators). Removing a
+    collaborator leaves their subscription intact; use ``set_subscriber``
+    with ``action="remove"`` to also stop their notices.
+    """
+    return json.dumps(
+        _store.set_collaborator(tasks_path, task_id=task_id, who=who, action=action)
+    )
+
+
+@mcp.tool()
+async def set_subscriber(
+    task_id: str,
+    who: str,
+    action: str = "add",
+    tasks_path: str | None = None,
+) -> str:
+    """Subscribe or unsubscribe an agent/human on a card's notify list
+    (ADR-0009 roles).
+
+    Args:
+      task_id: the card id.
+      who: the agent/human to subscribe or unsubscribe.
+      action: ``"add"`` (subscribe, default) or ``"remove"`` (unsubscribe).
+
+    Anyone may unsubscribe — even a collaborator (the "always
+    unsubscribable" rule).
+    """
+    return json.dumps(
+        _store.set_subscriber(tasks_path, task_id=task_id, who=who, action=action)
+    )
+
+
 #: Canonical list of registered tool names — kept here as a constant so the
 #: `mcp doctor` / `mcp list-tools` CLI verbs don't have to introspect
 #: FastMCP's internal registry (which drifts between 2.x and 3.x). Update
@@ -474,6 +525,8 @@ TOOL_NAMES: tuple[str, ...] = (
     "restore_task",
     "comment_task",
     "set_edge",
+    "set_collaborator",
+    "set_subscriber",
     "resolve_task",
     "reopen_task",
     "todo_skills_list",
