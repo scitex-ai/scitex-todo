@@ -52,6 +52,18 @@ except ImportError:  # pragma: no cover — only on ancient Pythons
 # ``globals()`` for O(1) repeat lookups.
 _LAZY_IMPORTS = {
     "TaskValidationError": ("._model", "TaskValidationError"),
+    # Agent career — host@name identity join key + agent-directory port
+    # (ADR-0009). Library seams; exposed here so consumers can wire a
+    # provider / canonicalise ids without reaching into the private module.
+    "AGENT_DIRECTORY_GROUP": ("._ports", "AGENT_DIRECTORY_GROUP"),
+    "AgentDirectoryPort": ("._ports", "AgentDirectoryPort"),
+    "AgentIdentityError": ("._ports", "AgentIdentityError"),
+    "AgentInfo": ("._ports", "AgentInfo"),
+    "EmptyAgentDirectory": ("._ports", "EmptyAgentDirectory"),
+    "canonical_agent_id": ("._ports", "canonical_agent_id"),
+    "dedup_agents": ("._ports", "dedup_agents"),
+    "parse_agent_id": ("._ports", "parse_agent_id"),
+    "resolve_agent_directory": ("._ports", "resolve_agent_directory"),
     "ENV_AGENT": ("._store", "ENV_AGENT"),
     "ENV_SCOPE": ("._store", "ENV_SCOPE"),
     "TaskNotFoundError": ("._store", "TaskNotFoundError"),
@@ -99,17 +111,26 @@ def __dir__():
 
 __all__ = [
     "__version__",
+    "AGENT_DIRECTORY_GROUP",
+    "AgentDirectoryPort",
+    "AgentIdentityError",
+    "AgentInfo",
+    "EmptyAgentDirectory",
     "ENV_AGENT",
     "ENV_SCOPE",
     "TaskNotFoundError",
     "TaskValidationError",
     "add_task",
+    "canonical_agent_id",
     "comment_task",
     "complete_task",
+    "dedup_agents",
     "delete_task",
     "get_task",
     "list_tasks",
+    "parse_agent_id",
     "reopen_task",
+    "resolve_agent_directory",
     "resolve_store",
     "resolve_task",
     "restore_task",
