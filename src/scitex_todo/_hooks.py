@@ -113,9 +113,10 @@ whichever is closest to the producer's process model:
 1. **HTTP** — ``POST /hooks/push`` / ``POST /hooks/done`` with the
    payload as JSON body. Used by SAC's push-hook + dev's GitHub
    Action.
-2. **CLI** — ``scitex-todo hook push --json <FILE_OR_STDIN>`` and
-   ``scitex-todo hook done --json <FILE_OR_STDIN>``. Used by shell
-   scripts that already have shell access.
+2. **CLI** — ``scitex-todo hook push --payload <FILE_OR_->`` and
+   ``scitex-todo hook done --payload <FILE_OR_->`` (``-`` reads the
+   payload from stdin). Used by shell scripts that already have shell
+   access (e.g. the bundled ``.githooks/`` git → card hooks).
 3. **Python** — ``from scitex_todo._hooks import dispatch_event;
    dispatch_event({"kind": "push", ...})``. Used by in-process
    producers.
