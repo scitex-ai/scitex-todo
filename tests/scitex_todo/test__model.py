@@ -1175,6 +1175,30 @@ def test_task_dataclass_round_trip_drops_unknown_tags_field():
 
 
 # ---------------------------------------------------------------------------
+# `created_by` provenance role (explicit creator field; board "Created by")
+# ---------------------------------------------------------------------------
+
+
+def test_task_dataclass_round_trip_preserves_created_by():
+    # Arrange
+    from scitex_todo._model import Task
+    payload = {"id": "x", "title": "X", "created_by": "agent:maker"}
+    # Act
+    d = Task.from_dict(payload).to_dict()
+    # Assert
+    assert d["created_by"] == "agent:maker"
+
+
+def test_task_dataclass_from_dict_defaults_created_by_to_none():
+    # Arrange
+    from scitex_todo._model import Task
+    # Act
+    t = Task.from_dict(_MIN_TASK_PAYLOAD)
+    # Assert
+    assert t.created_by is None
+
+
+# ---------------------------------------------------------------------------
 # `dependency` enum rename + `none` value (operator co-design TG 9667)
 # ---------------------------------------------------------------------------
 

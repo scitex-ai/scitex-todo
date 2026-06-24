@@ -306,6 +306,40 @@ def test_update_task_explicit_last_activity_wins_over_auto_stamp(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# created_by — provenance stamp at insert, immutable on update               #
+# --------------------------------------------------------------------------- #
+def test_add_task_stamps_created_by_to_resolved_identity(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:maker")
+    # Act
+    inserted = _store.add_task(store, id="a", title="A")
+    # Assert
+    assert inserted["created_by"] == "agent:maker"
+
+
+def test_add_task_explicit_created_by_wins_over_stamp(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:maker")
+    # Act — an explicit created_by (e.g. an importer) overrides the stamp.
+    inserted = _store.add_task(store, id="a", title="A", created_by="agent:imported")
+    # Assert
+    assert inserted["created_by"] == "agent:imported"
+
+
+def test_update_task_does_not_change_existing_created_by(tmp_path, env):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:maker")
+    _store.add_task(store, id="a", title="A")
+    # Act — try to rewrite created_by via update_task (must be ignored).
+    merged = _store.update_task(store, "a", created_by="agent:impostor")
+    # Assert
+    assert merged["created_by"] == "agent:maker"
+
+
+# --------------------------------------------------------------------------- #
 # update_task                                                                 #
 # --------------------------------------------------------------------------- #
 def test_update_task_changes_status(tmp_path):

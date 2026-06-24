@@ -106,6 +106,12 @@ def _build_graph(board) -> dict:
             "deadlines": t.get("deadlines"),
             "deadline_next": _compute_deadline_next(t),
             "agent": t.get("agent"),
+            # `created_by` — provenance: WHO created the card (stamped at
+            # insert by `_store.add_task`, immutable thereafter). Forwarded
+            # so the detail panel can render the explicit "Created by:" line
+            # alongside "Assignee:" (the responsible `agent`). `null` on
+            # pre-field rows (back-compat) → FE renders "—".
+            "created_by": t.get("created_by"),
             "last_activity": t.get("last_activity"),
             "pr_url": t.get("pr_url"),
             "issue_url": t.get("issue_url"),

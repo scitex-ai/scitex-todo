@@ -3163,11 +3163,17 @@
       const t = (STATE.graph?.nodes || []).find(x => x.id === id);
       if (!t) return;
       document.getElementById("d-title").textContent = t.task || t.title;
+      // Detail meta line — surface the EXPLICIT roles, not an ambiguous
+      // "agent ?": "Created by:" = provenance (who made the card, the
+      // `created_by` field); "Assignee:" = the responsible role (the `agent`
+      // field). Operator naming directive: labels are "Created by" / "Assignee".
       document.getElementById("d-meta").textContent =
-        `${t.project || "—"} · ${t.host || ""} · agent ${t.agent || "?"} · id ${t.id}`;
+        `${t.project || "—"} · ${t.host || ""} · Created by: ${t.created_by || "—"} · Assignee: ${t.agent || "—"} · id ${t.id}`;
       const rows = [
         ["title", t.title], ["status", t.status], ["kind", t.kind || "(task)"],
-        ["blocker", t.blocker || "(none)"], ["agent", t.agent || "—"],
+        ["blocker", t.blocker || "(none)"],
+        ["Created by", escapeHtml(t.created_by || "—")],
+        ["Assignee", escapeHtml(t.agent || "—")],
         ["last_activity", t.last_activity || "—"], ["created_at", t.created_at || "—"],
         ["goal", t.goal || "—"],
         ["pr_url", t.pr_url ? `<a href="${escapeHtml(t.pr_url)}" target="_blank">${escapeHtml(t.pr_url)}</a>` : "—"],

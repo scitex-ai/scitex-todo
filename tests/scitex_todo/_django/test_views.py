@@ -275,6 +275,48 @@ def test_graph_endpoint_defaults_parent_to_null_when_absent_in_yaml(store):
         assert node["parent"] is None
 
 
+# --- created_by: provenance role exposed per node -------------------------
+
+
+@pytest.fixture
+def created_by_store(tmp_path):
+    """A store whose single task carries an explicit `created_by`."""
+    path = tmp_path / "tasks.yaml"
+    path.write_text(
+        "tasks:\n"
+        "  - {id: made, title: Made It, status: pending, created_by: agent:maker}\n",
+        encoding="utf-8",
+    )
+    _reset_cache()
+    yield str(path)
+    _reset_cache()
+
+
+def test_graph_endpoint_exposes_created_by_on_node(created_by_store):
+    """The detail panel's "Created by" line reads this wire field."""
+    # Arrange
+    request = RequestFactory().get(f"/graph?store={created_by_store}")
+    # Act
+    response = views.api_dispatch(request, "graph")
+    payload = json.loads(response.content)
+    made = next(n for n in payload["nodes"] if n["id"] == "made")
+    # Assert
+    assert made["created_by"] == "agent:maker"
+
+
+def test_graph_endpoint_includes_created_by_key_on_every_node(store):
+    """A store with NO `created_by` anywhere still emits the key per node
+    (null), so the frontend can render "Created by: —" without null-checks."""
+    # Arrange
+    request = RequestFactory().get(f"/graph?store={store}")
+    # Act
+    response = views.api_dispatch(request, "graph")
+    payload = json.loads(response.content)
+    # Assert
+    for node in payload["nodes"]:
+        assert "created_by" in node
+
+
 # --- rev: cheap change-poll fingerprint -----------------------------------
 
 

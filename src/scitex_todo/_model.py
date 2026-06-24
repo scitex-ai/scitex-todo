@@ -287,6 +287,14 @@ class Task:
     assignee: str | None = (
         None  # legacy; `agent` is the operator-co-designed replacement
     )
+    # `created_by` = provenance: WHO created the card. Stamped to the acting
+    # identity at insert (see `_store.add_task`, same pattern as `created_at`)
+    # and IMMUTABLE thereafter (`update_task` never changes an existing one).
+    # Distinct from `agent` (the responsible role the board labels "Assignee").
+    # SCALAR — absent → None (back-compat with pre-field stores). Operator
+    # naming directive: the field is `created_by`, the board label is
+    # "Created by".
+    created_by: str | None = None
     _log_meta: dict | None = None  # opaque writer-side event stamps
 
     @classmethod

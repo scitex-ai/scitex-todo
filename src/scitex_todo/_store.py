@@ -259,6 +259,17 @@ def add_task(
     _stamp = _utc_now_iso()
     new["created_at"] = _stamp
     new["last_activity"] = _stamp
+    # Provenance: stamp ``created_by`` to the acting identity at insert,
+    # exactly how ``created_at`` is stamped — reuse the same
+    # env→login→"unknown" chain (``$SCITEX_TODO_AGENT`` → ``$USER``) that
+    # ``complete_task`` uses for ``completed_by``. An explicit ``created_by``
+    # passed via ``**extras`` (e.g. an importer replaying historical state)
+    # WINS: the ``extras`` loop below overwrites this stamp when present, and
+    # we skip the auto-stamp here so a falsy explicit value isn't clobbered.
+    # ``created_by`` is IMMUTABLE — ``update_task`` never changes an existing
+    # one (treated like ``created_at``).
+    if extras.get("created_by") is None:
+        new["created_by"] = _default_agent(None)
     if scope is not None:
         new["scope"] = scope
     if assignee is not None:
@@ -364,6 +375,14 @@ def update_task(
         for task in tasks:
             if task.get("id") == task_id:
                 prior_status = task.get("status")
+                # ``created_by`` is IMMUTABLE provenance (set once at insert,
+                # treated like ``created_at``): if this card already carries
+                # one, drop any incoming ``created_by`` so an update can never
+                # rewrite or clear who created the card. (A legacy row with no
+                # ``created_by`` yet can still be back-filled — set-once, not
+                # forbidden.)
+                if task.get("created_by") and "created_by" in fields:
+                    fields = {k: v for k, v in fields.items() if k != "created_by"}
                 for key, value in fields.items():
                     if value is None:
                         task.pop(key, None)
