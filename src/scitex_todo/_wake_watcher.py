@@ -40,6 +40,15 @@ Agent registry (where to find each peer's a2a port):
 Per-agent debounce: at most ONE wake per ``min_wake_interval`` seconds
 per agent. Prevents a hot-loop when an agent comments on its own task
 several times in quick succession.
+
+Fan-out (P2, ADR-0009): each detected change wakes the card OWNER
+(``agent`` / ``assignee``) AND every entry in the card's persistent
+``subscribers`` list (the P1 notify field). Recipients are DEDUPED —
+an owner who also appears in ``subscribers`` is woken once — and the
+existing per-agent debounce still applies, so a busy card never floods
+any one recipient. A card with no subscribers behaves exactly as
+before (owner-only); a card with subscribers but no owner still wakes
+its watchers.
 """
 
 from __future__ import annotations
@@ -104,6 +113,28 @@ class WatcherState:
     last_wake_at: dict[str, float] = field(default_factory=dict)
 
 
+def _recipients(task: dict) -> list[str]:
+    """Wake targets for a card change: the owner (``agent`` / ``assignee``)
+    plus every entry in the card's persistent ``subscribers`` list (the P1
+    notify field), DEDUPED — owner first, then first-seen subscribers;
+    non-string / empty entries dropped. A card with no owner still wakes
+    its subscribers; a card with neither returns ``[]``.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    owner = task.get("agent") or task.get("assignee")
+    if isinstance(owner, str) and owner:
+        out.append(owner)
+        seen.add(owner)
+    subs = task.get("subscribers")
+    if isinstance(subs, list):
+        for s in subs:
+            if isinstance(s, str) and s and s not in seen:
+                out.append(s)
+                seen.add(s)
+    return out
+
+
 def detect_changes(
     state: WatcherState,
     tasks: Iterable[dict],
@@ -133,21 +164,26 @@ def detect_changes(
             continue  # first pass — seed only
 
         prev = state.snapshot.get(tid)
-        agent = task.get("agent") or task.get("assignee")
-        if not agent:
-            continue  # unassigned tasks have nowhere to wake to
+        owner = task.get("agent") or task.get("assignee")
+        recipients = _recipients(task)
+        if not recipients:
+            continue  # no owner and no subscribers — nowhere to wake
 
         # task added
         if prev is None:
-            wakes.append(
-                WakeRecord(
-                    agent=agent,
-                    trigger_kind="task_added",
-                    task_id=str(tid),
-                    task_title=str(task.get("title") or ""),
-                    summary=f"new task assigned to {agent}",
-                )
+            summary = (
+                f"new task assigned to {owner}" if owner else "new subscribed task"
             )
+            for who in recipients:
+                wakes.append(
+                    WakeRecord(
+                        agent=who,
+                        trigger_kind="task_added",
+                        task_id=str(tid),
+                        task_title=str(task.get("title") or ""),
+                        summary=summary,
+                    )
+                )
             continue
 
         # comment appended
@@ -160,30 +196,31 @@ def detect_changes(
             ) or "<unknown>"
             text = (latest.get("text") if isinstance(latest, dict) else None) or ""
             short = text[:120].replace("\n", " ")
-            wakes.append(
-                WakeRecord(
-                    agent=agent,
-                    trigger_kind="comment",
-                    task_id=str(tid),
-                    task_title=str(task.get("title") or ""),
-                    summary=f"comment by {author}: {short}",
+            summary = f"comment by {author}: {short}"
+            for who in recipients:
+                wakes.append(
+                    WakeRecord(
+                        agent=who,
+                        trigger_kind="comment",
+                        task_id=str(tid),
+                        task_title=str(task.get("title") or ""),
+                        summary=summary,
+                    )
                 )
-            )
 
         # status flipped
         if prev.get("status") != task.get("status"):
-            wakes.append(
-                WakeRecord(
-                    agent=agent,
-                    trigger_kind="status_changed",
-                    task_id=str(tid),
-                    task_title=str(task.get("title") or ""),
-                    summary=(
-                        f"status: {prev.get('status')!r} -> "
-                        f"{task.get('status')!r}"
-                    ),
+            summary = f"status: {prev.get('status')!r} -> {task.get('status')!r}"
+            for who in recipients:
+                wakes.append(
+                    WakeRecord(
+                        agent=who,
+                        trigger_kind="status_changed",
+                        task_id=str(tid),
+                        task_title=str(task.get("title") or ""),
+                        summary=summary,
+                    )
                 )
-            )
 
     state.snapshot = new_snapshot
     state.seeded = True
@@ -196,7 +233,9 @@ def detect_changes(
         if now - last < min_wake_interval_s:
             logger.debug(
                 "wake-watcher: debounced %s on %s (last %.1fs ago)",
-                w.trigger_kind, w.agent, now - last,
+                w.trigger_kind,
+                w.agent,
+                now - last,
             )
             continue
         kept.append(w)
@@ -313,7 +352,9 @@ def run_watcher_once(
             if port is None:
                 logger.info(
                     "wake-watcher: no port for %s, skip wake (%s on %s)",
-                    w.agent, w.trigger_kind, w.task_id,
+                    w.agent,
+                    w.trigger_kind,
+                    w.task_id,
                 )
                 continue
             post_wake(port, w.to_payload(store_path=str(path)))
@@ -350,9 +391,7 @@ def run_watcher_forever(
     """
     state = WatcherState()
     while True:
-        run_watcher_once(
-            path, state, min_wake_interval_s=min_wake_interval_s
-        )
+        run_watcher_once(path, state, min_wake_interval_s=min_wake_interval_s)
         time.sleep(interval_s)
 
 
