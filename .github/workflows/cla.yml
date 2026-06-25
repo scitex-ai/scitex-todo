@@ -14,7 +14,10 @@ permissions:
 
 jobs:
   CLAssistant:
-    runs-on: ubuntu-latest
+    # Runs self-hosted (Spartan CPU) per the no-paid-runner rule for this private
+    # repo; this only runs a JS action so it works on the self-hosted runner, but
+    # it therefore depends on a Spartan runner being online to process CLA events.
+    runs-on: [self-hosted, Linux, X64, spartan-cpu]
     steps:
       - name: CLA Assistant
         uses: contributor-assistant/github-action@v2.6.1

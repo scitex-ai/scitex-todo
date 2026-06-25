@@ -5,11 +5,18 @@ name: newb
 # use the package. If a docs-only consumer can't follow them, neither
 # can a real user.
 #
-# Cost-aware schedule: weekly cron + manual dispatch only. Per-PR runs
-# are intentionally NOT enabled here (LLM API cost + run time).
+# Cost-aware: per-PR runs are intentionally NOT enabled here (LLM API cost +
+# run time).
+#
+# no-paid-runner rule: this job runs a DOCKER image
+# (ghcr.io/ywatanabe1989/newb-runner), but Spartan only supports the apptainer
+# container format, NOT docker — so it CANNOT move to the self-hosted Spartan
+# runners today. To honor the no-paid-runner rule we have PAUSED the automatic
+# weekly `schedule:` cron (the recurring paid cost); only `workflow_dispatch:`
+# remains, so a human can still run it manually as an explicit choice.
+# Re-enable the `schedule:` trigger once the `newb` tool supports apptainer so
+# this can run on Spartan (then `runs-on` can also move off ubuntu-latest).
 on:
-  schedule:
-    - cron: "0 17 * * 1"  # weekly Mon 17:00 UTC (~Tue 02:00 JST)
   workflow_dispatch:
 
 jobs:

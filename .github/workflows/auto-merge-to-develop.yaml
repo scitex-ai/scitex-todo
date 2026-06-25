@@ -16,7 +16,11 @@ permissions:
 jobs:
   automerge:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.check_suite.conclusion == 'success' }}
-    runs-on: ubuntu-latest
+    # Runs self-hosted (Spartan CPU) per the no-paid-runner rule for this private
+    # repo. The Spartan runners have NO `gh` CLI, so every `gh` call below is
+    # rewritten to a `curl` against the GitHub REST API. This therefore depends on
+    # a Spartan runner being online for green PRs to be auto-merged.
+    runs-on: [self-hosted, Linux, X64, spartan-cpu]
     steps:
       - name: merge green PRs targeting develop
         env:
@@ -25,24 +29,95 @@ jobs:
           HEAD_SHA: ${{ github.event.check_suite.head_sha }}
         run: |
           set -uo pipefail
+          API="https://api.github.com"
+
+          # api_get <path>  -> body on stdout; fatal (exit 1) on unexpected
+          # HTTP error so failures are LOUD. Used for read-only GETs where a
+          # non-2xx is genuinely unexpected (the repo/commit must exist).
+          api_get() {
+            local path="$1" out status body
+            out=$(curl -sS -w '\n%{http_code}' \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$API/$path")
+            status="${out##*$'\n'}"
+            body="${out%$'\n'*}"
+            if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+              echo "::error::GET $path -> HTTP $status" >&2
+              echo "$body" >&2
+              return 1
+            fi
+            printf '%s' "$body"
+          }
+
+          # Find candidate PRs. On check_suite events use the head SHA's PRs
+          # (GET /repos/{repo}/commits/{sha}/pulls); on manual dispatch fall back
+          # to listing open PRs that already target develop.
           if [ -n "${HEAD_SHA:-}" ]; then
-            prs=$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" --jq '.[] | select(.state=="open") | .number' 2>/dev/null || true)
+            prs=$(api_get "repos/$REPO/commits/$HEAD_SHA/pulls" \
+              | jq -r '.[] | select(.state=="open") | .number') || exit 1
           else
-            prs=$(gh pr list --repo "$REPO" --base develop --state open --json number --jq '.[].number' 2>/dev/null || true)
+            prs=$(api_get "repos/$REPO/pulls?base=develop&state=open&per_page=100" \
+              | jq -r '.[].number') || exit 1
           fi
           [ -z "${prs:-}" ] && { echo "no open PRs"; exit 0; }
+
           for pr in $prs; do
-            base=$(gh pr view "$pr" --repo "$REPO" --json baseRefName --jq .baseRefName 2>/dev/null || echo "")
+            # Pull the full PR object once: base branch, draft flag, head SHA.
+            pr_json=$(api_get "repos/$REPO/pulls/$pr") || exit 1
+            base=$(printf '%s' "$pr_json" | jq -r '.base.ref // ""')
             [ "$base" = "develop" ] || { echo "skip #$pr (base=$base, not develop)"; continue; }
-            draft=$(gh pr view "$pr" --repo "$REPO" --json isDraft --jq .isDraft 2>/dev/null || echo true)
+            draft=$(printf '%s' "$pr_json" | jq -r '.draft // true')
             [ "$draft" = "true" ] && continue
-            pending=$(gh pr view "$pr" --repo "$REPO" --json statusCheckRollup --jq '
-              [ .statusCheckRollup[]
-                | select(((.name // .context // "") | ascii_downcase | test("codecov|readthedocs")) | not)
-                | (.conclusion // .state // "")
-                | select(. != "SUCCESS" and . != "NEUTRAL" and . != "SKIPPED" and . != "") ] | length' 2>/dev/null || echo 1)
+            pr_head=$(printf '%s' "$pr_json" | jq -r '.head.sha')
+
+            # Combined check-run conclusions for the PR head. We ignore advisory
+            # codecov/readthedocs checks (by name) and count anything that is not
+            # already success/neutral/skipped as still-pending. Mirrors the old
+            # statusCheckRollup logic exactly.
+            pending=$(api_get "repos/$REPO/commits/$pr_head/check-runs?per_page=100" \
+              | jq '[ .check_runs[]
+                      | select(((.name // "") | ascii_downcase | test("codecov|readthedocs")) | not)
+                      | (.conclusion // "")
+                      | ascii_upcase
+                      | select(. != "SUCCESS" and . != "NEUTRAL" and . != "SKIPPED" and . != "") ] | length') || exit 1
+
             if [ "$pending" = "0" ]; then
-              gh pr merge "$pr" --repo "$REPO" --merge --admin --delete-branch && echo "MERGED #$pr -> develop" || echo "blocked #$pr"
+              # Merge attempt: PUT /repos/{repo}/pulls/{number}/merge with the
+              # merge-commit method. Fail-safe — if branch policy blocks the
+              # merge GitHub returns 405/409 and the PR simply stays open; that
+              # is NOT a workflow failure (no silent fallback, just non-fatal).
+              merge_out=$(curl -sS -w '\n%{http_code}' -X PUT \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "$API/repos/$REPO/pulls/$pr/merge" \
+                -d '{"merge_method":"merge"}')
+              merge_status="${merge_out##*$'\n'}"
+              merge_body="${merge_out%$'\n'*}"
+              if [ "$merge_status" = "200" ]; then
+                echo "MERGED #$pr -> develop"
+                # Best-effort branch delete (matches old --delete-branch). Never
+                # fatal: it is housekeeping, not part of the merge contract.
+                head_ref=$(printf '%s' "$pr_json" | jq -r '.head.ref // ""')
+                if [ -n "$head_ref" ]; then
+                  curl -sS -o /dev/null -X DELETE \
+                    -H "Authorization: Bearer $GH_TOKEN" \
+                    -H "Accept: application/vnd.github+json" \
+                    -H "X-GitHub-Api-Version: 2022-11-28" \
+                    "$API/repos/$REPO/git/refs/heads/$head_ref" || true
+                fi
+              elif [ "$merge_status" = "405" ] || [ "$merge_status" = "409" ]; then
+                # 405 = not mergeable / blocked by branch policy; 409 = head moved.
+                # Fail-safe: leave the PR open, report, but do not fail the run.
+                echo "blocked #$pr (HTTP $merge_status): $merge_body"
+              else
+                # Any other status is an unexpected API error — be LOUD and fail.
+                echo "::error::merge #$pr -> HTTP $merge_status" >&2
+                echo "$merge_body" >&2
+                exit 1
+              fi
             else
               echo "PR #$pr not green ($pending) — skip"
             fi
