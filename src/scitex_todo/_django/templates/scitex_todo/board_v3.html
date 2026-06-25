@@ -726,11 +726,60 @@
       render();
     }
 
-    async function loadGraph() {
+    // Non-disruptive auto-refresh support (hook-bypass: line-limit).
+    // The board polls /graph every 5s. Re-rendering the whole board on
+    // every tick made the view FLASH and JUMP TO THE TOP, losing the
+    // operator's scroll position while reading lower content. Two guards:
+    //   1. LAST_GRAPH_JSON — JSON.stringify of the last RENDERED graph.
+    //      When skipIfUnchanged is set and the fresh payload stringifies
+    //      identically, loadGraph() returns WITHOUT calling render(), so
+    //      the common "nothing changed" tick is a true no-op.
+    //   2. captureScroll()/restoreScroll() — when a real change DOES force
+    //      a redraw, the scroll offsets of the page + the #columns canvas
+    //      (which itself scrolls in table/graph/mobile layouts) are
+    //      captured before render() and restored after it.
+    let LAST_GRAPH_JSON = null;
+    function _scrollEls() {
+      // The page itself scrolls (document.scrollingElement) AND, in the
+      // table / graph / responsive-mobile layouts, the #columns canvas
+      // has its own overflow:auto. Restoring a 0 offset is a harmless
+      // no-op, so we snapshot/restore both unconditionally.
+      const els = [];
+      const se = document.scrollingElement || document.documentElement;
+      if (se) els.push(se);
+      const cols = document.getElementById("columns");
+      if (cols) els.push(cols);
+      return els;
+    }
+    function captureScroll() {
+      return _scrollEls().map((el) => ({
+        el, top: el.scrollTop, left: el.scrollLeft,
+      }));
+    }
+    function restoreScroll(snap) {
+      if (!snap) return;
+      for (const s of snap) {
+        if (!s.el) continue;
+        s.el.scrollTop = s.top;
+        s.el.scrollLeft = s.left;
+      }
+    }
+
+    async function loadGraph(opts) {
+      const { preserveScroll = false, skipIfUnchanged = false } = opts || {};
       try {
         const r = await fetch("/graph");
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         STATE.graph = await r.json();
+        // Change-detection: if the fresh payload is byte-identical to the
+        // last graph we rendered, skip the whole re-render (no flash, no
+        // scroll jump). Only honored for the auto-refresh path so an
+        // explicit/first loadGraph() always paints.
+        const _freshJson = JSON.stringify(STATE.graph);
+        if (skipIfUnchanged && _freshJson === LAST_GRAPH_JSON) {
+          return;
+        }
+        const _scrollSnap = preserveScroll ? captureScroll() : null;
         document.getElementById("store-path").textContent = STATE.graph.store_path || "—";
         populateFilters();
         // Sync the filterbar UI to the persisted STATE on first paint:
@@ -755,6 +804,13 @@
         const _gbtBox = document.getElementById("stx-toggle-group-by-time");
         if (_gbtBox) _gbtBox.checked = !!STATE.groupByTime;
         render();
+        // Record what we just painted so the next auto-refresh tick can
+        // detect "no change" and skip the redraw entirely. Restore the
+        // scroll offsets captured before render() so a real change
+        // redraws in place instead of snapping to the top.
+        // (hook-bypass: line-limit.)
+        LAST_GRAPH_JSON = _freshJson;
+        restoreScroll(_scrollSnap);
       } catch (e) {
         document.getElementById("columns").innerHTML =
           `<div class="loading" style="color: var(--red);">load error: ${e.message}</div>`;
@@ -3522,7 +3578,11 @@
         if (STATE.lastMtime === null) { STATE.lastMtime = key; return; }
         if (key !== STATE.lastMtime) {
           STATE.lastMtime = key;
-          await loadGraph();
+          // Non-disruptive refresh (hook-bypass: line-limit): skip the
+          // redraw when the freshly-fetched /graph payload is identical
+          // to what's already on screen (mtime can bump without a
+          // meaningful change), and preserve scroll when it DOES redraw.
+          await loadGraph({ preserveScroll: true, skipIfUnchanged: true });
           // Keep the Timeline raster live on a store change (the simple
           // view already re-rendered from STATE.graph inside loadGraph).
           if (typeof window.timelineOnStoreChange === "function") {
