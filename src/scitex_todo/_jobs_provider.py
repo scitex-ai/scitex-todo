@@ -33,7 +33,30 @@ reconciled on every boot.
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import scitex_todo
 from scitex_dev.jobs import JobSpec
+
+
+def _repo_root() -> Path | None:
+    """Return the scitex-todo git checkout root, or ``None`` if not a checkout.
+
+    Walks up from ``scitex_todo.__file__`` (the installed package location)
+    until it finds a directory containing a ``.git`` entry. ``.git`` is a
+    *directory* in a normal clone and a *file* in a git worktree, so we
+    accept either via ``Path.exists()`` rather than ``is_dir()``.
+
+    Returns ``None`` when no ``.git`` is found — that is the signature of a
+    non-editable / PyPI (``site-packages``) install. A released install must
+    NEVER try to ``git pull``, so callers treat ``None`` as "do not register
+    the dev-sync timer".
+    """
+    start = Path(scitex_todo.__file__).resolve().parent
+    for candidate in (start, *start.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return None
 
 
 def provide_jobs() -> list[JobSpec]:
@@ -65,8 +88,12 @@ def provide_jobs() -> list[JobSpec]:
       file becomes ``scitex-todo.dashboard.service`` and the operator
       can grep ``systemctl --user list-units 'scitex-todo.*'`` to see
       every scitex-todo-owned unit at a glance.
+
+    The list ALSO carries a conditional **dev-sync timer**
+    (``scitex-todo.dev-sync``) — see the in-body comment for why — that
+    is appended only when the package is an editable git checkout.
     """
-    return [
+    jobs = [
         JobSpec(
             name="scitex-todo.dashboard",
             kind="service",
@@ -161,6 +188,56 @@ def provide_jobs() -> list[JobSpec]:
             timeout_sec=180,
         ),
     ]
+
+    # dev-sync timer — keep the editable dashboard checkout current with
+    # origin/develop. WHY: merges land on origin/develop, but the board
+    # dashboard (kind="service" above) is served from THIS editable git
+    # checkout. Django runserver imports the on-disk source, so until the
+    # checkout is pulled the board shows STALE code — the operator hit
+    # exactly this (a merged fix invisible on the live board because the
+    # checkout was behind). A periodic `git pull --ff-only` closes that
+    # gap deterministically: --ff-only can only fast-forward, so it
+    # NO-OPS / errors loud if the branch ever diverged — it can never
+    # clobber local work. Registered ONLY on an editable git checkout
+    # (REPO_ROOT has a .git); on a non-editable / PyPI install
+    # (`_repo_root()` is None) we skip it entirely so a released install
+    # never tries to git-pull.
+    repo_root = _repo_root()
+    if repo_root is not None:
+        jobs.append(
+            JobSpec(
+                name="scitex-todo.dev-sync",
+                # kind="timer" — periodic systemd --user Timer + oneshot
+                # Service. on_unit_active_sec carries the cadence;
+                # restart_policy MUST stay "no" (timers fire oneshot
+                # services, Restart= does not apply). Confirmed against the
+                # JobSpec contract + the `sac.accounts-refresh` timer
+                # example in scitex_dev/jobs/__init__.py.
+                kind="timer",
+                # schedule optional for timers; cadence comes from
+                # on_unit_active_sec below. Leave empty.
+                schedule="",
+                # Every 2 minutes — fresh enough that the board is never
+                # meaningfully behind origin, cheap enough to be invisible.
+                on_unit_active_sec="2min",
+                # OnBootSec — settle network-online.target before the first
+                # pull tries to reach origin.
+                on_boot_sec="30s",
+                command=(
+                    f"git -C {repo_root} pull --ff-only origin develop"
+                ),
+                description=(
+                    "scitex-todo dev-sync — ff-pull origin/develop into the "
+                    "editable checkout the board serves, every 2 min, so the "
+                    "live dashboard never shows stale code. --ff-only never "
+                    "clobbers local work."
+                ),
+                restart_policy="no",
+                timeout_sec=60,
+            )
+        )
+
+    return jobs
 
 
 # EOF
