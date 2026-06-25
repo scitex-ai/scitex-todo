@@ -96,6 +96,10 @@ _CONVENTION_A_NAMES = {
     # `_store.set_subscriber` (Convention A).
     "set_collaborator",
     "set_subscriber",
+    # Help-wait SoC lift — 1:1 with `_help_wait.help_wait` /
+    # `_help_wait.help_clear`. Semantics lifted out of the dotfiles hook.
+    "help_wait",
+    "help_clear",
 }
 # Convention B — `todo_<verb>_<noun>` for the audit §5 required skills
 # tools. These don't map 1:1 to a Python API; they introspect the bundled

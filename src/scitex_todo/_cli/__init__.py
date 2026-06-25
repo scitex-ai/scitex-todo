@@ -9,11 +9,21 @@ The command tree is split across focused modules:
     _introspect   list-python-apis, mcp list-tools           (§1a)
     _completion   install-/print-shell-completion            (§1a)
     _skills       skills {list, get, install}                (§1a)
+    _help_wait    help-wait / help-clear verbs
+
+The bulk of the command tree is attached to ``main`` inside ``_main`` itself.
+``help-wait`` / ``help-clear`` are wired here instead because ``_main`` and
+``_write`` (the natural mutation-verb home) are both already at their line
+budget — registering from this thin package root keeps the new verbs in a
+focused module without a disruptive refactor of an unrelated oversized file.
 """
 
 from __future__ import annotations
 
 from ._main import main
+from . import _help_wait as _help_wait_cli
+
+_help_wait_cli.register(main)
 
 __all__ = ["main"]
 
