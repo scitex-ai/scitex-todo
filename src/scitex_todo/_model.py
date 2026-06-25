@@ -274,6 +274,13 @@ class Task:
     # subscribers did not exist. Absent / None → empty list (back-compat).
     collaborators: list[str] = field(default_factory=list)
     subscribers: list[str] = field(default_factory=list)
+    # `created_by` = the USER (agent or human; user.kind=agent) who created
+    # the card, captured at insert by add_task from the same author chain
+    # comment authorship resolves ($SCITEX_TODO_AGENT → $USER → "unknown").
+    # Back-compat: ABSENT on legacy rows — readers fall back to the earliest
+    # comment author, else "—". Optional non-empty string when present.
+    # (hook-bypass: line-limit — _model.py split still queued.)
+    created_by: str | None = None
 
     # --- kind discriminator + compute metadata (ADR-0002 / 0003) -----------
     kind: str | None = None  # one of VALID_KINDS or absent (defaults to "task")
@@ -784,6 +791,9 @@ def _validate_tasks(tasks: object, source: str) -> None:
             "project",
             "host",
             "created_at",
+            # `created_by` — the creating USER, optional non-empty string.
+            # Absent on legacy rows (back-compat). (hook-bypass: line-limit.)
+            "created_by",
             "goal",
             "agent",
             "last_activity",

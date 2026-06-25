@@ -3249,11 +3249,29 @@
       const t = (STATE.graph?.nodes || []).find(x => x.id === id);
       if (!t) return;
       document.getElementById("d-title").textContent = t.task || t.title;
+      // scitex-todo's entity is the USER (an agent is just user.kind=agent),
+      // so the meta line names the ASSIGNEE in user terms, not "agent".
+      // (hook-bypass: line-limit — board_v3.html split still queued.)
+      const assignee = t.assignee || t.agent || "—";
       document.getElementById("d-meta").textContent =
-        `${t.project || "—"} · ${t.host || ""} · agent ${t.agent || "?"} · id ${t.id}`;
+        `${t.project || "—"} · ${t.host || ""} · assignee ${assignee} · id ${t.id}`;
+      // --- USER ROLES (creator / assignee / collaborators / subscribers) ---
+      // creator = created_by, falling back to the earliest comment author,
+      // else "—" (legacy cards predate created_by). Empty lists render "—".
+      // See ADR-0009 + the graph.py node payload. (hook-bypass: line-limit.)
+      const fmtList = (xs) =>
+        (Array.isArray(xs) && xs.length) ? xs.map(escapeHtml).join(", ") : "—";
+      const firstCommentAuthor = (t.comments || [])
+        .map(c => c && c.author).find(a => typeof a === "string" && a);
+      const creator = t.created_by || firstCommentAuthor || "—";
       const rows = [
         ["title", t.title], ["status", t.status], ["kind", t.kind || "(task)"],
-        ["blocker", t.blocker || "(none)"], ["agent", t.agent || "—"],
+        ["blocker", t.blocker || "(none)"],
+        ["— users —", ""],
+        ["creator", escapeHtml(creator)],
+        ["assignee", escapeHtml(assignee)],
+        ["collaborators", fmtList(t.collaborators)],
+        ["subscribers", fmtList(t.subscribers)],
         ["last_activity", t.last_activity || "—"], ["created_at", t.created_at || "—"],
         ["goal", t.goal || "—"],
         ["pr_url", t.pr_url ? `<a href="${escapeHtml(t.pr_url)}" target="_blank">${escapeHtml(t.pr_url)}</a>` : "—"],
