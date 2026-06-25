@@ -79,6 +79,29 @@
 {% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/timelinePack.js' %}"></script>
 {% comment %}
+  timelineGeo.js — pure time→pixel geometry (ms / barGeo / makeTicks / relTime)
+  for the Timeline raster. MUST load BEFORE timeline.js: publishes
+  window.STX.timelineGeo, captured by timeline.js's IIFE at init. No DOM;
+  node-testable. Factored out so timeline.js stays under the per-file cap.
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/timelineGeo.js' %}"></script>
+{% comment %}
+  timelineGate.js — anti-flash change-detection gate for the Timeline raster.
+  MUST load BEFORE timeline.js: publishes window.STX.timelineGate (rasterSig +
+  a stateful gate that skips identical 4s rebuilds and preserves .tl-scroll
+  scroll across a real rebuild), so the raster stops flashing / jumping to top.
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/timelineGate.js' %}"></script>
+{% comment %}
+  timelineSelect.js — marker multi-select + copy-contents + right-click menu
+  for the Timeline raster (operator 2026-06-26). Classic <script defer>;
+  wires itself via event delegation on #columns so timeline.js (at its line
+  cap) needs no change. Publishes window.STX.timelineSelect (pure
+  formatCardCopy / joinCopyBlocks helpers, node-testable).
+  (hook-bypass: line-limit.)
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/timelineSelect.js' %}"></script>
+{% comment %}
   timeline.js — the Timeline layout renderer (raster by agent/project +
   a rich per-task "simple" list). Classic <script defer> so it shares the
   page globals (STATE / escapeHtml / openDetail / bucket / render); it
@@ -726,11 +749,60 @@
       render();
     }
 
-    async function loadGraph() {
+    // Non-disruptive auto-refresh support (hook-bypass: line-limit).
+    // The board polls /graph every 5s. Re-rendering the whole board on
+    // every tick made the view FLASH and JUMP TO THE TOP, losing the
+    // operator's scroll position while reading lower content. Two guards:
+    //   1. LAST_GRAPH_JSON — JSON.stringify of the last RENDERED graph.
+    //      When skipIfUnchanged is set and the fresh payload stringifies
+    //      identically, loadGraph() returns WITHOUT calling render(), so
+    //      the common "nothing changed" tick is a true no-op.
+    //   2. captureScroll()/restoreScroll() — when a real change DOES force
+    //      a redraw, the scroll offsets of the page + the #columns canvas
+    //      (which itself scrolls in table/graph/mobile layouts) are
+    //      captured before render() and restored after it.
+    let LAST_GRAPH_JSON = null;
+    function _scrollEls() {
+      // The page itself scrolls (document.scrollingElement) AND, in the
+      // table / graph / responsive-mobile layouts, the #columns canvas
+      // has its own overflow:auto. Restoring a 0 offset is a harmless
+      // no-op, so we snapshot/restore both unconditionally.
+      const els = [];
+      const se = document.scrollingElement || document.documentElement;
+      if (se) els.push(se);
+      const cols = document.getElementById("columns");
+      if (cols) els.push(cols);
+      return els;
+    }
+    function captureScroll() {
+      return _scrollEls().map((el) => ({
+        el, top: el.scrollTop, left: el.scrollLeft,
+      }));
+    }
+    function restoreScroll(snap) {
+      if (!snap) return;
+      for (const s of snap) {
+        if (!s.el) continue;
+        s.el.scrollTop = s.top;
+        s.el.scrollLeft = s.left;
+      }
+    }
+
+    async function loadGraph(opts) {
+      const { preserveScroll = false, skipIfUnchanged = false } = opts || {};
       try {
         const r = await fetch("/graph");
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         STATE.graph = await r.json();
+        // Change-detection: if the fresh payload is byte-identical to the
+        // last graph we rendered, skip the whole re-render (no flash, no
+        // scroll jump). Only honored for the auto-refresh path so an
+        // explicit/first loadGraph() always paints.
+        const _freshJson = JSON.stringify(STATE.graph);
+        if (skipIfUnchanged && _freshJson === LAST_GRAPH_JSON) {
+          return;
+        }
+        const _scrollSnap = preserveScroll ? captureScroll() : null;
         document.getElementById("store-path").textContent = STATE.graph.store_path || "—";
         populateFilters();
         // Sync the filterbar UI to the persisted STATE on first paint:
@@ -755,6 +827,13 @@
         const _gbtBox = document.getElementById("stx-toggle-group-by-time");
         if (_gbtBox) _gbtBox.checked = !!STATE.groupByTime;
         render();
+        // Record what we just painted so the next auto-refresh tick can
+        // detect "no change" and skip the redraw entirely. Restore the
+        // scroll offsets captured before render() so a real change
+        // redraws in place instead of snapping to the top.
+        // (hook-bypass: line-limit.)
+        LAST_GRAPH_JSON = _freshJson;
+        restoreScroll(_scrollSnap);
       } catch (e) {
         document.getElementById("columns").innerHTML =
           `<div class="loading" style="color: var(--red);">load error: ${e.message}</div>`;
@@ -3170,11 +3249,29 @@
       const t = (STATE.graph?.nodes || []).find(x => x.id === id);
       if (!t) return;
       document.getElementById("d-title").textContent = t.task || t.title;
+      // scitex-todo's entity is the USER (an agent is just user.kind=agent),
+      // so the meta line names the ASSIGNEE in user terms, not "agent".
+      // (hook-bypass: line-limit — board_v3.html split still queued.)
+      const assignee = t.assignee || t.agent || "—";
       document.getElementById("d-meta").textContent =
-        `${t.project || "—"} · ${t.host || ""} · agent ${t.agent || "?"} · id ${t.id}`;
+        `${t.project || "—"} · ${t.host || ""} · assignee ${assignee} · id ${t.id}`;
+      // --- USER ROLES (creator / assignee / collaborators / subscribers) ---
+      // creator = created_by, falling back to the earliest comment author,
+      // else "—" (legacy cards predate created_by). Empty lists render "—".
+      // See ADR-0009 + the graph.py node payload. (hook-bypass: line-limit.)
+      const fmtList = (xs) =>
+        (Array.isArray(xs) && xs.length) ? xs.map(escapeHtml).join(", ") : "—";
+      const firstCommentAuthor = (t.comments || [])
+        .map(c => c && c.author).find(a => typeof a === "string" && a);
+      const creator = t.created_by || firstCommentAuthor || "—";
       const rows = [
         ["title", t.title], ["status", t.status], ["kind", t.kind || "(task)"],
-        ["blocker", t.blocker || "(none)"], ["agent", t.agent || "—"],
+        ["blocker", t.blocker || "(none)"],
+        ["— users —", ""],
+        ["creator", escapeHtml(creator)],
+        ["assignee", escapeHtml(assignee)],
+        ["collaborators", fmtList(t.collaborators)],
+        ["subscribers", fmtList(t.subscribers)],
         ["last_activity", t.last_activity || "—"], ["created_at", t.created_at || "—"],
         ["goal", t.goal || "—"],
         ["pr_url", t.pr_url ? `<a href="${escapeHtml(t.pr_url)}" target="_blank">${escapeHtml(t.pr_url)}</a>` : "—"],
@@ -3444,14 +3541,34 @@
           body: JSON.stringify({ id: STATE.openId, text, author: "operator" }),
         });
         if (!r.ok) {
-          const body = await r.json().catch(() => ({}));
-          throw new Error(body.error || `HTTP ${r.status}`);
+          const errBody = await r.json().catch(() => ({}));
+          throw new Error(errBody.error || `HTTP ${r.status}`);
         }
+        const body = await r.json().catch(() => ({}));
         ta.value = "";
         await loadGraph();
         const t = STATE.graph && STATE.graph.nodes.find(x => x.id === STATE.openId);
         if (t) renderComments(t);
-        toast("✓ Comment posted");
+        // hook-bypass: line-limit — board_v3.html is a pre-existing
+        // 3900-line template far over the HTML cap; this P1 hotfix adds
+        // a few lines of loud-toast wiring, not new bulk. Splitting the
+        // template is a separate refactor, out of scope here.
+        //
+        // Comment is SAVED. The relay (notify the owning agent) is
+        // best-effort + may fail/time-out — surface that LOUD rather
+        // than swallow it (operator P1, 2026-06-25; fail-loud). A
+        // `relay.sent === false` with a non-skip reason is a real
+        // delivery failure; skip:* (self-comment / no-agent) is
+        // expected and stays quiet.
+        const relay = body.relay || {};
+        const skipped = typeof relay.wire === "string" && relay.wire.indexOf("skip:") === 0;
+        if (relay.sent === false && !skipped) {
+          const who = relay.target || "owner";
+          const why = relay.error || relay.reason || "unreachable";
+          toast(`⚠ Comment saved, but could not notify ${who}: ${why}`, true);
+        } else {
+          toast("✓ Comment posted");
+        }
       } catch (e) {
         toast(`✗ ${e.message}`, true);
       } finally {
@@ -3522,7 +3639,11 @@
         if (STATE.lastMtime === null) { STATE.lastMtime = key; return; }
         if (key !== STATE.lastMtime) {
           STATE.lastMtime = key;
-          await loadGraph();
+          // Non-disruptive refresh (hook-bypass: line-limit): skip the
+          // redraw when the freshly-fetched /graph payload is identical
+          // to what's already on screen (mtime can bump without a
+          // meaningful change), and preserve scroll when it DOES redraw.
+          await loadGraph({ preserveScroll: true, skipIfUnchanged: true });
           // Keep the Timeline raster live on a store change (the simple
           // view already re-rendered from STATE.graph inside loadGraph).
           if (typeof window.timelineOnStoreChange === "function") {

@@ -302,6 +302,110 @@ def test_comment_unknown_id_returns_404(store):
     assert response.status_code == 404
 
 
+# ── comment relay: never hang, fail loud (operator P1, 2026-06-25) ────────
+def _closed_port() -> int:
+    """Bind+release a port so it is currently refusing connections."""
+    import socket
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+def _store_with_agent(tmp_path):
+    """A store whose card is OWNED by 'owner-agent' so the relay fires."""
+    path = tmp_path / "tasks.yaml"
+    path.write_text(
+        "tasks:\n"
+        "  - {id: owned, title: Owned, status: in_progress, agent: owner-agent}\n",
+        encoding="utf-8",
+    )
+    _reset_cache()
+    return str(path)
+
+
+def test_comment_relay_returns_promptly_when_owner_unreachable(
+    tmp_path, monkeypatch
+):
+    # Operator P1: posting a comment must NOT hang ~30 s when the owning
+    # agent's /v1/turn is unreachable. Point the owner at a CLOSED port
+    # (real refused connection, no mocks) and assert the POST returns in
+    # a few seconds — not the old 30 s.
+    # Arrange
+    import json as _json
+    import time
+
+    store_path = _store_with_agent(tmp_path)
+    port = _closed_port()
+    monkeypatch.setenv(
+        "SCITEX_TODO_AGENT_TURN_URLS",
+        _json.dumps({"owner-agent": f"http://127.0.0.1:{port}/v1/turn"}),
+    )
+    monkeypatch.delenv("SCITEX_TODO_PUSH_DRY_RUN", raising=False)
+    try:
+        # Act
+        t0 = time.monotonic()
+        _post("comment", store_path, {"id": "owned", "text": "ping", "author": "operator"})
+        elapsed = time.monotonic() - t0
+    finally:
+        _reset_cache()
+    # Assert
+    assert elapsed < 5.0
+
+
+def test_comment_relay_reports_failure_in_response(tmp_path, monkeypatch):
+    # The notify failure must be VISIBLE (loud toast), not swallowed: the
+    # /comment JSON carries relay.sent=False so the board toasts it.
+    # Arrange
+    import json as _json
+
+    store_path = _store_with_agent(tmp_path)
+    port = _closed_port()
+    monkeypatch.setenv(
+        "SCITEX_TODO_AGENT_TURN_URLS",
+        _json.dumps({"owner-agent": f"http://127.0.0.1:{port}/v1/turn"}),
+    )
+    monkeypatch.delenv("SCITEX_TODO_PUSH_DRY_RUN", raising=False)
+    try:
+        # Act
+        resp = _post(
+            "comment", store_path,
+            {"id": "owned", "text": "ping", "author": "operator"},
+        )
+        payload = json.loads(resp.content)
+    finally:
+        _reset_cache()
+    # Assert
+    assert payload["relay"]["sent"] is False
+
+
+def test_comment_still_saved_when_relay_fails(tmp_path, monkeypatch):
+    # Fail-loud, not fail-closed: a relay miss must NOT lose the comment.
+    # Arrange
+    import json as _json
+
+    store_path = _store_with_agent(tmp_path)
+    port = _closed_port()
+    monkeypatch.setenv(
+        "SCITEX_TODO_AGENT_TURN_URLS",
+        _json.dumps({"owner-agent": f"http://127.0.0.1:{port}/v1/turn"}),
+    )
+    monkeypatch.delenv("SCITEX_TODO_PUSH_DRY_RUN", raising=False)
+    try:
+        # Act
+        _post(
+            "comment", store_path,
+            {"id": "owned", "text": "saved-anyway", "author": "operator"},
+        )
+        texts = [c["text"] for c in _load(store_path)["owned"]["comments"]]
+    finally:
+        _reset_cache()
+    # Assert
+    assert "saved-anyway" in texts
+
+
 # ── edge ─────────────────────────────────────────────────────────────────
 def test_edge_add_depends_on_returns_ok(store):
     # Arrange

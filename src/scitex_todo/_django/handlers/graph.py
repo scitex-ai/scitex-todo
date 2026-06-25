@@ -109,6 +109,16 @@ def _build_graph(board) -> dict:
             "last_activity": t.get("last_activity"),
             "pr_url": t.get("pr_url"),
             "issue_url": t.get("issue_url"),
+            # USER-role fields (scitex-todo's entity is the USER;
+            # an agent is just user.kind=agent). The detail drawer renders
+            # a ROLES section from these. `created_by` is the creating user
+            # (absent on legacy rows — FE falls back to the earliest comment
+            # author, else "—"). `collaborators` / `subscribers` are the
+            # persistent role lists (ADR-0009); always emitted as lists so
+            # the FE can render "—" for empty without null-checks.
+            "created_by": t.get("created_by"),
+            "collaborators": t.get("collaborators") or [],
+            "subscribers": t.get("subscribers") or [],
         }
         for t in board.tasks
     ]

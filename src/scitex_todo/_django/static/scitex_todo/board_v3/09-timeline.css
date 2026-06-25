@@ -124,6 +124,15 @@
   stroke: var(--text, #e0e6f0);
   stroke-width: 2;
 }
+/* Multi-select (timelineSelect.js): a distinct accent ring so selected
+   markers stand out from the live/done rings. Single click toggles this;
+   double click / right-click → Open details opens the drawer. */
+.tl-dot--selected {
+  stroke: var(--purple, #8e6cff);
+  stroke-width: 3;
+  r: 7;
+  filter: drop-shadow(0 0 3px var(--purple, #8e6cff));
+}
 
 /* ── simple per-task cards ─────────────────────────────────────────── */
 .tl-simple {
@@ -143,6 +152,11 @@
 }
 .tl-card:hover {
   border-color: var(--text-muted, #8a96a8);
+}
+/* Multi-select highlight for the simple per-task list (timelineSelect.js). */
+.tl-card--selected {
+  border-color: var(--purple, #8e6cff);
+  box-shadow: 0 0 0 1px var(--purple, #8e6cff);
 }
 .tl-card--working {
   border-left-color: var(--green, #30a46c);

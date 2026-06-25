@@ -980,4 +980,47 @@ def test_explicit_store_path_wins(tmp_path, env):
     assert on_disk[0]["id"] == "here"
 
 
+# --------------------------------------------------------------------------- #
+# created_by — the creating USER captured at insert (board ROLES section)     #
+# --------------------------------------------------------------------------- #
+def test_add_task_stores_created_by_explicit(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    # Act — explicit author wins over the env/login chain.
+    inserted = _store.add_task(
+        store, id="a", title="A", created_by="agent:explicit"
+    )
+    on_disk = _model.load_tasks(store)
+    # Assert
+    assert inserted["created_by"] == "agent:explicit"
+    assert on_disk[0]["created_by"] == "agent:explicit"
+
+
+def test_add_task_defaults_created_by_from_env(tmp_path, env):
+    # Arrange — no explicit author; resolves from $SCITEX_TODO_AGENT, the
+    # same chain comment authorship uses.
+    store = tmp_path / "tasks.yaml"
+    env.set("SCITEX_TODO_AGENT", "agent:fromenv")
+    # Act
+    inserted = _store.add_task(store, id="a", title="A")
+    # Assert
+    assert inserted["created_by"] == "agent:fromenv"
+    assert _model.load_tasks(store)[0]["created_by"] == "agent:fromenv"
+
+
+def test_legacy_task_without_created_by_is_valid(tmp_path):
+    # Arrange — a hand-written legacy row with no created_by field loads
+    # and validates fine (back-compat: absent created_by is valid).
+    store = tmp_path / "tasks.yaml"
+    store.write_text(
+        "tasks:\n  - id: legacy\n    title: Legacy\n    status: pending\n",
+        encoding="utf-8",
+    )
+    # Act
+    on_disk = _model.load_tasks(store)
+    # Assert
+    assert on_disk[0]["id"] == "legacy"
+    assert "created_by" not in on_disk[0]
+
+
 # EOF
