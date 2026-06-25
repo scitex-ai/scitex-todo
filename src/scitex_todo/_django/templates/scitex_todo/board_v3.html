@@ -72,6 +72,13 @@
 {% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/searchSuggest.js' %}"></script>
 {% comment %}
+  timelinePack.js — pure beeswarm sub-row packer for the Timeline raster.
+  MUST load BEFORE timeline.js: it publishes window.STX.timelinePack, which
+  timeline.js's IIFE captures at init so co-located markers fan out into
+  sub-rows instead of occluding each other. No DOM; also node-testable.
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/timelinePack.js' %}"></script>
+{% comment %}
   timeline.js — the Timeline layout renderer (raster by agent/project +
   a rich per-task "simple" list). Classic <script defer> so it shares the
   page globals (STATE / escapeHtml / openDetail / bucket / render); it
