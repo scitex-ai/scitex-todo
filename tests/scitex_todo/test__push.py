@@ -503,6 +503,49 @@ class TestDeliver:
         # response.
         assert r["reason"] == "dispatched"
 
+    def test_interactive_read_timeout_fails_loud_fast(self, env):
+        # Operator P1 (2026-06-25): the board's comment relay runs inline
+        # on POST /comment, so a slow/stalled receiver must NOT hang the
+        # board ~30 s AND a notify miss must be VISIBLE. With
+        # ``dispatched_is_ok=False`` (the relay's flavor) a read-timeout
+        # returns FAST with ``ok=False, reason="timeout"`` instead of the
+        # background "dispatched" white-lie — so the UI can toast loud.
+        # Arrange — a real localhost server that accepts the request body
+        # but never responds, forcing a client read-timeout (no mocks).
+        class _NeverRespondHandler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802
+                length = int(self.headers.get("Content-Length", "0"))
+                self.rfile.read(length)
+                import time
+
+                time.sleep(5)  # longer than the client timeout
+
+            def log_message(self, *a, **kw):
+                return
+
+        port = _free_port()
+        httpd = http.server.HTTPServer(("127.0.0.1", port), _NeverRespondHandler)
+        th = threading.Thread(target=httpd.serve_forever, daemon=True)
+        th.start()
+        env.delete(ENV_DRY_RUN)
+        env.set(ENV_MAP, json.dumps({"alpha": f"http://127.0.0.1:{port}/v1/turn"}))
+        try:
+            # Act — short timeout + interactive flavor; the handler sleeps
+            # 5 s so we time out well before any response.
+            import time as _t
+
+            t0 = _t.monotonic()
+            r = deliver(
+                "alpha", "ping", kind="comment-relay",
+                timeout=0.5, dispatched_is_ok=False,
+            )
+            elapsed = _t.monotonic() - t0
+        finally:
+            httpd.shutdown()
+        # Assert — fast (well under the old 30 s) AND fails loud, not the
+        # silent "dispatched" success the background path uses.
+        assert elapsed < 3.0 and r["ok"] is False and r["reason"] == "timeout"
+
     def test_default_timeout_env_override(self, env):
         # Arrange — env value parsed at call-time, not module import.
         env.set(ENV_PUSH_TIMEOUT_S, "12.5")

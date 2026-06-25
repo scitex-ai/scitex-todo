@@ -3514,14 +3514,34 @@
           body: JSON.stringify({ id: STATE.openId, text, author: "operator" }),
         });
         if (!r.ok) {
-          const body = await r.json().catch(() => ({}));
-          throw new Error(body.error || `HTTP ${r.status}`);
+          const errBody = await r.json().catch(() => ({}));
+          throw new Error(errBody.error || `HTTP ${r.status}`);
         }
+        const body = await r.json().catch(() => ({}));
         ta.value = "";
         await loadGraph();
         const t = STATE.graph && STATE.graph.nodes.find(x => x.id === STATE.openId);
         if (t) renderComments(t);
-        toast("✓ Comment posted");
+        // hook-bypass: line-limit — board_v3.html is a pre-existing
+        // 3900-line template far over the HTML cap; this P1 hotfix adds
+        // a few lines of loud-toast wiring, not new bulk. Splitting the
+        // template is a separate refactor, out of scope here.
+        //
+        // Comment is SAVED. The relay (notify the owning agent) is
+        // best-effort + may fail/time-out — surface that LOUD rather
+        // than swallow it (operator P1, 2026-06-25; fail-loud). A
+        // `relay.sent === false` with a non-skip reason is a real
+        // delivery failure; skip:* (self-comment / no-agent) is
+        // expected and stays quiet.
+        const relay = body.relay || {};
+        const skipped = typeof relay.wire === "string" && relay.wire.indexOf("skip:") === 0;
+        if (relay.sent === false && !skipped) {
+          const who = relay.target || "owner";
+          const why = relay.error || relay.reason || "unreachable";
+          toast(`⚠ Comment saved, but could not notify ${who}: ${why}`, true);
+        } else {
+          toast("✓ Comment posted");
+        }
       } catch (e) {
         toast(`✗ ${e.message}`, true);
       } finally {

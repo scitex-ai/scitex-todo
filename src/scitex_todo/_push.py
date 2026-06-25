@@ -115,6 +115,14 @@ SAC_REGISTRY_TIMEOUT_S = 2.0
 ENV_PUSH_TIMEOUT_S = "SCITEX_TODO_PUSH_TIMEOUT_S"
 DEFAULT_TIMEOUT_S = 30.0
 
+#: Short per-POST timeout for INTERACTIVE callers (the board's comment
+#: relay) that run INSIDE an HTTP request the operator is waiting on. The
+#: cron/nudge path keeps the long :data:`DEFAULT_TIMEOUT_S`; the relay
+#: runs in-line on ``POST /comment`` so a 30 s receiver stall = a 30 s
+#: board hang (operator-reported P1, 2026-06-25). 2 s covers a same-host
+#: loopback; past that we return FAST and toast "could not notify".
+NOTIFY_TIMEOUT_S = 2.0
+
 
 def _default_timeout_s() -> float:
     """Lookup the per-POST timeout, honoring ``ENV_PUSH_TIMEOUT_S``.
@@ -268,6 +276,30 @@ def _now_iso() -> str:
     return _dt.datetime.now(tz=_dt.timezone.utc).replace(microsecond=0).isoformat()
 
 
+def _timeout_result(
+    agent: str, kind: str, url: str, err: BaseException,
+    timeout: float, dispatched_is_ok: bool,
+) -> dict:
+    """Result dict for a client read-timeout, shared by both except-branches.
+
+    ``dispatched_is_ok=True`` (background/cron) → ``ok=True,
+    reason="dispatched"`` (request body fully sent; receiver mid-turn).
+    ``dispatched_is_ok=False`` (interactive relay) → ``ok=False,
+    reason="timeout"`` — surfaced FAST so the board toasts loud.
+    """
+    reason = "dispatched" if dispatched_is_ok else "timeout"
+    logger.warning(
+        "[scitex-todo._push] %s read-timeout after %.1fs for agent=%s "
+        "→ reason=%s. %s",
+        url, timeout, agent, reason, err,
+    )
+    return {
+        "ok": dispatched_is_ok, "agent": agent, "wire": "http",
+        "kind": kind, "url": url, "status": None, "reason": reason,
+        "error": str(err),
+    }
+
+
 def deliver(
     agent: str,
     body: str,
@@ -276,6 +308,7 @@ def deliver(
     task_id: str | None = None,
     store_path: str | None = None,
     timeout: float | None = None,
+    dispatched_is_ok: bool = True,
 ) -> dict:
     """Deliver ``body`` to ``agent`` via the configured turn URL.
 
@@ -287,6 +320,14 @@ def deliver(
     reason="dispatched"``) so a single slow turn can't fail the whole
     nudge batch. Callers that need the receiver's full response payload
     can pass an explicit long ``timeout`` (e.g. 120.0).
+
+    ``dispatched_is_ok`` (default ``True``) governs the read-timeout
+    verdict. Background callers keep the default (timeout → ``ok=True,
+    reason="dispatched"``). INTERACTIVE callers (the comment relay) pass
+    ``False`` + a short ``timeout`` (:data:`NOTIFY_TIMEOUT_S`) so a
+    timeout returns FAST with ``ok=False, reason="timeout"`` and the
+    board toasts a LOUD failure instead of hanging ~30 s and silently
+    claiming success (operator P1, 2026-06-25; fail-fast/fail-loud).
 
     Returns a result dict suitable for inclusion in a JsonResponse:
 
@@ -384,36 +425,20 @@ def deliver(
         # we wait `timeout` (default 30 s, env-overridable). If we hit
         # the cap, the request body was already fully sent in the first
         # second or two of that budget — the receiver is mid-turn, NOT
-        # unreachable. Treat as DISPATCHED success so the cron doesn't
-        # fail the whole nudge batch over one slow turn (lead a2a
-        # `0b59485f`, 2026-06-13).
-        logger.warning(
-            "[scitex-todo._push] %s read-timeout after %.0fs for agent=%s "
-            "— request body was fully sent; treating as dispatched. %s",
-            url, timeout, agent, e,
-        )
-        return {
-            "ok": True, "agent": agent, "wire": "http", "kind": kind,
-            "url": url, "status": None, "reason": "dispatched",
-            "error": str(e),
-        }
+        # unreachable. Background callers treat that as DISPATCHED
+        # success so the cron doesn't fail the whole nudge batch over
+        # one slow turn (lead a2a `0b59485f`, 2026-06-13). Interactive
+        # callers (`dispatched_is_ok=False`) fail loud instead.
+        return _timeout_result(agent, kind, url, e, timeout, dispatched_is_ok)
     except (urllib.error.URLError, OSError) as e:
         # Distinguish a wrapped TimeoutError (the urlopen socket layer
         # often raises a TimeoutError nested inside URLError) from a real
         # transport failure (connection refused / DNS / SSL handshake).
         nested = getattr(e, "reason", None)
         if isinstance(nested, TimeoutError) or "timed out" in str(e):
-            logger.warning(
-                "[scitex-todo._push] %s read-timeout after %.0fs for "
-                "agent=%s — request body was fully sent; treating as "
-                "dispatched. %s",
-                url, timeout, agent, e,
+            return _timeout_result(
+                agent, kind, url, e, timeout, dispatched_is_ok
             )
-            return {
-                "ok": True, "agent": agent, "wire": "http", "kind": kind,
-                "url": url, "status": None, "reason": "dispatched",
-                "error": str(e),
-            }
         logger.error(
             "[scitex-todo._push] transport error to %s for agent=%s: %s",
             url, agent, e,
@@ -462,6 +487,7 @@ __all__ = [
     "DEFAULT_SAC_LISTEN",
     "SAC_REGISTRY_TIMEOUT_S",
     "DEFAULT_TIMEOUT_S",
+    "NOTIFY_TIMEOUT_S",
     "turn_url_for",
     "deliver",
     "announce_missing_at_boot",

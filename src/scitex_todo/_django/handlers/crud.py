@@ -364,7 +364,9 @@ def handle_comment(request, board):
     # the same wire the nudge button uses. Best-effort — relay failure
     # does NOT fail the comment write. Relay outcome surfaces in the
     # response so the UI can toast.
-    relay = _maybe_relay_comment(task, comment)
+    from ._comment_relay import maybe_relay_comment
+
+    relay = maybe_relay_comment(task, comment)
 
     return JsonResponse(
         {
@@ -374,50 +376,6 @@ def handle_comment(request, board):
             "relay": relay,
         }
     )
-
-
-def _maybe_relay_comment(task: dict, comment: dict) -> dict:
-    """If ``comment.author != task.agent``, push the comment to the
-    owning agent via the same wire the nudge button uses.
-
-    Returns a dict the JSON response includes so the UI can render a
-    toast: ``{"sent": bool, "wire": "sac"|"stdout"|"skip:<reason>",
-    "target": "<agent>"}``.
-    """
-    target = (task.get("agent") or "").strip()
-    author = (comment.get("author") or "").strip()
-    if not target:
-        return {"sent": False, "wire": "skip:no-agent", "target": ""}
-    if author == target:
-        return {"sent": False, "wire": "skip:self-comment", "target": target}
-
-    body = (
-        f"📝 comment on {task['id']} from {author!r}:\n\n"
-        f"{comment.get('text', '')}\n\n"
-        f"---\nReply via `scitex-todo comment {task['id']} "
-        f"\"<your reply>\" --author {target}` (or MCP `add_comment` / "
-        f"`comment_task`)."
-    )
-
-    from ..._push import deliver
-
-    result = deliver(
-        target, body,
-        kind="comment-relay",
-        task_id=task["id"],
-    )
-    logger.info(
-        "[scitex-todo] comment relay %s → %s wire=%s reason=%s (ok=%s)",
-        task["id"], target, result.get("wire"), result.get("reason"),
-        result.get("ok"),
-    )
-    return {
-        "sent": result.get("ok", False),
-        "wire": result.get("wire"),
-        "reason": result.get("reason"),
-        "target": target,
-    }
-
 
 
 def handle_edge(request, board):
