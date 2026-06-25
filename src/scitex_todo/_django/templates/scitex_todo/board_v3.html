@@ -93,6 +93,15 @@
 {% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/timelineGate.js' %}"></script>
 {% comment %}
+  timelineSelect.js — marker multi-select + copy-contents + right-click menu
+  for the Timeline raster (operator 2026-06-26). Classic <script defer>;
+  wires itself via event delegation on #columns so timeline.js (at its line
+  cap) needs no change. Publishes window.STX.timelineSelect (pure
+  formatCardCopy / joinCopyBlocks helpers, node-testable).
+  (hook-bypass: line-limit.)
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/timelineSelect.js' %}"></script>
+{% comment %}
   timeline.js — the Timeline layout renderer (raster by agent/project +
   a rich per-task "simple" list). Classic <script defer> so it shares the
   page globals (STATE / escapeHtml / openDetail / bucket / render); it
