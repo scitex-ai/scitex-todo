@@ -28,7 +28,6 @@ import json
 
 import pytest
 
-
 # --------------------------------------------------------------------------- #
 # Optional-dep guard                                                          #
 # --------------------------------------------------------------------------- #
@@ -93,6 +92,14 @@ _CONVENTION_A_NAMES = {
     "set_edge",
     "resolve_task",
     "reopen_task",
+    # Card roles (ADR-0009) — 1:1 with `_store.set_collaborator` /
+    # `_store.set_subscriber` (Convention A).
+    "set_collaborator",
+    "set_subscriber",
+    # Help-wait SoC lift — 1:1 with `_help_wait.help_wait` /
+    # `_help_wait.help_clear`. Semantics lifted out of the dotfiles hook.
+    "help_wait",
+    "help_clear",
 }
 # Convention B — `todo_<verb>_<noun>` for the audit §5 required skills
 # tools. These don't map 1:1 to a Python API; they introspect the bundled
@@ -119,9 +126,9 @@ def test_no_tool_uses_dropped_scitex_todo_prefix():
     bad_prefix = [n for n in names if n.startswith("scitex_todo_")]
     single_token = [n for n in names if "_" not in n]
     # Assert
-    assert (
-        not bad_prefix and not single_token
-    ), f"tools {bad_prefix + single_token!r} regress audit §6 / §2"
+    assert not bad_prefix and not single_token, (
+        f"tools {bad_prefix + single_token!r} regress audit §6 / §2"
+    )
 
 
 def test_tool_names_match_known_conventions():

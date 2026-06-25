@@ -160,7 +160,8 @@ class TaskValidationError(ValueError):
 # the operator's "no big-bang" rule.
 
 
-from dataclasses import dataclass, field, fields as _dc_fields  # noqa: E402
+from dataclasses import dataclass, field  # noqa: E402
+from dataclasses import fields as _dc_fields
 
 
 @dataclass(slots=True)
@@ -205,9 +206,9 @@ class Task:
     # it.
     task: str | None = None
     project: str | None = None  # directory / repo basename
-    host: str | None = None     # where the work happens (operator co-design TG 9667)
+    host: str | None = None  # where the work happens (operator co-design TG 9667)
     created_at: str | None = None  # ISO-8601 UTC; emit at insert
-    goal: str | None = None     # WHY (parent-goal text); rendered as 🎯 line on card
+    goal: str | None = None  # WHY (parent-goal text); rendered as 🎯 line on card
 
     # --- deadline / scheduled (P4, lead approved 2026-06-12) --------------
     # Both ISO-8601 (date "2026-06-15" or datetime "2026-06-15T18:00+09:00").
@@ -232,12 +233,12 @@ class Task:
     deadlines: list[str] | None = None
 
     # --- lead-added: drives UI color + blocker views (TG 9667) -------------
-    status: str = "pending"     # current canonical = VALID_STATUSES (7-value);
-                                # the operator's 4-value enum (working/waiting/done/blocked)
-                                # is mapped IN THE FE renderer for now, not in the
-                                # schema. See ADR-0007 Consequences for the
-                                # deferred 7→4 schema migration.
-    agent: str | None = None     # owning agent (distinct from `assignee` legacy field)
+    status: str = "pending"  # current canonical = VALID_STATUSES (7-value);
+    # the operator's 4-value enum (working/waiting/done/blocked)
+    # is mapped IN THE FE renderer for now, not in the
+    # schema. See ADR-0007 Consequences for the
+    # deferred 7→4 schema migration.
+    agent: str | None = None  # owning agent (distinct from `assignee` legacy field)
     # `group` is the logical CLUSTER OF AGENTS this task belongs to —
     # the parallelism-engine dispatcher (TRACK 1, lead a2a `74db4f2d`,
     # 2026-06-14) uses it to ask "what's runnable now in group <G>"
@@ -248,10 +249,14 @@ class Task:
     # for the board's column collapser; this is a DISPATCH concept on
     # the task itself).
     group: str | None = None
-    last_activity: str | None = None  # ISO-8601 UTC; recency drives green/amber/red coloring
-    blocker: str | None = None        # one of VALID_BLOCKERS or absent; only on status=blocked
-    pr_url: str | None = None         # optional GH/Gitea PR link
-    issue_url: str | None = None      # optional GH/Gitea issue link
+    last_activity: str | None = (
+        None  # ISO-8601 UTC; recency drives green/amber/red coloring
+    )
+    blocker: str | None = (
+        None  # one of VALID_BLOCKERS or absent; only on status=blocked
+    )
+    pr_url: str | None = None  # optional GH/Gitea PR link
+    issue_url: str | None = None  # optional GH/Gitea issue link
 
     # --- graph wiring (preserved from pre-#52) -----------------------------
     depends_on: list[str] = field(default_factory=list)
@@ -261,8 +266,17 @@ class Task:
     note: str | None = None
     comments: list[dict] = field(default_factory=list)
 
+    # --- roles & notification (P1, ADR-0009) -------------------------------
+    # `collaborators` = agents/humans involved beyond the single `agent`
+    # (assignee); `subscribers` = the notify list (default = creator +
+    # collaborators, always unsubscribable). PERSISTENT fields: previously
+    # collaborators were recomputed from comment authors at event-time and
+    # subscribers did not exist. Absent / None → empty list (back-compat).
+    collaborators: list[str] = field(default_factory=list)
+    subscribers: list[str] = field(default_factory=list)
+
     # --- kind discriminator + compute metadata (ADR-0002 / 0003) -----------
-    kind: str | None = None     # one of VALID_KINDS or absent (defaults to "task")
+    kind: str | None = None  # one of VALID_KINDS or absent (defaults to "task")
     job_id: str | None = None
     command: str | None = None
     started_at: str | None = None
@@ -270,8 +284,10 @@ class Task:
 
     # --- legacy shared-fleet additive fields (Phase-1 SSoT) ---------------
     scope: str | None = None
-    assignee: str | None = None     # legacy; `agent` is the operator-co-designed replacement
-    _log_meta: dict | None = None   # opaque writer-side event stamps
+    assignee: str | None = (
+        None  # legacy; `agent` is the operator-co-designed replacement
+    )
+    _log_meta: dict | None = None  # opaque writer-side event stamps
 
     @classmethod
     def from_dict(cls, d: dict) -> "Task":
@@ -297,9 +313,16 @@ class Task:
             if k == "blocker" and isinstance(v, str):
                 v = _BLOCKER_ALIASES.get(v, v)
             kwargs[k] = v
-        # comments / depends_on / blocks: replace None with the empty default
-        # so downstream code can iterate without isinstance(.., None) checks.
-        for list_field in ("comments", "depends_on", "blocks"):
+        # comments / depends_on / blocks / collaborators / subscribers:
+        # replace None with the empty default so downstream code can iterate
+        # without isinstance(.., None) checks.
+        for list_field in (
+            "comments",
+            "depends_on",
+            "blocks",
+            "collaborators",
+            "subscribers",
+        ):
             if kwargs.get(list_field) is None:
                 kwargs.pop(list_field, None)
         return cls(**kwargs)  # type: ignore[arg-type]
@@ -322,7 +345,9 @@ class Task:
                 result[f.name] = value
                 continue
             # Default-equal values are omitted (keeps YAML compact).
-            default = f.default if f.default is not f.default_factory else f.default_factory()  # type: ignore[misc]
+            default = (
+                f.default if f.default is not f.default_factory else f.default_factory()
+            )  # type: ignore[misc]
             if value == default:
                 continue
             # Empty containers: omit so the YAML stays compact.
@@ -652,9 +677,7 @@ def _parse_iso_date_or_raise(
     repeater. New callers should use ``_parse_deadline_or_raise``
     directly.
     """
-    dt, _repeater = _parse_deadline_or_raise(
-        value, source=source, tid=tid, label=label
-    )
+    dt, _repeater = _parse_deadline_or_raise(value, source=source, tid=tid, label=label)
     return dt
 
 
@@ -805,7 +828,9 @@ def _validate_tasks(tasks: object, source: str) -> None:
                 )
             for j, entry in enumerate(deadlines_raw):
                 _parse_deadline_or_raise(
-                    entry, source=source, tid=tid,
+                    entry,
+                    source=source,
+                    tid=tid,
                     label=f"deadlines[{j}]",
                 )
         deadline_dt, _ = _parse_deadline_or_raise(
@@ -1040,9 +1065,7 @@ def _save_tasks_unlocked(tasks: list[dict], path: Path) -> None:
         # ids are dropped.
         doc = existing_doc
         old_seq = doc.get("tasks") if isinstance(doc.get("tasks"), list) else []
-        old_by_id = {
-            t["id"]: t for t in old_seq if isinstance(t, dict) and t.get("id")
-        }
+        old_by_id = {t["id"]: t for t in old_seq if isinstance(t, dict) and t.get("id")}
         merged = _merge_tasks_into_seq(tasks, old_by_id)
         doc["tasks"] = merged
     else:
@@ -1088,9 +1111,7 @@ def _save_tasks_unlocked(tasks: list[dict], path: Path) -> None:
                 f"not reparse cleanly after dump ({type(verify_exc).__name__}: "
                 f"{verify_exc}). Canonical file left untouched."
             ) from verify_exc
-        verify_tasks = (
-            verify_doc.get("tasks") if isinstance(verify_doc, dict) else None
-        )
+        verify_tasks = verify_doc.get("tasks") if isinstance(verify_doc, dict) else None
         in_memory_count = len(doc.get("tasks") or [])
         if not isinstance(verify_tasks, list) or len(verify_tasks) != in_memory_count:
             raise RuntimeError(

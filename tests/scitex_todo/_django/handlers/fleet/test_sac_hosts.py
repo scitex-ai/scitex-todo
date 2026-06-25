@@ -19,8 +19,6 @@ through the suite's :func:`env` fixture (``tests/scitex_todo/conftest.py``).
 
 from __future__ import annotations
 
-import shutil
-
 import pytest
 
 from scitex_todo._django.handlers.fleet import (
@@ -28,6 +26,8 @@ from scitex_todo._django.handlers.fleet import (
     fetch_hosts,
 )
 from scitex_todo._django.handlers.fleet import sac_hosts as sac_hosts_mod
+
+from ._sac_guard import requires_functional_sac
 
 
 # ─── fail-loud: missing binary ──────────────────────────────────────────
@@ -47,13 +47,10 @@ def test_fetch_hosts_missing_binary_raises_raises_fleetadaptererror(env) -> None
         fetch_hosts()
 
 
-# ─── happy path (gated on sac availability) ─────────────────────────────
+# ─── happy path (gated on a FUNCTIONAL sac binary) ──────────────────────
 
 
-_SAC_AVAILABLE = shutil.which("sac") is not None
-
-
-@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
+@requires_functional_sac
 def test_fetch_hosts_returns_local_and_peers_keys_isinstance() -> None:
     """When sac IS available, the adapter returns a dict with the
     load-bearing ``local`` + ``peers`` keys. The FE consumes both, and
@@ -76,7 +73,7 @@ def test_fetch_hosts_returns_local_and_peers_keys_isinstance() -> None:
     assert isinstance(out, dict)
 
 
-@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
+@requires_functional_sac
 def test_fetch_hosts_returns_local_and_peers_keys_out_contains() -> None:
     """When sac IS available, the adapter returns a dict with the
     load-bearing ``local`` + ``peers`` keys. The FE consumes both, and
@@ -99,7 +96,7 @@ def test_fetch_hosts_returns_local_and_peers_keys_out_contains() -> None:
     assert "local" in out
 
 
-@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
+@requires_functional_sac
 def test_fetch_hosts_returns_local_and_peers_keys_out_contains_2() -> None:
     """When sac IS available, the adapter returns a dict with the
     load-bearing ``local`` + ``peers`` keys. The FE consumes both, and
@@ -122,7 +119,7 @@ def test_fetch_hosts_returns_local_and_peers_keys_out_contains_2() -> None:
     assert "peers" in out
 
 
-@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
+@requires_functional_sac
 def test_fetch_hosts_returns_local_and_peers_keys_isinstance_2() -> None:
     """When sac IS available, the adapter returns a dict with the
     load-bearing ``local`` + ``peers`` keys. The FE consumes both, and
@@ -145,7 +142,7 @@ def test_fetch_hosts_returns_local_and_peers_keys_isinstance_2() -> None:
     assert isinstance(out["local"], dict)
 
 
-@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
+@requires_functional_sac
 def test_fetch_hosts_returns_local_and_peers_keys_isinstance_3() -> None:
     """When sac IS available, the adapter returns a dict with the
     load-bearing ``local`` + ``peers`` keys. The FE consumes both, and
@@ -168,7 +165,7 @@ def test_fetch_hosts_returns_local_and_peers_keys_isinstance_3() -> None:
     assert isinstance(out["local"].get("name"), str)
 
 
-@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
+@requires_functional_sac
 def test_fetch_hosts_returns_local_and_peers_keys_name() -> None:
     """When sac IS available, the adapter returns a dict with the
     load-bearing ``local`` + ``peers`` keys. The FE consumes both, and
@@ -191,7 +188,7 @@ def test_fetch_hosts_returns_local_and_peers_keys_name() -> None:
     assert out["local"]["name"]
 
 
-@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
+@requires_functional_sac
 def test_fetch_hosts_returns_local_and_peers_keys_isinstance_4() -> None:
     """When sac IS available, the adapter returns a dict with the
     load-bearing ``local`` + ``peers`` keys. The FE consumes both, and
@@ -214,7 +211,7 @@ def test_fetch_hosts_returns_local_and_peers_keys_isinstance_4() -> None:
     assert isinstance(out["peers"], list)
 
 
-@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
+@requires_functional_sac
 def test_fetch_hosts_returns_local_and_peers_keys_out_contains_3() -> None:
     """When sac IS available, the adapter returns a dict with the
     load-bearing ``local`` + ``peers`` keys. The FE consumes both, and

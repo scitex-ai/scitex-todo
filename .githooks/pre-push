@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# -*- coding: utf-8 -*-
+# scitex-todo git->card hook: record pushed commits on the matching board
+# card's ROUTE (Phase P3, card tcfb-p3-git-to-card).
+#
+# git invokes pre-push with `<remote-name> <remote-url>` as argv and feeds
+# one line per pushed ref on stdin:
+#     <local_ref> SP <local_sha> SP <remote_ref> SP <remote_sha> LF
+# For each updated branch we record its tip commit (local_sha) against the
+# card id parsed from the branch (or a `Card:` trailer).
+#
+# SOFT linking: only fires when a card id is present. Ad-hoc pushes are
+# skipped silently. BEST EFFORT: never blocks the push -- always exits 0.
+
+set -u
+
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "${HOOK_DIR}/_lib.sh" 2>/dev/null || exit 0
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+[ -n "${REPO_ROOT}" ] || exit 0
+
+# Sentinel git uses for "no such object" (deletes / fresh refs).
+ZERO="0000000000000000000000000000000000000000"
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    # Branch deletion (local side is the zero sha) -> nothing to record.
+    [ -n "${local_ref}" ] || continue
+    [ "${local_sha}" = "${ZERO}" ] && continue
+    [ -n "${local_sha}" ] || continue
+
+    # Only annotate branch pushes; ignore tags and other ref namespaces.
+    case "${local_ref}" in
+    refs/heads/*) branch="${local_ref#refs/heads/}" ;;
+    *) continue ;;
+    esac
+    [ -n "${branch}" ] || continue
+
+    MSG_FILE="$(mktemp 2>/dev/null)" || MSG_FILE=""
+    if [ -n "${MSG_FILE}" ]; then
+        git -C "${REPO_ROOT}" log -1 --format='%B' "${local_sha}" \
+            >"${MSG_FILE}" 2>/dev/null || true
+    fi
+
+    sttc_emit_push "${REPO_ROOT}" "${branch}" "${local_sha}" "${MSG_FILE}" || true
+
+    [ -n "${MSG_FILE}" ] && rm -f "${MSG_FILE}" 2>/dev/null
+done
+
+exit 0
+# EOF

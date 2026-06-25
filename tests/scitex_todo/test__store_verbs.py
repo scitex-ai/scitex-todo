@@ -31,7 +31,6 @@ import pytest
 
 from scitex_todo import _store
 
-
 # === get_task ===============================================================
 
 
@@ -492,3 +491,218 @@ class TestReopenTask:
         # Assert
         with pytest.raises(_store.TaskNotFoundError):
             _store.reopen_task(store, task_id="missing", by="op")
+
+
+# === set_collaborator / set_subscriber (ADR-0009 card roles) ===============
+
+
+class TestSetCollaborator:
+    """Add / remove a collaborator; adding also subscribes (the default)."""
+
+    def test_add_inserts_collaborator(self, tmp_path):
+        # Arrange
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A")
+        # Act
+        _store.set_collaborator(store, task_id="a", who="bob", action="add")
+        # Assert
+        assert _store.get_task(store, task_id="a")["collaborators"] == ["bob"]
+
+    def test_add_also_subscribes(self, tmp_path):
+        # Arrange
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A")
+        # Act
+        _store.set_collaborator(store, task_id="a", who="bob", action="add")
+        # Assert
+        assert "bob" in _store.get_task(store, task_id="a")["subscribers"]
+
+    def test_add_is_idempotent(self, tmp_path):
+        # Arrange
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A")
+        _store.set_collaborator(store, task_id="a", who="bob", action="add")
+        # Act
+        _store.set_collaborator(store, task_id="a", who="bob", action="add")
+        # Assert
+        assert _store.get_task(store, task_id="a")["collaborators"] == ["bob"]
+
+    def test_remove_strips_collaborator(self, tmp_path):
+        # Arrange
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A")
+        _store.set_collaborator(store, task_id="a", who="bob", action="add")
+        # Act
+        _store.set_collaborator(store, task_id="a", who="bob", action="remove")
+        # Assert — empty list → key dropped.
+        assert "collaborators" not in _store.get_task(store, task_id="a")
+
+    def test_remove_leaves_subscription_intact(self, tmp_path):
+        # Arrange — add (auto-subscribes), then remove as collaborator only.
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A")
+        _store.set_collaborator(store, task_id="a", who="bob", action="add")
+        # Act
+        _store.set_collaborator(store, task_id="a", who="bob", action="remove")
+        # Assert
+        assert "bob" in _store.get_task(store, task_id="a")["subscribers"]
+
+    def test_invalid_action_raises(self, tmp_path):
+        # Arrange
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A")
+        # Act
+        # Assert
+        with pytest.raises(ValueError):
+            _store.set_collaborator(store, task_id="a", who="bob", action="upsert")
+
+    def test_unknown_card_raises_not_found(self, tmp_path):
+        # Arrange — store exists, but the id does not.
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A")
+        # Act
+        # Assert
+        with pytest.raises(_store.TaskNotFoundError):
+            _store.set_collaborator(store, task_id="missing", who="bob", action="add")
+
+
+class TestSetSubscriber:
+    """Subscribe / unsubscribe on a card's notify list."""
+
+    def test_add_inserts_subscriber(self, tmp_path):
+        # Arrange
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A")
+        # Act
+        _store.set_subscriber(store, task_id="a", who="bob", action="add")
+        # Assert
+        assert _store.get_task(store, task_id="a")["subscribers"] == ["bob"]
+
+    def test_remove_strips_subscriber(self, tmp_path):
+        # Arrange
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A")
+        _store.set_subscriber(store, task_id="a", who="bob", action="add")
+        # Act
+        _store.set_subscriber(store, task_id="a", who="bob", action="remove")
+        # Assert
+        assert "subscribers" not in _store.get_task(store, task_id="a")
+
+    def test_collaborator_can_unsubscribe(self, tmp_path):
+        # Arrange — collaborator is auto-subscribed; "always unsubscribable".
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A")
+        _store.set_collaborator(store, task_id="a", who="bob", action="add")
+        # Act
+        _store.set_subscriber(store, task_id="a", who="bob", action="remove")
+        # Assert
+        assert "bob" not in (
+            _store.get_task(store, task_id="a").get("subscribers") or []
+        )
+
+    def test_invalid_action_raises(self, tmp_path):
+        # Arrange
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A")
+        # Act
+        # Assert
+        with pytest.raises(ValueError):
+            _store.set_subscriber(store, task_id="a", who="bob", action="toggle")
+
+    def test_unknown_card_raises_not_found(self, tmp_path):
+        # Arrange — store exists, but the id does not.
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A")
+        # Act
+        # Assert
+        with pytest.raises(_store.TaskNotFoundError):
+            _store.set_subscriber(store, task_id="missing", who="bob", action="add")
+
+
+# === active-unblock DRIVE (ADR-0009) =======================================
+
+
+def _has_unblocked_comment(task: dict, unlocker: str) -> bool:
+    """True iff ``task`` carries the built-in ``[unblocked by X]`` comment."""
+    token = f"[unblocked by {unlocker}]"
+    return any(
+        token in (c.get("text") or "")
+        for c in (task.get("comments") or [])
+        if isinstance(c, dict)
+    )
+
+
+class TestUnblockDrive:
+    """Completing a card actively unblocks its now-runnable dependents."""
+
+    def test_complete_unblocks_single_dependency(self, tmp_path):
+        # Arrange — b depends on a; both pending.
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="b", title="B", depends_on=["a"])
+        # Act
+        _store.complete_task(store, task_id="a")
+        # Assert
+        assert _has_unblocked_comment(_store.get_task(store, task_id="b"), "a")
+
+    def test_partial_deps_are_not_unblocked(self, tmp_path):
+        # Arrange — b depends on a AND c; completing only a leaves c pending.
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="c", title="C")
+        _store.add_task(store, id="b", title="B", depends_on=["a", "c"])
+        # Act
+        _store.complete_task(store, task_id="a")
+        # Assert
+        assert not _has_unblocked_comment(_store.get_task(store, task_id="b"), "a")
+
+    def test_already_done_dependent_is_not_unblocked(self, tmp_path):
+        # Arrange — b already done; completing its dep must not re-ping it.
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="b", title="B", status="done", depends_on=["a"])
+        # Act
+        _store.complete_task(store, task_id="a")
+        # Assert
+        assert not _has_unblocked_comment(_store.get_task(store, task_id="b"), "a")
+
+    def test_blocks_edge_drives_unblock(self, tmp_path):
+        # Arrange — a blocks b (the reverse-edge form of a dependency).
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A", blocks=["b"])
+        _store.add_task(store, id="b", title="B")
+        # Act
+        _store.complete_task(store, task_id="a")
+        # Assert
+        assert _has_unblocked_comment(_store.get_task(store, task_id="b"), "a")
+
+    def test_update_task_status_done_drives_unblock(self, tmp_path):
+        # Arrange — flipping status via update_task drives the same unblock.
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="b", title="B", depends_on=["a"])
+        # Act
+        _store.update_task(store, task_id="a", status="done")
+        # Assert
+        assert _has_unblocked_comment(_store.get_task(store, task_id="b"), "a")
+
+    def test_resolve_task_drives_unblock(self, tmp_path):
+        # Arrange — resolving a blocker card frees its dependents too.
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(
+            store, id="a", title="A", status="blocked", blocker="operator-decision"
+        )
+        _store.add_task(store, id="b", title="B", depends_on=["a"])
+        # Act
+        _store.resolve_task(store, task_id="a", actor="op")
+        # Assert
+        assert _has_unblocked_comment(_store.get_task(store, task_id="b"), "a")
+
+    def test_completing_card_with_no_dependents_is_clean(self, tmp_path):
+        # Arrange — a standalone card; the drive must be a clean no-op.
+        store = tmp_path / "tasks.yaml"
+        _store.add_task(store, id="a", title="A")
+        # Act
+        _store.complete_task(store, task_id="a")
+        # Assert
+        assert _store.get_task(store, task_id="a")["status"] == "done"

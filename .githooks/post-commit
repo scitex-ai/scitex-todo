@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# -*- coding: utf-8 -*-
+# scitex-todo git->card hook: record each local commit on the matching
+# board card's ROUTE (Phase P3, card tcfb-p3-git-to-card).
+#
+# SOFT linking: only fires when a card id is present in the branch name
+# (or a `Card: <id>` commit-message trailer). Ad-hoc commits are skipped
+# silently. BEST EFFORT: never blocks the commit -- the hook always
+# exits 0, even on any internal failure.
+
+set -u
+
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "${HOOK_DIR}/_lib.sh" 2>/dev/null || exit 0
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+[ -n "${REPO_ROOT}" ] || exit 0
+
+BRANCH="$(git -C "${REPO_ROOT}" symbolic-ref --quiet --short HEAD 2>/dev/null)" || exit 0
+[ -n "${BRANCH}" ] || exit 0  # detached HEAD -> nothing to link.
+
+SHA="$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null)" || exit 0
+
+# The commit message of the just-created commit, for the `Card:` trailer
+# fallback. Write it to a temp file so the helper reads it verbatim.
+MSG_FILE="$(mktemp 2>/dev/null)" || MSG_FILE=""
+if [ -n "${MSG_FILE}" ]; then
+    git -C "${REPO_ROOT}" log -1 --format='%B' HEAD >"${MSG_FILE}" 2>/dev/null || true
+fi
+
+sttc_emit_push "${REPO_ROOT}" "${BRANCH}" "${SHA}" "${MSG_FILE}" || true
+
+[ -n "${MSG_FILE}" ] && rm -f "${MSG_FILE}" 2>/dev/null
+
+exit 0
+# EOF

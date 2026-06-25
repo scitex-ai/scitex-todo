@@ -20,6 +20,7 @@ import pytest
 
 from scitex_todo._wake_watcher import (
     WatcherState,
+    _recipients,
     detect_changes,
     post_wake,
 )
@@ -433,6 +434,123 @@ class TestPostWake:
         # Act
         # Assert
         assert post_wake(1, {"x": 1}, timeout_s=0.2) is False
+
+
+class TestRecipients:
+    """`_recipients` — owner + subscribers, deduped (P2, ADR-0009)."""
+
+    def test_owner_plus_subscribers_ordered(self):
+        # Arrange
+        task = {"agent": "owner-a", "subscribers": ["sub-b", "sub-c"]}
+        # Act
+        out = _recipients(task)
+        # Assert
+        assert out == ["owner-a", "sub-b", "sub-c"]
+
+    def test_owner_in_subscribers_is_deduped(self):
+        # Arrange
+        task = {"agent": "owner-a", "subscribers": ["owner-a", "sub-b"]}
+        # Act
+        out = _recipients(task)
+        # Assert
+        assert out == ["owner-a", "sub-b"]
+
+    def test_no_subscribers_is_owner_only(self):
+        # Arrange
+        task = {"agent": "owner-a"}
+        # Act
+        out = _recipients(task)
+        # Assert
+        assert out == ["owner-a"]
+
+    def test_subscribers_without_owner_kept(self):
+        # Arrange
+        task = {"subscribers": ["sub-b", "sub-c"]}
+        # Act
+        out = _recipients(task)
+        # Assert
+        assert out == ["sub-b", "sub-c"]
+
+    def test_non_string_and_empty_entries_dropped(self):
+        # Arrange
+        task = {"agent": "owner-a", "subscribers": ["sub-b", "", None, 7]}
+        # Act
+        out = _recipients(task)
+        # Assert
+        assert out == ["owner-a", "sub-b"]
+
+    def test_neither_owner_nor_subscribers_is_empty(self):
+        # Arrange
+        task = {"id": "x"}
+        # Act
+        out = _recipients(task)
+        # Assert
+        assert out == []
+
+
+class TestSubscriberFanOut:
+    """detect_changes wakes owner + subscribers (P2, ADR-0009)."""
+
+    def test_comment_wakes_owner_and_subscribers(self):
+        # Arrange
+        state = WatcherState()
+        base = {
+            "id": "a",
+            "title": "A",
+            "status": "pending",
+            "agent": "owner-a",
+            "subscribers": ["sub-b", "sub-c"],
+        }
+        _seed(state, [dict(base, comments=[])])
+        cur = [dict(base, comments=[{"author": "lead", "text": "look"}])]
+        # Act
+        out = detect_changes(state, cur, now=100.0, min_wake_interval_s=0.0)
+        # Assert
+        assert sorted(w.agent for w in out) == ["owner-a", "sub-b", "sub-c"]
+
+    def test_no_subscribers_wakes_owner_only(self):
+        # Arrange
+        state = WatcherState()
+        base = {"id": "a", "title": "A", "status": "pending", "agent": "owner-a"}
+        _seed(state, [dict(base, comments=[])])
+        cur = [dict(base, comments=[{"author": "lead", "text": "look"}])]
+        # Act
+        out = detect_changes(state, cur, now=100.0, min_wake_interval_s=0.0)
+        # Assert
+        assert [w.agent for w in out] == ["owner-a"]
+
+    def test_owner_in_subscribers_not_double_woken(self):
+        # Arrange
+        state = WatcherState()
+        base = {
+            "id": "a",
+            "title": "A",
+            "status": "pending",
+            "agent": "owner-a",
+            "subscribers": ["owner-a", "sub-b"],
+        }
+        _seed(state, [dict(base, comments=[])])
+        cur = [dict(base, comments=[{"author": "lead", "text": "look"}])]
+        # Act
+        out = detect_changes(state, cur, now=100.0, min_wake_interval_s=0.0)
+        # Assert
+        assert sorted(w.agent for w in out) == ["owner-a", "sub-b"]
+
+    def test_status_change_wakes_subscribers(self):
+        # Arrange
+        state = WatcherState()
+        base = {
+            "id": "a",
+            "title": "A",
+            "agent": "owner-a",
+            "subscribers": ["sub-b"],
+        }
+        _seed(state, [dict(base, status="pending")])
+        cur = [dict(base, status="done")]
+        # Act
+        out = detect_changes(state, cur, now=100.0, min_wake_interval_s=0.0)
+        # Assert
+        assert sorted(w.agent for w in out) == ["owner-a", "sub-b"]
 
 
 # EOF

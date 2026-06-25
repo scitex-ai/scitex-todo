@@ -10,6 +10,8 @@ Tools (audit §6 Convention A — ``tool_name == python_api_name``):
     list_tasks        — filter the store                (scitex_todo.list_tasks)
     summarize_tasks   — counts by status/scope/assignee (scitex_todo.summarize_tasks)
     resolve_store     — resolved store path + chain     (scitex_todo.resolve_store)
+    help_wait         — upsert an agent's help-wait card (scitex_todo._help_wait.help_wait)
+    help_clear        — resolve an agent's help-wait card (scitex_todo._help_wait.help_clear)
     todo_skills_list  — list bundled agent skills       (audit §5 required pair)
     todo_skills_get   — get one bundled skill's content (audit §5 required pair)
 
@@ -304,7 +306,9 @@ async def summarize_tasks(
     tasks_path: str | None = None,
 ) -> str:
     """Numeric progress: counts by status / scope / assignee."""
-    return json.dumps(_store.summarize_tasks(tasks_path, scope=scope, assignee=assignee))
+    return json.dumps(
+        _store.summarize_tasks(tasks_path, scope=scope, assignee=assignee)
+    )
 
 
 @mcp.tool()
@@ -315,45 +319,6 @@ async def resolve_store(tasks_path: str | None = None) -> str:
     user-scope store, not to a project shadow."
     """
     return json.dumps(_store.resolve_store(tasks_path))
-
-
-# --------------------------------------------------------------------------- #
-# Skills tools — audit §5 required pair.                                      #
-# Convention B (`todo_<verb>_<noun>`) because skills aren't a Python API      #
-# surface; they're file-system introspection on the bundled `_skills/` dir.   #
-# --------------------------------------------------------------------------- #
-def _skills_dir():
-    """Return the path to the bundled scitex-todo skill files."""
-    from pathlib import Path
-
-    return Path(__file__).parent / "_skills" / "scitex-todo"
-
-
-@mcp.tool()
-async def todo_skills_list() -> str:
-    """List bundled scitex-todo skill files. Returns a JSON array of names."""
-    skills_dir = _skills_dir()
-    if not skills_dir.exists():
-        return json.dumps([])
-    names = sorted(p.name for p in skills_dir.iterdir() if p.is_file())
-    return json.dumps(names)
-
-
-@mcp.tool()
-async def todo_skills_get(name: str) -> str:
-    """Return the content of one bundled scitex-todo skill file.
-
-    `name` must match a file in the bundled skills dir (e.g.
-    `"01_installation.md"`). Returns a JSON object
-    ``{"name": str, "content": str}`` or
-    ``{"name": str, "error": "not found"}`` if the name doesn't resolve.
-    """
-    skills_dir = _skills_dir()
-    target = skills_dir / name
-    # Guard path traversal — only allow direct children of skills_dir.
-    if target.parent.resolve() != skills_dir.resolve() or not target.is_file():
-        return json.dumps({"name": name, "error": "not found"})
-    return json.dumps({"name": name, "content": target.read_text(encoding="utf-8")})
 
 
 @mcp.tool()
@@ -426,7 +391,9 @@ async def set_edge(
       source / target: task ids on the edge.
     """
     return json.dumps(
-        _store.set_edge(tasks_path, action=action, kind=kind, source=source, target=target)
+        _store.set_edge(
+            tasks_path, action=action, kind=kind, source=source, target=target
+        )
     )
 
 
@@ -457,6 +424,53 @@ async def reopen_task(
     return json.dumps(_store.reopen_task(tasks_path, task_id, by=by))
 
 
+@mcp.tool()
+async def set_collaborator(
+    task_id: str,
+    who: str,
+    action: str = "add",
+    tasks_path: str | None = None,
+) -> str:
+    """Add or remove a collaborator on a card (ADR-0009 roles).
+
+    Args:
+      task_id: the card id.
+      who: the agent/human to add or remove.
+      action: ``"add"`` (default) or ``"remove"``.
+
+    Adding a collaborator also subscribes them to the card's feedback
+    (the default — subscribers include collaborators). Removing a
+    collaborator leaves their subscription intact; use ``set_subscriber``
+    with ``action="remove"`` to also stop their notices.
+    """
+    return json.dumps(
+        _store.set_collaborator(tasks_path, task_id=task_id, who=who, action=action)
+    )
+
+
+@mcp.tool()
+async def set_subscriber(
+    task_id: str,
+    who: str,
+    action: str = "add",
+    tasks_path: str | None = None,
+) -> str:
+    """Subscribe or unsubscribe an agent/human on a card's notify list
+    (ADR-0009 roles).
+
+    Args:
+      task_id: the card id.
+      who: the agent/human to subscribe or unsubscribe.
+      action: ``"add"`` (subscribe, default) or ``"remove"`` (unsubscribe).
+
+    Anyone may unsubscribe — even a collaborator (the "always
+    unsubscribable" rule).
+    """
+    return json.dumps(
+        _store.set_subscriber(tasks_path, task_id=task_id, who=who, action=action)
+    )
+
+
 #: Canonical list of registered tool names — kept here as a constant so the
 #: `mcp doctor` / `mcp list-tools` CLI verbs don't have to introspect
 #: FastMCP's internal registry (which drifts between 2.x and 3.x). Update
@@ -474,12 +488,23 @@ TOOL_NAMES: tuple[str, ...] = (
     "restore_task",
     "comment_task",
     "set_edge",
+    "set_collaborator",
+    "set_subscriber",
     "resolve_task",
     "reopen_task",
+    # Help-wait SoC lift — semantics lifted out of the dotfiles hook.
+    "help_wait",
+    "help_clear",
     "todo_skills_list",
     "todo_skills_get",
 )
 
+# Register the extracted tool clusters (skills §5 pair + help-wait) — kept in
+# ``_mcp_skills`` to hold this module under its line budget. The import has the
+# side effect of decorating ``todo_skills_list`` / ``todo_skills_get`` /
+# ``help_wait`` / ``help_clear`` onto the shared ``mcp`` instance, so
+# ``from scitex_todo._mcp_server import mcp`` exposes every tool.
+from . import _mcp_skills  # noqa: E402,F401
 
 __all__ = ["TOOL_NAMES", "mcp"]
 

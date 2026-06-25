@@ -38,12 +38,24 @@ deployment wiring examples, and the lead-approved Consequences.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Protocol, runtime_checkable
+import importlib.metadata
+import logging
+from dataclasses import dataclass, field
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterable,
+    Protocol,
+    runtime_checkable,
+)
 
 if TYPE_CHECKING:
     # Import-time circular avoidance — Task is the shared payload type;
     # we only need it for static typing here.
     pass
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -248,9 +260,366 @@ class IdentityACLPort(Protocol):
         ...
 
 
+# ===========================================================================
+# Agent career — the `host@name` identity join key + AgentDirectoryPort
+# ===========================================================================
+#
+# ADR-0009 ("task-driven-feedback / four careers"), Agent-career section.
+#
+# Two single-sources-of-truth meet here:
+#
+#   - scitex-agent-container (sac) is SSOT for agent RUNTIME — whether an
+#     agent exists / is running / is stopped on a given host.
+#   - scitex-todo is SSOT for board MEMBERSHIP — who may be an assignee,
+#     collaborator, or subscriber on the board (HUMANS included; humans
+#     have a board identity but no sac runtime).
+#
+# They join on the canonical agent id **`host@name`** and connect via the
+# :class:`AgentDirectoryPort` below (an entry-point provider). sac exposes
+# an agent-directory provider; scitex-todo ENRICHES its board when a
+# provider is installed and works STANDALONE otherwise. Rows from any
+# provider are deduped by their `host@name` join key.
+#
+# This is the scitex-todo SIDE only: the Protocol, the standalone-safe
+# :class:`EmptyAgentDirectory` default, the identity helpers, and the
+# resolver. The sac-side provider that implements the port is a separate
+# package concern (it registers under :data:`AGENT_DIRECTORY_GROUP`).
+
+
+#: Entry-point group an external agent-directory provider registers under.
+#: A provider (e.g. scitex-agent-container) ships a zero-arg factory that
+#: returns an :class:`AgentDirectoryPort`-shaped object::
+#:
+#:     [project.entry-points."scitex_todo.agent_directory"]
+#:     sac = "scitex_agent_container.todo_directory:provider"
+#:
+#: Mirrors :data:`scitex_todo._hooks.ENTRY_POINT_GROUP` ("scitex_todo.hooks").
+AGENT_DIRECTORY_GROUP = "scitex_todo.agent_directory"
+
+
+class AgentIdentityError(ValueError):
+    """A caller passed a malformed agent identity string.
+
+    Raised by :func:`canonical_agent_id` / :func:`parse_agent_id` on an
+    empty / whitespace-only name or a structurally invalid ``host@name``.
+    The message always echoes the offending value (fail-loud per the
+    SciTeX constitution).
+    """
+
+
+def canonical_agent_id(name: str, host: str | None = None) -> str:
+    """Return the canonical agent id in **`host@name`** form.
+
+    The canonical join key between scitex-todo board membership and the
+    sac agent runtime (ADR-0009). One agent may run on exactly one host,
+    so the pair ``(host, name)`` uniquely identifies it.
+
+    Resolution rules (in order):
+
+    1. If ``name`` already contains ``@``, it is treated as an
+       *already-qualified* ``host@name`` and returned **as-is** after
+       validation — passing an already-joined id through this function is
+       idempotent (``canonical_agent_id("h@a") == "h@a"``). An explicit
+       ``host`` argument is ignored in this case (the embedded host wins);
+       this keeps the function a pure normaliser rather than a re-joiner.
+    2. Else, if ``host`` is truthy (non-empty after strip), return
+       ``f"{host}@{name}"``.
+    3. Else (no host known), fall back to the **bare** ``name``. A bare id
+       is valid and round-trips through :func:`parse_agent_id` with an
+       empty host — it represents an agent whose host is not yet known
+       (e.g. a board-only human member, or a row before the runtime
+       provider has reported in).
+
+    Fail-loud: an empty / whitespace-only ``name`` raises
+    :class:`AgentIdentityError`. A ``name`` containing ``@`` is validated
+    as a well-formed ``host@name`` (non-empty host AND non-empty name, a
+    single ``@``) before being returned.
+
+    Parameters
+    ----------
+    name : str
+        The agent's short name, OR an already-qualified ``host@name``.
+    host : str, optional
+        The host the agent runs on. Ignored when ``name`` already
+        contains ``@``.
+
+    Examples
+    --------
+    >>> canonical_agent_id("worker-1", "ywata-note-win")
+    'ywata-note-win@worker-1'
+    >>> canonical_agent_id("ywata-note-win@worker-1")  # already-qualified
+    'ywata-note-win@worker-1'
+    >>> canonical_agent_id("worker-1")  # no host → bare fallback
+    'worker-1'
+    """
+    if name is None or not str(name).strip():
+        raise AgentIdentityError(
+            f"agent name must be a non-empty string (got {name!r})"
+        )
+    name = str(name).strip()
+    if "@" in name:
+        # Already-qualified: validate as host@name and return as-is.
+        host_part, sep, name_part = name.partition("@")
+        if not sep or not host_part.strip() or not name_part.strip():
+            raise AgentIdentityError(
+                f"malformed already-qualified agent id {name!r}; expected "
+                "'host@name' with a non-empty host and name"
+            )
+        if "@" in name_part:
+            raise AgentIdentityError(
+                f"malformed agent id {name!r}; expected a single '@' "
+                "separating host and name"
+            )
+        return f"{host_part.strip()}@{name_part.strip()}"
+    if host is not None and str(host).strip():
+        return f"{str(host).strip()}@{name}"
+    return name
+
+
+def parse_agent_id(host_at_name: str) -> tuple[str, str]:
+    """Split a canonical agent id into its ``(host, name)`` pair.
+
+    Inverse of :func:`canonical_agent_id`. A bare id (no ``@``) yields an
+    **empty** host string — ``parse_agent_id("worker-1") == ("", "worker-1")``
+    — so callers can branch on ``host == ""`` to mean "host unknown".
+
+    Fail-loud: an empty / whitespace-only input, or a malformed
+    ``host@name`` (empty host, empty name, or more than one ``@``), raises
+    :class:`AgentIdentityError` echoing the bad value.
+
+    Examples
+    --------
+    >>> parse_agent_id("ywata-note-win@worker-1")
+    ('ywata-note-win', 'worker-1')
+    >>> parse_agent_id("worker-1")
+    ('', 'worker-1')
+    """
+    if host_at_name is None or not str(host_at_name).strip():
+        raise AgentIdentityError(
+            f"agent id must be a non-empty string (got {host_at_name!r})"
+        )
+    raw = str(host_at_name).strip()
+    if "@" not in raw:
+        return ("", raw)
+    host_part, _, name_part = raw.partition("@")
+    if "@" in name_part:
+        raise AgentIdentityError(
+            f"malformed agent id {raw!r}; expected a single '@' "
+            "separating host and name"
+        )
+    if not host_part.strip() or not name_part.strip():
+        raise AgentIdentityError(
+            f"malformed agent id {raw!r}; expected 'host@name' with a "
+            "non-empty host and name"
+        )
+    return (host_part.strip(), name_part.strip())
+
+
+@dataclass
+class AgentInfo:
+    """One agent row surfaced by an :class:`AgentDirectoryPort`.
+
+    The shared shape scitex-todo uses to enrich board membership with
+    runtime facts from a provider. The ``host_at_name`` field is the
+    canonical join key (see :func:`canonical_agent_id`) and the dedup key
+    (see :func:`dedup_agents`).
+
+    Attributes
+    ----------
+    host_at_name : str
+        Canonical ``host@name`` join key. REQUIRED and the only field the
+        core relies on for identity; everything else is descriptive.
+    name : str
+        The agent's short name (the part after ``@``).
+    host : str
+        The host the agent runs on (the part before ``@``); ``""`` when
+        the host is unknown (a bare id).
+    status : str | None
+        Runtime status as the provider reports it — conventionally one of
+        ``"running"`` / ``"idle"`` / ``"stopped"`` / ``"unknown"`` —
+        or ``None`` when the provider declines to say.
+    extra : dict
+        Open bag for provider-specific fields (heartbeat, current task,
+        quota %, …). The core never interprets these; downstream
+        consumers may. Defaults to an empty dict.
+    """
+
+    host_at_name: str
+    name: str
+    host: str
+    status: str | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
+
+
+@runtime_checkable
+class AgentDirectoryPort(Protocol):
+    """Read-only feed of agent-runtime rows to enrich board membership.
+
+    scitex-todo is SSOT for board *membership*; scitex-agent-container is
+    SSOT for agent *runtime*. This port is how the runtime SSOT feeds the
+    board so a member row can show "running / stopped" without scitex-todo
+    importing sac (ADR-0009). The join key is ``host@name``.
+
+    **Default impl**: :class:`EmptyAgentDirectory` — ``list_agents()``
+    returns ``[]`` and ``get_agent()`` returns ``None``. Installed by
+    default so the board works STANDALONE when no provider is present
+    (mirrors how :class:`scitex_todo._adapters.OpenACL` is the default
+    :class:`IdentityACLPort`).
+
+    **Provider impl** (lives OUTSIDE this package, e.g. in
+    scitex-agent-container): registers a zero-arg factory under
+    :data:`AGENT_DIRECTORY_GROUP` that returns an object satisfying this
+    Protocol — typically wrapping ``sac agents list --json``. Discovered
+    by :func:`resolve_agent_directory`.
+
+    The port is a LIBRARY SEAM, not a board verb: there is intentionally
+    no MCP tool for it. Membership stays authoritative on the todo side;
+    the directory only annotates.
+    """
+
+    def list_agents(self) -> list[AgentInfo]:
+        """Return every agent the provider knows about (may be empty)."""
+        ...
+
+    def get_agent(self, host_at_name: str) -> AgentInfo | None:
+        """Return the agent whose canonical id is ``host_at_name``.
+
+        ``None`` when the provider has no such agent.
+        """
+        ...
+
+
+class EmptyAgentDirectory:
+    """Standalone-safe default :class:`AgentDirectoryPort`.
+
+    Knows about zero agents — the board runs with no runtime enrichment
+    and never depends on a provider being installed. This is what
+    :func:`resolve_agent_directory` returns when no entry-point provider
+    is registered.
+
+    Examples
+    --------
+    >>> d = EmptyAgentDirectory()
+    >>> d.list_agents()
+    []
+    >>> d.get_agent("anyhost@anyname") is None
+    True
+    """
+
+    def list_agents(self) -> list[AgentInfo]:
+        return []
+
+    def get_agent(self, host_at_name: str) -> AgentInfo | None:  # noqa: ARG002
+        return None
+
+
+def dedup_agents(agents: Iterable[AgentInfo]) -> list[AgentInfo]:
+    """De-duplicate ``agents`` by their ``host_at_name`` join key.
+
+    **First wins**: when two rows share a ``host_at_name``, the first one
+    encountered is kept and later duplicates are dropped. Order is
+    otherwise preserved (stable). Used to merge rows from one or more
+    providers onto the board without double-listing an agent.
+
+    Examples
+    --------
+    >>> a = AgentInfo("h@x", "x", "h", "running")
+    >>> b = AgentInfo("h@x", "x", "h", "stopped")  # same key, later
+    >>> [r.status for r in dedup_agents([a, b])]
+    ['running']
+    """
+    seen: set[str] = set()
+    out: list[AgentInfo] = []
+    for agent in agents:
+        key = agent.host_at_name
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(agent)
+    return out
+
+
+def resolve_agent_directory(
+    entry_points: Iterable | None = None,
+) -> AgentDirectoryPort:
+    """Return an installed agent-directory provider, or the empty default.
+
+    Discovers a provider registered under :data:`AGENT_DIRECTORY_GROUP`
+    and calls its zero-arg factory to obtain the port object. Returns
+    :class:`EmptyAgentDirectory` when no provider is installed — so the
+    board is always usable STANDALONE.
+
+    Multi-provider resolution: if more than one provider is registered,
+    the one whose entry-point name sorts FIRST lexicographically wins
+    (deterministic + stable across packaging-metadata implementations).
+    A provider whose factory fails to load or raises is logged and
+    skipped — one broken provider must not break the board (mirrors
+    :func:`scitex_todo._hooks._run_plugins`).
+
+    Parameters
+    ----------
+    entry_points : iterable, optional
+        Explicit set of entry-point-shaped objects (each with a ``.name``
+        attribute and a ``.load()`` method returning the zero-arg
+        factory) to use instead of packaging-metadata discovery. ``None``
+        (the default) reads the real :data:`AGENT_DIRECTORY_GROUP` group
+        via :func:`_iter_agent_directory_entry_points`. This is the
+        in-process injection seam (mirrors
+        :func:`scitex_todo._hooks._run_plugins`'s ``entry_points=``): tests
+        pass a concrete list of real fake entry points — no monkeypatch of
+        ``importlib.metadata`` required (PA-306-compliant).
+    """
+    eps = _iter_agent_directory_entry_points() if entry_points is None else entry_points
+    # Sort by entry-point name (lex asc) so multi-provider resolution is
+    # deterministic + stable across packaging-metadata implementations.
+    for ep in sorted(eps, key=lambda e: e.name):
+        name = ep.name
+        try:
+            factory = ep.load()
+            provider = factory()
+        except Exception as exc:  # noqa: BLE001 — packaging/provider surprises
+            logger.warning(
+                "scitex_todo.agent_directory provider %r failed to load: %s",
+                name,
+                exc,
+            )
+            continue
+        return provider
+    return EmptyAgentDirectory()
+
+
+def _iter_agent_directory_entry_points() -> Iterable:
+    """Yield entry points in :data:`AGENT_DIRECTORY_GROUP`.
+
+    Wraps the cross-version ``importlib.metadata`` surface exactly like
+    :func:`scitex_todo._hooks._iter_entry_points` does for the hooks
+    group. Returns ``[]`` on any packaging surprise.
+    """
+    try:
+        eps = importlib.metadata.entry_points()
+    except Exception:  # noqa: BLE001 — packaging surprises
+        return []
+    # 3.10+: eps is an EntryPoints, supports .select(group=)
+    select = getattr(eps, "select", None)
+    if callable(select):
+        return select(group=AGENT_DIRECTORY_GROUP)
+    # 3.9 fallback: dict-like keyed by group.
+    return eps.get(AGENT_DIRECTORY_GROUP, [])
+
+
 __all__ = [
     "TaskSyncPort",
     "NotificationPort",
     "LivenessPort",
     "IdentityACLPort",
+    # Agent career — host@name identity join key + agent-directory port.
+    "AGENT_DIRECTORY_GROUP",
+    "AgentDirectoryPort",
+    "AgentIdentityError",
+    "AgentInfo",
+    "EmptyAgentDirectory",
+    "canonical_agent_id",
+    "dedup_agents",
+    "parse_agent_id",
+    "resolve_agent_directory",
 ]
