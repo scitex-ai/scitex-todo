@@ -14,7 +14,8 @@ permissions:
 
 jobs:
   CLAssistant:
-    runs-on: ubuntu-latest
+    # Self-hosted Spartan CPU runner — no GitHub-hosted (paid) runners (operator rule).
+    runs-on: [self-hosted, Linux, X64, spartan-cpu]
     steps:
       - name: CLA Assistant
         uses: contributor-assistant/github-action@v2.6.1
