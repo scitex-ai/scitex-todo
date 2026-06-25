@@ -93,6 +93,7 @@ async def add_task(
     deadline: str | None = None,
     deadlines: list[str] | None = None,
     scheduled: str | None = None,
+    created_by: str | None = None,  # creating USER; hook-bypass: line-limit
     tasks_path: str | None = None,
 ) -> str:
     """Append a new task to the store. Returns the inserted task as JSON.
@@ -142,6 +143,7 @@ async def add_task(
         deadline=deadline,
         deadlines=deadlines,
         scheduled=scheduled,
+        created_by=created_by,  # hook-bypass: line-limit
     )
     return json.dumps(inserted)
 

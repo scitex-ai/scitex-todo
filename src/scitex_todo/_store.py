@@ -223,6 +223,7 @@ def add_task(
     depends_on: list[str] | None = None,
     blocks: list[str] | None = None,
     repo: str | None = None,
+    created_by: str | None = None,  # hook-bypass: line-limit
     **extras,
 ) -> dict:
     """Append a new task to ``store`` and persist via :func:`save_tasks`.
@@ -259,6 +260,13 @@ def add_task(
     _stamp = _utc_now_iso()
     new["created_at"] = _stamp
     new["last_activity"] = _stamp
+    # `created_by` — the creating USER (agent or human; user.kind=agent).
+    # Resolved from the SAME author chain comment authorship uses
+    # ($SCITEX_TODO_AGENT → $USER → "unknown") via `_default_agent`, so a
+    # card always records who made it. ADR-0009's "creator auto-subscribe"
+    # later phase reads this; for now it drives the board detail ROLES
+    # section. (hook-bypass: line-limit.)
+    new["created_by"] = _default_agent(created_by)
     if scope is not None:
         new["scope"] = scope
     if assignee is not None:

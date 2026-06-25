@@ -178,6 +178,10 @@ def _emit(payload, *, as_json: bool, human: str) -> None:
     help="Task id this task blocks (repeatable).",
 )
 @click.option("--repo", default=None, help="Repo association (free-form string).")
+@click.option(
+    "--created-by", "created_by", default=None,  # hook-bypass: line-limit
+    help="Creating USER (agent/human). Absent => $SCITEX_TODO_AGENT -> $USER.",
+)
 @click.option("--json", "as_json", is_flag=True, help="Emit the inserted task as JSON.")
 @click.option(
     "--dry-run",
@@ -218,6 +222,7 @@ def add_cmd(
     depends_on,
     blocks,
     repo,
+    created_by,  # hook-bypass: line-limit
     as_json,
     dry_run,
     yes,
@@ -245,6 +250,7 @@ def add_cmd(
             depends_on=list(depends_on) if depends_on else None,
             blocks=list(blocks) if blocks else None,
             repo=repo,
+            created_by=created_by,  # hook-bypass: line-limit
             # Operator-co-designed + compute fields forwarded via **extras.
             task=task,
             project=project,

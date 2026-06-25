@@ -188,6 +188,40 @@ def test_add_returns_id(tmp_path):
     assert json.loads(add)["id"] == "a"
 
 
+def test_add_task_stores_created_by(tmp_path):
+    # Arrange — MCP add_task accepts an explicit creating USER and persists
+    # it as created_by (board ROLES section reads this off the /graph node).
+    from scitex_todo._mcp_server import add_task
+
+    store = str(tmp_path / "tasks.yaml")
+    # Act
+    add = asyncio.run(
+        _call_tool(
+            add_task,
+            id="a",
+            title="A",
+            created_by="agent:explicit",
+            tasks_path=store,
+        )
+    )
+    # Assert
+    assert json.loads(add)["created_by"] == "agent:explicit"
+
+
+def test_add_task_defaults_created_by_from_env(tmp_path, env):
+    # Arrange — no explicit author; resolves from $SCITEX_TODO_AGENT.
+    from scitex_todo._mcp_server import add_task
+
+    store = str(tmp_path / "tasks.yaml")
+    env.set("SCITEX_TODO_AGENT", "agent:fromenv")
+    # Act
+    add = asyncio.run(
+        _call_tool(add_task, id="a", title="A", tasks_path=store)
+    )
+    # Assert
+    assert json.loads(add)["created_by"] == "agent:fromenv"
+
+
 def test_add_then_list_round_trip(tmp_path):
     # Arrange
     from scitex_todo._mcp_server import add_task, list_tasks
