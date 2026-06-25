@@ -37,6 +37,32 @@ All notable changes to this project are documented here. The format follows
 - **Fleet-adapter tests** skip (not fail) when `sac` is absent/non-functional,
   so a broken optional dependency can't red-gate CI (also in 0.7.27).
 
+## [0.7.27] - 2026-06-25 — Timeline beeswarm + `help-wait` verb + sac-decoupled CI
+
+### Added
+
+- **Timeline beeswarm y-packing** (PR #245). In the board_v3 Timeline raster,
+  time-overlapping markers in a lane used to render at the same vertical
+  center and occlude each other. A deterministic sub-row packer
+  (`timelinePack.js::packRows` — greedy interval partitioning, capped at
+  `MAX_ROWS`) now fans co-located markers into stacked sub-rows and grows the
+  lane to fit, so every task is visible. x/time math and the time-axis are
+  unchanged.
+- **`scitex-todo help-wait` / `help-clear`** CLI verbs + `help_wait` /
+  `help_clear` MCP tools (PR #242). First-class "an agent is waiting on the
+  operator" card semantics (`help-<agent>-waiting`, `status=blocked`,
+  `blocker=operator-decision`), idempotent atomic upsert / resolve. Lifts the
+  card shape out of the dotfiles Notification hook so scitex-todo owns the
+  single source of truth; the hook becomes a thin trigger that calls the verb.
+
+### Changed
+
+- **Fleet-adapter tests decoupled from the live `sac` binary** (PR #244). The
+  happy-path hosts tests now SKIP (not FAIL) when `sac` is absent or
+  non-functional, via a shared probe guard — so a broken/missing optional
+  fleet dependency can never red-gate the standalone package's CI. Fail-loud
+  adapter-error tests still run (they need no working sac).
+
 ## [0.7.25] - 2026-06-15 — `scitex-todo ci-watch` (record-only CI poller)
 
 ### Added
