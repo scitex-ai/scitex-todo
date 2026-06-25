@@ -28,11 +28,26 @@
   var WINDOWS = { "1d": 24, "1w": 168, "1m": 720 };
 
   // Layout constants for the raster SVG.
-  var LANE_H = 26; // px per lane row
+  var LANE_H = 26; // px floor per lane row (a 1-row lane keeps this height)
   var BAR_INSET = 4; // vertical padding inside a lane
   var LABEL_W = 150; // lane-label gutter width
   var AXIS_H = 22; // top time-axis height
   var TICKS = 6; // axis tick count (incl. both ends)
+  var SUB_ROW_H = 18; // px per beeswarm sub-row inside a lane
+  var SUB_ROW_GAP = 2; // px gap two markers need to share one sub-row
+  var MAX_ROWS = 12; // cap on sub-rows per lane (overflow clamps)
+
+  // Deterministic beeswarm sub-row packer (pure; lives in timelinePack.js so
+  // this file stays under the line cap and the algorithm is node-testable).
+  // Falls back to a single-row no-op if the sibling script hasn't loaded.
+  var _pack =
+    (typeof globalThis !== "undefined" &&
+      globalThis.STX &&
+      globalThis.STX.timelinePack &&
+      globalThis.STX.timelinePack.packRows) ||
+    function (items) {
+      return { rows: new Array(items.length).fill(0), rowCount: 1 };
+    };
 
   // Persisted view + window selections (mirror STATE.sort/layout stickiness).
   function _ls(key, dflt) {
@@ -202,10 +217,8 @@
     var lanes = p.lanes || [];
     var width = Math.max(
       320,
-      (canvas.getBoundingClientRect().width || 900) - LABEL_W - 28
+      (canvas.getBoundingClientRect().width || 900) - LABEL_W - 28,
     );
-    var total = AXIS_H + lanes.length * LANE_H + 6;
-
     // index events by lane for stable row order
     var byLane = {};
     lanes.forEach(function (l) {
@@ -215,25 +228,38 @@
       if (byLane[ev.lane]) byLane[ev.lane].push(ev);
     });
 
-    // SCATTER: ONE dot per task (operator 2026-06-17) at its start time
-    // within its lane — hover a dot to see which task it is / is processing.
+    // SCATTER: ONE dot per task at its start time within its lane. Co-located
+    // markers used to stack at the lane centre and occlude; now each lane runs
+    // a deterministic beeswarm packer (packRows) so overlapping markers fan
+    // out into sub-rows. Lanes thus have VARIABLE height + a CUMULATIVE top —
+    // we walk a running `cursor` from AXIS_H, not i*LANE_H.
     var dots = [];
     var dotById = {};
+    var laneTops = []; // y of each lane's top edge (aligned to `lanes`)
+    var laneHeights = []; // each lane's px height
+    var cursor = AXIS_H;
     lanes.forEach(function (lane, li) {
+      var geos = []; // {ev, x, w} per visible event (x = clamped start px)
       (byLane[lane] || []).forEach(function (ev) {
-        // barGeo still does the window-overlap filter; we take only its
-        // (clamped) start x as the dot centre.
         var g = barGeo(ms(ev.started_at), ms(ev.ended_at), ws, we, now, width);
-        if (!g) return;
+        if (g) geos.push({ ev: ev, x: g.x, w: g.width });
+      });
+      var packed = _pack(geos, SUB_ROW_GAP, MAX_ROWS);
+      var laneH = Math.max(LANE_H, Math.max(1, packed.rowCount) * SUB_ROW_H);
+      laneTops[li] = cursor;
+      laneHeights[li] = laneH;
+      geos.forEach(function (it, k) {
         var dot = {
-          cx: LABEL_W + g.x,
-          cy: AXIS_H + li * LANE_H + LANE_H / 2,
-          ev: ev,
+          cx: LABEL_W + it.x,
+          cy: cursor + (packed.rows[k] || 0) * SUB_ROW_H + SUB_ROW_H / 2,
+          ev: it.ev,
         };
         dots.push(dot);
-        dotById[ev.id] = dot;
+        dotById[it.ev.id] = dot;
       });
+      cursor += laneH;
     });
+    var total = cursor + 6;
     var ticks = makeTicks(ws, we, width, TICKS);
 
     // axis
@@ -263,7 +289,8 @@
     // lane stripes + labels
     svg += '<g class="tl-lanes">';
     lanes.forEach(function (lane, i) {
-      var yTop = AXIS_H + i * LANE_H;
+      var yTop = laneTops[i];
+      var laneH = laneHeights[i];
       svg +=
         '<rect class="tl-lane-bg' +
         (i % 2 === 0 ? " tl-lane-bg--even" : "") +
@@ -272,10 +299,10 @@
         '" width="' +
         (LABEL_W + width) +
         '" height="' +
-        LANE_H +
+        laneH +
         '"></rect>' +
         '<text class="tl-lane-label" x="8" y="' +
-        (yTop + LANE_H / 2 + 4) +
+        (yTop + laneH / 2 + 4) +
         '">' +
         escapeHtml(_truncate(lane, 22)) +
         "</text>";
