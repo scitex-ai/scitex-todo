@@ -20,7 +20,6 @@ Contract pinned here:
 from __future__ import annotations
 
 import json
-import shutil
 
 import pytest
 
@@ -29,6 +28,8 @@ pytest.importorskip("django")
 from django.test import RequestFactory  # noqa: E402
 
 from scitex_todo._django.handlers.fleet import fleet_hosts_view  # noqa: E402
+
+from ._sac_guard import requires_functional_sac  # noqa: E402
 
 
 # ─── fail-loud path: missing sac ────────────────────────────────────────
@@ -79,13 +80,10 @@ def test_hosts_view_returns_500_when_sac_missing_lower_contains(env) -> None:
     assert "sac" in data["error"].lower()
 
 
-# ─── happy path (gated on sac availability) ─────────────────────────────
+# ─── happy path (gated on a FUNCTIONAL sac binary) ──────────────────────
 
 
-_SAC_AVAILABLE = shutil.which("sac") is not None
-
-
-@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
+@requires_functional_sac
 def test_hosts_view_returns_200_with_local_and_peers_status_code() -> None:
     """When sac is available, the view returns 200 with the adapter
     payload shape: ``local`` (carrying ``name``) + ``peers`` (a list).
@@ -106,7 +104,7 @@ def test_hosts_view_returns_200_with_local_and_peers_status_code() -> None:
     assert response.status_code == 200
 
 
-@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
+@requires_functional_sac
 def test_hosts_view_returns_200_with_local_and_peers_data_contains() -> None:
     """When sac is available, the view returns 200 with the adapter
     payload shape: ``local`` (carrying ``name``) + ``peers`` (a list).
@@ -127,7 +125,7 @@ def test_hosts_view_returns_200_with_local_and_peers_data_contains() -> None:
     assert "local" in data
 
 
-@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
+@requires_functional_sac
 def test_hosts_view_returns_200_with_local_and_peers_data_contains_2() -> None:
     """When sac is available, the view returns 200 with the adapter
     payload shape: ``local`` (carrying ``name``) + ``peers`` (a list).
@@ -148,7 +146,7 @@ def test_hosts_view_returns_200_with_local_and_peers_data_contains_2() -> None:
     assert "peers" in data
 
 
-@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
+@requires_functional_sac
 def test_hosts_view_returns_200_with_local_and_peers_isinstance() -> None:
     """When sac is available, the view returns 200 with the adapter
     payload shape: ``local`` (carrying ``name``) + ``peers`` (a list).
@@ -169,7 +167,7 @@ def test_hosts_view_returns_200_with_local_and_peers_isinstance() -> None:
     assert isinstance(data["local"], dict)
 
 
-@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
+@requires_functional_sac
 def test_hosts_view_returns_200_with_local_and_peers_isinstance_2() -> None:
     """When sac is available, the view returns 200 with the adapter
     payload shape: ``local`` (carrying ``name``) + ``peers`` (a list).
@@ -190,7 +188,7 @@ def test_hosts_view_returns_200_with_local_and_peers_isinstance_2() -> None:
     assert isinstance(data["local"].get("name"), str)
 
 
-@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
+@requires_functional_sac
 def test_hosts_view_returns_200_with_local_and_peers_name() -> None:
     """When sac is available, the view returns 200 with the adapter
     payload shape: ``local`` (carrying ``name``) + ``peers`` (a list).
@@ -211,7 +209,7 @@ def test_hosts_view_returns_200_with_local_and_peers_name() -> None:
     assert data["local"]["name"]
 
 
-@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
+@requires_functional_sac
 def test_hosts_view_returns_200_with_local_and_peers_isinstance_3() -> None:
     """When sac is available, the view returns 200 with the adapter
     payload shape: ``local`` (carrying ``name``) + ``peers`` (a list).
@@ -232,7 +230,7 @@ def test_hosts_view_returns_200_with_local_and_peers_isinstance_3() -> None:
     assert isinstance(data["peers"], list)
 
 
-@pytest.mark.skipif(not _SAC_AVAILABLE, reason="sac CLI not installed on PATH")
+@requires_functional_sac
 def test_hosts_view_returns_200_with_local_and_peers_data_contains_3() -> None:
     """When sac is available, the view returns 200 with the adapter
     payload shape: ``local`` (carrying ``name``) + ``peers`` (a list).
