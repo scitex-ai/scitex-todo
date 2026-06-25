@@ -79,6 +79,20 @@
 {% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/timelinePack.js' %}"></script>
 {% comment %}
+  timelineGeo.js — pure time→pixel geometry (ms / barGeo / makeTicks / relTime)
+  for the Timeline raster. MUST load BEFORE timeline.js: publishes
+  window.STX.timelineGeo, captured by timeline.js's IIFE at init. No DOM;
+  node-testable. Factored out so timeline.js stays under the per-file cap.
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/timelineGeo.js' %}"></script>
+{% comment %}
+  timelineGate.js — anti-flash change-detection gate for the Timeline raster.
+  MUST load BEFORE timeline.js: publishes window.STX.timelineGate (rasterSig +
+  a stateful gate that skips identical 4s rebuilds and preserves .tl-scroll
+  scroll across a real rebuild), so the raster stops flashing / jumping to top.
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/timelineGate.js' %}"></script>
+{% comment %}
   timeline.js — the Timeline layout renderer (raster by agent/project +
   a rich per-task "simple" list). Classic <script defer> so it shares the
   page globals (STATE / escapeHtml / openDetail / bucket / render); it

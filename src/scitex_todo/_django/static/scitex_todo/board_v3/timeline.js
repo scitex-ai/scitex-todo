@@ -49,6 +49,22 @@
       return { rows: new Array(items.length).fill(0), rowCount: 1 };
     };
 
+  // Anti-flash gate (sig + scroll snapshot; lives in timelineGate.js, same
+  // line-cap + node-test reasons as _pack). Skips the canvas.innerHTML rebuild
+  // when an identical ~4s /timeline auto-refresh would otherwise flash the
+  // raster + reset scroll; preserves scroll on a real (changed) rebuild.
+  var _G =
+    (typeof globalThis !== "undefined" &&
+      globalThis.STX &&
+      globalThis.STX.timelineGate) ||
+    null;
+  var _gate = _G ? _G.makeGate() : null;
+  var _sig =
+    (_G && _G.rasterSig) ||
+    function () {
+      return "no-gate:" + Date.now();
+    };
+
   // Persisted view + window selections (mirror STATE.sort/layout stickiness).
   function _ls(key, dflt) {
     try {
@@ -66,67 +82,33 @@
   // Expose for the inline autoRefresh hook (read-only use there).
   window._TL = TL;
 
-  // ── pure geometry (ported from frontend/src/timelineHelpers.ts) ──────
-  function ms(s) {
-    if (s == null || typeof s !== "string") return null;
-    var t = Date.parse(s.trim());
-    return Number.isFinite(t) ? t : null;
-  }
-  function timeToX(ts, ws, we, w) {
-    if (![ts, ws, we, w].every(Number.isFinite)) return null;
-    var span = we - ws;
-    if (span <= 0) return null;
-    if (ts <= ws) return 0;
-    if (ts >= we) return w;
-    return ((ts - ws) / span) * w;
-  }
-  function barGeo(started, ended, ws, we, now, w) {
-    if (started == null) return null;
-    var eff = ended != null ? ended : Math.min(now, we);
-    if (eff < ws || started > we) return null;
-    var x1 = timeToX(Math.max(started, ws), ws, we, w);
-    var x2 = timeToX(Math.min(eff, we), ws, we, w);
-    if (x1 == null || x2 == null) return null;
-    return { x: x1, width: Math.max(x2 - x1, 0) };
-  }
-  function pad2(n) {
-    return String(n).padStart(2, "0");
-  }
-  function tickLabel(t, spanMs) {
-    var d = new Date(t);
-    // HH:MM for short spans; MM/DD for week+/month so labels don't repeat
-    // uselessly across days.
-    if (spanMs <= 36 * 3600 * 1000)
-      return pad2(d.getHours()) + ":" + pad2(d.getMinutes());
-    return pad2(d.getMonth() + 1) + "/" + pad2(d.getDate());
-  }
-  function makeTicks(ws, we, w, count) {
-    if (![ws, we, w].every(Number.isFinite) || count < 2) return [];
-    var span = we - ws;
-    if (span <= 0) return [];
-    var out = [];
-    for (var i = 0; i < count; i++) {
-      out.push({
-        x: (w * i) / (count - 1),
-        label: tickLabel(ws + (span * i) / (count - 1), span),
-      });
-    }
-    return out;
-  }
-  function relTime(t, now) {
-    if (t == null) return "";
-    var s = Math.max(0, now - t);
-    var m = Math.floor(s / 60000);
-    if (m < 1) return "just now";
-    if (m < 60) return m + "m ago";
-    var h = Math.floor(m / 60);
-    if (h < 24) return h + "h ago";
-    var day = Math.floor(h / 24);
-    if (day === 1) return "yesterday";
-    if (day < 30) return day + "d ago";
-    var mo = Math.floor(day / 30);
-    return mo < 12 ? mo + "mo ago" : Math.floor(day / 365) + "y ago";
-  }
+  // ── pure geometry (lives in timelineGeo.js, captured here like _pack) ──
+  // ms / barGeo / makeTicks / relTime: time→pixel projection used below.
+  var _geo =
+    (typeof globalThis !== "undefined" &&
+      globalThis.STX &&
+      globalThis.STX.timelineGeo) ||
+    {};
+  var ms =
+    _geo.ms ||
+    function () {
+      return null;
+    };
+  var barGeo =
+    _geo.barGeo ||
+    function () {
+      return null;
+    };
+  var makeTicks =
+    _geo.makeTicks ||
+    function () {
+      return [];
+    };
+  var relTime =
+    _geo.relTime ||
+    function () {
+      return "";
+    };
 
   // ── controls row (shared by all three views) ─────────────────────────
   function controlsHtml(countLabel) {
@@ -210,6 +192,13 @@
       loadTimeline();
       return;
     }
+    // Anti-flash gate: if the view/window/payload are byte-identical to what
+    // we last rendered, skip the rebuild entirely so the ~4s auto-refresh
+    // doesn't flash the raster or reset the operator's scroll. A real change
+    // (or a user-driven view/window switch, which resets the gate) falls
+    // through and rebuilds — preserving scroll across the innerHTML swap.
+    var sig = _sig(TL.view, TL.windowKey, TL.cache, TL.error);
+    if (_gate && _gate.unchanged(sig)) return;
     var p = TL.cache || { events: [], edges: [], lanes: [] };
     var ws = ms(p.window_start);
     var we = ms(p.window_end);
@@ -357,6 +346,10 @@
     svg += "</g>";
 
     var count = (p.events || []).length + " events";
+    // Snapshot the .tl-scroll offsets (overflow:auto → both axes scroll there)
+    // BEFORE the innerHTML swap recreates that element, then restore after so
+    // a real data change doesn't yank the operator back to the top/left.
+    if (_gate) _gate.snapshot(canvas);
     canvas.innerHTML =
       '<div class="tl-wrap">' +
       controlsHtml(count) +
@@ -370,6 +363,10 @@
           "</svg></div>"
         : '<div class="loading">no activity in this window 🌙</div>') +
       "</div>";
+    if (_gate) {
+      _gate.restore(canvas);
+      _gate.mark(sig);
+    }
   }
 
   // ── simple view (rich per-task cards from STATE.graph) ───────────────
@@ -458,6 +455,7 @@
   // ── control setters (called by the generated <select> onchange) ──────
   function setTimelineView(v) {
     TL.view = v;
+    if (_gate) _gate.reset(); // user-driven change → force a redraw
     try {
       localStorage.setItem("scitex-todo:tl-view", v);
     } catch (e) {}
@@ -470,6 +468,7 @@
   }
   function setTimelineWindow(k) {
     TL.windowKey = k;
+    if (_gate) _gate.reset(); // user-driven change → force a redraw
     try {
       localStorage.setItem("scitex-todo:tl-window", k);
     } catch (e) {}
