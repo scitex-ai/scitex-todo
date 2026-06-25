@@ -26,6 +26,7 @@ import {
   eventBarGeometry,
   groupEventsByLane,
   makeTicks,
+  packIntervalsIntoRows,
   parseTimelineTs,
 } from "./timelineHelpers";
 
@@ -36,11 +37,21 @@ const POLL_MS = 30_000;
 // SVG layout constants. Lane height stays small so the operator sees
 // many agents at once; the bar fills most of the lane so the time-span
 // is the dominant visual.
-const LANE_HEIGHT = 28;
+//
+// Beeswarm sub-row packing: time-overlapping bars within a lane used to
+// sit ON TOP of each other (invisible). They are now greedily packed into
+// distinct vertical SUB-ROWS so none occlude. A lane's height grows with
+// the number of sub-rows it needs; a quiet lane stays ~ as tall as before.
+const SUB_ROW_HEIGHT = 22;
+const LANE_PAD_Y = 6;
 const BAR_INSET_Y = 4;
 const LANE_LABEL_WIDTH = 140;
 const AXIS_HEIGHT = 22;
 const TICK_COUNT = 6;
+// Bound a pathologically busy lane so it cannot grow unboundedly tall and
+// blow out the SVG; bars beyond this many overlaps wrap back onto existing
+// sub-rows (they may visually touch, but the raster stays usable).
+const MAX_SUB_ROWS = 12;
 
 type LaneBy = "agent" | "group";
 type WindowKey = "1h" | "6h" | "24h" | "7d";
@@ -188,10 +199,19 @@ export function TimelineView({
     const byLane = groupEventsByLane(payload.events);
     // Lane order from the server (sorted) so the axis is stable across polls.
     const lanes = payload.lanes ?? Array.from(byLane.keys());
+    // Per-row bar height — same readable look as the old single-row bar.
+    const barHeight = SUB_ROW_HEIGHT - BAR_INSET_Y * 2;
     const bars: BarGeo[] = [];
     const barIndexById = new Map<string, BarGeo>();
+    // Variable lane geometry: lanes stack by their packed height instead of
+    // a constant LANE_HEIGHT, so a lane with N time-overlaps grows to fit.
+    const laneTopByIndex: number[] = [];
+    const laneHeightByIndex: number[] = [];
+    let cursorY = AXIS_HEIGHT;
     lanes.forEach((lane, laneIndex) => {
       const items = byLane.get(lane) ?? [];
+      // First pass: geometry per visible event, collected for packing.
+      const geos: { ev: TimelineEvent; x: number; width: number }[] = [];
       for (const ev of items) {
         const startedMs = parseTimelineTs(ev.started_at);
         const endedMs = parseTimelineTs(ev.ended_at);
@@ -204,20 +224,47 @@ export function TimelineView({
           drawWidth,
         );
         if (!geo) continue;
+        geos.push({ ev, x: geo.x, width: Math.max(geo.width, 2) });
+      }
+      // Greedy swimlane packing -> deterministic sub-row per bar.
+      const { rowById, rowCount } = packIntervalsIntoRows(
+        geos.map((g) => ({ id: g.ev.id, x: g.x, width: g.width })),
+      );
+      // Bound a runaway lane; quiet lanes still reserve one sub-row so the
+      // background stripe stays ~ as tall as the pre-beeswarm view.
+      const rows = Math.min(MAX_SUB_ROWS, Math.max(1, rowCount));
+      const laneTop = cursorY;
+      const laneHeight = rows * SUB_ROW_HEIGHT + LANE_PAD_Y;
+      laneTopByIndex[laneIndex] = laneTop;
+      laneHeightByIndex[laneIndex] = laneHeight;
+      for (const g of geos) {
+        // Clamp to the capped row count so a wrapped bar still lands inside
+        // the lane background rather than below it.
+        const rowIndex = Math.min(rows - 1, rowById.get(g.ev.id) ?? 0);
         const bar: BarGeo = {
-          x: geo.x,
-          y: AXIS_HEIGHT + laneIndex * LANE_HEIGHT + BAR_INSET_Y,
-          width: Math.max(geo.width, 2),
+          x: g.x,
+          y: laneTop + rowIndex * SUB_ROW_HEIGHT + BAR_INSET_Y,
+          width: g.width,
           laneIndex,
-          event: ev,
+          event: g.ev,
         };
         bars.push(bar);
-        barIndexById.set(ev.id, bar);
+        barIndexById.set(g.ev.id, bar);
       }
+      cursorY += laneHeight;
     });
     const ticks = makeTicks(windowStartMs, windowEndMs, drawWidth, TICK_COUNT);
-    const totalHeight = AXIS_HEIGHT + lanes.length * LANE_HEIGHT + 4;
-    return { lanes, bars, ticks, barIndexById, totalHeight };
+    const totalHeight = cursorY + LANE_PAD_Y;
+    return {
+      lanes,
+      bars,
+      ticks,
+      barIndexById,
+      totalHeight,
+      barHeight,
+      laneTopByIndex,
+      laneHeightByIndex,
+    };
   }, [payload, drawWidth]);
 
   return (
@@ -306,21 +353,23 @@ export function TimelineView({
             {/* Lane labels + lane background stripes. */}
             <g className="stx-todo-timeline__lanes">
               {layout.lanes.map((lane, i) => {
-                const yTop = AXIS_HEIGHT + i * LANE_HEIGHT;
+                const yTop = layout.laneTopByIndex[i] ?? AXIS_HEIGHT;
+                const laneHeight =
+                  layout.laneHeightByIndex[i] ?? SUB_ROW_HEIGHT + LANE_PAD_Y;
                 return (
                   <g key={lane}>
                     <rect
                       x={0}
                       y={yTop}
                       width={LANE_LABEL_WIDTH + drawWidth}
-                      height={LANE_HEIGHT}
+                      height={laneHeight}
                       className={`stx-todo-timeline__lane-bg${
                         i % 2 === 0 ? " stx-todo-timeline__lane-bg--even" : ""
                       }`}
                     />
                     <text
                       x={8}
-                      y={yTop + LANE_HEIGHT / 2 + 4}
+                      y={yTop + laneHeight / 2 + 4}
                       className="stx-todo-timeline__lane-label"
                     >
                       {lane}
@@ -339,9 +388,9 @@ export function TimelineView({
                 const tgt = layout.barIndexById.get(e.target);
                 if (!src || !tgt) return null;
                 const x1 = LANE_LABEL_WIDTH + src.x + src.width;
-                const y1 = src.y + (LANE_HEIGHT - BAR_INSET_Y * 2) / 2;
+                const y1 = src.y + layout.barHeight / 2;
                 const x2 = LANE_LABEL_WIDTH + tgt.x;
-                const y2 = tgt.y + (LANE_HEIGHT - BAR_INSET_Y * 2) / 2;
+                const y2 = tgt.y + layout.barHeight / 2;
                 return (
                   <line
                     key={i}
@@ -384,7 +433,7 @@ export function TimelineView({
                       x={0}
                       y={0}
                       width={bar.width}
-                      height={LANE_HEIGHT - BAR_INSET_Y * 2}
+                      height={layout.barHeight}
                       rx={3}
                       ry={3}
                       style={{

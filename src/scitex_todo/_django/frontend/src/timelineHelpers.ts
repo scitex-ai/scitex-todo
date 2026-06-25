@@ -149,6 +149,61 @@ export function formatHhMm(ms: number): string {
   return `${hh}:${mm}`;
 }
 
+/** Greedy interval partitioning ("swimlane packing"): pack a set of
+ * horizontal intervals into the fewest vertical sub-rows such that no two
+ * intervals in the same row overlap. This is the deterministic, beeswarm
+ * answer to "overlapping task bars sit on top of each other" — instead of
+ * random y-jitter, time-colliding bars are spread down into distinct
+ * sub-rows so none occlude another.
+ *
+ * Algorithm: process intervals in a STABLE order (x ascending, ties by id
+ * ascending) so the layout is identical across polls. For each interval,
+ * place it in the LOWEST row whose last-placed interval ends — accounting
+ * for `gap` px of breathing room — at or before this interval's `x`. If no
+ * existing row fits, open a new one. This is the classic greedy
+ * activity-selection / interval-graph colouring; it uses the minimum
+ * number of rows for the given set.
+ *
+ * Inputs:
+ *  - `intervals` — `{ id, x, width }` per bar (pixels). Not mutated.
+ *  - `gap` — minimum horizontal pixel gap between two bars sharing a row.
+ *
+ * Returns `{ rowById, rowCount }` where `rowById` maps each interval id to
+ * its 0-based row index and `rowCount` is the number of rows used (0 for
+ * empty input). Pure / side-effect-free so it tests cleanly via `node`. */
+export function packIntervalsIntoRows(
+  intervals: { id: string; x: number; width: number }[],
+  gap = 2,
+): { rowById: Map<string, number>; rowCount: number } {
+  const rowById = new Map<string, number>();
+  const list = (intervals ?? []).slice();
+  // Stable order so the packing is reproducible across polls: x ascending,
+  // tie-break by id ascending. Sort a COPY — never mutate the caller's array.
+  list.sort((a, b) =>
+    a.x !== b.x ? a.x - b.x : a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+  );
+  // `rowEnds[r]` = the right edge (x + width + gap) of the last interval
+  // placed in row `r`. A row fits the current interval when its end is at
+  // or before the interval's left edge.
+  const rowEnds: number[] = [];
+  for (const it of list) {
+    let placed = -1;
+    for (let r = 0; r < rowEnds.length; r++) {
+      if (rowEnds[r] <= it.x) {
+        placed = r;
+        break;
+      }
+    }
+    if (placed === -1) {
+      placed = rowEnds.length;
+      rowEnds.push(0);
+    }
+    rowEnds[placed] = it.x + it.width + gap;
+    rowById.set(it.id, placed);
+  }
+  return { rowById, rowCount: rowEnds.length };
+}
+
 /** Build evenly-spaced tick positions across the window. Returns an
  * array of `{ x, label }` pairs the SVG renders as the time axis.
  *

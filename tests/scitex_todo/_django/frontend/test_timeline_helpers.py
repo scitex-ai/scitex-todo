@@ -113,6 +113,26 @@ JS_RUNTIME = textwrap.dedent(
       return { x: xStart, width: w };
     }
 
+    function packIntervalsIntoRows(intervals, gap) {
+      if (gap == null) gap = 2;
+      const rowById = {};
+      const list = (intervals || []).slice();
+      list.sort((a, b) =>
+        a.x !== b.x ? a.x - b.x : a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+      );
+      const rowEnds = [];
+      for (const it of list) {
+        let placed = -1;
+        for (let r = 0; r < rowEnds.length; r++) {
+          if (rowEnds[r] <= it.x) { placed = r; break; }
+        }
+        if (placed === -1) { placed = rowEnds.length; rowEnds.push(0); }
+        rowEnds[placed] = it.x + it.width + gap;
+        rowById[it.id] = placed;
+      }
+      return { rowById, rowCount: rowEnds.length };
+    }
+
     function makeTicks(windowStartMs, windowEndMs, width, count) {
       if (
         !Number.isFinite(windowStartMs) ||
@@ -399,6 +419,118 @@ def test_make_ticks_endpoints_and_spacing_case_4() -> None:
     assert abs(out[len(out) // 2]["x"] - 50.0) < 0.001 or out[2]["x"] == 40.0
 
 
+# === packIntervalsIntoRows =================================================
+
+
+def test_pack_intervals_empty_zero_rows() -> None:
+    """Empty input yields zero rows and an empty mapping."""
+    # Arrange
+    # Act
+    out = _run("console.log(JSON.stringify(packIntervalsIntoRows([])));")
+    # Assert
+    assert out == {"rowById": {}, "rowCount": 0}
+
+
+def test_pack_intervals_non_overlapping_share_row() -> None:
+    """Two intervals separated by more than `gap` pack onto the SAME row."""
+    # Arrange
+    # Act
+    out = _run(
+        "console.log(JSON.stringify(packIntervalsIntoRows(["
+        "{id: 'a', x: 0, width: 10},"
+        "{id: 'b', x: 20, width: 10},"
+        "])));"
+    )
+    # Assert
+    assert out == {"rowById": {"a": 0, "b": 0}, "rowCount": 1}
+
+
+def test_pack_intervals_overlapping_spread_to_rows() -> None:
+    """Two time-overlapping bars land on DISTINCT rows (no occlusion)."""
+    # Arrange
+    # Act
+    out = _run(
+        "console.log(JSON.stringify(packIntervalsIntoRows(["
+        "{id: 'a', x: 0, width: 30},"
+        "{id: 'b', x: 10, width: 30},"
+        "])));"
+    )
+    # Assert
+    assert out == {"rowById": {"a": 0, "b": 1}, "rowCount": 2}
+
+
+def test_pack_intervals_gap_forces_new_row() -> None:
+    """The `gap` is honoured: a bar that abuts within `gap` px of the
+    previous bar's end is pushed to a new row, not packed beside it."""
+    # Arrange
+    # Act
+    # a ends at x=10; with the default gap=2 its effective end is 12, so b
+    # starting at x=11 cannot share row 0.
+    out = _run(
+        "console.log(JSON.stringify(packIntervalsIntoRows(["
+        "{id: 'a', x: 0, width: 10},"
+        "{id: 'b', x: 11, width: 10},"
+        "])));"
+    )
+    # Assert
+    assert out == {"rowById": {"a": 0, "b": 1}, "rowCount": 2}
+
+
+def test_pack_intervals_lowest_fitting_row_reused() -> None:
+    """A later interval reuses the LOWEST freed row rather than opening a
+    new one — greedy minimal-row packing."""
+    # Arrange
+    # Act
+    # a (row 0) and b (row 1) overlap; c starts after a ends so it reuses
+    # row 0, the lowest row whose last bar has finished.
+    out = _run(
+        "console.log(JSON.stringify(packIntervalsIntoRows(["
+        "{id: 'a', x: 0, width: 20},"
+        "{id: 'b', x: 5, width: 50},"
+        "{id: 'c', x: 30, width: 10},"
+        "])));"
+    )
+    # Assert
+    assert out["rowCount"] == 2
+    assert out["rowById"] == {"a": 0, "b": 1, "c": 0}
+
+
+def test_pack_intervals_deterministic_id_tiebreak() -> None:
+    """Equal-x intervals are ordered by id ascending so the packing is
+    stable across polls regardless of input order."""
+    # Arrange
+    # Act
+    out = _run(
+        "console.log(JSON.stringify(packIntervalsIntoRows(["
+        "{id: 'z', x: 0, width: 10},"
+        "{id: 'a', x: 0, width: 10},"
+        "])));"
+    )
+    # Assert
+    # 'a' sorts first -> row 0; 'z' overlaps it -> row 1.
+    assert out == {"rowById": {"a": 0, "z": 1}, "rowCount": 2}
+
+
+def test_pack_intervals_does_not_mutate_input() -> None:
+    """The caller's array is not reordered — sorting happens on a copy."""
+    # Arrange
+    # Act
+    out = _run(
+        textwrap.dedent(
+            """
+            const input = [
+              {id: 'z', x: 5, width: 10},
+              {id: 'a', x: 0, width: 10},
+            ];
+            packIntervalsIntoRows(input);
+            console.log(JSON.stringify(input.map((i) => i.id)));
+            """
+        )
+    )
+    # Assert
+    assert out == ["z", "a"]
+
+
 # === static-source contract ===============================================
 
 
@@ -416,6 +548,7 @@ def test_static_source_contract() -> None:
         "export function eventBarGeometry(",
         "export function makeTicks(",
         "export function formatHhMm(",
+        "export function packIntervalsIntoRows(",
     ]:
         assert name in src, (
             f"timelineHelpers.ts no longer exposes {name!r}; update this "
