@@ -551,6 +551,7 @@ def list_tasks(
     """Snapshot the store, then filter by any combination of fields.
 
     Filter semantics:
+
     - ``scope=None`` (default): use ``$SCITEX_TODO_SCOPE`` if set, else
       no filter. ``scope=""`` opts out of the env default explicitly.
     - ``assignee`` / ``agent`` / ``project`` / ``host`` / ``status``:

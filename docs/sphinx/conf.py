@@ -54,6 +54,12 @@ napoleon_google_docstring = True
 napoleon_numpy_docstring = True
 napoleon_use_param = True
 napoleon_use_rtype = True
+# Render an ``Attributes`` numpydoc section as inline ``:ivar:`` fields in the
+# class docstring body instead of standalone ``.. py:attribute::`` directives.
+# autodoc already documents the dataclass fields (``undoc-members``); without
+# this, napoleon's attribute directives collide with those, yielding "duplicate
+# object description of ...AgentInfo.<field>" warnings under ``-W``.
+napoleon_use_ivar = True
 napoleon_use_admonition_for_examples = True
 napoleon_use_admonition_for_notes = True
 
