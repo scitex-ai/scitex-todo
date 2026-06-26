@@ -3,7 +3,9 @@
  * Themed via the same --* vars the other board_v3 modules use, so it flips
  * with the dark/light shell theme. Covers: the controls row, the SVG time-
  * raster (agent / project views), and the rich per-task "simple" cards.
- * Status colours reuse the card palette (--green/--amber/--grey/--red). */
+ * Status colours come from the SSOT STATUS_STYLE map, surfaced as the
+ * server-rendered --status-fill-<s> / --status-stroke-<s> CSS vars (7
+ * distinct statuses, matching the cards + mermaid graph). */
 
 .tl-wrap {
   display: flex;
@@ -101,22 +103,38 @@
   r: 8;
   filter: brightness(1.2);
 }
-.tl-dot--working {
-  fill: var(--green, #30a46c);
-  stroke: var(--green, #30a46c);
+/* Per-status dot color — single-sourced from STATUS_STYLE via the
+   server-rendered `--status-fill-<s>` / `--status-stroke-<s>` CSS vars
+   (board_v3.html `#status-color-vars`). 7 distinct, matching cards +
+   mermaid; the 4-bucket collapse is gone. */
+.tl-dot[data-status="goal"] {
+  fill: var(--status-fill-goal);
+  stroke: var(--status-stroke-goal);
 }
-.tl-dot--waiting {
-  fill: var(--amber, #f5a524);
-  stroke: var(--amber, #f5a524);
-}
-.tl-dot--blocked {
-  fill: var(--red, #e5484d);
-  stroke: var(--red, #e5484d);
-}
-.tl-dot--done {
-  fill: var(--grey, #6b7280);
-  stroke: var(--grey, #6b7280);
+.tl-dot[data-status="done"] {
+  fill: var(--status-fill-done);
+  stroke: var(--status-stroke-done);
   opacity: 0.5;
+}
+.tl-dot[data-status="in_progress"] {
+  fill: var(--status-fill-in_progress);
+  stroke: var(--status-stroke-in_progress);
+}
+.tl-dot[data-status="blocked"] {
+  fill: var(--status-fill-blocked);
+  stroke: var(--status-stroke-blocked);
+}
+.tl-dot[data-status="pending"] {
+  fill: var(--status-fill-pending);
+  stroke: var(--status-stroke-pending);
+}
+.tl-dot[data-status="deferred"] {
+  fill: var(--status-fill-deferred);
+  stroke: var(--status-stroke-deferred);
+}
+.tl-dot[data-status="failed"] {
+  fill: var(--status-fill-failed);
+  stroke: var(--status-stroke-failed);
 }
 /* Live (still-running) tasks get a bright ring so the operator can spot
    what's being processed at a glance. */
@@ -158,18 +176,28 @@
   border-color: var(--purple, #8e6cff);
   box-shadow: 0 0 0 1px var(--purple, #8e6cff);
 }
-.tl-card--working {
-  border-left-color: var(--green, #30a46c);
+/* Per-status left-bar color (7 distinct, SSOT --status-fill-<s>). */
+.tl-card[data-status="goal"] {
+  border-left-color: var(--status-fill-goal);
 }
-.tl-card--waiting {
-  border-left-color: var(--amber, #f5a524);
-}
-.tl-card--blocked {
-  border-left-color: var(--red, #e5484d);
-}
-.tl-card--done {
-  border-left-color: var(--grey, #6b7280);
+.tl-card[data-status="done"] {
+  border-left-color: var(--status-fill-done);
   opacity: 0.72;
+}
+.tl-card[data-status="in_progress"] {
+  border-left-color: var(--status-fill-in_progress);
+}
+.tl-card[data-status="blocked"] {
+  border-left-color: var(--status-fill-blocked);
+}
+.tl-card[data-status="pending"] {
+  border-left-color: var(--status-fill-pending);
+}
+.tl-card[data-status="deferred"] {
+  border-left-color: var(--status-fill-deferred);
+}
+.tl-card[data-status="failed"] {
+  border-left-color: var(--status-fill-failed);
 }
 .tl-card-top {
   display: flex;
@@ -184,14 +212,27 @@
   font-size: 0.62rem;
   color: var(--text-muted, #8a96a8);
 }
-.tl-card--working .tl-card-status {
-  color: var(--green, #30a46c);
+/* Status label color = the status's SSOT stroke (7 distinct). */
+.tl-card[data-status="goal"] .tl-card-status {
+  color: var(--status-stroke-goal);
 }
-.tl-card--waiting .tl-card-status {
-  color: var(--amber, #f5a524);
+.tl-card[data-status="done"] .tl-card-status {
+  color: var(--status-stroke-done);
 }
-.tl-card--blocked .tl-card-status {
-  color: var(--red, #e5484d);
+.tl-card[data-status="in_progress"] .tl-card-status {
+  color: var(--status-stroke-in_progress);
+}
+.tl-card[data-status="blocked"] .tl-card-status {
+  color: var(--status-stroke-blocked);
+}
+.tl-card[data-status="pending"] .tl-card-status {
+  color: var(--status-stroke-pending);
+}
+.tl-card[data-status="deferred"] .tl-card-status {
+  color: var(--status-stroke-deferred);
+}
+.tl-card[data-status="failed"] .tl-card-status {
+  color: var(--status-stroke-failed);
 }
 .tl-card-time {
   font-size: 0.72rem;

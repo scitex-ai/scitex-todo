@@ -330,9 +330,10 @@
         (d.ev.started_at ? "\nstarted: " + d.ev.started_at : "") +
         (d.ev.ended_at ? "\ncompleted: " + d.ev.ended_at : "");
       svg +=
-        '<circle class="tl-dot tl-dot--' +
-        bucket(d.ev.status) +
+        '<circle class="tl-dot' +
         (done ? " tl-dot--done" : " tl-dot--live") +
+        '" data-status="' +
+        escapeHtml(String(d.ev.status || "")) +
         '" cx="' +
         d.cx +
         '" cy="' +
@@ -406,8 +407,8 @@
           .filter(Boolean)
           .join(" · ");
         return (
-          '<div class="tl-card tl-card--' +
-          bucket(t.status) +
+          '<div class="tl-card" data-status="' +
+          escapeHtml(String(t.status || "")) +
           '" onclick="openDetail(\'' +
           escapeHtml(String(t.id)) +
           "')\">" +
