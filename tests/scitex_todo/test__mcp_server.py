@@ -184,6 +184,7 @@ def test_add_returns_id(tmp_path):
             id="a",
             title="A",
             scope="agent:test",
+            assignee="agent:test",
             tasks_path=store,
         )
     )
