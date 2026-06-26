@@ -197,8 +197,8 @@
           <select id="f-blocker"><option value="">All blockers</option></select>
         </div>
         <div class="filt-popover-row">
-          <label for="f-agent">Agent</label>
-          <select id="f-agent"><option value="">All agents</option></select>
+          <label for="f-agent">Assignee</label>
+          <select id="f-agent"><option value="">All assignees</option></select>
         </div>
         <div class="filt-popover-row">
           <label for="f-date">Date</label>
@@ -575,7 +575,7 @@
             <input class="d-edit-input" id="d-edit-project" type="text">
           </div>
           <div style="flex: 1;">
-            <label for="d-edit-agent">Agent</label>
+            <label for="d-edit-agent">Assignee</label>
             <input class="d-edit-input" id="d-edit-agent" type="text">
           </div>
         </div>
@@ -1279,7 +1279,7 @@
       if (nodes.some(n => !n.project)) projects.push("Uncategorized");
       set("f-project", projects, "All projects");
       set("f-host", uniq("host"), "All hosts");
-      set("f-agent", uniq("agent"), "All agents");
+      set("f-agent", uniq("agent"), "All assignees");
       // Status / blocker = closed enums; statuses bucketed to 4.
       document.getElementById("f-status").innerHTML =
         `<option value="">All statuses</option>` +
@@ -3987,7 +3987,7 @@
     //  lives in the lead's periodic reports, not the board.)
     function toggleAgentFilter(agent) {
       // Click a dot: if it's not the current f-agent value, set it; if
-      // it IS, clear it back to "All agents". Updates the <select> too
+      // it IS, clear it back to "All assignees". Updates the <select> too
       // so the existing filter pipeline stays consistent.
       const sel = document.getElementById("f-agent");
       if (!sel) return;
