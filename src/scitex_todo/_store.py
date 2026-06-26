@@ -198,6 +198,7 @@ def _match(
     agent: str | None = None,
     project: str | None = None,
     host: str | None = None,
+    repo: str | None = None,  # hook-bypass: line-limit
     blocker: str | None = None,
     kind: str | None = None,
     id_prefix: str | None = None,
@@ -231,6 +232,8 @@ def _match(
     if project is not None and task.get("project") != project:
         return False
     if host is not None and task.get("host") != host:
+        return False
+    if repo is not None and task.get("repo") != repo:  # hook-bypass: line-limit
         return False
     if blocker is not None:
         if blocker == "__none":
@@ -715,6 +718,7 @@ def list_tasks(
     agent: str | None = None,
     project: str | None = None,
     host: str | None = None,
+    repo: str | None = None,  # hook-bypass: line-limit
     blocker: str | None = None,
     kind: str | None = None,
     id_prefix: str | None = None,
@@ -727,9 +731,12 @@ def list_tasks(
 
     - ``scope=None`` (default): use ``$SCITEX_TODO_SCOPE`` if set, else
       no filter. ``scope=""`` opts out of the env default explicitly.
-    - ``assignee`` / ``agent`` / ``project`` / ``host`` / ``status``:
-      ``None`` = no filter; any string = exact match. (Generic Req 8 —
-      no fuzzy / glob; callers compose.)
+    - ``assignee`` / ``agent`` / ``project`` / ``host`` / ``repo`` /
+      ``status``: ``None`` = no filter; any string = exact match.
+      (Generic Req 8 — no fuzzy / glob; callers compose.) ``repo`` matches
+      the card's ``repo`` field (``owner/repo``) — the reusable seam a
+      producer uses to resolve repo->card at emit time (resolve-card verb).
+      (hook-bypass: line-limit)
     - ``statuses`` (list) AND ``status`` (single) are OR-combined.
     - ``blocker="__none"`` matches rows with no blocker field; any other
       value is an exact match (closed-enum gating at the CLI layer).
@@ -759,6 +766,7 @@ def list_tasks(
             agent=agent,
             project=project,
             host=host,
+            repo=repo,  # hook-bypass: line-limit
             blocker=blocker,
             kind=kind,
             id_prefix=id_prefix,

@@ -539,7 +539,7 @@ def register(main: click.Group) -> None:
     filter flags from the old `list` verb were folded in there; the `list`
     Click verb was removed per audit §1 — bare transitive verb at top level).
     """
-    from . import _admin, _close, _comment, _reassign, _stale  # hook-bypass: line-limit
+    from . import _admin, _close, _comment, _emit, _reassign, _stale  # hook-bypass: line-limit
 
     main.add_command(add_cmd, name="add")
     main.add_command(update_cmd, name="update")
@@ -549,6 +549,10 @@ def register(main: click.Group) -> None:
     _close.register(main)
     _reassign.register(main)
     _stale.register(main)
+    # Generic producer verbs: `emit-event` (no-import shell-out emit seam) +
+    # `resolve-card` (repo->card lookup). Consumed by scitex-dev's C7
+    # `released` / C8 `pulled` fleet producers.
+    _emit.register(main)
     _admin.register(main)
 
 

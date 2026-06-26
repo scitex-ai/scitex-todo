@@ -308,13 +308,17 @@ class Event:
         return cls(type=EventType.DEPLOYED, card_id=card_id, repo=repo, extra=extra, **kw)
 
 
-def emit(event: Event, *, entry_points: Iterable | None = None) -> None:
+def emit(
+    event: Event,
+    *,
+    store: Any | None = None,
+    entry_points: Iterable | None = None,
+) -> dict | None:
     """Emit a canonical :class:`Event` onto the hook bus.
 
     Thin seam over :func:`scitex_todo._hooks.dispatch_event`: build the
-    ``event.to_dict()`` envelope and dispatch it. The bus + any delivery
-    handlers arrive in a LATER card — this is purely the producer-side
-    emit point so every future producer routes through one function.
+    ``event.to_dict()`` envelope and dispatch it. The bus fans the event to
+    the built-in C4 notify consumer + every entry-point plugin.
 
     NEVER raises to the caller. ``dispatch_event`` already swallows
     plugin errors, but we wrap the whole call defensively (mirroring
@@ -325,16 +329,36 @@ def emit(event: Event, *, entry_points: Iterable | None = None) -> None:
     ----------
     event : Event
         The typed canonical event to emit.
+    store : path-like, optional
+        Override the task-store path, forwarded to :func:`dispatch_event`
+        (and through it to the C4 consumer + inbox). ``None`` (default)
+        resolves via the normal precedence chain. The ``emit-event`` CLI
+        verb threads ``--tasks`` here so the bus/inbox target the SAME store
+        the producer points at — deterministic, no env-var mutation.
     entry_points : iterable, optional
         Explicit plugin entry points (``.name`` + ``.load()``), forwarded
         to :func:`dispatch_event`. ``None`` reads the real
         ``scitex_todo.hooks`` group. This is the in-process injection seam
         tests use (no monkeypatch of importlib — PA-306-compliant).
+
+    Returns
+    -------
+    dict | None
+        The :func:`dispatch_event` summary dict (carrying ``kind`` /
+        ``card_writes`` / ``plugin_count`` / ``plugin_errors`` plus, for a
+        card-event that ran the C4 consumer, a ``notify`` sub-summary with
+        ``enqueued`` / ``delivered``). ADDITIVE: this used to return
+        ``None``; the value lets a producer / the ``emit-event`` CLI verb
+        report what the dispatch did. Returns ``None`` only when the
+        dispatch itself raised (the fail-soft branch below) — never
+        propagating the error.
     """
     try:
         from . import _hooks
 
-        _hooks.dispatch_event(event.to_dict(), entry_points=entry_points)
+        return _hooks.dispatch_event(
+            event.to_dict(), store=store, entry_points=entry_points
+        )
     except Exception:  # noqa: BLE001 — emit must never break a producer
         logger.warning(
             "scitex_todo._events.emit: bus dispatch failed for type=%r card_id=%r",
@@ -342,6 +366,7 @@ def emit(event: Event, *, entry_points: Iterable | None = None) -> None:
             getattr(event, "card_id", None),
             exc_info=True,
         )
+        return None
 
 
 # EOF

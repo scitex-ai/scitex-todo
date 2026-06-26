@@ -343,17 +343,22 @@ def test_emit_reassigned_reaches_recorder_via_real_dispatch(tmp_path, env):
     # invokes it (covered above). Here we additionally prove emit() does not
     # raise and routes a card-event to the built-in consumer end to end.
     store = _store(tmp_path)
-    register_user(kind="agent", names=["alice"], store=store)
+    alice = register_user(kind="agent", names=["alice"], store=store)
     add_task(store=store, id="c1", title="x", agent="alice")
     env.set("SCITEX_TODO_TASKS", str(store))
     env.set("SCITEX_TODO_PUSH_DRY_RUN", "1")
 
-    # Must return None and not raise (emit is fire-and-forget, non-raising).
+    # emit() is non-raising AND now RETURNS the dispatch summary (additive —
+    # it used to return None). The summary carries the C4 notify result so a
+    # producer / the `emit-event` CLI verb can report enqueued / delivered.
     result = emit(
         Event(type=EventType.REASSIGNED, card_id="c1", actor="bob"),
         entry_points=[],
     )
-    assert result is None
+    assert result is not None
+    assert result["kind"] == "card-event"
+    assert result["notify"]["event_type"] == "reassigned"
+    assert result["notify"]["enqueued"] == [alice.id]
 
 
 # EOF
