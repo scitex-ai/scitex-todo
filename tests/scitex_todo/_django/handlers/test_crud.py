@@ -57,57 +57,42 @@ def _load(store_path):
 
 
 # ── create ───────────────────────────────────────────────────────────────
+# Every create now REQUIRES an owner (handle_create delegates to add_task,
+# fail-loud without one), so happy-path bodies carry an `assignee`.
 def test_create_returns_ok(store):
-    # Arrange
-    body = {"title": "New Thing"}
-    # Act
-    response = _post("create", store, body)
-    # Assert
+    response = _post("create", store, {"title": "New Thing", "assignee": "alice"})
     assert response.status_code == 200
 
 
 def test_create_generates_slug_id(store):
-    # Arrange
-    body = {"title": "My New Thing!"}
-    # Act
-    payload = json.loads(_post("create", store, body).content)
-    # Assert
+    payload = json.loads(
+        _post("create", store, {"title": "My New Thing!", "assignee": "alice"}).content
+    )
     assert payload["task"]["id"] == "my-new-thing"
 
 
 def test_create_defaults_status_to_pending(store):
-    # Arrange
-    body = {"title": "X"}
-    # Act
-    payload = json.loads(_post("create", store, body).content)
-    # Assert
+    payload = json.loads(
+        _post("create", store, {"title": "X", "assignee": "alice"}).content
+    )
     assert payload["task"]["status"] == "pending"
 
 
 def test_create_persists_to_store(store):
-    # Arrange
-    body = {"title": "Persisted", "note": "hi"}
-    # Act
-    _post("create", store, body)
-    # Assert
+    _post("create", store, {"title": "Persisted", "note": "hi", "assignee": "alice"})
     assert "persisted" in _load(store)
 
 
 def test_create_dedupes_id_on_title_collision(store):
-    # Arrange
-    _post("create", store, {"title": "Dup"})
-    # Act
-    payload = json.loads(_post("create", store, {"title": "Dup"}).content)
-    # Assert
+    _post("create", store, {"title": "Dup", "assignee": "alice"})
+    payload = json.loads(
+        _post("create", store, {"title": "Dup", "assignee": "alice"}).content
+    )
     assert payload["task"]["id"] == "dup-2"
 
 
 def test_create_rejects_missing_title_with_400(store):
-    # Arrange
-    body = {"status": "pending"}
-    # Act
-    response = _post("create", store, body)
-    # Assert
+    response = _post("create", store, {"status": "pending", "assignee": "alice"})
     assert response.status_code == 400
 
 
@@ -118,6 +103,35 @@ def test_create_rejects_get_with_405(store):
     response = views.api_dispatch(request, "create")
     # Assert
     assert response.status_code == 405
+
+
+def test_create_owns_card_and_stamps_creator(store, monkeypatch):
+    # Fully-OWNED card + stamped creator: assignee set, agent in lock-step,
+    # created_by defaulting to "operator" (the board's identity).
+    monkeypatch.delenv("SCITEX_TODO_AGENT", raising=False)
+    task = json.loads(
+        _post("create", store, {"title": "Owned Card", "assignee": "bob"}).content
+    )["task"]
+    assert task["assignee"] == "bob"
+    assert task["agent"] == "bob"
+    assert task["created_by"] == "operator"
+
+
+def test_create_accepts_agent_as_owner(store):
+    # `agent` alone also satisfies the owner requirement; assignee == agent.
+    task = json.loads(
+        _post("create", store, {"title": "Agent Owned", "agent": "carol"}).content
+    )["task"]
+    assert task["agent"] == "carol" and task["assignee"] == "carol"
+
+
+def test_create_rejects_missing_assignee_with_400(store):
+    # No owner -> 400 AND nothing written: fail-loud, not fail-corrupt.
+    response = _post("create", store, {"title": "Ownerless"})
+    payload = json.loads(response.content)
+    assert response.status_code == 400
+    assert "assignee" in payload["error"]
+    assert "ownerless" not in _load(store)
 
 
 # ── update ───────────────────────────────────────────────────────────────
