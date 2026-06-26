@@ -44,26 +44,33 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def _recipient_names(task: dict, author: str) -> list[str]:
+def _recipient_names(task: dict, author: str, *, store=None) -> list[str]:
     """Resolve the comment's inbox recipients to display NAMES (actor dropped).
 
     Mirrors the dispatcher: the C3 ``commented`` recipient set (owner +
     collaborators + subscribers by default) resolved on the card, minus the
     actor (the author is never notified of their own comment), with each id
     mapped back to a human name (or the raw-name fallback verbatim).
+
+    ``store`` MUST be the board's store path — the SAME store the comment was
+    written to and the C4 dispatcher enqueued against. Passing ``None`` would
+    resolve users against the default-precedence store (the large canonical
+    tasks.yaml), which is both WRONG (different user/notify-prefs set) and SLOW
+    (parsing a 100s-of-card YAML on the comment's critical path — the cause of
+    the multi-second board-comment stall).
     """
     from ..._notify import resolve_recipients
     from ..._users import get_user, resolve_user
 
-    recipients = set(resolve_recipients({"type": "commented"}, task, store=None))
+    recipients = set(resolve_recipients({"type": "commented"}, task, store=store))
     # Drop the actor exactly as dispatch_notifications does.
-    actor_user = resolve_user(author, store=None)
+    actor_user = resolve_user(author, store=store)
     recipients.discard(actor_user.id if actor_user is not None else author)
     recipients.discard(author)
 
     names: list[str] = []
     for uid in recipients:
-        user = get_user(uid, store=None)
+        user = get_user(uid, store=store)
         if user is None:
             # Unregistered raw-name fallback — it IS already the name.
             if uid:
@@ -78,7 +85,7 @@ def _recipient_names(task: dict, author: str) -> list[str]:
     return sorted(set(names))
 
 
-def comment_inbox_toast(task: dict, author: str) -> dict:
+def comment_inbox_toast(task: dict, author: str, *, store=None) -> dict:
     """Build the ``relay`` toast describing the comment's INBOX QUEUE.
 
     Returns a dict the ``/comment`` JSON response includes under ``relay`` so
@@ -94,6 +101,9 @@ def comment_inbox_toast(task: dict, author: str) -> dict:
     ``queued`` (the author is the only recipient and is dropped) — that is the
     correct "nobody else to notify" signal, NOT a failure.
 
+    ``store`` MUST be the board's store path (what the comment was written to);
+    see :func:`_recipient_names` for why ``None`` is both wrong and slow.
+
     FAIL-SOFT: the comment is ALREADY on disk and ALREADY enqueued by the
     emit, so any resolver hiccup degrades to ``queued: []`` and is logged —
     this NEVER raises and NEVER fails the write.
@@ -102,7 +112,7 @@ def comment_inbox_toast(task: dict, author: str) -> dict:
 
     target = card_owner(task) or ""
     try:
-        queued = _recipient_names(task, author)
+        queued = _recipient_names(task, author, store=store)
     except Exception:  # noqa: BLE001 — toast is best-effort, never fails write
         logger.warning(
             "[scitex-todo] comment toast recipient-resolve failed for %r",

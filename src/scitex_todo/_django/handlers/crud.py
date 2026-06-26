@@ -413,7 +413,7 @@ def handle_comment(request, board):
             "comment": comment,
             "count": count,
             "store_path": str(board.store_path),
-            "relay": comment_inbox_toast(fresh, author),
+            "relay": comment_inbox_toast(fresh, author, store=board.store_path),
         }
     )
 
