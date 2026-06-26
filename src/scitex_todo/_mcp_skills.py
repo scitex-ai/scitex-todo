@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 
-from . import _help_wait
+from . import _help_wait, _store
 from ._mcp_server import mcp
 
 
@@ -60,6 +60,32 @@ async def todo_skills_get(name: str) -> str:
 
 
 @mcp.tool()
+async def reassign_task(
+    task_id: str,
+    new_owner: str,
+    by: str | None = None,
+    tasks_path: str | None = None,
+) -> str:
+    """Atomically change a card's owner (C5 reassign primitive).
+
+    1:1 with :func:`scitex_todo._store.reassign_task` (Convention A; lives
+    here only to keep ``_mcp_server`` under its line budget). In one locked
+    write sets ``agent = assignee = new_owner`` and
+    ``scope = "agent:<new_owner>"``, appends an audit comment, and emits a
+    canonical ``reassigned`` card-event (the notification path — delivery
+    is C4, a separate card). Idempotent: reassigning to the SAME current
+    owner is a no-op (no write, no event); the returned ``changed`` flag is
+    then ``False``.
+
+    Args:
+      task_id: the card id.
+      new_owner: the new owning agent.
+      by: the actor ($SCITEX_TODO_AGENT → $USER precedence).
+    """
+    return json.dumps(_store.reassign_task(tasks_path, task_id, new_owner, by=by))
+
+
+@mcp.tool()
 async def help_wait(
     agent: str,
     question: str | None = None,
@@ -93,6 +119,12 @@ async def help_clear(
     return json.dumps(_help_wait.help_clear(tasks_path, agent))
 
 
-__all__ = ["help_clear", "help_wait", "todo_skills_get", "todo_skills_list"]
+__all__ = [
+    "help_clear",
+    "help_wait",
+    "reassign_task",
+    "todo_skills_get",
+    "todo_skills_list",
+]
 
 # EOF

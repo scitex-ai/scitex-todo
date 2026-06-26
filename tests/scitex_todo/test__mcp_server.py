@@ -92,6 +92,9 @@ _CONVENTION_A_NAMES = {
     "set_edge",
     "resolve_task",
     "reopen_task",
+    # C5 reassign primitive — 1:1 with `_store.reassign_task` (Convention
+    # A; registered in `_mcp_skills` to keep `_mcp_server` under budget).
+    "reassign_task",
     # Card roles (ADR-0009) — 1:1 with `_store.set_collaborator` /
     # `_store.set_subscriber` (Convention A).
     "set_collaborator",
