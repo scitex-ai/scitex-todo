@@ -112,6 +112,12 @@ def provide_jobs() -> list[JobSpec]:
         # gone untouched for > SCITEX_TODO_NUDGE_QUIET_MIN minutes
         # (default 10). Structural feedback loop: silence + in_progress
         # → escalation, no manual lead intervention required.
+        #
+        # The --nudge-quiet path ALSO runs the stale-active sweep
+        # (_stale_active_nudge.sweep_and_nudge): per-OWNER nudge for
+        # in_progress/blocked cards untouched > SCITEX_TODO_STALE_ACTIVE_HOURS
+        # (default 2 h) over the same push wire. Replaces the manual
+        # card-freshness campaign; no new cron — it rides this */10 one.
         JobSpec(
             name="scitex-todo.notify",
             # `cron` (the JobSpec valid set is `cron|service|timer`).
