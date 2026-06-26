@@ -352,9 +352,10 @@ def test_reassign_is_idempotent_second_call_noop(tmp_path: Path):
 
 
 def test_reassign_from_unassigned_records_placeholder(tmp_path: Path):
-    # Arrange — a card with no owner at all.
+    # Arrange — a card with no owner at all. add_task now REQUIRES an owner
+    # (fail-loud), so write a raw owner-less row to exercise reassign-from-None.
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
+    store.write_text("tasks:\n  - id: c-1\n    title: x\n    status: pending\n")
     sink = _Capturing()
     # Act
     reassign_task(store, "c-1", "proj-new", by="operator", entry_points=_eps(sink))

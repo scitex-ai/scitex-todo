@@ -234,7 +234,9 @@ def test_add_task_none_extras_are_dropped(tmp_path):
     # Arrange
     store = tmp_path / "tasks.yaml"
     # Act
-    _store.add_task(store, id="a", title="A", project=None, agent=None)
+    _store.add_task(
+        store, id="a", title="A", project=None, agent=None, assignee="agent:test"
+    )
     on_disk = _model.load_tasks(store)[0]
     # Assert
     assert "project" not in on_disk
