@@ -14,18 +14,38 @@ straight to plugins (the built-in card-event handler is C5).
 
 from __future__ import annotations
 
-from typing import Any
+import logging
+from typing import Any, Iterable
 
 from .. import _store
+from .._git_link import TRIGGER_COMMIT
+
+logger = logging.getLogger(__name__)
 
 
-def _handle_push(event: dict, *, store: Any | None) -> list[dict]:
-    """Built-in `push` handler — idempotently append a comment per card."""
+def _handle_push(
+    event: dict, *, store: Any | None, entry_points: Iterable | None = None
+) -> list[dict]:
+    """Built-in `push` handler — idempotently append a comment per card.
+
+    C6 (git-link event producers): on a GENUINELY NEW link (a freshly
+    appended comment, NOT an ``already-recorded`` noop) the handler ALSO
+    emits a canonical card-event onto the bus — ``committed`` when the
+    producer flagged ``trigger="commit"`` (the ``post-commit`` git hook),
+    else ``pushed`` (the historical ``pre-push`` behaviour). The emit is
+    purely additive: there is intentionally no consumer yet (C4 dispatcher
+    is a separate card), so an emit with no plugin registered is a harmless
+    noop. The idempotency boundary is shared with the comment write — an
+    ``already-recorded`` commit_sha emits NOTHING, so a re-link never
+    re-emits.
+    """
     out: list[dict] = []
     commit_sha = event["commit_sha"]
     msg = event.get("message") or ""
     author = event.get("author") or "<unknown>"
     repo = event["repo"]
+    branch = event.get("branch")
+    trigger = event.get("trigger")
     # Include the FULL commit_sha as a stable token (NOT just the
     # short prefix) so the idempotency check below can find it via
     # substring match. The short prefix is for human readability;
@@ -42,12 +62,66 @@ def _handle_push(event: dict, *, store: Any | None) -> list[dict]:
                 store=store, task_id=card_id, text=text, by=author, kind="push"
             )
             out.append({"card_id": card_id, "action": "comment-appended"})
+            # Genuinely NEW link → emit the matching canonical card-event.
+            # Fail-soft: a hiccup here must never break the comment write.
+            _emit_git_event(
+                card_id=card_id,
+                repo=repo,
+                branch=branch,
+                commit_sha=commit_sha,
+                author=author,
+                trigger=trigger,
+                entry_points=entry_points,
+            )
         except _store.TaskNotFoundError:
             # An unknown card id is NOT a producer error (the producer
             # just hinted at a card the operator hasn't created yet);
             # we record a soft noop so the producer can spot it.
             out.append({"card_id": card_id, "action": "card-not-found"})
     return out
+
+
+def _emit_git_event(
+    *,
+    card_id: str,
+    repo: str,
+    branch: str | None,
+    commit_sha: str,
+    author: str | None,
+    trigger: str | None,
+    entry_points: Iterable | None = None,
+) -> None:
+    """Emit a ``committed`` / ``pushed`` card-event for a freshly-linked sha.
+
+    Fail-soft: any error building the envelope or reaching the bus is
+    swallowed so a git-link run is never broken by event emission. (The
+    underlying :func:`scitex_todo._events.emit` already never raises, but
+    we wrap the envelope construction defensively too.)
+    """
+    try:
+        from .._events import Event, emit
+
+        if trigger == TRIGGER_COMMIT:
+            ev = Event.committed(
+                card_id, repo=repo, sha=commit_sha, branch=branch, actor=author
+            )
+        else:
+            ev = Event.pushed(
+                card_id,
+                repo=repo,
+                branch=branch,
+                sha=commit_sha,
+                actor=author,
+            )
+        emit(ev, entry_points=entry_points)
+    except Exception:  # noqa: BLE001 — emit must never break the producer
+        logger.warning(
+            "scitex_todo._hooks: git-link event emit failed for "
+            "card_id=%r trigger=%r",
+            card_id,
+            trigger,
+            exc_info=True,
+        )
 
 
 def _handle_done(event: dict, *, store: Any | None) -> list[dict]:

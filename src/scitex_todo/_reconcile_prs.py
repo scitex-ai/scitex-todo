@@ -46,7 +46,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Iterable, Optional
 
 # Statuses we consider "open work that may have merged". A card outside
 # this set (done / deferred / failed / goal) is never auto-closed.
@@ -311,6 +311,7 @@ def reconcile_merged_prs(
     apply: bool = False,
     merge_state_fn: Callable[[str], str] = default_merge_state_fn,
     by: str | None = None,
+    entry_points: Iterable | None = None,
 ) -> ReconcileResult:
     """Scan open cards with a ``pr_url``; close the ones whose PR merged.
 
@@ -327,6 +328,13 @@ def reconcile_merged_prs(
         that pass the cheap pre-checks (open status + parseable pr_url).
     by
         Author stamp forwarded to ``complete_task`` / ``comment_task``.
+    entry_points
+        Optional plugin entry points forwarded to the C6 ``merged``
+        card-event :func:`scitex_todo._events.emit` (the in-process
+        injection seam from C1/C2). ``None`` (default) reads the real
+        ``scitex_todo.hooks`` group; tests pass a concrete fake handler to
+        capture the emitted event. Only consulted when ``apply=True`` and a
+        card is genuinely closed on this pass.
 
     Returns
     -------
@@ -366,7 +374,13 @@ def reconcile_merged_prs(
         if not apply:
             result.would_close.append(entry)
             continue
-        _apply_close(resolved, task_id=str(task.get("id")), pr_url=pr_url, by=by)
+        _apply_close(
+            resolved,
+            task_id=str(task.get("id")),
+            pr_url=pr_url,
+            by=by,
+            entry_points=entry_points,
+        )
         result.closed.append(entry)
 
     result.skipped = skipped
@@ -374,12 +388,24 @@ def reconcile_merged_prs(
 
 
 def _apply_close(
-    resolved: Path, *, task_id: str, pr_url: str, by: str | None
+    resolved: Path,
+    *,
+    task_id: str,
+    pr_url: str,
+    by: str | None,
+    entry_points: Iterable | None = None,
 ) -> None:
     """Flip one card to ``done`` + append the auto-close audit comment.
 
     Reuses the canonical store helpers (``complete_task`` is idempotent; the
     comment is best-effort so a comment glitch never aborts the close).
+
+    C6 (git-link event producers): after a GENUINELY NEW close — i.e. a card
+    that ``reconcile_merged_prs`` decided to flip on THIS pass (an already-
+    ``done`` card never reaches here, so a second run emits nothing) — also
+    emit a canonical ``merged`` card-event onto the bus. Purely additive +
+    fail-soft: there is intentionally no consumer yet (C4 dispatcher is a
+    separate card), so an emit with no plugin registered is a harmless noop.
     """
     from ._store import complete_task, comment_task
 
@@ -392,6 +418,40 @@ def _apply_close(
 
         logging.getLogger(__name__).warning(
             "auto-close comment failed for %r", task_id, exc_info=True
+        )
+
+    _emit_merged_event(
+        task_id=task_id, pr_url=pr_url, actor=by, entry_points=entry_points
+    )
+
+
+def _emit_merged_event(
+    *,
+    task_id: str,
+    pr_url: str,
+    actor: str | None,
+    entry_points: Iterable | None = None,
+) -> None:
+    """Emit a ``merged`` card-event for a freshly auto-closed card.
+
+    Fail-soft: any error building the envelope or reaching the bus is
+    swallowed so a reconcile run is never broken by event emission. The
+    ``repo`` is derived from the PR URL when parseable (best-effort).
+    """
+    try:
+        from ._events import Event, emit
+
+        ref = parse_pr_url(pr_url)
+        repo = ref.slug if ref is not None else None
+        emit(
+            Event.merged(task_id, repo=repo, pr_url=pr_url, actor=actor),
+            entry_points=entry_points,
+        )
+    except Exception:  # noqa: BLE001 — emit must never break the producer
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "reconcile merged-event emit failed for %r", task_id, exc_info=True
         )
 
 
