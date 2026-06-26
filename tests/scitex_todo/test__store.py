@@ -855,12 +855,16 @@ def test_summary_by_assignee_proj_count(populated_store):
 
 
 def test_summary_by_assignee_empty_count(populated_store):
-    # Arrange
+    # Arrange — assignee is now MANDATORY (no card can have an empty assignee
+    # via add_task), so the three non-proj cards (a/c/d) bucket under their
+    # owner `agent:test-suite` rather than the old empty-string bucket. The
+    # summary counts by the now-always-present assignee.
     store = populated_store
     # Act
     info = _store.summarize_tasks(store, scope="")
     # Assert
-    assert info["by_assignee"][""] == 3
+    assert info["by_assignee"].get("", 0) == 0
+    assert info["by_assignee"]["agent:test-suite"] == 3
 
 
 def test_summary_respects_scope_filter_total(populated_store):

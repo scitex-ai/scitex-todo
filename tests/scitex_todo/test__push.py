@@ -574,6 +574,11 @@ class TestAnnounceMissing:
     def test_returns_missing_agents(self, env):
         # Arrange
         env.delete(ENV_MAP)
+        # Isolate the precedence-3 sac-daemon lookup: on a host with a LIVE
+        # sac listen daemon (every agent container) `turn_url_for` would
+        # resolve these names via GET /agents and they'd drop from "missing".
+        # Point it at an unreachable port so the test is deterministic.
+        env.set(ENV_SAC_LISTEN, "http://127.0.0.1:1")
         tasks = [
             {"agent": "alpha"},
             {"agent": "beta"},
@@ -589,6 +594,9 @@ class TestAnnounceMissing:
     def test_configured_agents_dropped_from_missing(self, env):
         # Arrange
         env.set(ENV_MAP, json.dumps({"alpha": "http://x/"}))
+        # Isolate the sac-daemon precedence (see sibling test) so `beta` is
+        # reported missing regardless of any live daemon on the host.
+        env.set(ENV_SAC_LISTEN, "http://127.0.0.1:1")
         tasks = [{"agent": "alpha"}, {"agent": "beta"}]
         # Act
         missing = announce_missing_at_boot(tasks)
