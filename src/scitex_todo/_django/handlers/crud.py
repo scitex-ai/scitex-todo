@@ -22,7 +22,6 @@ surfaces as a 400 rather than corrupting the store.
 
 from __future__ import annotations
 
-import datetime
 import json
 import logging
 import os
@@ -348,12 +347,19 @@ def handle_restore(request, board):
 def handle_comment(request, board):
     """POST comment -> append a comment to a task's thread.
 
-    Body: ``{id, text, author?}``. The server stamps ``ts`` (ISO-8601 UTC)
-    and defaults ``author`` to the supplied value, else ``$USER``, else
-    ``"user"``. Append-only: it reads the task's current ``comments`` list and
-    adds one entry, so concurrent comments from other agents are not clobbered
-    the way a wholesale rewrite would. Unknown id -> 404. Returns the appended
-    comment plus the task's new comment count.
+    Body: ``{id, text, author?}``. ``author`` defaults to the supplied value,
+    else ``$USER``, else ``"user"``. Delegates the append to
+    :func:`scitex_todo._store.comment_task` (the SSOT): append-only under the
+    store lock — so concurrent comments from other agents are not clobbered —
+    which ALSO emits the canonical ``commented`` card-event. The C4 dispatcher
+    then ENQUEUES that comment into each resolved recipient's standalone
+    PULL-inbox (the always-works rail; a containerized owner PULLs it via
+    ``poll_notifications``) — there is NO direct turn-URL POST, which could
+    never reach a containerized owner and slowed the write.
+
+    Unknown id -> 404. Returns the appended comment, the new comment count,
+    and a ``relay`` toast describing the INBOX QUEUE (the recipient names the
+    comment was queued to) rather than a direct-POST result.
     """
     if request.method != "POST":
         return JsonResponse({"error": "comment endpoint requires POST"}, status=405)
@@ -374,48 +380,40 @@ def handle_comment(request, board):
     author = payload.get("author")
     if not isinstance(author, str) or not author.strip():
         author = os.environ.get("USER") or "user"
+    author = author.strip()
 
-    tasks = list(board.tasks)
-    task = next((t for t in tasks if t["id"] == task_id), None)
-    if task is None:
+    # 404 fast-path: an unknown id is a clean 404, not the TaskNotFoundError
+    # comment_task would raise (which api_dispatch turns into a 500).
+    if not any(t["id"] == task_id for t in board.tasks):
         return JsonResponse({"error": f"no task with id {task_id!r}"}, status=404)
 
-    comment = {
-        "ts": datetime.datetime.now(datetime.timezone.utc)
-        .replace(microsecond=0)
-        .isoformat(),
-        "author": author.strip(),
-        "text": text.strip(),
-    }
-    existing = task.get("comments")
-    task["comments"] = ([*existing] if isinstance(existing, list) else []) + [comment]
+    from scitex_todo._store import comment_task
 
-    err = _save(tasks, board)
-    if err:
-        return err
+    from ..services import _reset_cache
+    from ._comment_relay import comment_inbox_toast
+
+    # SSOT append + `commented` emit (→ C4 enqueues to each recipient's inbox).
+    result = comment_task(
+        store=board.store_path, task_id=task_id, text=text.strip(), by=author
+    )
+    _reset_cache()
+    comment = result["comment"]
     logger.info(
-        "[scitex-todo] comment on %s by %s in %s",
-        task_id,
-        author,
-        board.store_path,
+        "[scitex-todo] comment on %s by %s in %s", task_id, author, board.store_path
     )
 
-    # PR (g) comment-relay (lead a2a `9e710ab074ef4bf3a615be41793e0c51`,
-    # operator TG12611 2026-06-12): when the comment author is NOT
-    # the task's owning agent, push the full body to the owner via
-    # the same wire the nudge button uses. Best-effort — relay failure
-    # does NOT fail the comment write. Relay outcome surfaces in the
-    # response so the UI can toast.
-    from ._comment_relay import maybe_relay_comment
-
-    relay = maybe_relay_comment(task, comment)
+    # Re-read the freshly-written card (comment_task wrote under its own lock,
+    # so board.tasks is stale) for the count + the inbox-queue toast.
+    fresh = next((t for t in board.tasks if t["id"] == task_id), None) or {}
+    comments = fresh.get("comments")
+    count = len(comments) if isinstance(comments, list) else 1
 
     return JsonResponse(
         {
             "comment": comment,
-            "count": len(task["comments"]),
+            "count": count,
             "store_path": str(board.store_path),
-            "relay": relay,
+            "relay": comment_inbox_toast(fresh, author, store=board.store_path),
         }
     )
 

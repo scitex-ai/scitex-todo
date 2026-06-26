@@ -10,11 +10,12 @@ Covers the three deliverables that have NO mocks anywhere (PA-306 / STX-NM):
   hint) when the assignee/owner is missing OR the creator is unresolvable;
   succeeds with both and keeps ``agent`` == ``assignee`` in lock-step + stamps
   a real ``created_by``.
-* :func:`scitex_todo._django.handlers._comment_relay.maybe_relay_comment`
-  FAIL-LOUD — an owner-less card returns the loud ``error:no-owner`` result
-  instead of the old silent ``skip:no-agent`` no-op; an assignee-only card
-  resolves its owner via the SSOT (proven via the self-comment skip, which
-  fires only when the resolved owner == the author — no network).
+* :func:`scitex_todo._django.handlers._comment_relay.comment_inbox_toast`
+  — the comment toast now reflects the standalone INBOX QUEUE (the
+  recipient names the ``commented`` notification was enqueued to) rather
+  than the old direct-POST result; ``target`` resolves via the owner SSOT
+  (``agent`` falling back to ``assignee``), and the author (actor) is never
+  in ``queued``. No network.
 
 The store tests drive the env directly via the ``env`` fixture (the
 PA-306-compliant monkeypatch replacement from ``conftest.py``), never a mock.
@@ -122,47 +123,45 @@ def test_add_task_lockstep_agent_only_sets_assignee(tmp_path, env):
 
 
 # --------------------------------------------------------------------------- #
-# comment relay — FAIL LOUD on no owner; SSOT targeting                        #
+# comment toast — INBOX QUEUE shape + SSOT target; actor never queued           #
 # --------------------------------------------------------------------------- #
-def _relay():
-    from scitex_todo._django.handlers._comment_relay import maybe_relay_comment
+def _toast():
+    from scitex_todo._django.handlers._comment_relay import comment_inbox_toast
 
-    return maybe_relay_comment
+    return comment_inbox_toast
 
 
-def test_relay_no_owner_returns_loud_error():
-    # The card has NEITHER agent NOR assignee — the comment reached nobody.
-    # The OLD behaviour silently returned skip:no-agent; the NEW behaviour
-    # returns a LOUD error result the board JS toasts. No network involved
-    # (the function returns before any deliver()).
-    result = _relay()(
-        {"id": "orphan", "title": "x"},
-        {"author": "operator", "text": "ping"},
-    )
-    assert result["sent"] is False
-    assert result["wire"] == "error:no-owner"
-    assert "reached nobody" in result["reason"]
+def test_toast_no_owner_has_empty_target_and_inbox_wire():
+    # The card has NEITHER agent NOR assignee — no owner to target. The toast
+    # still reports the inbox wire (delivery is the always-works rail) with an
+    # empty target + empty queue. No network involved (no deliver()).
+    result = _toast()({"id": "orphan", "title": "x"}, "operator")
+    assert result["sent"] is True
+    assert result["wire"] == "inbox"
     assert result["target"] == ""
+    assert result["queued"] == []
 
 
-def test_relay_targets_assignee_when_no_agent():
-    # An assignee-only card resolves its owner via card_owner. Make the
-    # comment author == that owner so the self-comment branch fires — proving
-    # the relay TARGET resolved to the assignee (no network, no deliver()).
-    result = _relay()(
-        {"id": "c1", "title": "x", "assignee": "bob"},
-        {"author": "bob", "text": "self note"},
-    )
-    assert result["wire"] == "skip:self-comment"
+def test_toast_target_is_assignee_when_no_agent():
+    # An assignee-only card resolves its owner (the toast TARGET) via the
+    # owner SSOT (card_owner: agent → assignee). No network.
+    result = _toast()({"id": "c1", "title": "x", "assignee": "bob"}, "operator")
+    assert result["wire"] == "inbox"
     assert result["target"] == "bob"
 
 
-def test_relay_self_comment_skips_for_agent_owner():
-    result = _relay()(
-        {"id": "c1", "title": "x", "agent": "alice"},
-        {"author": "alice", "text": "self note"},
-    )
-    assert result["wire"] == "skip:self-comment"
+def test_toast_target_is_agent_when_present():
+    result = _toast()({"id": "c1", "title": "x", "agent": "alice"}, "operator")
+    assert result["wire"] == "inbox"
     assert result["target"] == "alice"
+
+
+def test_toast_self_comment_does_not_queue_the_author():
+    # The author (actor) is never notified of their own comment — when they
+    # are the sole recipient (owner==author), queued is empty. The target
+    # still resolves to the owner via the SSOT.
+    result = _toast()({"id": "c1", "title": "x", "agent": "alice"}, "alice")
+    assert result["target"] == "alice"
+    assert "alice" not in result["queued"]
 
 # EOF

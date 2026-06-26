@@ -1,32 +1,40 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Comment-relay wire — push a board comment to the card's owning agent.
+"""Comment-delivery toast — describe where a board comment was QUEUED.
 
-Extracted from :mod:`crud` (the file hit the line cap) so the relay
-stays a small, self-contained concern. Called by ``handle_comment``
-after the comment is already persisted; relay failure NEVER fails the
-write.
+Extracted from :mod:`crud` (the file hit the line cap) so the comment-
+delivery concern stays a small, self-contained module. Called by
+``handle_comment`` AFTER the comment is persisted and the canonical
+``commented`` card-event is emitted.
 
-Operator P1 (2026-06-25): posting a comment must NOT hang the board
-~30 s when the owner's ``/v1/turn`` is slow/unreachable, and a notify
-failure must be VISIBLE (loud toast), not swallowed. So this relay:
+## Why this is no longer a direct POST (operator P1, 2026-06-26)
 
-* uses a SHORT per-POST timeout (:data:`scitex_todo._push.NOTIFY_TIMEOUT_S`,
-  2 s) instead of the 30 s background default, and
-* passes ``dispatched_is_ok=False`` so a read-timeout returns
-  ``ok=False, reason="timeout"`` FAST rather than silently claiming a
-  "dispatched" success.
+This module USED to host ``maybe_relay_comment``, which delivered a
+comment by a SYNCHRONOUS HTTP POST to the owner's ``/v1/turn`` turn-URL.
+That POST could NEVER reach a *containerized* owner — the agent
+subscribes outbound to a bus and refuses a direct inbound POST
+(connection refused) — so a comment never arrived. It also put a
+slow/unreachable network call on the critical path of the comment write.
 
-The returned dict rides back in the ``/comment`` JSON response under
-``relay`` so the board JS can toast the outcome.
+Comments now flow through the standalone PULL-inbox like every other
+card-event: :func:`scitex_todo._store.comment_task` emits ``commented``,
+and the C4 dispatcher (:func:`scitex_todo._notify.dispatch_notifications`)
+ENQUEUES that notification into each resolved recipient's inbox (owner +
+collaborators + subscribers per the C3 default, minus the actor). The
+recipient PULLs it via the ``poll_notifications`` MCP tool — the
+always-works rail, no network on the write path.
 
-NB: the polling ``scitex-todo.wake-watcher`` ALSO POSTs the owner's
-``/v1/turn`` when it sees ``len(comments)`` grow — so the owner is woken
-on BOTH paths. That redundancy is intentional and harmless: this relay
-is the INTERACTIVE path (gives the operator immediate, toast-able
-feedback) while the watcher is the BACKGROUND reliability path (fires
-even when the board process never ran the relay, e.g. a CLI/MCP
-comment). Both use short timeouts now, so neither can hang the other.
+:func:`comment_inbox_toast` recomputes that SAME recipient set with the
+SSOT the dispatcher uses (:func:`scitex_todo._notify.resolve_recipients`),
+resolves each id to a human NAME, and returns a dict the ``/comment`` JSON
+carries under ``relay`` so the board JS can toast "queued to N
+recipient(s)" instead of the old connection error.
+
+NB: the polling ``scitex-todo.wake-watcher`` may ALSO POST the owner's
+``/v1/turn`` when it sees ``len(comments)`` grow. That background path is
+out of scope here; it likely also cannot reach a containerized owner (so
+it is harmless), and it is a redundant best-effort accelerator — not a
+double of the inbox delivery the recipient actually reads.
 """
 
 from __future__ import annotations
@@ -36,72 +44,91 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def maybe_relay_comment(task: dict, comment: dict) -> dict:
-    """If ``comment.author != card_owner(task)``, push the comment to the
-    card's OWNER via the same wire the nudge button uses.
+def _recipient_names(task: dict, author: str, *, store=None) -> list[str]:
+    """Resolve the comment's inbox recipients to display NAMES (actor dropped).
 
-    Target = :func:`scitex_todo._owner.card_owner` (``agent`` falling back to
-    ``assignee``) — the owner SSOT, so an assignee-only card relays to its
-    owner instead of the previous SILENT ``skip:no-agent`` no-op that read
-    raw ``agent`` and reached NOBODY.
+    Mirrors the dispatcher: the C3 ``commented`` recipient set (owner +
+    collaborators + subscribers by default) resolved on the card, minus the
+    actor (the author is never notified of their own comment), with each id
+    mapped back to a human name (or the raw-name fallback verbatim).
 
-    Returns a dict the JSON response includes so the UI can render a
-    toast: ``{"sent": bool, "wire": ..., "reason": ..., "error": ...,
-    "target": "<owner>"}``.
+    ``store`` MUST be the board's store path — the SAME store the comment was
+    written to and the C4 dispatcher enqueued against. Passing ``None`` would
+    resolve users against the default-precedence store (the large canonical
+    tasks.yaml), which is both WRONG (different user/notify-prefs set) and SLOW
+    (parsing a 100s-of-card YAML on the comment's critical path — the cause of
+    the multi-second board-comment stall).
+    """
+    from ..._notify import resolve_recipients
+    from ..._users import get_user, resolve_user
 
-    FAIL-LOUD when the card has NO owner at all: returns
-    ``{"sent": False, "wire": "error:no-owner", "reason": "card has no
-    owner — comment reached nobody", "target": ""}`` so the board JS toasts
-    a VISIBLE failure instead of swallowing it (operator mandate
-    2026-06-26, constitution rule 2 "no silent fallbacks").
+    recipients = set(resolve_recipients({"type": "commented"}, task, store=store))
+    # Drop the actor exactly as dispatch_notifications does.
+    actor_user = resolve_user(author, store=store)
+    recipients.discard(actor_user.id if actor_user is not None else author)
+    recipients.discard(author)
+
+    names: list[str] = []
+    for uid in recipients:
+        user = get_user(uid, store=store)
+        if user is None:
+            # Unregistered raw-name fallback — it IS already the name.
+            if uid:
+                names.append(uid)
+            continue
+        name = next(
+            (n for n in (user.names or ()) if isinstance(n, str) and n),
+            user.host_at_name or None,
+        )
+        if name:
+            names.append(name)
+    return sorted(set(names))
+
+
+def comment_inbox_toast(task: dict, author: str, *, store=None) -> dict:
+    """Build the ``relay`` toast describing the comment's INBOX QUEUE.
+
+    Returns a dict the ``/comment`` JSON response includes under ``relay`` so
+    the board JS can render a toast::
+
+        {"sent": True, "wire": "inbox", "queued": [<name>, ...],
+         "target": "<owner-name>"}
+
+    ``target`` is the card OWNER (:func:`scitex_todo._owner.card_owner`,
+    ``agent`` falling back to ``assignee``); ``queued`` is every recipient the
+    ``commented`` notification was enqueued to (owner + collaborators +
+    subscribers, minus the author). A self-comment naturally yields an empty
+    ``queued`` (the author is the only recipient and is dropped) — that is the
+    correct "nobody else to notify" signal, NOT a failure.
+
+    ``store`` MUST be the board's store path (what the comment was written to);
+    see :func:`_recipient_names` for why ``None`` is both wrong and slow.
+
+    FAIL-SOFT: the comment is ALREADY on disk and ALREADY enqueued by the
+    emit, so any resolver hiccup degrades to ``queued: []`` and is logged —
+    this NEVER raises and NEVER fails the write.
     """
     from ..._owner import card_owner
 
     target = card_owner(task) or ""
-    author = (comment.get("author") or "").strip()
-    if not target:
-        return {
-            "sent": False,
-            "wire": "error:no-owner",
-            "reason": "card has no owner — comment reached nobody",
-            "target": "",
-        }
-    if author == target:
-        return {"sent": False, "wire": "skip:self-comment", "target": target}
-
-    body = (
-        f"📝 comment on {task['id']} from {author!r}:\n\n"
-        f"{comment.get('text', '')}\n\n"
-        f"---\nReply via `scitex-todo comment {task['id']} "
-        f"\"<your reply>\" --author {target}` (or MCP `add_comment` / "
-        f"`comment_task`)."
-    )
-
-    from ..._push import NOTIFY_TIMEOUT_S, deliver
-
-    # SHORT timeout + fail-loud — see module docstring. Comment is
-    # already on disk; this push is best-effort feedback, not the write.
-    result = deliver(
-        target, body,
-        kind="comment-relay",
-        task_id=task["id"],
-        timeout=NOTIFY_TIMEOUT_S,
-        dispatched_is_ok=False,
-    )
+    try:
+        queued = _recipient_names(task, author, store=store)
+    except Exception:  # noqa: BLE001 — toast is best-effort, never fails write
+        logger.warning(
+            "[scitex-todo] comment toast recipient-resolve failed for %r",
+            task.get("id"),
+            exc_info=True,
+        )
+        queued = []
     logger.info(
-        "[scitex-todo] comment relay %s → %s wire=%s reason=%s (ok=%s)",
-        task["id"], target, result.get("wire"), result.get("reason"),
-        result.get("ok"),
+        "[scitex-todo] comment on %s queued to inbox for %s (target=%s)",
+        task.get("id"),
+        queued,
+        target,
     )
-    return {
-        "sent": result.get("ok", False),
-        "wire": result.get("wire"),
-        "reason": result.get("reason"),
-        "error": result.get("error"),
-        "target": target,
-    }
+    return {"sent": True, "wire": "inbox", "queued": queued, "target": target}
 
 
-__all__ = ["maybe_relay_comment"]
+__all__ = ["comment_inbox_toast"]
 
 # EOF

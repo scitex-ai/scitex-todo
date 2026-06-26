@@ -4,15 +4,17 @@
 
 Real round-trips, NO mocks (STX-NM / PA-306): a real ``tmp_path`` store,
 real users via ``register_user``, real cards via ``add_task``, real events
-via :class:`scitex_todo._events.Event`, and a real RECORDER ``deliver_fn``
-for the dispatcher's optional push rail. Covers:
+via :class:`scitex_todo._events.Event`. The inbox is the dispatcher's SOLE
+delivery rail now (the synchronous direct-POST was removed), so a
+``deliver_fn`` recorder is still passed for back-compat but is NEVER called.
+Covers:
 
 * ``enqueue`` then ``poll_inbox`` returns the record (unseen); ``mark_seen``
   / ``ack`` advances the cursor so a second poll returns nothing new.
 * dedup on ``(event_type, card_id, ts, actor)`` — a re-emit yields one record.
 * the C4 dispatcher enqueues to the resolved recipients' inboxes on a
-  ``reassigned`` / ``completed`` event (asserted via ``poll_inbox``), using
-  the ``deliver_fn`` seam so no real network.
+  ``reassigned`` / ``completed`` event (asserted via ``poll_inbox``), with NO
+  real network on the path.
 * the ``poll_notifications`` MCP tool resolves an agent name → its user-id
   inbox and returns / acks correctly.
 * inbox persistence round-trips and does NOT clobber ``tasks:`` / ``users:``.
@@ -40,7 +42,12 @@ def _store(tmp_path):
 
 
 class _Recorder:
-    """A real push ``deliver_fn`` recorder — appends each call; returns ok."""
+    """A real ``deliver_fn`` recorder — appends each call; returns ok.
+
+    The dispatcher NO LONGER calls ``deliver_fn`` (the inbox is the sole
+    rail), so ``calls`` stays empty in practice; the recorder is kept only
+    to exercise the back-compat parameter and assert it is never invoked.
+    """
 
     def __init__(self):
         self.calls: list[dict] = []
@@ -166,9 +173,10 @@ def test_dispatch_reassigned_enqueues_new_owner_inbox(tmp_path):
         deliver_fn=rec,
     )
 
-    # Enqueued to alice's resolved user-id (NOT her name); push rail also ran.
+    # Enqueued to alice's resolved user-id (NOT her name); the legacy push
+    # rail is NOT invoked (inbox is the sole delivery now).
     assert summary["enqueued"] == [alice.id]
-    assert rec.targets == ["alice"]
+    assert rec.targets == []
     # The inbox holds the notification for alice's id.
     inbox = poll_inbox(alice.id, store=store)
     assert len(inbox) == 1

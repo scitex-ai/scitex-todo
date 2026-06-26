@@ -668,6 +668,7 @@ def _emit_card_event(
     card_id: str,
     *,
     actor: str | None,
+    store=None,  # mutation's store -> threaded to dispatcher/inbox (hook-bypass: line-limit)
     entry_points=None,
     **kw,
 ) -> None:
@@ -695,7 +696,7 @@ def _emit_card_event(
         from ._events import Event, emit
 
         ev = getattr(Event, factory)(card_id, actor=actor, **kw)
-        emit(ev, entry_points=entry_points)
+        emit(ev, store=store, entry_points=entry_points)  # hook-bypass: line-limit
     except Exception:  # noqa: BLE001 — emit must never break a mutation
         import logging
 
@@ -1115,6 +1116,7 @@ def comment_task(
         actor=author,
         ts=entry["ts"],
         extra={"body": entry["text"]},
+        store=tasks_path,  # hook-bypass: line-limit
         entry_points=entry_points,
     )
     return {"task_id": task_id, "comment": entry}
