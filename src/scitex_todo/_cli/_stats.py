@@ -187,7 +187,11 @@ def stats_cmd(
             click.echo(f"# Quiet-nudge sweep (SCITEX_TODO_NUDGE_QUIET_MIN)")
             _emit_quiet_nudges(tasks, rows)
             click.echo("")
-            click.echo("# Stale-active sweep (SCITEX_TODO_STALE_ACTIVE_HOURS)")
+            click.echo(
+                "# Stale-active + pending-backlog sweep "
+                "(SCITEX_TODO_STALE_ACTIVE_HOURS / "
+                "SCITEX_TODO_PENDING_NUDGE_HOURS)"
+            )
             _emit_stale_active_nudges(tasks)
     elif notify or nudge_quiet:
         click.echo(
@@ -268,11 +272,12 @@ def _emit_quiet_nudges(tasks: list[dict], rows: list) -> None:
 
 
 def _emit_stale_active_nudges(tasks: list[dict]) -> None:
-    """Thin CLI wrapper around the stale-active sweep.
+    """Thin CLI wrapper around the stale-active + pending-backlog sweep.
 
     The detect + per-owner fail-soft delivery lives in
     :func:`scitex_todo._stale_active_nudge.sweep_and_nudge` (keeps the
-    network side out of this near-cap CLI module). Each result line is
+    network side out of this near-cap CLI module). It emits BOTH the
+    stale-active and pending-backlog per-owner lines. Each result line is
     echoed for the cron log.
     """
     from .._stale_active_nudge import sweep_and_nudge

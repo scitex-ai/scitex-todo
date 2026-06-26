@@ -13,7 +13,10 @@ from __future__ import annotations
 import datetime as _dt
 
 from scitex_todo._push import ENV_DRY_RUN
-from scitex_todo._stale_active import ENV_STALE_ACTIVE_HOURS
+from scitex_todo._stale_active import (
+    ENV_PENDING_NUDGE_HOURS,
+    ENV_STALE_ACTIVE_HOURS,
+)
 from scitex_todo._stale_active_nudge import sweep_and_nudge
 
 
@@ -26,6 +29,13 @@ def _stale(cid, agent, status="in_progress"):
     return {
         "id": cid, "status": status, "title": cid, "agent": agent,
         "last_activity": _iso_hours_ago(10),
+    }
+
+
+def _pending(cid, agent):
+    return {
+        "id": cid, "status": "pending", "title": cid, "agent": agent,
+        "last_activity": _iso_hours_ago(48),
     }
 
 
@@ -73,3 +83,56 @@ class TestSweepAndNudge:
         tasks = [_stale("a1", "nourlowner")]
         lines = sweep_and_nudge(tasks)
         assert "# 0 stale-active push(es) sent" in lines
+
+
+class TestSweepBothKinds:
+    def test_pending_summary_emitted(self, monkeypatch):
+        monkeypatch.setenv(ENV_DRY_RUN, "1")
+        monkeypatch.setenv(ENV_STALE_ACTIVE_HOURS, "2")
+        monkeypatch.setenv(ENV_PENDING_NUDGE_HOURS, "24")
+        tasks = [_pending("p1", "alpha")]
+        lines = sweep_and_nudge(tasks)
+        assert "# 1 pending-backlog push(es) sent" in lines
+        # No stale-active card present → 0 of that kind.
+        assert "# 0 stale-active push(es) sent" in lines
+
+    def test_both_lines_for_owner_with_both(self, monkeypatch):
+        monkeypatch.setenv(ENV_DRY_RUN, "1")
+        monkeypatch.setenv(ENV_STALE_ACTIVE_HOURS, "2")
+        monkeypatch.setenv(ENV_PENDING_NUDGE_HOURS, "24")
+        # alpha has BOTH a stale in_progress card and an old pending card.
+        tasks = [_stale("s1", "alpha"), _pending("p1", "alpha")]
+        lines = sweep_and_nudge(tasks)
+        assert "# 1 stale-active push(es) sent" in lines
+        assert "# 1 pending-backlog push(es) sent" in lines
+
+    def test_fresh_pending_not_pushed(self, monkeypatch):
+        monkeypatch.setenv(ENV_DRY_RUN, "1")
+        monkeypatch.setenv(ENV_PENDING_NUDGE_HOURS, "24")
+        # 0.1h-old pending is fresh under the 24h threshold.
+        fresh_pending = {
+            "id": "p1", "status": "pending", "title": "p1", "agent": "alpha",
+            "last_activity": _iso_hours_ago(0.1),
+        }
+        lines = sweep_and_nudge([fresh_pending])
+        assert "# 0 pending-backlog push(es) sent" in lines
+
+    def test_fail_soft_when_one_owner_delivery_raises(self, monkeypatch):
+        # Real raise path (no mocks): point one owner's turn URL at an
+        # unknown url type so urlopen raises ValueError (NOT caught inside
+        # deliver) — the sweep's per-owner guard must absorb it and the
+        # OTHER owner must still be delivered + the summary emitted.
+        monkeypatch.delenv(ENV_DRY_RUN, raising=False)
+        monkeypatch.delenv("SCITEX_TODO_AGENT_TURN_URLS", raising=False)
+        monkeypatch.setenv(ENV_STALE_ACTIVE_HOURS, "2")
+        monkeypatch.setenv(ENV_PENDING_NUDGE_HOURS, "24")
+        # ``deliver`` slugs the agent name as UPPER, '-'→'_'.
+        monkeypatch.setenv("SCITEX_TODO_TURN_URL_BADOWNER", "noscheme-url")
+        tasks = [_stale("s1", "badowner"), _pending("p1", "badowner")]
+        lines = sweep_and_nudge(tasks)
+        joined = "\n".join(lines)
+        # The sweep did not raise; both summaries are present and the
+        # raising owner is surfaced as a guarded failure, not a crash.
+        assert "# 0 stale-active push(es) sent" in lines
+        assert "# 0 pending-backlog push(es) sent" in lines
+        assert "push raised" in joined
