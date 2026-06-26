@@ -494,6 +494,9 @@ TOOL_NAMES: tuple[str, ...] = (
     "set_subscriber",
     "resolve_task",
     "reopen_task",
+    # C5 reassign primitive — registered in `_mcp_skills` (budget), 1:1
+    # with `_store.reassign_task`. (hook-bypass: line-limit)
+    "reassign_task",
     # Help-wait SoC lift — semantics lifted out of the dotfiles hook.
     "help_wait",
     "help_clear",
