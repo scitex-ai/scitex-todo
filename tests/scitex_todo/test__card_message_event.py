@@ -239,9 +239,11 @@ def test_card_message_owner_is_none_when_card_has_neither(
     tmp_path: Path,
     bus,
 ):
-    # Arrange — naked card with no agent/assignee.
+    # Arrange — naked card with no agent/assignee. add_task now REQUIRES an
+    # owner (fail-loud), so write a raw owner-less row directly to exercise
+    # the owner-is-None path (no owner -> card_owner returns None).
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
+    store.write_text("tasks:\n  - id: c-1\n    title: x\n    status: pending\n")
     # Act
     comment_task(
         store=store,
