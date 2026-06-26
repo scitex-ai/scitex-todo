@@ -199,6 +199,111 @@ def test_old_alias_still_resolves_after_rename(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# delivery endpoint: turn_url / a2a_port field + user_turn_url helper         #
+# --------------------------------------------------------------------------- #
+def test_register_user_persists_explicit_turn_url(tmp_path):
+    store = tmp_path / "tasks.yaml"
+    created = _users.register_user(
+        kind="agent",
+        names=["proj-x"],
+        turn_url="https://explicit/v1/turn/x",
+        store=store,
+    )
+    reloaded = _users.get_user(created.id, store=store)
+    assert reloaded is not None and reloaded.turn_url == "https://explicit/v1/turn/x"
+
+
+def test_register_user_persists_a2a_port(tmp_path):
+    store = tmp_path / "tasks.yaml"
+    created = _users.register_user(
+        kind="agent",
+        names=["proj-y"],
+        host_at_name="ywata-note-win@proj-y",
+        a2a_port=19007,
+        store=store,
+    )
+    reloaded = _users.get_user(created.id, store=store)
+    assert reloaded is not None and reloaded.a2a_port == 19007
+
+
+def test_user_turn_url_prefers_explicit_over_port(tmp_path):
+    store = tmp_path / "tasks.yaml"
+    user = _users.register_user(
+        kind="agent",
+        names=["proj-z"],
+        host_at_name="some-host@proj-z",
+        turn_url="https://explicit/turn",
+        a2a_port=19007,
+        store=store,
+    )
+    assert _users.user_turn_url(user) == "https://explicit/turn"
+
+
+def test_user_turn_url_derives_from_port_and_host_at_name(tmp_path):
+    store = tmp_path / "tasks.yaml"
+    user = _users.register_user(
+        kind="agent",
+        names=["proj-w"],
+        host_at_name="my-host@proj-w",
+        a2a_port=19007,
+        store=store,
+    )
+    assert _users.user_turn_url(user) == "http://my-host:19007/v1/turn"
+
+
+def test_user_turn_url_bare_host_at_name_uses_loopback(tmp_path):
+    # A bare (host-unknown) id → loopback host, mirroring the sac-registry
+    # a2a_port derivation convention.
+    store = tmp_path / "tasks.yaml"
+    user = _users.register_user(
+        kind="agent", names=["proj-bare"], a2a_port=18080, store=store
+    )
+    assert _users.user_turn_url(user) == "http://127.0.0.1:18080/v1/turn"
+
+
+def test_user_turn_url_none_when_no_endpoint(tmp_path):
+    store = tmp_path / "tasks.yaml"
+    user = _users.register_user(kind="agent", names=["proj-none"], store=store)
+    assert _users.user_turn_url(user) is None
+
+
+def test_validate_user_rejects_non_positive_a2a_port(tmp_path):
+    store = tmp_path / "tasks.yaml"
+    with pytest.raises(_users.UserValidationError):
+        _users.register_user(
+            kind="agent", names=["x"], a2a_port=0, store=store
+        )
+
+
+def test_validate_user_rejects_non_int_a2a_port(tmp_path):
+    store = tmp_path / "tasks.yaml"
+    with pytest.raises(_users.UserValidationError):
+        _users.register_user(
+            kind="agent", names=["x"], a2a_port="19007", store=store
+        )
+
+
+def test_validate_user_rejects_empty_string_turn_url(tmp_path):
+    store = tmp_path / "tasks.yaml"
+    with pytest.raises(_users.UserValidationError):
+        _users.register_user(
+            kind="agent", names=["x"], turn_url="", store=store
+        )
+
+
+def test_endpoint_absent_user_round_trips_without_endpoint_keys(tmp_path):
+    # Backward-compat: a user with no endpoint round-trips with both fields
+    # None (and to_dict omits them, keeping the YAML compact).
+    store = tmp_path / "tasks.yaml"
+    created = _users.register_user(kind="human", names=["alice"], store=store)
+    reloaded = _users.get_user(created.id, store=store)
+    assert reloaded is not None
+    assert reloaded.turn_url is None and reloaded.a2a_port is None
+    assert "turn_url" not in created.to_dict()
+    assert "a2a_port" not in created.to_dict()
+
+
+# --------------------------------------------------------------------------- #
 # set_notify                                                                  #
 # --------------------------------------------------------------------------- #
 def test_set_notify_replaces_dict(tmp_path):

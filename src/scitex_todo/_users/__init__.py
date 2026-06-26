@@ -49,6 +49,7 @@ from ._model import (
     VALID_USER_KINDS,
     User,
     UserValidationError,
+    user_turn_url,
     validate_user,
 )
 from ._store import (
@@ -72,6 +73,7 @@ __all__ = [
     "register_user",
     "resolve_user",
     "set_notify",
+    "user_turn_url",
     "validate_user",
 ]
 
