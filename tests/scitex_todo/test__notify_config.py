@@ -231,12 +231,14 @@ def test_per_user_watch_adds_member_not_in_default_roles(tmp_path):
     store = _store(tmp_path)
     owner = register_user(kind="agent", names=["alice"], store=store)
     collab = register_user(kind="agent", names=["bob"], store=store)
-    # `merged` default = [owner, subscribers]; bob is a COLLABORATOR (not in
-    # the default roles) but watches `merged` → opted in because he's a member.
-    set_notify(collab.id, {"watch": ["merged"]}, store=store)
+    # `completed` default = [owner, subscribers]; bob is a COLLABORATOR (not
+    # in the default roles) but watches `completed` → opted in because he's a
+    # member. (Uses `completed` not `merged`: C4 made `merged` default-quiet
+    # → [], so it no longer carries a base `owner` recipient to assert on.)
+    set_notify(collab.id, {"watch": ["completed"]}, store=store)
     card = {"id": "c1", "agent": "alice", "collaborators": ["bob"]}
 
-    got = resolve_recipients(Event(type=EventType.MERGED), card, store=store)
+    got = resolve_recipients(Event(type=EventType.COMPLETED), card, store=store)
 
     assert got == {owner.id, collab.id}
 
@@ -245,11 +247,12 @@ def test_per_user_watch_does_not_add_non_member(tmp_path):
     store = _store(tmp_path)
     owner = register_user(kind="agent", names=["alice"], store=store)
     outsider = register_user(kind="human", names=["mallory"], store=store)
-    # mallory watches `merged` but is NOT on the card → never added.
-    set_notify(outsider.id, {"watch": ["merged"]}, store=store)
+    # mallory watches `completed` but is NOT on the card → never added.
+    # (`completed`, not `merged`: see the note above — `merged` is now [].)
+    set_notify(outsider.id, {"watch": ["completed"]}, store=store)
     card = {"id": "c1", "agent": "alice"}
 
-    got = resolve_recipients(Event(type=EventType.MERGED), card, store=store)
+    got = resolve_recipients(Event(type=EventType.COMPLETED), card, store=store)
 
     assert got == {owner.id}
     assert outsider.id not in got
@@ -295,11 +298,43 @@ def test_per_card_events_override_changes_roles(tmp_path):
     assert owner.id not in got
 
 
+def test_merged_is_default_quiet(tmp_path):
+    # C4 decision: `merged` defaults to [] (a PR-merge-close also fires
+    # `completed`, the canonical done-notice — defaulting `merged` to
+    # recipients too would double-notify). With zero per-card opt-in, a
+    # `merged` event resolves to NOBODY even for the owner.
+    store = _store(tmp_path)
+    register_user(kind="agent", names=["alice"], store=store)
+    card = {"id": "c1", "agent": "alice"}
+
+    got = resolve_recipients(Event(type=EventType.MERGED), card, store=store)
+
+    assert got == set()
+
+
 def test_per_card_add_force_includes(tmp_path):
     store = _store(tmp_path)
     owner = register_user(kind="agent", names=["alice"], store=store)
     extra = register_user(kind="human", names=["frank"], store=store)
-    # frank is not in any role but is force-added for `merged`.
+    # frank is not in any role but is force-added for `completed`. (Uses
+    # `completed` not `merged`: `merged` is now default-quiet [], so there
+    # is no base `owner` recipient to assert alongside the force-add.)
+    card = {
+        "id": "c1",
+        "agent": "alice",
+        "notify": {"add": {"completed": ["frank"]}},
+    }
+
+    got = resolve_recipients(Event(type=EventType.COMPLETED), card, store=store)
+
+    assert got == {owner.id, extra.id}
+
+
+def test_per_card_add_opts_a_quiet_event_back_in(tmp_path):
+    # The opt-in path for the now-quiet `merged`: a card can still force a
+    # merge ping via its per-card `notify.add`, even though the default is [].
+    store = _store(tmp_path)
+    extra = register_user(kind="human", names=["frank"], store=store)
     card = {
         "id": "c1",
         "agent": "alice",
@@ -308,7 +343,7 @@ def test_per_card_add_force_includes(tmp_path):
 
     got = resolve_recipients(Event(type=EventType.MERGED), card, store=store)
 
-    assert got == {owner.id, extra.id}
+    assert got == {extra.id}
 
 
 def test_per_card_mute_force_excludes_beating_user_and_global(tmp_path):
@@ -334,6 +369,8 @@ def test_per_card_mute_force_excludes_beating_user_and_global(tmp_path):
 
 def test_per_card_mute_beats_per_card_add(tmp_path):
     # mute is applied LAST, so it removes someone `add` just included.
+    # (Uses `completed` not `merged`: `merged` is now default-quiet [], so it
+    # has no base `owner` recipient to assert survives the add+mute.)
     store = _store(tmp_path)
     owner = register_user(kind="agent", names=["alice"], store=store)
     frank = register_user(kind="human", names=["frank"], store=store)
@@ -341,12 +378,12 @@ def test_per_card_mute_beats_per_card_add(tmp_path):
         "id": "c1",
         "agent": "alice",
         "notify": {
-            "add": {"merged": ["frank"]},
+            "add": {"completed": ["frank"]},
             "mute": ["frank"],
         },
     }
 
-    got = resolve_recipients(Event(type=EventType.MERGED), card, store=store)
+    got = resolve_recipients(Event(type=EventType.COMPLETED), card, store=store)
 
     assert got == {owner.id}
     assert frank.id not in got

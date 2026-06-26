@@ -47,8 +47,15 @@ VALID_ROLES: frozenset[str] = frozenset(
 #: levels:
 #:
 #: * ``commented``      → owner + collaborators + subscribers (full thread)
-#: * ``completed``      → owner + subscribers (the card is closed)
-#: * ``merged``         → owner + subscribers (the work landed)
+#: * ``completed``      → owner + subscribers (the card is closed) — the
+#:   SINGLE canonical "done" notice (see ``merged`` below)
+#: * ``merged``         → [] (default-quiet; still per-card opt-in). A
+#:   PR-merge that closes a card emits BOTH ``completed`` (via the store's
+#:   done flip) AND ``merged`` (via the git-link). If ``merged`` ALSO
+#:   defaulted to [owner, subscribers] the C4 dispatcher would DOUBLE-notify
+#:   the same people for one event. ``completed`` is the canonical
+#:   done-notice; ``merged`` stays quiet by default and a card that wants a
+#:   merge ping can opt in via its per-card ``notify`` override.
 #: * ``released``       → subscribers (release announcement)
 #: * ``deployed``       → subscribers (deploy announcement)
 #: * ``reassigned``     → owner (the new owner should learn they own it)
@@ -70,7 +77,11 @@ DEFAULT_NOTIFY_RULES: dict[str, list[str]] = {
     EventType.COMPLETED: [ROLE_OWNER, ROLE_SUBSCRIBERS],
     EventType.COMMITTED: [ROLE_OWNER],
     EventType.PUSHED: [ROLE_OWNER],
-    EventType.MERGED: [ROLE_OWNER, ROLE_SUBSCRIBERS],
+    # Default-quiet: a PR-merge-close already fires `completed` (the
+    # canonical done-notice). Defaulting `merged` to recipients too would
+    # double-notify; keep it [] and let a card opt in per-card. See the
+    # rationale block above.
+    EventType.MERGED: [],
     EventType.RELEASED: [ROLE_SUBSCRIBERS],
     EventType.PULLED: [],
     EventType.DEPLOYED: [ROLE_SUBSCRIBERS],

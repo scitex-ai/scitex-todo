@@ -66,6 +66,7 @@ def dispatch_event(
     """
     kind = event["kind"]
     card_writes: list[dict] = []
+    notify_summary: dict | None = None
     if kind == "push":
         # `entry_points` is forwarded so the C6 git-link card-events the
         # push handler emits (committed/pushed) route through the SAME
@@ -76,20 +77,40 @@ def dispatch_event(
         card_writes = _handle_done(event, store=store)
     elif kind == "unblock":
         card_writes = _handle_unblock(event, store=store)
-    # NOTE: there is intentionally no built-in handler for
-    # ``CARD_EVENT_KIND`` yet (C5); a validated card-event flows straight
-    # to plugins below. The branch is named here only to make that
-    # explicit for the next card.
     elif kind == CARD_EVENT_KIND:
-        card_writes = []
+        # C4: the built-in NOTIFY consumer for canonical card-events.
+        # Resolve recipients (C3) and deliver per-recipient via the push
+        # wire — no fleet-spam. Lazy-imported INSIDE the function (not at
+        # module top) to avoid an import cycle: `_hooks` -> `_notify._dispatch`
+        # -> `_users` / `_store`; this mirrors how `_store` lazy-imports the
+        # bus for its card-message emit. Wrapped FAIL-SOFT so a delivery
+        # hiccup can NEVER make `dispatch_event` (and therefore `emit()`)
+        # raise — `emit()` must stay non-raising for every producer.
+        try:
+            from .._notify._dispatch import dispatch_notifications
+
+            notify_summary = dispatch_notifications(event, store=store)
+        except Exception:  # noqa: BLE001 — notify must never break the producer
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "scitex_todo._hooks: card-event notify dispatch failed",
+                exc_info=True,
+            )
 
     plugin_count, plugin_errors = _run_plugins(event, entry_points=entry_points)
-    return {
+    summary: dict = {
         "kind": kind,
         "card_writes": card_writes,
         "plugin_count": plugin_count,
         "plugin_errors": plugin_errors,
     }
+    # Additive: expose the C4 notify result under a `notify` key WITHOUT
+    # changing the existing summary keys (callers / HTTP / CLI depend on the
+    # original shape). Present only for card-events that ran the consumer.
+    if notify_summary is not None:
+        summary["notify"] = notify_summary
+    return summary
 
 
 # EOF
