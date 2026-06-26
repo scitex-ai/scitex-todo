@@ -325,11 +325,16 @@ def announce_missing_at_boot(tasks: list[dict]) -> list[str]:
 
     Returns the list of missing agents so callers (tests, the boot
     hook) can assert / surface the gap themselves.
+
+    Enumerates the OWNER SSOT (:func:`scitex_todo._owner.card_owner` =
+    ``agent`` falling back to ``assignee``) so an assignee-only card's owner
+    is included — the same target the comment relay / nudge resolve, so the
+    boot warning never misses a relay target.
     """
+    from ._owner import card_owner
+
     agents = sorted({
-        (t.get("agent") or "").strip()
-        for t in tasks
-        if (t.get("agent") or "").strip()
+        owner for t in tasks if (owner := card_owner(t))
     })
     missing = [a for a in agents if turn_url_for(a) is None]
     if missing:

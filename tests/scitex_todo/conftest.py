@@ -122,4 +122,35 @@ def _isolate_host_lane_globs():
     finally:
         helper.restore()
 
+
+# === Suite-wide resolvable-creator default ==================================
+#
+# add_task now FAILS LOUD when the card CREATOR cannot be resolved
+# (operator mandate 2026-06-26: "blank creator -> fail loud", no silent
+# fallback to a blank/"unknown" creator — see _store._resolve_creator_or_raise).
+# The CI/dev environment running the suite has no SCITEX_TODO_AGENT set, so
+# without a default EVERY add_task in the suite would raise. This autouse
+# fixture pins a real resolvable creator so the bulk of the suite (which
+# tests OTHER behaviour and doesn't care who created the card) keeps working.
+#
+# The dedicated fail-loud test for the unresolved-creator path opts BACK OUT
+# via ``env.delete("SCITEX_TODO_AGENT")`` to prove the raise — this fixture
+# restores the value on teardown, so the two stack safely.
+
+
+@pytest.fixture(autouse=True)
+def _default_resolvable_creator():
+    """Set a resolvable ``SCITEX_TODO_AGENT`` for every test by default.
+
+    Mirrors a real fleet agent's environment (agents MUST set
+    ``SCITEX_TODO_AGENT``); a test that needs to prove the unresolved-creator
+    raise deletes it via the ``env`` fixture for the scope of that test.
+    """
+    helper = _EnvHelper()
+    helper.set("SCITEX_TODO_AGENT", "agent:test-suite")
+    try:
+        yield
+    finally:
+        helper.restore()
+
 # EOF

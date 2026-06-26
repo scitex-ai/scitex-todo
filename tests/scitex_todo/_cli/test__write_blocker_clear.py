@@ -31,7 +31,7 @@ def store_with_blocked_task(tmp_path: Path) -> Path:
         id="t-blocker-clear",
         title="card to test clear-blocker",
         status="blocked",
-        blocker="operator-decision",
+        blocker="operator-decision", assignee="agent:test-suite",
     )
     return store
 
@@ -109,7 +109,7 @@ def test_setting_blocker_to_valid_enum_value_still_works(tmp_path: Path):
     # ParamType doesn't break the existing closed-enum behavior.
     # Uses `compute` (a real VALID_BLOCKERS member, see _model.py).
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-set", title="set blocker", status="pending")
+    add_task(store=store, id="t-set", title="set blocker", status="pending", assignee="agent:test-suite")
     runner = CliRunner()
     # Act
     runner.invoke(

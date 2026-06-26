@@ -37,17 +37,35 @@ logger = logging.getLogger(__name__)
 
 
 def maybe_relay_comment(task: dict, comment: dict) -> dict:
-    """If ``comment.author != task.agent``, push the comment to the
-    owning agent via the same wire the nudge button uses.
+    """If ``comment.author != card_owner(task)``, push the comment to the
+    card's OWNER via the same wire the nudge button uses.
+
+    Target = :func:`scitex_todo._owner.card_owner` (``agent`` falling back to
+    ``assignee``) — the owner SSOT, so an assignee-only card relays to its
+    owner instead of the previous SILENT ``skip:no-agent`` no-op that read
+    raw ``agent`` and reached NOBODY.
 
     Returns a dict the JSON response includes so the UI can render a
     toast: ``{"sent": bool, "wire": ..., "reason": ..., "error": ...,
-    "target": "<agent>"}``.
+    "target": "<owner>"}``.
+
+    FAIL-LOUD when the card has NO owner at all: returns
+    ``{"sent": False, "wire": "error:no-owner", "reason": "card has no
+    owner — comment reached nobody", "target": ""}`` so the board JS toasts
+    a VISIBLE failure instead of swallowing it (operator mandate
+    2026-06-26, constitution rule 2 "no silent fallbacks").
     """
-    target = (task.get("agent") or "").strip()
+    from ..._owner import card_owner
+
+    target = card_owner(task) or ""
     author = (comment.get("author") or "").strip()
     if not target:
-        return {"sent": False, "wire": "skip:no-agent", "target": ""}
+        return {
+            "sent": False,
+            "wire": "error:no-owner",
+            "reason": "card has no owner — comment reached nobody",
+            "target": "",
+        }
     if author == target:
         return {"sent": False, "wire": "skip:self-comment", "target": target}
 

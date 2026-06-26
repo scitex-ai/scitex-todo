@@ -40,7 +40,7 @@ class TestGetTask:
     def test_returns_the_matching_dict(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         found = _store.get_task(store, task_id="a")
         # Assert
@@ -49,7 +49,7 @@ class TestGetTask:
     def test_unknown_id_raises_not_found(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         # Assert
         with pytest.raises(_store.TaskNotFoundError):
@@ -58,7 +58,7 @@ class TestGetTask:
     def test_missing_task_id_arg_raises(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         # Assert
         with pytest.raises(ValueError):
@@ -74,8 +74,8 @@ class TestDeleteTask:
     def test_removes_the_target_row(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
-        _store.add_task(store, id="b", title="B")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
+        _store.add_task(store, id="b", title="B", assignee="agent:test-suite")
         # Act
         _store.delete_task(store, task_id="a")
         # Assert
@@ -84,7 +84,7 @@ class TestDeleteTask:
     def test_returns_the_removed_task(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         result = _store.delete_task(store, task_id="a")
         # Assert
@@ -93,8 +93,8 @@ class TestDeleteTask:
     def test_scrubs_depends_on_reference(self, tmp_path):
         # Arrange — `b` depends on `a`; deleting `a` strips it from b.
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
-        _store.add_task(store, id="b", title="B", depends_on=["a"])
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
+        _store.add_task(store, id="b", title="B", depends_on=["a"], assignee="agent:test-suite")
         # Act
         _store.delete_task(store, task_id="a")
         # Assert
@@ -104,8 +104,8 @@ class TestDeleteTask:
     def test_scrubs_blocks_reference(self, tmp_path):
         # Arrange — `a` blocks `b`; deleting `a` strips it from b.
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
-        _store.add_task(store, id="b", title="B", blocks=["a"])
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
+        _store.add_task(store, id="b", title="B", blocks=["a"], assignee="agent:test-suite")
         # Act
         _store.delete_task(store, task_id="a")
         # Assert
@@ -115,8 +115,8 @@ class TestDeleteTask:
     def test_scrubs_parent_reference(self, tmp_path):
         # Arrange — `b.parent = a`; deleting `a` strips parent.
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
-        _store.add_task(store, id="b", title="B", parent="a")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
+        _store.add_task(store, id="b", title="B", parent="a", assignee="agent:test-suite")
         # Act
         _store.delete_task(store, task_id="a")
         # Assert
@@ -126,8 +126,8 @@ class TestDeleteTask:
     def test_returns_refs_for_undo(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
-        _store.add_task(store, id="b", title="B", depends_on=["a"])
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
+        _store.add_task(store, id="b", title="B", depends_on=["a"], assignee="agent:test-suite")
         # Act
         result = _store.delete_task(store, task_id="a")
         # Assert — `b` was the mutated ref; refs contains its id.
@@ -136,7 +136,7 @@ class TestDeleteTask:
     def test_unknown_id_raises_not_found(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         # Assert
         with pytest.raises(_store.TaskNotFoundError):
@@ -152,7 +152,7 @@ class TestRestoreTask:
     def test_round_trips_a_delete(self, tmp_path):
         # Arrange — delete `a`, then restore from the returned payload.
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         removed = _store.delete_task(store, task_id="a")["removed"]
         # Act
         _store.restore_task(store, task=removed, refs=[])
@@ -162,7 +162,7 @@ class TestRestoreTask:
     def test_duplicate_id_raises(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # branch.
         # Act
         # Assert
@@ -198,7 +198,7 @@ class TestCommentTask:
     def test_appends_a_comment_entry(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         _store.comment_task(store, task_id="a", text="hello", by="me")
         # Assert
@@ -208,7 +208,7 @@ class TestCommentTask:
     def test_comment_carries_text(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         _store.comment_task(store, task_id="a", text="hi", by="me")
         # Assert
@@ -218,7 +218,7 @@ class TestCommentTask:
     def test_empty_text_raises(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         # Assert
         with pytest.raises(ValueError):
@@ -227,7 +227,7 @@ class TestCommentTask:
     def test_unknown_id_raises_not_found(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         # Assert
         with pytest.raises(_store.TaskNotFoundError):
@@ -243,8 +243,8 @@ class TestSetEdge:
     def test_add_depends_on_inserts_edge(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
-        _store.add_task(store, id="b", title="B")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
+        _store.add_task(store, id="b", title="B", assignee="agent:test-suite")
         # Act
         _store.set_edge(
             store,
@@ -259,8 +259,8 @@ class TestSetEdge:
     def test_remove_depends_on_strips_edge(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
-        _store.add_task(store, id="b", title="B", depends_on=["a"])
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
+        _store.add_task(store, id="b", title="B", depends_on=["a"], assignee="agent:test-suite")
         # Act
         _store.set_edge(
             store,
@@ -275,8 +275,8 @@ class TestSetEdge:
     def test_add_blocks_inserts_edge(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
-        _store.add_task(store, id="b", title="B")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
+        _store.add_task(store, id="b", title="B", assignee="agent:test-suite")
         # Act
         _store.set_edge(
             store,
@@ -347,7 +347,7 @@ class TestSetEdge:
     def test_unknown_source_raises_not_found(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         # Assert
         with pytest.raises(_store.TaskNotFoundError):
@@ -362,7 +362,7 @@ class TestSetEdge:
     def test_unknown_target_raises_not_found(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         # Assert
         with pytest.raises(_store.TaskNotFoundError):
@@ -389,7 +389,7 @@ class TestResolveTask:
             id="a",
             title="A",
             status="blocked",
-            blocker="operator-decision",
+            blocker="operator-decision", assignee="agent:test-suite",
         )
         # Act
         _store.resolve_task(store, task_id="a", actor="op")
@@ -404,7 +404,7 @@ class TestResolveTask:
             id="a",
             title="A",
             status="blocked",
-            blocker="operator-decision",
+            blocker="operator-decision", assignee="agent:test-suite",
         )
         # Act
         _store.resolve_task(store, task_id="a", actor="op")
@@ -419,7 +419,7 @@ class TestResolveTask:
             id="a",
             title="A",
             status="blocked",
-            blocker="operator-decision",
+            blocker="operator-decision", assignee="agent:test-suite",
         )
         # Act
         _store.resolve_task(store, task_id="a", actor="op")
@@ -431,7 +431,7 @@ class TestResolveTask:
         # Arrange — task already at done; second resolve must NOT raise
         # and must append a "noop" comment.
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A", status="done")
+        _store.add_task(store, id="a", title="A", status="done", assignee="agent:test-suite")
         # Act
         _store.resolve_task(store, task_id="a", actor="op")
         # Assert
@@ -442,7 +442,7 @@ class TestResolveTask:
         # before resolve_task gets to its own not-found branch.
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         # Assert
         with pytest.raises(_store.TaskNotFoundError):
@@ -458,7 +458,7 @@ class TestReopenTask:
     def test_flips_status_to_blocked(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A", status="done")
+        _store.add_task(store, id="a", title="A", status="done", assignee="agent:test-suite")
         # Act
         _store.reopen_task(store, task_id="a", by="op")
         # Assert
@@ -467,7 +467,7 @@ class TestReopenTask:
     def test_restores_operator_decision_blocker(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A", status="done")
+        _store.add_task(store, id="a", title="A", status="done", assignee="agent:test-suite")
         # Act
         _store.reopen_task(store, task_id="a", by="op")
         # Assert
@@ -476,7 +476,7 @@ class TestReopenTask:
     def test_appends_audit_comment(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A", status="done")
+        _store.add_task(store, id="a", title="A", status="done", assignee="agent:test-suite")
         # Act
         _store.reopen_task(store, task_id="a", by="op")
         # Assert
@@ -486,7 +486,7 @@ class TestReopenTask:
     def test_unknown_id_raises_not_found(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         # Assert
         with pytest.raises(_store.TaskNotFoundError):
@@ -502,7 +502,7 @@ class TestSetCollaborator:
     def test_add_inserts_collaborator(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         _store.set_collaborator(store, task_id="a", who="bob", action="add")
         # Assert
@@ -511,7 +511,7 @@ class TestSetCollaborator:
     def test_add_also_subscribes(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         _store.set_collaborator(store, task_id="a", who="bob", action="add")
         # Assert
@@ -520,7 +520,7 @@ class TestSetCollaborator:
     def test_add_is_idempotent(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         _store.set_collaborator(store, task_id="a", who="bob", action="add")
         # Act
         _store.set_collaborator(store, task_id="a", who="bob", action="add")
@@ -530,7 +530,7 @@ class TestSetCollaborator:
     def test_remove_strips_collaborator(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         _store.set_collaborator(store, task_id="a", who="bob", action="add")
         # Act
         _store.set_collaborator(store, task_id="a", who="bob", action="remove")
@@ -540,7 +540,7 @@ class TestSetCollaborator:
     def test_remove_leaves_subscription_intact(self, tmp_path):
         # Arrange — add (auto-subscribes), then remove as collaborator only.
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         _store.set_collaborator(store, task_id="a", who="bob", action="add")
         # Act
         _store.set_collaborator(store, task_id="a", who="bob", action="remove")
@@ -550,7 +550,7 @@ class TestSetCollaborator:
     def test_invalid_action_raises(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         # Assert
         with pytest.raises(ValueError):
@@ -559,7 +559,7 @@ class TestSetCollaborator:
     def test_unknown_card_raises_not_found(self, tmp_path):
         # Arrange — store exists, but the id does not.
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         # Assert
         with pytest.raises(_store.TaskNotFoundError):
@@ -572,7 +572,7 @@ class TestSetSubscriber:
     def test_add_inserts_subscriber(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         _store.set_subscriber(store, task_id="a", who="bob", action="add")
         # Assert
@@ -581,7 +581,7 @@ class TestSetSubscriber:
     def test_remove_strips_subscriber(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         _store.set_subscriber(store, task_id="a", who="bob", action="add")
         # Act
         _store.set_subscriber(store, task_id="a", who="bob", action="remove")
@@ -591,7 +591,7 @@ class TestSetSubscriber:
     def test_collaborator_can_unsubscribe(self, tmp_path):
         # Arrange — collaborator is auto-subscribed; "always unsubscribable".
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         _store.set_collaborator(store, task_id="a", who="bob", action="add")
         # Act
         _store.set_subscriber(store, task_id="a", who="bob", action="remove")
@@ -603,7 +603,7 @@ class TestSetSubscriber:
     def test_invalid_action_raises(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         # Assert
         with pytest.raises(ValueError):
@@ -612,7 +612,7 @@ class TestSetSubscriber:
     def test_unknown_card_raises_not_found(self, tmp_path):
         # Arrange — store exists, but the id does not.
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         # Assert
         with pytest.raises(_store.TaskNotFoundError):
@@ -638,8 +638,8 @@ class TestUnblockDrive:
     def test_complete_unblocks_single_dependency(self, tmp_path):
         # Arrange — b depends on a; both pending.
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
-        _store.add_task(store, id="b", title="B", depends_on=["a"])
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
+        _store.add_task(store, id="b", title="B", depends_on=["a"], assignee="agent:test-suite")
         # Act
         _store.complete_task(store, task_id="a")
         # Assert
@@ -648,9 +648,9 @@ class TestUnblockDrive:
     def test_partial_deps_are_not_unblocked(self, tmp_path):
         # Arrange — b depends on a AND c; completing only a leaves c pending.
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
-        _store.add_task(store, id="c", title="C")
-        _store.add_task(store, id="b", title="B", depends_on=["a", "c"])
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
+        _store.add_task(store, id="c", title="C", assignee="agent:test-suite")
+        _store.add_task(store, id="b", title="B", depends_on=["a", "c"], assignee="agent:test-suite")
         # Act
         _store.complete_task(store, task_id="a")
         # Assert
@@ -659,8 +659,8 @@ class TestUnblockDrive:
     def test_already_done_dependent_is_not_unblocked(self, tmp_path):
         # Arrange — b already done; completing its dep must not re-ping it.
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
-        _store.add_task(store, id="b", title="B", status="done", depends_on=["a"])
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
+        _store.add_task(store, id="b", title="B", status="done", depends_on=["a"], assignee="agent:test-suite")
         # Act
         _store.complete_task(store, task_id="a")
         # Assert
@@ -669,8 +669,8 @@ class TestUnblockDrive:
     def test_blocks_edge_drives_unblock(self, tmp_path):
         # Arrange — a blocks b (the reverse-edge form of a dependency).
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A", blocks=["b"])
-        _store.add_task(store, id="b", title="B")
+        _store.add_task(store, id="a", title="A", blocks=["b"], assignee="agent:test-suite")
+        _store.add_task(store, id="b", title="B", assignee="agent:test-suite")
         # Act
         _store.complete_task(store, task_id="a")
         # Assert
@@ -679,8 +679,8 @@ class TestUnblockDrive:
     def test_update_task_status_done_drives_unblock(self, tmp_path):
         # Arrange — flipping status via update_task drives the same unblock.
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
-        _store.add_task(store, id="b", title="B", depends_on=["a"])
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
+        _store.add_task(store, id="b", title="B", depends_on=["a"], assignee="agent:test-suite")
         # Act
         _store.update_task(store, task_id="a", status="done")
         # Assert
@@ -690,9 +690,9 @@ class TestUnblockDrive:
         # Arrange — resolving a blocker card frees its dependents too.
         store = tmp_path / "tasks.yaml"
         _store.add_task(
-            store, id="a", title="A", status="blocked", blocker="operator-decision"
+            store, id="a", title="A", status="blocked", blocker="operator-decision", assignee="agent:test-suite"
         )
-        _store.add_task(store, id="b", title="B", depends_on=["a"])
+        _store.add_task(store, id="b", title="B", depends_on=["a"], assignee="agent:test-suite")
         # Act
         _store.resolve_task(store, task_id="a", actor="op")
         # Assert
@@ -701,7 +701,7 @@ class TestUnblockDrive:
     def test_completing_card_with_no_dependents_is_clean(self, tmp_path):
         # Arrange — a standalone card; the drive must be a clean no-op.
         store = tmp_path / "tasks.yaml"
-        _store.add_task(store, id="a", title="A")
+        _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         _store.complete_task(store, task_id="a")
         # Assert

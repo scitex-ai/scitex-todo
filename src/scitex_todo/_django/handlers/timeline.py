@@ -141,12 +141,14 @@ def _started_at(task: dict) -> str | None:
 def _lane_for(task: dict, lane_by: str) -> str:
     """Project the task onto a lane label.
 
-    For ``lane_by=agent`` the value is ``task["agent"] or task["assignee"]``
-    (the legacy fallback mirrors ``handlers/graph._build_fleet``). For
-    ``lane_by=group`` it's the T1.1 ``group`` field; ``lane_by=project`` the
-    task's ``project``; ``lane_by=task`` the task title (ONE lane per task —
-    the "simple" view). An empty / missing value maps to
-    :data:`_UNGROUPED_LANE` — never duplicated as a hard-coded list anywhere.
+    For ``lane_by=agent`` the value is the OWNER SSOT
+    :func:`scitex_todo._owner.card_owner` (``agent`` falling back to
+    ``assignee``) — the same rule the board grouping + comment relay + notify
+    use, so every owner read agrees. For ``lane_by=group`` it's the T1.1
+    ``group`` field; ``lane_by=project`` the task's ``project``;
+    ``lane_by=task`` the task title (ONE lane per task — the "simple" view).
+    An empty / missing value maps to :data:`_UNGROUPED_LANE` — never
+    duplicated as a hard-coded list anywhere.
     """
     if lane_by == "group":
         val = task.get("group")
@@ -158,7 +160,9 @@ def _lane_for(task: dict, lane_by: str) -> str:
         # rows; a rare title collision just shares a row, which is fine.
         val = task.get("title") or task.get("task") or task.get("id")
     else:
-        val = task.get("agent") or task.get("assignee")
+        from ..._owner import card_owner
+
+        val = card_owner(task)
     if val is None or str(val).strip() == "":
         return _UNGROUPED_LANE
     return str(val)
@@ -234,11 +238,13 @@ def _build_payload(
         ):
             continue
         lane = _lane_for(t, lane_by)
+        from ..._owner import card_owner
+
         events.append(
             {
                 "id": t.get("id"),
                 "title": t.get("title") or t.get("task") or t.get("id"),
-                "agent": t.get("agent") or t.get("assignee"),
+                "agent": card_owner(t),
                 "group": t.get("group"),
                 "lane": lane,
                 "started_at": _started_at(t),

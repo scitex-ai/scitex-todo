@@ -66,8 +66,8 @@ def test_register_user_string_names_coerced_to_list(tmp_path):
 # --------------------------------------------------------------------------- #
 def test_user_write_does_not_disturb_tasks(tmp_path):
     store = tmp_path / "tasks.yaml"
-    _store.add_task(store, id="t1", title="Task one", status="pending")
-    _store.add_task(store, id="t2", title="Task two", status="in_progress")
+    _store.add_task(store, id="t1", title="Task one", status="pending", assignee="agent:test-suite")
+    _store.add_task(store, id="t2", title="Task two", status="in_progress", assignee="agent:test-suite")
     before = _model.load_tasks(store)
 
     _users.register_user(kind="agent", names=["owner-1"], store=store)
@@ -81,7 +81,7 @@ def test_user_write_does_not_disturb_tasks(tmp_path):
 def test_task_write_after_user_write_keeps_users(tmp_path):
     store = tmp_path / "tasks.yaml"
     user = _users.register_user(kind="agent", names=["owner-1"], store=store)
-    _store.add_task(store, id="t1", title="Task one", status="pending")
+    _store.add_task(store, id="t1", title="Task one", status="pending", assignee="agent:test-suite")
     # The user survives a subsequent task write (round-trip preserves it).
     assert _users.get_user(user.id, store=store) is not None
     assert [t["id"] for t in _model.load_tasks(store)] == ["t1"]
@@ -334,7 +334,7 @@ def test_list_users_returns_all(tmp_path):
 
 def test_list_users_empty_when_no_section(tmp_path):
     store = tmp_path / "tasks.yaml"
-    _store.add_task(store, id="t1", title="Task one")  # tasks but no users
+    _store.add_task(store, id="t1", title="Task one", assignee="agent:test-suite")  # tasks but no users
     assert _users.list_users(store=store) == []
 
 

@@ -182,7 +182,7 @@ def test_event_validate_card_ids_default_to_empty_list():
 
 def _store_with(tmp_path: Path) -> Path:
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="card-1", title="x")
+    add_task(store=store, id="card-1", title="x", assignee="agent:test-suite")
     return store
 
 

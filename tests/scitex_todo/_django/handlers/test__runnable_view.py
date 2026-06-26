@@ -34,13 +34,13 @@ def store_with_runnable(tmp_path: Path, env) -> Path:
     SCITEX_TODO_TASKS so the view's `resolve_tasks_path(None)` picks
     it up."""
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-runnable", title="r", group="paper")
+    add_task(store=store, id="t-runnable", title="r", group="paper", assignee="agent:test-suite")
     add_task(
         store=store,
         id="t-blocked",
         title="b",
         status="blocked",
-        blocker="operator-decision",
+        blocker="operator-decision", assignee="agent:test-suite",
     )
     env.set("SCITEX_TODO_TASKS", str(store))
     return store
