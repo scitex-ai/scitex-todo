@@ -51,14 +51,17 @@ sttc_repo_slug() {
 }
 
 # Emit + dispatch a push event for one commit, best-effort.
-# Args: repo_root branch commit_sha [commit_msg_file]
+# Args: repo_root branch commit_sha [commit_msg_file] [trigger]
+# - trigger (commit|push, default push) tells the consumer whether this
+#   came from post-commit (commit) or pre-push (push) so it emits the
+#   matching canonical card-event type (committed vs pushed).
 # - Resolves the card id (branch, then Card: trailer in the msg file).
 # - If a card id resolves, builds the event JSON in python and pipes it
 #   to `scitex-todo hook push --payload -`.
 # - No card id  -> silent exit 0 (SOFT).
 # - Any failure -> swallowed (|| true); the hook never blocks git.
 sttc_emit_push() {
-    local repo_root="$1" branch="$2" sha="$3" msg_file="${4:-}"
+    local repo_root="$1" branch="$2" sha="$3" msg_file="${4:-}" trigger="${5:-push}"
     [ -n "${branch}" ] || return 0
     [ -n "${sha}" ] || return 0
 
@@ -83,6 +86,7 @@ sttc_emit_push() {
         --branch "${branch}" \
         --sha "${sha}" \
         --author "${author}" \
+        --trigger "${trigger}" \
         "${msg_args[@]}" 2>/dev/null)" || return 0
     [ -n "${event}" ] || return 0
 

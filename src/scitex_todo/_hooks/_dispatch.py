@@ -67,7 +67,11 @@ def dispatch_event(
     kind = event["kind"]
     card_writes: list[dict] = []
     if kind == "push":
-        card_writes = _handle_push(event, store=store)
+        # `entry_points` is forwarded so the C6 git-link card-events the
+        # push handler emits (committed/pushed) route through the SAME
+        # injected plugin set the dispatcher uses — letting tests capture
+        # them via the documented in-process seam (no monkeypatch).
+        card_writes = _handle_push(event, store=store, entry_points=entry_points)
     elif kind == "done":
         card_writes = _handle_done(event, store=store)
     elif kind == "unblock":

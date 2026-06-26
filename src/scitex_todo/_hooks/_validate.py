@@ -89,6 +89,12 @@ def event_validate(event: Any) -> dict:
         out["commit_sha"] = _require("commit_sha")
         out["author"] = event.get("author")
         out["message"] = event.get("message")
+        # `trigger` (optional) distinguishes a local `commit` (post-commit
+        # hook) from a `push` (pre-push hook) so the built-in handler can
+        # emit the matching canonical card-event (`committed` vs `pushed`).
+        # Carried through verbatim; absent/unknown means "push" (the
+        # historical behaviour). Never required — purely additive.
+        out["trigger"] = event.get("trigger")
     elif kind == "done":
         out["repo"] = _require("repo")
         pr_number = event.get("pr_number")
