@@ -368,10 +368,10 @@ def _load_static_agents(path: Path) -> list[dict]:
     is swallowed so the watcher keeps running.
     """
     try:
-        import yaml
+        from ._yaml import safe_load
 
         with path.open(encoding="utf-8") as handle:
-            data = yaml.safe_load(handle) or {}
+            data = safe_load(handle) or {}
         raw = data.get("agents") or []
         return [a for a in raw if isinstance(a, dict)]
     except Exception:  # pragma: no cover - defensive

@@ -107,9 +107,11 @@ def _read_sidecar(path: Path) -> dict[str, list[str]]:
     """
     import yaml
 
+    from .._yaml import safe_load
+
     try:
         with path.open(encoding="utf-8") as handle:
-            data = yaml.safe_load(handle)
+            data = safe_load(handle)
     except yaml.YAMLError as exc:  # malformed YAML — fail loud
         raise NotifyConfigError(
             f"{path}: notify sidecar is not valid YAML: {exc}"
