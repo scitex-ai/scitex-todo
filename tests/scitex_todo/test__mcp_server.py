@@ -103,6 +103,9 @@ _CONVENTION_A_NAMES = {
     # `_help_wait.help_clear`. Semantics lifted out of the dotfiles hook.
     "help_wait",
     "help_clear",
+    # Standalone pull-inbox read path — 1:1 with `_inbox.poll_inbox`
+    # (registered in `_mcp_skills`). PULL card-message delivery, no sac.
+    "poll_notifications",
 }
 # Convention B — `todo_<verb>_<noun>` for the audit §5 required skills
 # tools. These don't map 1:1 to a Python API; they introspect the bundled

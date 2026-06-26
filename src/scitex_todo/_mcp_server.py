@@ -2,18 +2,10 @@
 # -*- coding: utf-8 -*-
 """scitex-todo MCP server — one FastMCP instance per the SciTeX convention.
 
-Tools (audit §6 Convention A — ``tool_name == python_api_name``):
-
-    add_task          — add a new task                  (scitex_todo.add_task)
-    update_task       — mutate fields of an existing task (scitex_todo.update_task)
-    complete_task     — mark done + stamp _log_meta     (scitex_todo.complete_task)
-    list_tasks        — filter the store                (scitex_todo.list_tasks)
-    summarize_tasks   — counts by status/scope/assignee (scitex_todo.summarize_tasks)
-    resolve_store     — resolved store path + chain     (scitex_todo.resolve_store)
-    help_wait         — upsert an agent's help-wait card (scitex_todo._help_wait.help_wait)
-    help_clear        — resolve an agent's help-wait card (scitex_todo._help_wait.help_clear)
-    todo_skills_list  — list bundled agent skills       (audit §5 required pair)
-    todo_skills_get   — get one bundled skill's content (audit §5 required pair)
+Tools follow audit §6 Convention A (``tool_name == python_api_name``); see
+``TOOL_NAMES`` for the full registered set (task CRUD + edges + roles, the
+``help_wait`` / ``help_clear`` cards, ``poll_notifications`` — the standalone
+PULL card-message inbox — and the ``todo_skills_*`` §5 pair).
 
 The task-store tool surface is a thin wrapper around :mod:`scitex_todo._store`
 (the Python API) so MCP / CLI / GUI all share one logic path — §6 Python-API
@@ -473,10 +465,9 @@ async def set_subscriber(
     )
 
 
-#: Canonical list of registered tool names — kept here as a constant so the
-#: `mcp doctor` / `mcp list-tools` CLI verbs don't have to introspect
-#: FastMCP's internal registry (which drifts between 2.x and 3.x). Update
-#: this tuple whenever a `@mcp.tool()` is added or removed above.
+#: Canonical list of registered tool names — a constant so the `mcp doctor`
+#: / `mcp list-tools` CLI verbs need not introspect FastMCP's drifting
+#: internal registry. Update when a `@mcp.tool()` is added/removed.
 TOOL_NAMES: tuple[str, ...] = (
     "add_task",
     "update_task",
@@ -494,21 +485,20 @@ TOOL_NAMES: tuple[str, ...] = (
     "set_subscriber",
     "resolve_task",
     "reopen_task",
-    # C5 reassign primitive — registered in `_mcp_skills` (budget), 1:1
-    # with `_store.reassign_task`. (hook-bypass: line-limit)
+    # Registered in `_mcp_skills` (budget): reassign (1:1 `_store.reassign_task`)
     "reassign_task",
     # Help-wait SoC lift — semantics lifted out of the dotfiles hook.
     "help_wait",
     "help_clear",
+    # Standalone pull-inbox read path (1:1 `_inbox.poll_inbox`; in _mcp_skills).
+    "poll_notifications",
     "todo_skills_list",
     "todo_skills_get",
 )
 
-# Register the extracted tool clusters (skills §5 pair + help-wait) — kept in
-# ``_mcp_skills`` to hold this module under its line budget. The import has the
-# side effect of decorating ``todo_skills_list`` / ``todo_skills_get`` /
-# ``help_wait`` / ``help_clear`` onto the shared ``mcp`` instance, so
-# ``from scitex_todo._mcp_server import mcp`` exposes every tool.
+# Import for the registration side effect: ``_mcp_skills`` (kept separate for
+# this module's line budget) decorates its extra tools onto the shared ``mcp``
+# instance, so ``from scitex_todo._mcp_server import mcp`` exposes every tool.
 from . import _mcp_skills  # noqa: E402,F401
 
 __all__ = ["TOOL_NAMES", "mcp"]

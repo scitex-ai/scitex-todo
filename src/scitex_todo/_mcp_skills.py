@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 
-from . import _help_wait, _store
+from . import _help_wait, _inbox, _store
 from ._mcp_server import mcp
 
 
@@ -119,9 +119,60 @@ async def help_clear(
     return json.dumps(_help_wait.help_clear(tasks_path, agent))
 
 
+@mcp.tool()
+async def poll_notifications(
+    agent: str,
+    unseen_only: bool = True,
+    ack: bool = False,
+    tasks_path: str | None = None,
+) -> str:
+    """PULL an agent's pending card-message notifications (STANDALONE).
+
+    The standalone (zero-sac) delivery read path: the C4 dispatcher ENQUEUEs
+    each card-event into the recipient's per-recipient pull-inbox (a sibling
+    ``inboxes:`` section in the shared store); this tool returns that inbox
+    so any agent's scitex-todo client can poll it WITHOUT sac. The sac push
+    rail stays an optional parallel accelerator, not a dependency.
+
+    ``agent`` is resolved to its stable user-id via
+    :func:`scitex_todo._users.resolve_user` (so a rename still finds the
+    inbox); an UNREGISTERED name falls back to itself (the same raw-name key
+    the dispatcher enqueued under). Returns a JSON object::
+
+        {"agent": <input>, "recipient_id": <resolved id/name>,
+         "notifications": [ {id, event_type, card_id, body, actor, ts, seen},
+                            ... ]}
+
+    Args:
+      agent: the recipient name / id / host@name to poll for.
+      unseen_only: when true (default) return only unseen notifications;
+        false returns the full history.
+      ack: when true, advance the cursor — mark the RETURNED notifications
+        seen so a later poll does not return them again.
+    """
+    from ._users import resolve_user
+
+    user = resolve_user(agent, store=tasks_path)
+    recipient_id = user.id if user is not None else agent
+    notifications = _inbox.poll_inbox(
+        recipient_id,
+        unseen_only=unseen_only,
+        mark_seen=ack,
+        store=tasks_path,
+    )
+    return json.dumps(
+        {
+            "agent": agent,
+            "recipient_id": recipient_id,
+            "notifications": notifications,
+        }
+    )
+
+
 __all__ = [
     "help_clear",
     "help_wait",
+    "poll_notifications",
     "reassign_task",
     "todo_skills_get",
     "todo_skills_list",

@@ -39,6 +39,18 @@ swallows bus errors. C4 adds a SECOND layer of isolation:
 * **per-recipient** isolation here — one ``deliver_fn`` raising or
   returning ``ok=False`` for a recipient must NOT stop the others.
 
+## Standalone PULL-inbox sink (the always-works delivery rail)
+
+``deliver_fn`` (the direct turn-URL POST) CANNOT reach a *containerized*
+agent — the agent subscribes outbound to a bus and refuses a direct inbound
+POST. So C4 ALSO **enqueues** each resolved recipient's notification into a
+per-recipient PULL-inbox (:mod:`scitex_todo._inbox`), persisted in the same
+store with ZERO sac dependency. The recipient's scitex-todo client then
+POLLs that inbox (``poll_notifications`` MCP tool). The push ``deliver_fn``
+stays an OPTIONAL parallel ACCELERATOR for host-reachable agents — harmless
+when it fails for a container. The enqueue is FAIL-SOFT: an inbox error can
+never break the mutation or ``emit()``.
+
 ## ``deliver_fn`` injection seam (no mocks)
 
 :func:`dispatch_notifications` takes a ``deliver_fn`` parameter defaulting
@@ -231,18 +243,23 @@ def dispatch_notifications(
                 "event_type": <str | None>,
                 "card_id": <str | None>,
                 "delivered": [<delivery name>, ...],
+                "enqueued": [<recipient id>, ...],
                 "skipped": [<reason / name>, ...],
                 "errors": [{"recipient": <name>, "error": <str>}, ...],
             }
 
-        Never raises: malformed events, a missing card, and per-recipient
-        delivery failures are all folded into the summary (fail-soft).
+        ``enqueued`` is ADDITIVE — the recipient ids whose standalone
+        PULL-inbox received the notification (the always-works rail); the
+        existing keys are unchanged. Never raises: malformed events, a
+        missing card, per-recipient delivery failures, AND inbox errors are
+        all folded into the summary (fail-soft).
     """
     event_type, card_id, actor, extras = _event_fields(event)
     summary: dict[str, Any] = {
         "event_type": event_type,
         "card_id": card_id,
         "delivered": [],
+        "enqueued": [],
         "skipped": [],
         "errors": [],
     }
@@ -302,7 +319,45 @@ def dispatch_notifications(
         recipients.discard(actor_id)
         recipients.discard(actor)
 
-    # (f) map each recipient id → a delivery NAME (dedup via a set).
+    # The notification body is shared by BOTH delivery rails (inbox + push).
+    body = _body_for(event_type, card_id, actor, extras)
+
+    # (f) STANDALONE PULL-INBOX sink — enqueue per recipient ID. This is the
+    #     always-works rail (no network): a containerized recipient PULLs its
+    #     inbox via the poll_notifications MCP tool. Keyed on the resolved
+    #     recipient IDS (u_* ids or raw-name fallbacks), NOT delivery names,
+    #     so the recipient resolves its own inbox the same way. FAIL-SOFT:
+    #     an inbox error must NEVER break the mutation / emit — record it and
+    #     keep going to the optional push rail. The event ``ts`` (when known)
+    #     is passed so a re-dispatch of the SAME event dedups deterministically.
+    event_ts = event.get("ts") if isinstance(event, Mapping) else getattr(
+        event, "ts", None
+    )
+    for uid in sorted(recipients):
+        try:
+            from .._inbox import enqueue as _enqueue
+
+            record = _enqueue(
+                uid,
+                event_type=event_type,
+                card_id=card_id,
+                body=body,
+                actor=actor,
+                ts=event_ts,
+                store=store,
+            )
+        except Exception as exc:  # noqa: BLE001 — inbox must not break emit
+            logger.warning(
+                "[scitex-todo._notify] inbox enqueue to %r raised for %r "
+                "event on card %r: %s",
+                uid, event_type, card_id, exc,
+            )
+            summary["errors"].append({"recipient": uid, "error": str(exc)})
+            continue
+        if record is not None:
+            summary["enqueued"].append(uid)
+
+    # (g) map each recipient id → a delivery NAME (dedup via a set).
     delivery_names: set[str] = set()
     for uid in recipients:
         name = _recipient_to_name(uid, store=store)
@@ -314,13 +369,13 @@ def dispatch_notifications(
     if not delivery_names:
         return summary
 
-    # (g) deliver per name — FAIL-SOFT per recipient.
+    # (h) deliver per name — the OPTIONAL push accelerator, FAIL-SOFT per
+    #     recipient (harmless when it fails for a containerized agent).
     if deliver_fn is None:
         from .._push import deliver as deliver_fn  # default real wire
 
     from .._push import NOTIFY_TIMEOUT_S
 
-    body = _body_for(event_type, card_id, actor, extras)
     kind = f"notify:{event_type}"
     for name in sorted(delivery_names):
         try:
