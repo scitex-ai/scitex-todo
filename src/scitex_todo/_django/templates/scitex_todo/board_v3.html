@@ -440,6 +440,32 @@
   </div>
 
   {% comment %}
+    STATUS COLOR LEGEND (operator: "add color legends") — decodes the
+    per-status colors used by cards / timeline / mermaid. SINGLE-SOURCED:
+    iterates the SAME `status_colors` template context (views.board_v3_page
+    → handlers.graph._status_colors → _diagram.STATUS_STYLE) in
+    STATUS_STYLE order, so adding/removing a status updates the legend
+    automatically — no hardcoded status list or hex colors here. Each chip
+    references the first-paint `--status-fill-<s>` / `--status-stroke-<s>`
+    / `--status-border-<s>` CSS vars (rendered by #status-color-vars) so
+    the swatch matches the cards exactly, including `deferred`'s dashed
+    border. `data-legend-status` per chip keeps the test robust.
+  {% endcomment %}
+  <div class="status-legend" id="status-legend"
+       role="group" aria-label="Status color legend">
+    <span class="status-legend-title" aria-hidden="true">Legend</span>
+    {% for s, c in status_colors.items %}
+    <span class="status-legend-chip" data-legend-status="{{ s }}"
+          title="{{ s }}" aria-label="status color: {{ s }}">
+      <span class="status-legend-swatch" aria-hidden="true"
+            style="background: var(--status-fill-{{ s }});
+                   border: 1px var(--status-border-{{ s }}, solid) var(--status-stroke-{{ s }});"></span>
+      <span class="status-legend-label">{{ s }}</span>
+    </span>
+    {% endfor %}
+  </div>
+
+  {% comment %}
     BLOCKING-YOU 360 px aside REMOVED (P12, lead a2a 2026-06-12). The
     "right-end giant lane" the operator photographed is now a normal
     project column synthesized client-side as the `user` lane (see
