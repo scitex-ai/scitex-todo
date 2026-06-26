@@ -717,4 +717,13 @@ async def _call_tool(tool_callable, **kwargs):
     the async function.
     """
     fn = getattr(tool_callable, "fn", None) or tool_callable
+    # add_task now FAILS LOUD without an owner (creator+assignee mandatory).
+    # Tests that don't care about ownership get a default owner here; owner-
+    # specific tests pass their own assignee/agent (this only fills the gap).
+    if (
+        getattr(fn, "__name__", "") == "add_task"
+        and not kwargs.get("assignee")
+        and not kwargs.get("agent")
+    ):
+        kwargs["assignee"] = "agent:test-suite"
     return await fn(**kwargs)
