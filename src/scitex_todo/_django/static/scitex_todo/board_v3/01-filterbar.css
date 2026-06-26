@@ -80,14 +80,14 @@ a {
   display: flex;
   align-items: center;
   min-width: 260px;
-  position: relative;  /* search-suggest dropdown anchor */
+  position: relative; /* search-suggest dropdown anchor */
 }
 .fb-right {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-  flex-wrap: wrap;  /* graceful internal wrap on narrow viewports */
+  flex-wrap: wrap; /* graceful internal wrap on narrow viewports */
   justify-content: flex-end;
 }
 /* Filterbar second row — chips + qualifier hint pills, hidden when
@@ -536,4 +536,50 @@ a {
   color: var(--text-muted);
   font-size: 0.72rem;
   font-style: italic;
+}
+
+/* === STATUS COLOR LEGEND (operator: "add color legends") =================
+ * A compact, single wrapping row of swatch+label chips that decodes the
+ * per-status colors used by cards / timeline / mermaid. The markup
+ * iterates the SSOT `status_colors` context (STATUS_STYLE order) and each
+ * swatch reads the first-paint `--status-fill/stroke/border-<s>` vars, so
+ * this stays in lock-step with the cards (incl. `deferred`'s dashed
+ * border) with ZERO hardcoded colors. Sits below the filterbar, quiet by
+ * default (muted labels, small swatches) so it's unobtrusive. */
+.status-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 4px 14px;
+  background: var(--col-bg);
+  border-bottom: 1px solid var(--border);
+}
+.status-legend-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-right: 2px;
+}
+.status-legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  cursor: default;
+}
+.status-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+  /* `background` + `border` are set inline from the per-status CSS vars so
+   * the swatch is the single-sourced twin of the card color layer. */
+  box-sizing: border-box;
+}
+.status-legend-label {
+  color: var(--text-muted);
 }

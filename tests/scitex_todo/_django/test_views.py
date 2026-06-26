@@ -387,4 +387,47 @@ def test_board_v3_page_deferred_status_border_is_dashed(store):
     assert "--status-border-goal: solid;" in body
 
 
+def test_board_v3_page_renders_status_legend(store):
+    """board_v3 ships the single-sourced status color legend container."""
+    # Arrange
+    request = RequestFactory().get(f"/board_v3?store={store}")
+    # Act
+    body = views.board_v3_page(request).content
+    # Assert
+    assert b'id="status-legend"' in body
+
+
+def test_board_v3_legend_has_chip_for_every_status(store):
+    """The legend renders one swatch+label chip per SSOT status.
+
+    Pins that the legend iterates the SAME `status_colors` context (so it
+    auto-updates with STATUS_STYLE) — each status gets a stable
+    `data-legend-status="<s>"` chip + the status name as its label.
+    """
+    # Arrange
+    request = RequestFactory().get(f"/board_v3?store={store}")
+    # Act
+    body = views.board_v3_page(request).content.decode("utf-8")
+    # Assert
+    for status in _ALL_STATUSES:
+        assert f'data-legend-status="{status}"' in body, status
+
+
+def test_board_v3_legend_swatches_reference_ssot_css_vars(store):
+    """Each legend swatch reads the per-status --status-* CSS vars.
+
+    The swatch must single-source off the first-paint vars (not inline
+    hex), so the legend color tracks the cards/timeline/mermaid exactly.
+    """
+    # Arrange
+    request = RequestFactory().get(f"/board_v3?store={store}")
+    # Act
+    body = views.board_v3_page(request).content.decode("utf-8")
+    # Assert
+    for status in _ALL_STATUSES:
+        assert f"var(--status-fill-{status})" in body, status
+        assert f"var(--status-border-{status}" in body, status
+        assert f"var(--status-stroke-{status})" in body, status
+
+
 # EOF
