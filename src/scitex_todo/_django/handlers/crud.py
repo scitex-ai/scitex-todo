@@ -133,11 +133,17 @@ def _apply_fields(task: dict, payload: dict) -> None:
 
 
 def handle_create(request, board):
-    """POST create -> append a new task. Body: ``{title, status?, ...}``.
+    """POST create -> append a new task. Body: ``{title, assignee, status?, ...}``.
 
-    ``title`` is required; ``status`` defaults to ``pending``. The id is
-    generated from the title (unique within the store). Returns the created
-    task plus its ``store_path``.
+    Operator constitution (no silent fallbacks): EVERY card has a creator AND an
+    owner. This is the web sibling of :func:`scitex_todo._store.add_task`; it
+    DELEGATES the write to ``add_task`` (instead of hand-building the dict — the
+    old bug gave a UI card a BLANK creator + no required owner) so the UI path
+    reuses the same fail-loud + ``agent==assignee`` lock-step + ``created_by``
+    stamp. Owner (``assignee`` or ``agent``) REQUIRED -> 400 otherwise.
+    ``created_by`` defaults payload -> ``$SCITEX_TODO_AGENT`` -> ``"operator"``
+    (the board is the operator's surface), never blank. ``status`` defaults
+    ``pending``; the id is unique across the union view (global + lanes).
     """
     if request.method != "POST":
         return JsonResponse({"error": "create endpoint requires POST"}, status=405)
@@ -151,19 +157,55 @@ def handle_create(request, board):
             {"error": "create requires a non-empty 'title'"}, status=400
         )
 
-    tasks = list(board.tasks)
-    taken = {t["id"] for t in tasks}
-    task = {
-        "id": _slug_id(title.strip(), taken),
-        "title": title.strip(),
-        "status": payload.get("status") or "pending",
-    }
-    _apply_fields(task, {k: v for k, v in payload.items() if k != "status"})
-    tasks.append(task)
+    # REQUIRE an owner up front so the rejection is a clean 400 the modal toasts
+    # (not the 500 api_dispatch turns add_task's TaskValidationError into).
+    # Accept either field the form may send; add_task locks agent==assignee.
+    def _clean(v):
+        return v.strip() if isinstance(v, str) else v
 
-    err = _save(tasks, board)
-    if err:
-        return err
+    owner = _clean(payload.get("assignee")) or _clean(payload.get("agent"))
+    if not owner:
+        return JsonResponse(
+            {"error": "assignee is required — pick an owner"}, status=400
+        )
+    # Default the creator to the operator (the board's identity) when neither
+    # payload nor env names one — never blank. add_task re-validates this.
+    created_by = (
+        _clean(payload.get("created_by"))
+        or os.environ.get("SCITEX_TODO_AGENT")
+        or "operator"
+    )
+    # Unique id across the union view (global + lanes) the board renders, so a
+    # UI id never collides with a lane task though the write lands global.
+    taken = {t["id"] for t in board.tasks if isinstance(t, dict) and t.get("id")}
+    new_id = _slug_id(title.strip(), taken)
+    # Forward the other editable form fields (project/note/...) as extras,
+    # dropping empties (UI clear-on-empty semantics keep the YAML sparse).
+    _handled = {"title", "status", "assignee", "agent", "created_by"}
+    extra_fields = {
+        k: payload[k]
+        for k in _EDITABLE_FIELDS
+        if k in payload and k not in _handled and payload[k] not in (None, "", [])
+    }
+
+    from scitex_todo import TaskValidationError
+    from scitex_todo._store import add_task
+
+    from ..services import _reset_cache
+
+    try:
+        task = add_task(
+            board.store_path,
+            id=new_id,
+            title=title.strip(),
+            status=payload.get("status") or "pending",
+            assignee=owner,
+            created_by=created_by,
+            **extra_fields,
+        )
+    except TaskValidationError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+    _reset_cache()
     logger.info("[scitex-todo] created task %s in %s", task["id"], board.store_path)
     return JsonResponse({"task": task, "store_path": str(board.store_path)})
 
