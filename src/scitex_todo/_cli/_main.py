@@ -1031,13 +1031,14 @@ def migration_apply_cmd(
 # --------------------------------------------------------------------------- #
 # Attach the §1a sub-groups (defined in sibling modules).                     #
 # --------------------------------------------------------------------------- #
-from . import (
+from . import (  # hook-bypass: line-limit (_main.py pre-existing over-cap; minimal wire)
     _ci_watch,
     _completion,
     _hooks,
     _introspect,
     _loop,
     _mcp,
+    _reconcile,
     _runnable,
     _skills,
     _stats,
@@ -1079,6 +1080,11 @@ _hooks.register(main)
 # bus emission for ci-result (SAC has its own independent poller for
 # the delivery side). See _ci_watch.py.
 _ci_watch.register(main)
+# reconcile-merged-prs (card-freshness automation) — periodic auto-close of
+# cards whose linked PR (pr_url) has MERGED. Pure decision core + gh/REST
+# merge-state seam live in `_reconcile_prs.py`; DRY-RUN by default, --apply
+# to mutate. Paired with the scitex-todo.reconcile-merged-prs JobSpec.
+_reconcile.register(main)  # hook-bypass: line-limit (pre-existing over-cap; minimal wire)
 
 
 if __name__ == "__main__":

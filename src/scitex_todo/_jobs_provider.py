@@ -160,6 +160,30 @@ def provide_jobs() -> list[JobSpec]:
             restart_policy="no",
             timeout_sec=180,
         ),
+        # reconcile-merged-prs (card-freshness automation) — deterministic
+        # auto-close. Every ~15 min, scan open cards (pending / in_progress /
+        # blocked) that carry a `pr_url`, check whether the linked PR has
+        # MERGED (gh on the host, curl GitHub-REST fallback), and flip the
+        # merged ones to `done` + an audit comment. `--apply` because the
+        # cron IS the mutation path (the verb is DRY-RUN by default for
+        # humans); the core is fail-soft (unknown merge-state -> skip, never
+        # wrongly close). kind=cron / restart_policy=no: a missed tick just
+        # closes on the next one — no long-running process to keep alive.
+        JobSpec(
+            name="scitex-todo.reconcile-merged-prs",
+            kind="cron",
+            # 5-field cron (min hour dom mon dow): every 15 min.
+            schedule="*/15 * * * *",
+            command="scitex-todo reconcile-merged-prs --apply",
+            description=(
+                "scitex-todo reconcile-merged-prs — periodic card-freshness "
+                "automation. Every 15 min, auto-close cards whose linked PR "
+                "(pr_url) has merged so nobody hand-updates the board. "
+                "Fail-soft: unknown merge-state is skipped, never closed."
+            ),
+            restart_policy="no",
+            timeout_sec=300,
+        ),
     ]
 
 
