@@ -88,6 +88,16 @@ def board_v3_page(request):
         _version = "?"
     label = f"scitex-todo v{_version}"
 
+    # SSOT status colors (kill the 4-bucket color collapse). The board's
+    # color layer is single-sourced from ``STATUS_STYLE`` via the same
+    # projection the /graph payload uses (``handlers.graph._status_colors``),
+    # so the FIRST-PAINT CSS vars + the JS-driven mermaid/timeline color
+    # exactly match the python-rendered mermaid artifacts. Do NOT re-derive
+    # colors anywhere else — reuse this one map.
+    from .handlers.graph import _status_colors
+
+    status_colors = _status_colors()
+
     # PR (g) (lead a2a `ffc6629c80e4462a8401fb7e4ebb7240`, 2026-06-12):
     # one-shot boot announce of agents that have no turn URL configured,
     # so the operator sees the gap before any nudge / comment-relay
@@ -102,6 +112,10 @@ def board_v3_page(request):
                 "app_name": "scitex-todo",
                 "app_label": label,
                 "scitex_todo_version": _version,
+                # Per-status SSOT colors for first-paint CSS vars (board_v3
+                # <head> renders a `:root{--status-fill-<s>...}` block from
+                # this so cards/timeline/mermaid never collapse 7→4 colors).
+                "status_colors": status_colors,
             },
             request=request,
         )
