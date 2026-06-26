@@ -162,7 +162,7 @@ def bus():
 def test_comment_task_emits_card_message_event(tmp_path: Path, bus):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x")
+    add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
     # Act
     comment_task(
         store=store,
@@ -181,7 +181,7 @@ def test_card_message_event_carries_card_id_body_author(
 ):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x")
+    add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
     # Act
     comment_task(
         store=store,
@@ -241,7 +241,7 @@ def test_card_message_owner_is_none_when_card_has_neither(
 ):
     # Arrange — naked card with no agent/assignee.
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x")
+    add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
     # Act
     comment_task(
         store=store,
@@ -291,7 +291,7 @@ def test_card_message_collaborators_excludes_new_author(
     # Arrange — the new commenter should NOT appear in their own
     # event's collaborators (SAC would echo the message back at them).
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x")
+    add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
     comment_task(
         store=store,
         task_id="c-1",
@@ -319,7 +319,7 @@ def test_card_message_collaborators_lists_prior_commenters(
 ):
     # Arrange — three earlier authors, current author is different.
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x")
+    add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
     comment_task(
         store=store, task_id="c-1", text="a", by="alice", entry_points=bus.entry_points
     )
@@ -348,7 +348,7 @@ def test_comment_task_save_succeeds_even_when_bus_raises(tmp_path: Path):
     # `entry_points=` seam (no monkeypatch). The comment must still land
     # on disk because comment_task swallows bus errors.
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x")
+    add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
 
     def _bad(_event):
         raise RuntimeError("bus exploded")
@@ -376,7 +376,7 @@ def test_card_message_created_at_matches_comment_ts(
 ):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x")
+    add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
     # Act
     comment_task(
         store=store,

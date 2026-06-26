@@ -422,6 +422,10 @@ def sync_github_cmd(
                     status="done",
                     project="scitex-dev",
                     agent="proj-scitex-dev",
+                    # add_task now REQUIRES a resolvable creator (no silent
+                    # blank/"unknown"). This sync verb is a housekeeping
+                    # importer, so it stamps itself as the creator.
+                    created_by="sync-github",
                     note=("Consolidated record of the proj-scitex-dev L1-L5 "
                           "CI-speedup template apply wave merged "
                           f"{target_since}. Individual PRs:\n{links}"),
@@ -461,6 +465,9 @@ def sync_github_cmd(
                 status="done",
                 project=project,
                 agent=agent,
+                # add_task now REQUIRES a resolvable creator — this verb is a
+                # housekeeping importer, so it stamps itself.
+                created_by="sync-github",
                 pr_url=url,
             )
 

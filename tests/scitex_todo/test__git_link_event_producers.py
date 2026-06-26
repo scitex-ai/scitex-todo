@@ -58,7 +58,7 @@ def _card_events(sink: _Capturing) -> list[dict]:
 
 def _store_with(tmp_path: Path) -> Path:
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="card-1", title="x")
+    add_task(store=store, id="card-1", title="x", assignee="agent:test-suite")
     return store
 
 

@@ -84,7 +84,7 @@ def test_add_task_emits_exactly_one_created(tmp_path: Path):
     store = tmp_path / "tasks.yaml"
     sink = _Capturing()
     # Act
-    add_task(store=store, id="c-1", title="x", entry_points=_eps(sink))
+    add_task(store=store, id="c-1", title="x", entry_points=_eps(sink), assignee="agent:test-suite")
     # Assert
     created = _card_events(sink, "created")
     assert len(created) == 1
@@ -95,7 +95,7 @@ def test_created_event_carries_card_id(tmp_path: Path):
     store = tmp_path / "tasks.yaml"
     sink = _Capturing()
     # Act
-    add_task(store=store, id="c-1", title="x", entry_points=_eps(sink))
+    add_task(store=store, id="c-1", title="x", entry_points=_eps(sink), assignee="agent:test-suite")
     # Assert
     assert _card_events(sink, "created")[0]["card_id"] == "c-1"
 
@@ -107,7 +107,7 @@ def test_created_event_actor_is_creating_user(tmp_path: Path):
     # Act — explicit created_by becomes the event actor.
     add_task(
         store=store, id="c-1", title="x", created_by="operator",
-        entry_points=_eps(sink),
+        entry_points=_eps(sink), assignee="agent:test-suite",
     )
     # Assert
     assert _card_events(sink, "created")[0]["actor"] == "operator"
@@ -119,7 +119,7 @@ def test_created_event_actor_is_creating_user(tmp_path: Path):
 def test_comment_task_emits_commented(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x")
+    add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
     sink = _Capturing()
     # Act
     comment_task(
@@ -134,7 +134,7 @@ def test_comment_task_still_emits_card_message(tmp_path: Path):
     # Arrange — the legacy `card-message` dispatch MUST stay intact
     # (additive, not a replacement).
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x")
+    add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
     sink = _Capturing()
     # Act
     comment_task(
@@ -152,7 +152,7 @@ def test_comment_task_still_emits_card_message(tmp_path: Path):
 def test_commented_event_carries_body_and_actor(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x")
+    add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
     sink = _Capturing()
     # Act
     comment_task(
@@ -170,7 +170,7 @@ def test_commented_event_carries_body_and_actor(tmp_path: Path):
 def test_status_flip_emits_status_changed_with_from_to(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x", status="pending")
+    add_task(store=store, id="c-1", title="x", status="pending", assignee="agent:test-suite")
     sink = _Capturing()
     # Act
     update_task(store, "c-1", status="in_progress", entry_points=_eps(sink))
@@ -183,7 +183,7 @@ def test_update_to_done_emits_completed_not_status_changed(tmp_path: Path):
     # Arrange — a flip to done is modelled as a `completed` event ONLY
     # (no duplicate `status_changed`).
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x", status="in_progress")
+    add_task(store=store, id="c-1", title="x", status="in_progress", assignee="agent:test-suite")
     sink = _Capturing()
     # Act
     update_task(store, "c-1", status="done", entry_points=_eps(sink))
@@ -195,7 +195,7 @@ def test_update_to_done_emits_completed_not_status_changed(tmp_path: Path):
 def test_update_without_status_change_emits_no_event(tmp_path: Path):
     # Arrange — touching a non-status field does NOT emit a status event.
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x", status="pending")
+    add_task(store=store, id="c-1", title="x", status="pending", assignee="agent:test-suite")
     sink = _Capturing()
     # Act
     update_task(store, "c-1", note="just a note", entry_points=_eps(sink))
@@ -207,7 +207,7 @@ def test_update_without_status_change_emits_no_event(tmp_path: Path):
 def test_update_status_to_same_value_emits_no_event(tmp_path: Path):
     # Arrange — re-setting status to its current value is not a flip.
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x", status="pending")
+    add_task(store=store, id="c-1", title="x", status="pending", assignee="agent:test-suite")
     sink = _Capturing()
     # Act
     update_task(store, "c-1", status="pending", entry_points=_eps(sink))
@@ -221,7 +221,7 @@ def test_update_status_to_same_value_emits_no_event(tmp_path: Path):
 def test_complete_task_emits_completed(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x", status="in_progress")
+    add_task(store=store, id="c-1", title="x", status="in_progress", assignee="agent:test-suite")
     sink = _Capturing()
     # Act
     complete_task(store, "c-1", by="operator", entry_points=_eps(sink))
@@ -234,7 +234,7 @@ def test_recomplete_done_task_emits_no_event(tmp_path: Path):
     # Arrange — first completion transitions; the second is an idempotent
     # no-op and must emit nothing.
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x", status="in_progress")
+    add_task(store=store, id="c-1", title="x", status="in_progress", assignee="agent:test-suite")
     complete_task(store, "c-1")
     sink = _Capturing()
     # Act
@@ -251,7 +251,7 @@ def test_resolve_task_emits_status_changed_to_done(tmp_path: Path):
     store = tmp_path / "tasks.yaml"
     add_task(
         store=store, id="c-1", title="x", status="blocked",
-        blocker="operator-decision",
+        blocker="operator-decision", assignee="agent:test-suite",
     )
     sink = _Capturing()
     # Act
@@ -264,7 +264,7 @@ def test_resolve_task_emits_status_changed_to_done(tmp_path: Path):
 def test_resolve_already_done_emits_no_event(tmp_path: Path):
     # Arrange — resolving an already-done card is a noop (no event).
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x", status="done")
+    add_task(store=store, id="c-1", title="x", status="done", assignee="agent:test-suite")
     sink = _Capturing()
     # Act
     resolve_task(store, "c-1", actor="operator", entry_points=_eps(sink))
@@ -354,7 +354,7 @@ def test_reassign_is_idempotent_second_call_noop(tmp_path: Path):
 def test_reassign_from_unassigned_records_placeholder(tmp_path: Path):
     # Arrange — a card with no owner at all.
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x")
+    add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
     sink = _Capturing()
     # Act
     reassign_task(store, "c-1", "proj-new", by="operator", entry_points=_eps(sink))
@@ -378,7 +378,7 @@ def _bad_eps() -> list[_FakeEP]:
 def test_add_task_persists_even_when_emit_raises(tmp_path: Path):
     # Arrange / Act — a raising handler must not break add_task.
     store = tmp_path / "tasks.yaml"
-    inserted = add_task(store=store, id="c-1", title="x", entry_points=_bad_eps())
+    inserted = add_task(store=store, id="c-1", title="x", entry_points=_bad_eps(), assignee="agent:test-suite")
     # Assert — returned normally AND the card is durably on disk.
     assert inserted["id"] == "c-1"
     assert [t for t in load_tasks(store) if t["id"] == "c-1"]
@@ -387,7 +387,7 @@ def test_add_task_persists_even_when_emit_raises(tmp_path: Path):
 def test_complete_task_persists_even_when_emit_raises(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x", status="in_progress")
+    add_task(store=store, id="c-1", title="x", status="in_progress", assignee="agent:test-suite")
     # Act — must NOT raise.
     complete_task(store, "c-1", entry_points=_bad_eps())
     # Assert — the done transition persisted.
@@ -398,7 +398,7 @@ def test_complete_task_persists_even_when_emit_raises(tmp_path: Path):
 def test_update_status_persists_even_when_emit_raises(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x", status="pending")
+    add_task(store=store, id="c-1", title="x", status="pending", assignee="agent:test-suite")
     # Act — must NOT raise.
     update_task(store, "c-1", status="in_progress", entry_points=_bad_eps())
     # Assert — the flip persisted.
@@ -409,7 +409,7 @@ def test_update_status_persists_even_when_emit_raises(tmp_path: Path):
 def test_comment_task_persists_even_when_emit_raises(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="c-1", title="x")
+    add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
     # Act — must NOT raise (covers BOTH the card-message and commented
     # emits in one shot — the bad handler receives both).
     comment_task(store=store, task_id="c-1", text="hi", entry_points=_bad_eps())

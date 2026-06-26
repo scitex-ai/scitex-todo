@@ -272,7 +272,7 @@ def test_cli_blocked_lists_blocked_tasks(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
     add_task(
-        store=store, id="t-a", title="x", status="blocked", blocker="operator-decision"
+        store=store, id="t-a", title="x", status="blocked", blocker="operator-decision", assignee="agent:test-suite"
     )
     runner = CliRunner()
     # Act
@@ -285,7 +285,7 @@ def test_cli_blocked_json_emits_structured_payload(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
     add_task(
-        store=store, id="t-a", title="x", status="blocked", blocker="operator-decision"
+        store=store, id="t-a", title="x", status="blocked", blocker="operator-decision", assignee="agent:test-suite"
     )
     runner = CliRunner()
     # Act
@@ -301,7 +301,7 @@ def test_cli_blocked_json_emits_structured_payload(tmp_path: Path):
 def test_cli_blocked_empty_queue_emits_clear_message(tmp_path: Path):
     # Arrange — no blocked tasks at all.
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-a", title="x", status="pending")
+    add_task(store=store, id="t-a", title="x", status="pending", assignee="agent:test-suite")
     runner = CliRunner()
     # Act
     result = runner.invoke(main, ["blocked", "--tasks", str(store)])

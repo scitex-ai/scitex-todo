@@ -265,9 +265,15 @@ def _build_fleet(tasks: list[dict], *, now=None) -> list[dict]:
             parsed = parsed.replace(tzinfo=_dt.timezone.utc)
         return (cur - parsed).total_seconds()
 
+    from ..._owner import card_owner
+
     by_agent: dict[str, list[dict]] = {}
     for t in tasks:
-        a = t.get("agent") or t.get("assignee")
+        # Owner SSOT (agent||assignee). Owner-less rows are excluded from the
+        # liveness dot-strip by design (keeps it small/readable); add_task now
+        # REJECTS owner-less cards at creation, so this only ever skips legacy
+        # rows pending re-home.
+        a = card_owner(t)
         if not a:
             continue
         by_agent.setdefault(str(a), []).append(t)

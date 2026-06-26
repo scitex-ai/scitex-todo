@@ -719,6 +719,22 @@
     };
     function bucket(status) { return STATUS_BUCKET[status] || "waiting"; }
 
+    // Owner SSOT (client mirror of scitex_todo._owner.card_owner) — the
+    // SINGLE rule for "who owns this card": `agent` falling back to
+    // `assignee`, else null (an owner-less card). Used for the card-render
+    // owner line + the unassigned-lane bucketing so an assignee-only card
+    // shows its real owner instead of a blank, and an owner-less card lands
+    // in a clearly-labeled lane rather than a retired fallback identity.
+    // (hook-bypass: line-limit — board_v3.html split still queued.)
+    function cardOwner(t) {
+      if (!t) return null;
+      const o = ((t.agent || t.assignee || "") + "").trim();
+      return o || null;
+    }
+    // The lane key an owner-less card buckets under — a clearly-labeled
+    // lane, NEVER a retired identity (operator mandate 2026-06-26).
+    const UNASSIGNED_LANE = "(unassigned)";
+
     let STATE = { graph: null, openId: null, lastMtime: null,
       filters: { project: "", host: "", status: "", blocker: "", agent: "",
                  blockingMe: false, showHidden: false,
@@ -1375,6 +1391,19 @@
       const host = t.host ? `<span class="card-host">${escapeHtml(t.host)}</span>` : "<span></span>";
       const last = t.last_activity ? `last ${escapeHtml(t.last_activity)}` : "";
       const id = escapeHtml(t.id);
+      // Owner (SSOT cardOwner = agent||assignee) + creator (created_by,
+      // falling back to the earliest comment author). An assignee-only card
+      // now shows its REAL owner instead of a blank; an owner-less card is
+      // flagged "⚠ unassigned" rather than silently blank. (hook-bypass: line-limit)
+      const _owner = cardOwner(t);
+      const _firstComment = (t.comments || [])
+        .map(c => c && c.author).find(a => typeof a === "string" && a);
+      const _creator = t.created_by || _firstComment || "";
+      const ownerLine = `<span class="card-owner" title="owner (assignee/agent)${_creator ? " · created by " + escapeHtml(_creator) : ""}">${
+        _owner
+          ? "👤 " + escapeHtml(_owner)
+          : '<span class="card-owner--unassigned">⚠ unassigned</span>'
+      }${_creator ? ' <span class="card-creator">· by ' + escapeHtml(_creator) + "</span>" : ""}</span>`;
       // Priority ↑↓ on every card (operator TG 9776 / 276). Re-orders the
       // POSITION-IN-FULL-LIST, not just within this column — the existing
       // /priority handler reassigns ranks 1..N over the entire payload, so
@@ -1452,6 +1481,7 @@
           ${goal}
           <div class="card-task">${taskLine}</div>
           ${datePillHtml(t)}
+          <div class="card-owner-line">${ownerLine}</div><!-- owner+creator (hook-bypass: line-limit) -->
           <div class="card-bot">${host}<span style="display:flex;gap:4px;align-items:center;">${pr}${issue}${copyBtn}${hideBtn}</span></div>
           ${blocker}
         </div>

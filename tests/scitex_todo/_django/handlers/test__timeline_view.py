@@ -83,7 +83,7 @@ def store_ungrouped(tmp_path: Path, env) -> Path:
     """One task without ``agent`` or ``group`` — should land in
     ``"(ungrouped)"`` regardless of ``lane_by``."""
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-naked", title="No lane")
+    add_task(store=store, id="t-naked", title="No lane", assignee="agent:test-suite")
     env.set("SCITEX_TODO_TASKS", str(store))
     return store
 

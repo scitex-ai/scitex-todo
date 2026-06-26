@@ -130,6 +130,11 @@ def _default_agent(arg: str | None) -> str:
     Per ``GITIGNORED/QUESTIONS.md`` #2 the precedence is
     ``$SCITEX_TODO_AGENT`` → ``getpass.getuser()`` → ``"unknown"`` (final
     fallback handles environments where login info isn't available).
+
+    NB: this is the LENIENT chain used by completion/comment authorship,
+    where a best-effort label is fine. Card CREATION uses the STRICT
+    :func:`_resolve_creator_or_raise` instead — a blank/"unknown" creator
+    is a fail-loud error there (operator mandate). (hook-bypass: line-limit)
     """
     if arg:
         return arg
@@ -140,6 +145,32 @@ def _default_agent(arg: str | None) -> str:
         return getpass.getuser()
     except Exception:  # pragma: no cover — extremely rare environments
         return "unknown"
+
+
+def _resolve_creator_or_raise(arg: str | None) -> str:
+    """Resolve a card CREATOR — FAIL LOUD when it cannot be resolved.
+
+    Precedence: an explicit ``created_by`` arg → ``$SCITEX_TODO_AGENT``.
+    Deliberately does NOT fall back to ``getpass.getuser()`` / ``"unknown"``
+    the way :func:`_default_agent` does: the operator mandate (constitution
+    rule 2 "fail fast and fail loud, NO silent fallbacks") requires a card to
+    record a REAL creator, never a blank or ``"unknown"`` placeholder. A card
+    whose creator can't be resolved must not be born. (hook-bypass: line-limit)
+
+    Raises
+    ------
+    TaskValidationError
+        When the creator resolves to empty or the ``"unknown"`` sentinel,
+        with an ACTIONABLE hint naming both fixes.
+    """
+    resolved = (arg or os.environ.get(ENV_AGENT) or "").strip()
+    if not resolved or resolved == "unknown":
+        raise TaskValidationError(
+            "creator unresolved — set SCITEX_TODO_AGENT=<your-agent> or pass "
+            "created_by=/by= (creator+assignee are mandatory; no silent "
+            "fallback to a blank/'unknown' creator; see constitution)."
+        )
+    return resolved
 
 
 def _utc_now_iso() -> str:
@@ -281,6 +312,25 @@ def add_task(
     """
     resolved = _resolved_store(store)
     resolved.parent.mkdir(parents=True, exist_ok=True)
+    # FAIL-LOUD on a missing/blank OWNER (operator mandate 2026-06-26,
+    # constitution rule 2 "no silent fallbacks"). The OWNER is `assignee`
+    # OR `agent` (lock-step below). A card with neither reached a blank
+    # creator/assignee on the board + a fallback lane + an owner-less
+    # comment relay that silently no-op'd — so an owner is REQUIRED.
+    # `agent` arrives via **extras (operator-co-designed field). (hook-bypass: line-limit)
+    _agent_in = extras.get("agent")
+    _owner_in = (assignee or _agent_in or "")
+    _owner_in = _owner_in.strip() if isinstance(_owner_in, str) else _owner_in
+    if not _owner_in:
+        raise TaskValidationError(
+            "assignee is required — pass assignee=<user> (or agent=<user>); "
+            "creator+assignee are mandatory and an owner-less card is "
+            "rejected (no silent fallback; see constitution)."
+        )
+    # RESOLVE the creator STRICTLY — raises a clear, actionable error when
+    # it can't be resolved (blank / "unknown"). Done BEFORE any write so a
+    # creatorless card never touches disk. (hook-bypass: line-limit)
+    _creator = _resolve_creator_or_raise(created_by)
     new: dict = {"id": id, "title": title, "status": status}
     # D11 partial-fix (ADR-0008): auto-stamp ``created_at`` +
     # ``last_activity`` at insert time. ``created_at`` is the immutable
@@ -290,17 +340,20 @@ def add_task(
     _stamp = _utc_now_iso()
     new["created_at"] = _stamp
     new["last_activity"] = _stamp
-    # `created_by` — the creating USER (agent or human; user.kind=agent).
-    # Resolved from the SAME author chain comment authorship uses
-    # ($SCITEX_TODO_AGENT → $USER → "unknown") via `_default_agent`, so a
-    # card always records who made it. ADR-0009's "creator auto-subscribe"
-    # later phase reads this; for now it drives the board detail ROLES
-    # section. (hook-bypass: line-limit.)
-    new["created_by"] = _default_agent(created_by)
+    # `created_by` — the creating USER, STRICTLY resolved above (never a
+    # blank/"unknown" placeholder). Drives the board detail ROLES section +
+    # ADR-0009's creator auto-subscribe. (hook-bypass: line-limit)
+    new["created_by"] = _creator
     if scope is not None:
         new["scope"] = scope
-    if assignee is not None:
-        new["assignee"] = assignee
+    # Keep `agent` + `assignee` in LOCK-STEP: whichever the caller supplied,
+    # BOTH are stamped to the resolved owner so the board/relay/notify never
+    # see an owner-less or half-owned card (mirrors `reassign_task`). The
+    # `agent` half is set from **extras after this block; force it here so
+    # an assignee-only OR agent-only call yields a fully-owned card. The
+    # explicit `agent` extra (if any) is overwritten with the same owner.
+    new["assignee"] = _owner_in
+    extras["agent"] = _owner_in
     if priority is not None:
         new["priority"] = priority
     if parent is not None:

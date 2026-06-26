@@ -131,7 +131,7 @@ def test_add_task_persists_group(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
     # Act
-    add_task(store=store, id="t-a", title="x", group="paper-portfolio")
+    add_task(store=store, id="t-a", title="x", group="paper-portfolio", assignee="agent:test-suite")
     # Assert
     loaded = [t for t in load_tasks(store) if t["id"] == "t-a"][0]
     assert loaded.get("group") == "paper-portfolio"
@@ -140,7 +140,7 @@ def test_add_task_persists_group(tmp_path: Path):
 def test_update_task_sets_group(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-a", title="x")
+    add_task(store=store, id="t-a", title="x", assignee="agent:test-suite")
     # Act
     update_task(store=store, task_id="t-a", group="ci-recovery-wave")
     # Assert
@@ -151,7 +151,7 @@ def test_update_task_sets_group(tmp_path: Path):
 def test_update_task_clears_group_when_none_passed(tmp_path: Path):
     # Arrange — group set first; then cleared by passing group=None.
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-a", title="x", group="paper")
+    add_task(store=store, id="t-a", title="x", group="paper", assignee="agent:test-suite")
     # Act
     update_task(store=store, task_id="t-a", group=None)
     # Assert
@@ -169,7 +169,7 @@ def test_cli_add_with_group_persists(tmp_path: Path):
     # Act
     result = runner.invoke(
         main,
-        ["add", "t-a", "x", "--tasks", str(store), "--group", "paper-portfolio", "-y"],
+        ["add", "--assignee", "agent:test-suite", "t-a", "x", "--tasks", str(store), "--group", "paper-portfolio", "-y"],
     )
     # Assert
     assert result.exit_code == 0, result.output
@@ -178,7 +178,7 @@ def test_cli_add_with_group_persists(tmp_path: Path):
 def test_cli_update_with_group_sets_field(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-a", title="x")
+    add_task(store=store, id="t-a", title="x", assignee="agent:test-suite")
     runner = CliRunner()
     # Act
     runner.invoke(
@@ -194,7 +194,7 @@ def test_cli_update_with_empty_group_clears(tmp_path: Path):
     # Arrange — group set first; --group '' clears (per the
     # existing update-clear-via-empty-string convention).
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-a", title="x", group="paper")
+    add_task(store=store, id="t-a", title="x", group="paper", assignee="agent:test-suite")
     runner = CliRunner()
     # Act
     runner.invoke(

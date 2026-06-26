@@ -245,7 +245,7 @@ def test_lower_priority_number_picked_first():
 def test_cli_runnable_lists_runnable_tasks(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-a", title="x", group="paper-portfolio")
+    add_task(store=store, id="t-a", title="x", group="paper-portfolio", assignee="agent:test-suite")
     runner = CliRunner()
     # Act
     result = runner.invoke(
@@ -259,7 +259,7 @@ def test_cli_runnable_lists_runnable_tasks(tmp_path: Path):
 def test_cli_runnable_json_emits_full_payload(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-a", title="x", group="paper-portfolio")
+    add_task(store=store, id="t-a", title="x", group="paper-portfolio", assignee="agent:test-suite")
     runner = CliRunner()
     # Act
     result = runner.invoke(
@@ -274,8 +274,8 @@ def test_cli_runnable_json_emits_full_payload(tmp_path: Path):
 def test_cli_runnable_group_filter_narrows_results(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-paper", title="x", group="paper-portfolio")
-    add_task(store=store, id="t-ci", title="y", group="ci-recovery")
+    add_task(store=store, id="t-paper", title="x", group="paper-portfolio", assignee="agent:test-suite")
+    add_task(store=store, id="t-ci", title="y", group="ci-recovery", assignee="agent:test-suite")
     runner = CliRunner()
     # Act
     result = runner.invoke(
@@ -290,7 +290,7 @@ def test_cli_runnable_group_filter_narrows_results(tmp_path: Path):
 def test_cli_runnable_exit_1_when_queue_empty(tmp_path: Path):
     # Arrange — empty store.
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-done", title="x", status="done")
+    add_task(store=store, id="t-done", title="x", status="done", assignee="agent:test-suite")
     runner = CliRunner()
     # Act
     result = runner.invoke(

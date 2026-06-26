@@ -32,7 +32,7 @@ def test_comment_exits_zero(tmp_path, env):
     # Arrange
     runner = CliRunner()
     store = _store_path(tmp_path)
-    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store])
     env.set("SCITEX_TODO_AGENT", "agent:cli-test")
     # Act
     result = runner.invoke(main, ["comment", "a", "first note", "--tasks", store])
@@ -44,7 +44,7 @@ def test_comment_persists_into_comments_list(tmp_path, env):
     # Arrange
     runner = CliRunner()
     store = _store_path(tmp_path)
-    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store])
     env.set("SCITEX_TODO_AGENT", "agent:cli-test")
     runner.invoke(main, ["comment", "a", "first note", "--tasks", store])
     # Act
@@ -57,7 +57,7 @@ def test_comment_author_flag_stored_in_by_field(tmp_path, env):
     # Arrange
     runner = CliRunner()
     store = _store_path(tmp_path)
-    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store])
     env.set("SCITEX_TODO_AGENT", "agent:env")
     runner.invoke(
         main,
@@ -74,7 +74,7 @@ def test_comment_json_emits_valid_payload(tmp_path, env):
     # Arrange
     runner = CliRunner()
     store = _store_path(tmp_path)
-    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store])
     env.set("SCITEX_TODO_AGENT", "agent:cli-test")
     # Act
     result = runner.invoke(
@@ -89,7 +89,7 @@ def test_comment_unknown_task_id_nonzero_no_traceback(tmp_path, env):
     # Arrange
     runner = CliRunner()
     store = _store_path(tmp_path)
-    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store])
     env.set("SCITEX_TODO_AGENT", "agent:cli-test")
     # Act
     result = runner.invoke(
@@ -103,7 +103,7 @@ def test_comment_empty_text_nonzero(tmp_path, env):
     # Arrange
     runner = CliRunner()
     store = _store_path(tmp_path)
-    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store])
     env.set("SCITEX_TODO_AGENT", "agent:cli-test")
     # Act
     result = runner.invoke(main, ["comment", "a", "   ", "--tasks", store])
@@ -115,7 +115,7 @@ def test_comment_dry_run_does_not_mutate(tmp_path, env):
     # Arrange
     runner = CliRunner()
     store = _store_path(tmp_path)
-    runner.invoke(main, ["add", "a", "A", "--tasks", store])
+    runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store])
     env.set("SCITEX_TODO_AGENT", "agent:cli-test")
     runner.invoke(
         main, ["comment", "a", "ghost", "--tasks", store, "--dry-run"]
