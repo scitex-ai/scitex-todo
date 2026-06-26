@@ -316,20 +316,15 @@ def test_comment_unknown_id_returns_404(store):
     assert response.status_code == 404
 
 
-# ── comment relay: never hang, fail loud (operator P1, 2026-06-25) ────────
-def _closed_port() -> int:
-    """Bind+release a port so it is currently refusing connections."""
-    import socket
-
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
+# ── comment delivery via the standalone INBOX (no direct-POST) ────────────
+# Comments now deliver through the per-recipient PULL-inbox: handle_comment
+# delegates to comment_task (which emits `commented` → the C4 dispatcher
+# enqueues to each recipient's inbox), and the /comment toast reflects that
+# QUEUE — not a direct turn-URL POST. So a comment NEVER depends on a network
+# call to a (possibly containerized / unreachable) owner. No mocks: a real
+# tmp store, real comment_task/emit, real poll_inbox.
 def _store_with_agent(tmp_path):
-    """A store whose card is OWNED by 'owner-agent' so the relay fires."""
+    """A store whose card is OWNED by 'owner-agent' so the comment is queued."""
     path = tmp_path / "tasks.yaml"
     path.write_text(
         "tasks:\n"
@@ -340,48 +335,12 @@ def _store_with_agent(tmp_path):
     return str(path)
 
 
-def test_comment_relay_returns_promptly_when_owner_unreachable(
-    tmp_path, monkeypatch
-):
-    # Operator P1: posting a comment must NOT hang ~30 s when the owning
-    # agent's /v1/turn is unreachable. Point the owner at a CLOSED port
-    # (real refused connection, no mocks) and assert the POST returns in
-    # a few seconds — not the old 30 s.
+def test_comment_toast_reports_inbox_queue_not_connection_error(tmp_path):
+    # The toast must reflect the INBOX QUEUE (wire=inbox, queued names) so the
+    # board shows "queued to N recipient(s)" — never the old direct-POST
+    # connection error. The owner is the queued recipient (author != owner).
     # Arrange
-    import json as _json
-    import time
-
     store_path = _store_with_agent(tmp_path)
-    port = _closed_port()
-    monkeypatch.setenv(
-        "SCITEX_TODO_AGENT_TURN_URLS",
-        _json.dumps({"owner-agent": f"http://127.0.0.1:{port}/v1/turn"}),
-    )
-    monkeypatch.delenv("SCITEX_TODO_PUSH_DRY_RUN", raising=False)
-    try:
-        # Act
-        t0 = time.monotonic()
-        _post("comment", store_path, {"id": "owned", "text": "ping", "author": "operator"})
-        elapsed = time.monotonic() - t0
-    finally:
-        _reset_cache()
-    # Assert
-    assert elapsed < 5.0
-
-
-def test_comment_relay_reports_failure_in_response(tmp_path, monkeypatch):
-    # The notify failure must be VISIBLE (loud toast), not swallowed: the
-    # /comment JSON carries relay.sent=False so the board toasts it.
-    # Arrange
-    import json as _json
-
-    store_path = _store_with_agent(tmp_path)
-    port = _closed_port()
-    monkeypatch.setenv(
-        "SCITEX_TODO_AGENT_TURN_URLS",
-        _json.dumps({"owner-agent": f"http://127.0.0.1:{port}/v1/turn"}),
-    )
-    monkeypatch.delenv("SCITEX_TODO_PUSH_DRY_RUN", raising=False)
     try:
         # Act
         resp = _post(
@@ -392,16 +351,83 @@ def test_comment_relay_reports_failure_in_response(tmp_path, monkeypatch):
     finally:
         _reset_cache()
     # Assert
-    assert payload["relay"]["sent"] is False
+    relay = payload["relay"]
+    assert relay["sent"] is True
+    assert relay["wire"] == "inbox"
+    assert relay["target"] == "owner-agent"
+    assert relay["queued"] == ["owner-agent"]
 
 
-def test_comment_still_saved_when_relay_fails(tmp_path, monkeypatch):
-    # Fail-loud, not fail-closed: a relay miss must NOT lose the comment.
+def test_comment_does_not_await_a_turn_url_post(tmp_path, monkeypatch):
+    # A comment must NOT depend on / await a turn-URL POST. Point the owner at
+    # a CLOSED port (a real refused connection): with the direct-POST removed,
+    # the comment is enqueued to the inbox and the POST returns FAST regardless.
     # Arrange
     import json as _json
+    import socket
+    import time
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
 
     store_path = _store_with_agent(tmp_path)
-    port = _closed_port()
+    monkeypatch.setenv(
+        "SCITEX_TODO_AGENT_TURN_URLS",
+        _json.dumps({"owner-agent": f"http://127.0.0.1:{port}/v1/turn"}),
+    )
+    monkeypatch.delenv("SCITEX_TODO_PUSH_DRY_RUN", raising=False)
+    try:
+        # Act
+        t0 = time.monotonic()
+        resp = _post(
+            "comment", store_path, {"id": "owned", "text": "ping", "author": "operator"}
+        )
+        elapsed = time.monotonic() - t0
+        payload = json.loads(resp.content)
+    finally:
+        _reset_cache()
+    # Assert — fast (no network on the path) AND the toast is the inbox queue.
+    assert elapsed < 2.0
+    assert payload["relay"]["wire"] == "inbox"
+
+
+def test_comment_enqueues_to_owner_inbox(tmp_path):
+    # End-to-end: posting a comment ENQUEUES a `commented` notification into
+    # the owner's standalone inbox (the always-works rail), readable via
+    # poll_inbox. No mocks.
+    # Arrange
+    from scitex_todo._inbox import poll_inbox
+
+    store_path = _store_with_agent(tmp_path)
+    try:
+        # Act
+        _post(
+            "comment", store_path,
+            {"id": "owned", "text": "ping", "author": "operator"},
+        )
+        notes = poll_inbox("owner-agent", store=store_path)
+    finally:
+        _reset_cache()
+    # Assert
+    assert [n["event_type"] for n in notes] == ["commented"]
+    assert notes[0]["card_id"] == "owned"
+
+
+def test_comment_still_saved_when_owner_unreachable(tmp_path, monkeypatch):
+    # The comment must always land on disk — there is no network on the write
+    # path now, but assert persistence even with an unreachable turn-URL set.
+    # Arrange
+    import json as _json
+    import socket
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+
+    store_path = _store_with_agent(tmp_path)
     monkeypatch.setenv(
         "SCITEX_TODO_AGENT_TURN_URLS",
         _json.dumps({"owner-agent": f"http://127.0.0.1:{port}/v1/turn"}),

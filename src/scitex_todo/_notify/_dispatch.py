@@ -10,15 +10,13 @@ single built-in CONSUMER of ``kind == "card-event"`` on the hook bus:
 :func:`dispatch_notifications` for every card-event (see the wiring in
 :mod:`scitex_todo._hooks._dispatch`).
 
-It stitches together the three already-merged foundation pieces, reusing
-each as SSOT (no reinvention):
+It stitches together the already-merged foundation pieces, reusing each
+as SSOT (no reinvention):
 
 * :func:`scitex_todo._notify.resolve_recipients` (C3) — *which* user-ids
   should be notified for this event on this card.
-* :func:`scitex_todo._users.get_user` (C5/users) — map a recipient
-  user-id back to a delivery NAME.
-* :func:`scitex_todo._push.deliver` (existing wire) — actually send the
-  one-shot push to a delivery name.
+* :func:`scitex_todo._inbox.enqueue` (the standalone PULL rail) — the
+  ACTUAL delivery: append the notification to each recipient's inbox.
 
 ## NO fleet-spam — resolver-driven, not broadcast
 
@@ -36,27 +34,37 @@ swallows bus errors. C4 adds a SECOND layer of isolation:
 
 * the whole dispatch is wrapped fail-soft at the bus wiring point so a
   delivery hiccup can never make ``emit()`` raise;
-* **per-recipient** isolation here — one ``deliver_fn`` raising or
-  returning ``ok=False`` for a recipient must NOT stop the others.
+* **per-recipient** isolation here — one inbox enqueue raising for a
+  recipient must NOT stop the others.
 
-## Standalone PULL-inbox sink (the always-works delivery rail)
+## Standalone PULL-inbox sink — the ONLY (and always-works) delivery rail
 
-``deliver_fn`` (the direct turn-URL POST) CANNOT reach a *containerized*
-agent — the agent subscribes outbound to a bus and refuses a direct inbound
-POST. So C4 ALSO **enqueues** each resolved recipient's notification into a
-per-recipient PULL-inbox (:mod:`scitex_todo._inbox`), persisted in the same
-store with ZERO sac dependency. The recipient's scitex-todo client then
-POLLs that inbox (``poll_notifications`` MCP tool). The push ``deliver_fn``
-stays an OPTIONAL parallel ACCELERATOR for host-reachable agents — harmless
-when it fails for a container. The enqueue is FAIL-SOFT: an inbox error can
-never break the mutation or ``emit()``.
+A direct turn-URL POST CANNOT reach a *containerized* agent — the agent
+subscribes outbound to a bus and refuses a direct inbound POST (connection
+refused). It also makes the EMITTING mutation wait on a slow/unreachable
+network target. So C4's delivery is purely the per-recipient PULL-inbox
+(:mod:`scitex_todo._inbox`): it **enqueues** each resolved recipient's
+notification into the inbox, persisted in the same store with ZERO sac
+dependency and ZERO network. The recipient's scitex-todo client then POLLs
+that inbox (``poll_notifications`` MCP tool). The enqueue is FAIL-SOFT: an
+inbox error can never break the mutation or ``emit()``.
 
-## ``deliver_fn`` injection seam (no mocks)
+The dispatcher NO LONGER makes a synchronous direct-POST to turn-urls
+(it used to call :func:`scitex_todo._push.deliver` here, which failed for
+containers and slowed the mutation). :func:`scitex_todo._push.deliver` /
+``turn_url_for`` stay in the codebase for other callers; a future
+NON-BLOCKING push accelerator (e.g. sac's optional C10 out-of-band wake)
+can re-add a host-reachable fast-path WITHOUT putting the network back on
+the mutation's critical path.
 
-:func:`dispatch_notifications` takes a ``deliver_fn`` parameter defaulting
-to :func:`scitex_todo._push.deliver`. Tests pass a real recorder function
-(a closure that appends its args to a list) — no ``unittest.mock``, no
-monkeypatch of the wire (STX-NM / PA-306-compliant).
+## ``deliver_fn`` parameter (kept for back-compat; no longer called)
+
+:func:`dispatch_notifications` still ACCEPTS a ``deliver_fn`` parameter so
+existing callers/tests do not break, but the dispatcher no longer invokes
+it synchronously — the inbox enqueue is the delivery. Tests assert on the
+``enqueued`` summary (and that a deliberately-raising ``deliver_fn`` is
+never called), exercising the real inbox round-trip — no ``unittest.mock``,
+no monkeypatch of the wire (STX-NM / PA-306-compliant).
 """
 
 from __future__ import annotations
@@ -66,16 +74,17 @@ from typing import Any, Callable, Mapping
 
 logger = logging.getLogger(__name__)
 
-#: Event types we deliberately DO NOT deliver via C4 (yet).
+#: Event types we deliberately DO NOT deliver via C4.
 #:
-#: ``commented`` is owned by the interactive comment-relay
-#: (:func:`scitex_todo._django.handlers._comment_relay.maybe_relay_comment`),
-#: which runs in-line on ``POST /comment`` and gives the operator an
-#: immediate, toast-able result. Routing ``commented`` through C4 TOO
-#: would DOUBLE-notify the owner and lose the board toast. Migrating the
-#: comment relay onto this dispatcher (so there is one delivery path) is a
-#: deliberate FOLLOW-UP card; until then we skip it here.
-_SKIP_EVENT_TYPES: frozenset[str] = frozenset({"commented"})
+#: Empty: every card-event (INCLUDING ``commented``) is delivered through
+#: the standalone PULL-inbox now. ``commented`` USED to be skipped here and
+#: handled by the interactive comment-relay's direct turn-URL POST, but that
+#: POST could never reach a containerized owner (connection refused) — so a
+#: comment never arrived. Folding ``commented`` into C4 (card
+#: ``todo-fold-comment-relay-into-c4-dispatcher-20260626``) makes the inbox
+#: the single, always-works comment-delivery rail; the board toast now
+#: reflects the inbox queue instead of a stale direct-POST result.
+_SKIP_EVENT_TYPES: frozenset[str] = frozenset()
 
 
 def _event_fields(event: Any) -> tuple[str | None, str | None, str | None, dict]:
@@ -181,6 +190,12 @@ def _body_for(event_type: str, card_id: str, actor: str | None, extras: Mapping)
 def _recipient_to_name(uid: str, *, store: Any | None) -> str | None:
     """Map a recipient user-id to a delivery NAME, or ``None`` if unmappable.
 
+    RETAINED helper (no longer called by :func:`dispatch_notifications` now
+    that the inbox is the sole delivery rail) for a FUTURE non-blocking push
+    accelerator that would need to resolve a recipient id back to a delivery
+    handle. Kept rather than deleted so re-adding that fast-path is a small
+    diff, not a re-implementation.
+
     A recipient is EITHER a stable ``u_*`` id (the common case —
     :func:`resolve_recipients` resolves names to ids) OR a raw name string
     (the back-compat fallback when a card member is not registered).
@@ -215,9 +230,9 @@ def dispatch_notifications(
     """Deliver a card-event to its resolved recipients (the C4 deliverable).
 
     The single built-in consumer of ``kind == "card-event"``: resolve the
-    recipient set (C3), drop the actor, map each recipient id to a delivery
-    name (users registry), and push a concise per-event message to each via
-    ``deliver_fn`` — fail-soft per recipient.
+    recipient set (C3), drop the actor, and ENQUEUE a concise per-event
+    message into each recipient's standalone PULL-inbox — fail-soft per
+    recipient. No synchronous network: the inbox is the delivery rail.
 
     Parameters
     ----------
@@ -229,10 +244,11 @@ def dispatch_notifications(
         Store path forwarded to :func:`resolve_recipients` and
         :func:`get_user`. ``None`` resolves via the normal precedence chain.
     deliver_fn : callable, optional
-        INJECTION SEAM for the delivery wire. Defaults to
-        :func:`scitex_todo._push.deliver`. Called as
-        ``deliver_fn(name, body, kind=..., task_id=..., timeout=..., dispatched_is_ok=False)``.
-        Tests pass a real recorder (no mocks).
+        ACCEPTED for back-compat (the old direct-POST injection seam) but
+        NO LONGER CALLED — the dispatcher delivers purely via the inbox, so
+        a comment / any event never depends on or awaits a turn-URL POST. A
+        future non-blocking push accelerator could re-introduce a fast-path
+        without putting the network back on the mutation's critical path.
 
     Returns
     -------
@@ -242,17 +258,19 @@ def dispatch_notifications(
             {
                 "event_type": <str | None>,
                 "card_id": <str | None>,
-                "delivered": [<delivery name>, ...],
+                "delivered": [],          # always empty now (see below)
                 "enqueued": [<recipient id>, ...],
                 "skipped": [<reason / name>, ...],
-                "errors": [{"recipient": <name>, "error": <str>}, ...],
+                "errors": [{"recipient": <id>, "error": <str>}, ...],
             }
 
-        ``enqueued`` is ADDITIVE — the recipient ids whose standalone
-        PULL-inbox received the notification (the always-works rail); the
-        existing keys are unchanged. Never raises: malformed events, a
-        missing card, per-recipient delivery failures, AND inbox errors are
-        all folded into the summary (fail-soft).
+        ``enqueued`` is THE real result — the recipient ids whose standalone
+        PULL-inbox received the notification (the always-works rail).
+        ``delivered`` is kept in the shape for back-compat but stays EMPTY:
+        the synchronous direct-POST was removed (it could not reach a
+        containerized recipient and slowed the emitting mutation). Never
+        raises: malformed events, a missing card, AND inbox errors are all
+        folded into the summary (fail-soft).
     """
     event_type, card_id, actor, extras = _event_fields(event)
     summary: dict[str, Any] = {
@@ -270,9 +288,10 @@ def dispatch_notifications(
         summary["skipped"].append("no-card-id")
         return summary
 
-    # (b) commented is owned by the interactive comment-relay (see
-    #     _SKIP_EVENT_TYPES). Skipping here avoids a double-notify + keeps
-    #     the board toast. Migrating the relay onto C4 is a follow-up.
+    # (b) per-type skip hook (now EMPTY — see _SKIP_EVENT_TYPES). Kept as a
+    #     forward-compatible seam should a future event type ever need to be
+    #     excluded from inbox delivery. ``commented`` is NO LONGER skipped:
+    #     it is delivered through the inbox like every other card-event.
     if event_type in _SKIP_EVENT_TYPES:
         summary["skipped"].append(f"event-type:{event_type}")
         return summary
@@ -319,17 +338,17 @@ def dispatch_notifications(
         recipients.discard(actor_id)
         recipients.discard(actor)
 
-    # The notification body is shared by BOTH delivery rails (inbox + push).
+    # The human-readable notification body (the inbox is the only rail now).
     body = _body_for(event_type, card_id, actor, extras)
 
     # (f) STANDALONE PULL-INBOX sink — enqueue per recipient ID. This is the
-    #     always-works rail (no network): a containerized recipient PULLs its
-    #     inbox via the poll_notifications MCP tool. Keyed on the resolved
-    #     recipient IDS (u_* ids or raw-name fallbacks), NOT delivery names,
-    #     so the recipient resolves its own inbox the same way. FAIL-SOFT:
-    #     an inbox error must NEVER break the mutation / emit — record it and
-    #     keep going to the optional push rail. The event ``ts`` (when known)
-    #     is passed so a re-dispatch of the SAME event dedups deterministically.
+    #     ONLY (and always-works) delivery rail — NO network: a containerized
+    #     recipient PULLs its inbox via the poll_notifications MCP tool. Keyed
+    #     on the resolved recipient IDS (u_* ids or raw-name fallbacks), NOT
+    #     delivery names, so the recipient resolves its own inbox the same way.
+    #     FAIL-SOFT: an inbox error must NEVER break the mutation / emit —
+    #     record it and keep going. The event ``ts`` (when known) is passed so
+    #     a re-dispatch of the SAME event dedups deterministically.
     event_ts = event.get("ts") if isinstance(event, Mapping) else getattr(
         event, "ts", None
     )
@@ -357,53 +376,16 @@ def dispatch_notifications(
         if record is not None:
             summary["enqueued"].append(uid)
 
-    # (g) map each recipient id → a delivery NAME (dedup via a set).
-    delivery_names: set[str] = set()
-    for uid in recipients:
-        name = _recipient_to_name(uid, store=store)
-        if name:
-            delivery_names.add(name)
-        else:
-            summary["skipped"].append(f"unmappable:{uid}")
-
-    if not delivery_names:
-        return summary
-
-    # (h) deliver per name — the OPTIONAL push accelerator, FAIL-SOFT per
-    #     recipient (harmless when it fails for a containerized agent).
-    if deliver_fn is None:
-        from .._push import deliver as deliver_fn  # default real wire
-
-    from .._push import NOTIFY_TIMEOUT_S
-
-    kind = f"notify:{event_type}"
-    for name in sorted(delivery_names):
-        try:
-            result = deliver_fn(
-                name,
-                body,
-                kind=kind,
-                task_id=card_id,
-                timeout=NOTIFY_TIMEOUT_S,
-                dispatched_is_ok=False,
-            )
-        except Exception as exc:  # noqa: BLE001 — one bad delivery != stop all
-            logger.warning(
-                "[scitex-todo._notify] delivery to %r raised for %r event "
-                "on card %r: %s",
-                name, event_type, card_id, exc,
-            )
-            summary["errors"].append({"recipient": name, "error": str(exc)})
-            continue
-        # A wire that returns ok=False is a soft failure, not an exception —
-        # record it but keep going (other recipients still get notified).
-        if isinstance(result, Mapping) and result.get("ok") is False:
-            summary["errors"].append(
-                {"recipient": name, "error": result.get("reason", "not-ok")}
-            )
-            continue
-        summary["delivered"].append(name)
-
+    # NOTE: the synchronous direct-POST accelerator (the old steps g + h that
+    # mapped each recipient id → a delivery NAME and called ``deliver_fn`` =
+    # :func:`scitex_todo._push.deliver` against the recipient's turn-URL) has
+    # been REMOVED. It could not reach a containerized recipient (connection
+    # refused) AND it put a slow/unreachable network POST on the critical path
+    # of the EMITTING mutation. The inbox enqueue above is the delivery; a
+    # future NON-BLOCKING push (e.g. sac's optional C10 out-of-band wake) can
+    # re-add a host-reachable fast-path off the mutation's critical path. The
+    # ``deliver_fn`` parameter is accepted for back-compat but intentionally
+    # not invoked; ``delivered`` therefore stays empty.
     return summary
 
 
