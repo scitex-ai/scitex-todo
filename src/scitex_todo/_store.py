@@ -422,7 +422,8 @@ def add_task(
     # succeeded). Actor = the resolved creating user (same chain that
     # `created_by` resolves through). (hook-bypass: line-limit)
     _emit_card_event(
-        "card_created", id, actor=new.get("created_by"), entry_points=entry_points
+        "card_created", id, actor=new.get("created_by"),
+        store=resolved, entry_points=entry_points,  # hook-bypass: line-limit
     )
     return dict(new)
 
@@ -510,7 +511,8 @@ def update_task(
         _from, _to = status_change
         if _to == "done":
             _emit_card_event(
-                "completed", task_id, actor=None, entry_points=entry_points
+                "completed", task_id, actor=None,
+                store=resolved, entry_points=entry_points,  # hook-bypass: line-limit
             )
         else:
             _emit_card_event(
@@ -518,6 +520,7 @@ def update_task(
                 task_id,
                 actor=None,
                 extra={"from": _from, "to": _to},
+                store=resolved,
                 entry_points=entry_points,
             )
     return result
@@ -582,7 +585,8 @@ def complete_task(
         # returned early above and emits nothing). Actor = resolved
         # completer. (hook-bypass: line-limit)
         _emit_card_event(
-            "completed", task_id, actor=_default_agent(by), entry_points=entry_points
+            "completed", task_id, actor=_default_agent(by),
+            store=resolved, entry_points=entry_points,  # hook-bypass: line-limit
         )
     return result
 
@@ -668,6 +672,7 @@ def _emit_card_event(
     card_id: str,
     *,
     actor: str | None,
+    store=None,  # mutation's store -> threaded to dispatcher/inbox (hook-bypass: line-limit)
     entry_points=None,
     **kw,
 ) -> None:
@@ -695,7 +700,7 @@ def _emit_card_event(
         from ._events import Event, emit
 
         ev = getattr(Event, factory)(card_id, actor=actor, **kw)
-        emit(ev, entry_points=entry_points)
+        emit(ev, store=store, entry_points=entry_points)  # hook-bypass: line-limit
     except Exception:  # noqa: BLE001 — emit must never break a mutation
         import logging
 
@@ -1115,6 +1120,7 @@ def comment_task(
         actor=author,
         ts=entry["ts"],
         extra={"body": entry["text"]},
+        store=tasks_path,  # hook-bypass: line-limit
         entry_points=entry_points,
     )
     return {"task_id": task_id, "comment": entry}
@@ -1300,6 +1306,7 @@ def resolve_task(
             task_id,
             actor=who,
             extra={"from": prior_status, "to": "done"},
+            store=tasks_path,  # hook-bypass: line-limit
             entry_points=entry_points,
         )
     return {"task_id": task_id, "actor": who, "task": dict(target)}
@@ -1445,6 +1452,7 @@ def reassign_task(
             task_id,
             actor=actor,
             extra={"from_owner": old_owner, "to_owner": new_owner},
+            store=tasks_path,  # hook-bypass: line-limit
             entry_points=entry_points,
         )
     return {
