@@ -36,11 +36,14 @@ def test_entry_point_group_name_is_canonical():
 
 
 def test_valid_event_kinds_set():
-    # chat-channel PR (lead a2a `1e8e33d0`, 2026-06-14).
+    # chat-channel PR (lead a2a `1e8e33d0`, 2026-06-14). C2 added the
+    # C1 canonical `card-event` kind to the accepted set.
     # Arrange
     # Act
     # Assert
-    assert VALID_EVENT_KINDS == frozenset({"push", "done", "card-message", "unblock"})
+    assert VALID_EVENT_KINDS == frozenset(
+        {"push", "done", "card-message", "unblock", "card-event"}
+    )
 
 
 # === event_validate — fail-loud on shape violations ========================
