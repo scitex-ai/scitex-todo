@@ -29,6 +29,7 @@ from contextlib import contextmanager
 
 import pytest
 
+from scitex_todo._paths import ENV_TASKS
 from scitex_todo._push import (
     DEFAULT_TIMEOUT_S,
     ENV_DRY_RUN,
@@ -42,6 +43,49 @@ from scitex_todo._push import (
     deliver,
     turn_url_for,
 )
+from scitex_todo._users import register_user
+
+
+# --------------------------------------------------------------------------- #
+# Isolation — pin the DEFAULT task store to an empty per-test file            #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_resolution(tmp_path):
+    """Isolate ``turn_url_for`` from the test HOST's live resolution sources.
+
+    ``turn_url_for`` resolves through scitex-todo's OWN user registry (step
+    0, the DEFAULT store via ``resolve_tasks_path(None)``) AND the sac
+    listen daemon's ``/agents`` HTTP registry (step 3, gated on
+    ``SAC_LISTEN_BEARER``). On a real agent host BOTH are live: the user
+    store at ``~/.scitex/todo/tasks.yaml`` and a running sac daemon at
+    ``127.0.0.1:7878`` that now actually serves ``a2a_port`` rows. Either
+    would leak a non-None URL into the env-only tests and make them
+    flaky/host-dependent.
+
+    This fixture pins step 0 at an EMPTY per-test store and strips the sac
+    bearer so step 3 short-circuits — leaving the env map / per-agent env
+    as the only resolution path unless a test opts back in:
+      * user-registry tests override ``SCITEX_TODO_TASKS`` with their own
+        populated ``tmp_path`` store;
+      * sac-registry tests set their own ``SAC_LISTEN_BEARER`` +
+        ``SCITEX_TODO_SAC_LISTEN_URL`` pointing at a local test server.
+    PA-306-compliant: plain os.environ save/restore, no monkeypatch.
+    """
+    store = tmp_path / "_empty_push_store.yaml"
+    store.write_text("tasks: []\n", encoding="utf-8")
+    saved = {k: os.environ.get(k) for k in (ENV_TASKS, ENV_SAC_BEARER)}
+    os.environ[ENV_TASKS] = str(store)
+    os.environ.pop(ENV_SAC_BEARER, None)
+    try:
+        yield
+    finally:
+        for k, prior in saved.items():
+            if prior is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = prior
 
 
 # --------------------------------------------------------------------------- #
@@ -172,6 +216,117 @@ class TestTurnUrlFor:
         env.set(ENV_MAP, "{not json")
         # Act
         url = turn_url_for("anything")
+        # Assert
+        assert url is None
+
+
+# --------------------------------------------------------------------------- #
+# turn_url_for — user-registry lookup (precedence 0, the primary source)      #
+# --------------------------------------------------------------------------- #
+
+
+class TestUserRegistryResolution:
+    """scitex-todo's OWN ``users:`` registry as the file-local, NO-bearer
+    PRIMARY source (step 0). Real temp store via ``register_user`` + the
+    ``SCITEX_TODO_TASKS`` env so ``turn_url_for(agent)`` (which resolves the
+    DEFAULT store) reads the same file (no mocks per STX-NM / PA-306).
+    """
+
+    def _isolate(self, env, store):
+        """Point the default store at ``store`` and strip env/sac precedence.
+
+        So the user registry is the only resolution path that can win.
+        """
+        env.set(ENV_TASKS, str(store))
+        env.delete(ENV_MAP)
+        env.delete(ENV_SAC_BEARER)
+        for k in list(os.environ):
+            if k.startswith(PER_AGENT_PREFIX):
+                env.delete(k)
+
+    def test_explicit_turn_url_from_registry_is_returned(self, env, tmp_path):
+        # Arrange
+        store = tmp_path / "tasks.yaml"
+        register_user(
+            kind="agent",
+            names=["proj-reg"],
+            turn_url="https://reg/v1/turn/proj-reg",
+            store=store,
+        )
+        self._isolate(env, store)
+        # Act
+        url = turn_url_for("proj-reg")
+        # Assert
+        assert url == "https://reg/v1/turn/proj-reg"
+
+    def test_a2a_port_from_registry_derives_turn_url(self, env, tmp_path):
+        # Arrange
+        store = tmp_path / "tasks.yaml"
+        register_user(
+            kind="agent",
+            names=["proj-port"],
+            host_at_name="my-host@proj-port",
+            a2a_port=19007,
+            store=store,
+        )
+        self._isolate(env, store)
+        # Act
+        url = turn_url_for("proj-port")
+        # Assert
+        assert url == "http://my-host:19007/v1/turn"
+
+    def test_registry_resolves_by_host_at_name(self, env, tmp_path):
+        # Arrange — the card owner string may be the host@name join key.
+        store = tmp_path / "tasks.yaml"
+        register_user(
+            kind="agent",
+            names=["display-only"],
+            host_at_name="h@proj-join",
+            turn_url="https://join/turn",
+            store=store,
+        )
+        self._isolate(env, store)
+        # Act
+        url = turn_url_for("h@proj-join")
+        # Assert
+        assert url == "https://join/turn"
+
+    def test_registry_wins_over_env_map(self, env, tmp_path):
+        # Arrange — both the user registry AND the env map resolve; the
+        # file-local registry (step 0) must win over the env map (step 1).
+        store = tmp_path / "tasks.yaml"
+        register_user(
+            kind="agent",
+            names=["proj-both"],
+            turn_url="https://registry/turn",
+            store=store,
+        )
+        env.set(ENV_TASKS, str(store))
+        env.set(ENV_MAP, json.dumps({"proj-both": "https://env-map/turn"}))
+        # Act
+        url = turn_url_for("proj-both")
+        # Assert
+        assert url == "https://registry/turn"
+
+    def test_user_without_endpoint_falls_through_to_env(self, env, tmp_path):
+        # Arrange — a registered user with NO endpoint must not short-circuit;
+        # resolution falls through to the env map (step 1).
+        store = tmp_path / "tasks.yaml"
+        register_user(kind="agent", names=["proj-noep"], store=store)
+        env.set(ENV_TASKS, str(store))
+        env.set(ENV_MAP, json.dumps({"proj-noep": "https://env-fallback/turn"}))
+        # Act
+        url = turn_url_for("proj-noep")
+        # Assert
+        assert url == "https://env-fallback/turn"
+
+    def test_unregistered_agent_still_returns_none_loud(self, env, tmp_path):
+        # Arrange — nothing resolves anywhere → loud None preserved.
+        store = tmp_path / "tasks.yaml"
+        register_user(kind="agent", names=["someone-else"], store=store)
+        self._isolate(env, store)
+        # Act
+        url = turn_url_for("ghost")
         # Assert
         assert url is None
 

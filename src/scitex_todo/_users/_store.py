@@ -215,6 +215,8 @@ def register_user(
     names: "list[str] | str",
     host_at_name: str | None = None,
     notify: dict | None = None,
+    turn_url: str | None = None,
+    a2a_port: int | None = None,
     store: str | Path | None = None,
 ) -> User:
     """Register a new user with a freshly generated stable id.
@@ -235,6 +237,14 @@ def register_user(
         Optional canonical ``host@name`` join key.
     notify : dict, optional
         Opaque notify-config bag (stored verbatim; default ``{}``).
+    turn_url : str, optional
+        Optional explicit delivery endpoint (the agent's HTTP turn URL).
+        Validated as a non-empty string when present. See
+        :func:`scitex_todo._users.user_turn_url` for how it is consumed.
+    a2a_port : int, optional
+        Optional a2a listen port; when set (and no ``turn_url``) the turn
+        URL is derived as ``http://<host>:<a2a_port>/v1/turn``. Validated
+        as a positive int when present.
     store : str | Path, optional
         Store path override (default: the resolved task store).
 
@@ -265,6 +275,8 @@ def register_user(
             names=names,
             host_at_name=host_at_name,
             notify=dict(notify) if notify else {},
+            turn_url=turn_url,
+            a2a_port=a2a_port,
             created_at=_utc_now_iso(),
         )
         validate_user(new)

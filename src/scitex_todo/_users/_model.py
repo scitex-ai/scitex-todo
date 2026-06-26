@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from dataclasses import fields as _dc_fields
 
-from .._ports import AgentIdentityError, canonical_agent_id
+from .._ports import AgentIdentityError, canonical_agent_id, parse_agent_id
 
 #: Closed, validated set of user kinds — fail-loud on unknown values,
 #: mirroring ``_model.VALID_KINDS`` / ``VALID_STATUSES``. A ``human`` has a
@@ -62,6 +62,21 @@ class User:
         Reserved, opaque per-user notify-config bag (default ``{}``). This
         package stores and round-trips it verbatim and does NOT interpret
         its contents — the notify-config layer is a separate concern.
+    turn_url : str | None
+        Optional explicit delivery endpoint — the agent's HTTP turn URL
+        that :func:`scitex_todo._push.deliver` POSTs a board event to. When
+        present it is used verbatim (highest precedence in
+        :func:`user_turn_url`). ``None`` (the default) means "not pinned";
+        the URL may then be derived from :attr:`a2a_port`. The shape
+        matches sac's ``agent_registered`` bus envelope, whose consumer (a
+        separate card) populates this field — this package only stores it.
+    a2a_port : int | None
+        Optional a2a listen port. When set (and no explicit
+        :attr:`turn_url`), :func:`user_turn_url` derives the endpoint as
+        ``http://<host>:<a2a_port>/v1/turn`` where ``<host>`` is the host
+        half of :attr:`host_at_name` (loopback when the id is bare). This
+        is the field sac's ``agent_registered`` envelope carries alongside
+        ``host_at_name``; absent → ``None`` (backward-compatible).
     created_at : str
         ISO-8601 UTC timestamp stamped at registration.
     """
@@ -71,6 +86,8 @@ class User:
     names: list[str] = field(default_factory=list)
     host_at_name: str | None = None
     notify: dict = field(default_factory=dict)
+    turn_url: str | None = None
+    a2a_port: int | None = None
     created_at: str | None = None
 
     @classmethod
@@ -97,8 +114,9 @@ class User:
         """Round-trip to a plain dict for the ruamel writer.
 
         Emits ``id`` / ``kind`` / ``names`` / ``created_at`` always; omits
-        ``host_at_name`` when ``None`` and ``notify`` when empty so the
-        YAML stays compact (symmetry with ``Task.to_dict``).
+        ``host_at_name`` when ``None``, ``notify`` when empty, and the
+        delivery-endpoint fields (``turn_url`` / ``a2a_port``) when ``None``
+        so the YAML stays compact (symmetry with ``Task.to_dict``).
         """
         result: dict[str, object] = {
             "id": self.id,
@@ -110,6 +128,10 @@ class User:
             result["host_at_name"] = self.host_at_name
         if self.notify:
             result["notify"] = dict(self.notify)
+        if self.turn_url is not None:
+            result["turn_url"] = self.turn_url
+        if self.a2a_port is not None:
+            result["a2a_port"] = self.a2a_port
         return result
 
 
@@ -126,7 +148,10 @@ def validate_user(user: "User | dict") -> None:
       string, or containing duplicate names within the same user,
     - ``host_at_name`` present but not a non-empty string or not a
       well-formed ``host@name`` (delegated to :func:`canonical_agent_id`),
-    - ``notify`` present but not a mapping.
+    - ``notify`` present but not a mapping,
+    - ``turn_url`` present but not a non-empty string,
+    - ``a2a_port`` present but not a positive int (``bool`` rejected — it
+      is an ``int`` subclass but never a valid port).
     """
     d = user.to_dict() if isinstance(user, User) else user
     if not isinstance(d, dict):
@@ -189,11 +214,70 @@ def validate_user(user: "User | dict") -> None:
             f"notify must be a mapping or absent"
         )
 
+    turn_url = d.get("turn_url")
+    if turn_url is not None and not (isinstance(turn_url, str) and turn_url):
+        raise UserValidationError(
+            f"user {uid!r} has invalid turn_url {turn_url!r}; "
+            f"turn_url must be a non-empty string or absent"
+        )
+
+    a2a_port = d.get("a2a_port")
+    if a2a_port is not None:
+        # ``bool`` is an ``int`` subclass; a True/False port is a bug, not a
+        # port number — reject it explicitly before the positive-int check.
+        if isinstance(a2a_port, bool) or not isinstance(a2a_port, int) or a2a_port <= 0:
+            raise UserValidationError(
+                f"user {uid!r} has invalid a2a_port {a2a_port!r}; "
+                f"a2a_port must be a positive int or absent"
+            )
+
+
+def user_turn_url(user: "User | dict") -> str | None:
+    """Resolve a user's delivery endpoint (turn URL), or ``None``.
+
+    Precedence (the SSOT for "where do I POST a board event for this
+    member?"):
+
+    1. An explicit :attr:`User.turn_url` — used verbatim.
+    2. Else, when :attr:`User.a2a_port` is set, derive
+       ``http://<host>:<a2a_port>/v1/turn`` where ``<host>`` is the host
+       half of :attr:`User.host_at_name` (via :func:`parse_agent_id`); a
+       bare / absent ``host_at_name`` (host unknown) yields the loopback
+       host ``127.0.0.1`` — the same loopback convention
+       :func:`scitex_todo._turn_url._turn_url_from_registry` uses when it
+       derives from an ``a2a_port``.
+    3. Else ``None`` — the member has no configured endpoint.
+
+    Accepts either a :class:`User` or a plain ``users:`` dict (so callers
+    can resolve straight off a row without rehydrating). Never raises.
+    """
+    d = user.to_dict() if isinstance(user, User) else user
+    if not isinstance(d, dict):
+        return None
+    explicit = d.get("turn_url")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip()
+    port = d.get("a2a_port")
+    # Mirror validate_user's guard: reject bool (int subclass) + non-positive.
+    if isinstance(port, bool) or not isinstance(port, int) or port <= 0:
+        return None
+    host_at_name = d.get("host_at_name")
+    host = "127.0.0.1"
+    if isinstance(host_at_name, str) and host_at_name.strip():
+        try:
+            parsed_host, _name = parse_agent_id(host_at_name)
+        except AgentIdentityError:
+            parsed_host = ""
+        if parsed_host:
+            host = parsed_host
+    return f"http://{host}:{port}/v1/turn"
+
 
 __all__ = [
     "VALID_USER_KINDS",
     "User",
     "UserValidationError",
+    "user_turn_url",
     "validate_user",
 ]
 
