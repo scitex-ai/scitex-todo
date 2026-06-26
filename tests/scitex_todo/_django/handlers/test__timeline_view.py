@@ -80,10 +80,28 @@ def store_with_timeline_tasks(tmp_path: Path, env) -> Path:
 
 @pytest.fixture()
 def store_ungrouped(tmp_path: Path, env) -> Path:
-    """One task without ``agent`` or ``group`` — should land in
-    ``"(ungrouped)"`` regardless of ``lane_by``."""
+    """One OWNER-LESS task (no ``agent``/``assignee``/``group``) — should land
+    in ``"(ungrouped)"`` regardless of ``lane_by``.
+
+    Written as RAW YAML on purpose: ``add_task`` now REQUIRES an owner
+    (assignee/agent are mandatory — fail-loud, no silent fallback), so an
+    owner-less card can only exist as a LEGACY hand-written row. The board /
+    timeline must still bucket such a legacy row under ``"(ungrouped)"``
+    (``card_owner`` returns ``None``)."""
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-naked", title="No lane", assignee="agent:test-suite")
+    # Stamp a NOW ``created_at`` so the row lands inside the timeline window
+    # (the standard add_task auto-stamp the other fixtures rely on); we write
+    # raw YAML only to keep the row OWNER-LESS, which add_task now forbids.
+    now = _dt.datetime.now(tz=_dt.timezone.utc).replace(microsecond=0).isoformat()
+    store.write_text(
+        "tasks:\n"
+        "  - id: t-naked\n"
+        "    title: No lane\n"
+        "    status: pending\n"
+        f"    created_at: {now!r}\n"
+        f"    last_activity: {now!r}\n",
+        encoding="utf-8",
+    )
     env.set("SCITEX_TODO_TASKS", str(store))
     return store
 
