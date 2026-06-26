@@ -41,6 +41,38 @@
 .tl-count {
   color: var(--text-muted, #8a96a8);
 }
+
+/* ── dependency-edge legend (raster views only) ───────────────────────
+   A small, muted key for the two edge styles — built in timelineControls.js
+   with inline-SVG swatches that REUSE the .tl-edge--depends / .tl-edge--blocks
+   classes above, so the key stays single-sourced with the real edges (dotted
+   grey "depends on" + solid red "blocks") and flips with the theme. */
+.tl-edge-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--text-muted, #8a96a8);
+}
+.tl-edge-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.tl-edge-legend-swatch {
+  display: inline-block;
+  flex: none;
+  overflow: visible;
+}
+/* The swatch <line> inherits .tl-edge's transition; pin it full-opacity so
+   the key reads clearly regardless of the edges' resting 0.55 opacity. */
+.tl-edge-legend-swatch .tl-edge {
+  opacity: 1;
+}
+.tl-edge-legend-label {
+  white-space: nowrap;
+}
 .tl-error {
   color: var(--red, #e5484d);
   font-weight: 600;
@@ -86,6 +118,9 @@
   stroke-width: 1.4;
   fill: none;
   opacity: 0.55;
+  transition:
+    opacity 0.12s ease,
+    stroke-width 0.12s ease;
 }
 .tl-edge--depends {
   stroke: var(--text-muted, #8a96a8);
@@ -93,6 +128,32 @@
 }
 .tl-edge--blocks {
   stroke: var(--red, #e5484d);
+}
+
+/* ── hover-highlight: trace a dot's dependency subgraph ────────────────
+   When the SVG carries .tl--highlighting (set by timelineControls.js on
+   dot/edge hover), the edges + dots touching the hovered marker get
+   .tl-edge--hot / .tl-dot--hot — they brighten + thicken — while every
+   unrelated edge/dot dims so the connected subgraph stands out. Restored
+   on mouse-out. Subtle transitions; reuses the theme vars + edge colours. */
+.tl-svg.tl--highlighting .tl-edge:not(.tl-edge--hot) {
+  opacity: 0.12;
+}
+.tl-svg.tl--highlighting .tl-dot:not(.tl-dot--hot) {
+  opacity: 0.22;
+}
+.tl-edge--hot {
+  opacity: 1;
+  stroke-width: 2.6;
+}
+.tl-dot--hot {
+  opacity: 1;
+  stroke-width: 2.5;
+  filter: brightness(1.18);
+}
+/* Keep the multi-select accent ring readable even while dimmed. */
+.tl-svg.tl--highlighting .tl-dot--selected {
+  opacity: 0.85;
 }
 .tl-dot {
   cursor: pointer;

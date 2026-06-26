@@ -111,46 +111,23 @@
     };
 
   // ── controls row (shared by all three views) ─────────────────────────
+  // Built in timelineControls.js (captured here like _pack/_geo so this
+  // file stays under the per-file cap). That sibling appends the
+  // dependency-edge legend for the raster views and self-wires the
+  // hover-highlight delegation on #columns. Fallback keeps the page usable
+  // (selects-only, no legend) if the sibling hasn't loaded.
+  var _ctl =
+    (typeof globalThis !== "undefined" &&
+      globalThis.STX &&
+      globalThis.STX.timelineControls) ||
+    null;
   function controlsHtml(countLabel) {
-    function opt(val, cur, label) {
-      return (
-        '<option value="' +
-        val +
-        '"' +
-        (val === cur ? " selected" : "") +
-        ">" +
-        label +
-        "</option>"
-      );
-    }
-    var err = TL.error
-      ? '<span class="tl-error" title="' +
-        escapeHtml(TL.error) +
-        '">! ' +
-        escapeHtml(TL.error) +
-        "</span>"
-      : "";
+    if (_ctl && _ctl.controlsHtml)
+      return _ctl.controlsHtml(TL, countLabel, escapeHtml);
     return (
-      '<div class="tl-controls">' +
-      '<label class="tl-ctl">View ' +
-      '<select onchange="setTimelineView(this.value)" ' +
-      'title="Rows by agent or project, or a rich per-task list">' +
-      opt("agent", TL.view, "By Agent") +
-      opt("project", TL.view, "By Project") +
-      opt("simple", TL.view, "Simple (per task)") +
-      "</select></label>" +
-      '<label class="tl-ctl">Window ' +
-      '<select onchange="setTimelineWindow(this.value)" ' +
-      'title="How far back the timeline reaches">' +
-      opt("1d", TL.windowKey, "Day") +
-      opt("1w", TL.windowKey, "Week") +
-      opt("1m", TL.windowKey, "Month") +
-      "</select></label>" +
-      '<span class="tl-count">' +
+      '<div class="tl-controls"><span class="tl-count">' +
       escapeHtml(countLabel) +
-      "</span>" +
-      err +
-      "</div>"
+      "</span></div>"
     );
   }
 
@@ -306,6 +283,10 @@
       svg +=
         '<line class="tl-edge tl-edge--' +
         (e.kind === "blocks" ? "blocks" : "depends") +
+        '" data-source="' +
+        escapeHtml(String(e.source)) +
+        '" data-target="' +
+        escapeHtml(String(e.target)) +
         '" x1="' +
         s.cx +
         '" y1="' +
@@ -332,6 +313,8 @@
       svg +=
         '<circle class="tl-dot' +
         (done ? " tl-dot--done" : " tl-dot--live") +
+        '" data-card-id="' +
+        escapeHtml(String(d.ev.id)) +
         '" data-status="' +
         escapeHtml(String(d.ev.status || "")) +
         '" cx="' +

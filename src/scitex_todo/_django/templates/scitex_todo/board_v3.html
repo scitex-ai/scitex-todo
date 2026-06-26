@@ -102,6 +102,16 @@
 {% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/timelineSelect.js' %}"></script>
 {% comment %}
+  timelineControls.js — Timeline controls-row builder (incl. the dependency-
+  edge legend) + the edge hover-highlight. MUST load BEFORE timeline.js:
+  publishes window.STX.timelineControls.controlsHtml (captured by timeline.js
+  at init, like timelineGeo) and self-wires the hover delegation on #columns
+  (mouseover/mouseout) so it survives the raster's auto-rebuilds without
+  timeline.js re-attaching. Pure controlsHtml/edgeLegendHtml are node-testable.
+  Factored out so timeline.js stays under the per-file cap.
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/timelineControls.js' %}"></script>
+{% comment %}
   timeline.js — the Timeline layout renderer (raster by agent/project +
   a rich per-task "simple" list). Classic <script defer> so it shares the
   page globals (STATE / escapeHtml / openDetail / bucket / render); it
