@@ -204,6 +204,7 @@ def test_add_task_stores_created_by(tmp_path):
             add_task,
             id="a",
             title="A",
+            assignee="agent:explicit",
             created_by="agent:explicit",
             tasks_path=store,
         )
@@ -220,7 +221,7 @@ def test_add_task_defaults_created_by_from_env(tmp_path, env):
     env.set("SCITEX_TODO_AGENT", "agent:fromenv")
     # Act
     add = asyncio.run(
-        _call_tool(add_task, id="a", title="A", tasks_path=store)
+        _call_tool(add_task, id="a", title="A", assignee="agent:x", tasks_path=store)
     )
     # Assert
     assert json.loads(add)["created_by"] == "agent:fromenv"
@@ -237,6 +238,7 @@ def test_add_then_list_round_trip(tmp_path):
             id="a",
             title="A",
             scope="agent:test",
+            assignee="agent:test",
             tasks_path=store,
         )
     )
@@ -385,6 +387,7 @@ def test_add_task_with_deadline_sets_deadline_field(tmp_path):
             add_task,
             id="a",
             title="A",
+            assignee="agent:x",
             deadline="2030-01-01",
             tasks_path=store,
         )
@@ -403,7 +406,7 @@ def test_update_task_with_deadline_sets_deadline_field(tmp_path):
     from scitex_todo._mcp_server import add_task, list_tasks, update_task
 
     store = str(tmp_path / "tasks.yaml")
-    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
+    asyncio.run(_call_tool(add_task, id="a", title="A", assignee="agent:x", tasks_path=store))
     asyncio.run(
         _call_tool(
             update_task,
@@ -430,6 +433,7 @@ def test_add_task_with_deadlines_list_sets_multi_deadlines(tmp_path):
             add_task,
             id="a",
             title="A",
+            assignee="agent:x",
             deadlines=["2030-01-01", "2030-07-01"],
             tasks_path=store,
         )
