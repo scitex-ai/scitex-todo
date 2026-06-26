@@ -101,18 +101,19 @@ def _generate_notification_id() -> str:
 def _load_inboxes_section(path: Path) -> dict[str, list[dict]]:
     """Read the raw ``inboxes:`` mapping off disk (absent / malformed → {}).
 
-    Uses ``yaml.safe_load`` (a read-only snapshot) — the ruamel round-trip
-    is only needed on the WRITE path to preserve comments. Defensive: a
+    Uses the fast safe loader (:func:`scitex_todo._yaml.safe_load`, a read-only
+    snapshot) — the ruamel round-trip is only needed on the WRITE path to
+    preserve comments. Defensive: a
     missing file, an absent ``inboxes:`` key, or a non-mapping value all
     yield an empty mapping; per-recipient values that are not lists are
     coerced to ``[]`` so a malformed row never breaks a poll.
     """
     if not path.exists():
         return {}
-    import yaml
+    from ._yaml import safe_load
 
     with path.open(encoding="utf-8") as handle:
-        data = yaml.safe_load(handle) or {}
+        data = safe_load(handle) or {}
     raw = data.get(_INBOXES_KEY)
     if not isinstance(raw, dict):
         return {}

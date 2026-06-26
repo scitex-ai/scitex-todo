@@ -57,16 +57,18 @@ def _utc_now_iso() -> str:
 def _load_users_section(path: Path) -> list[dict]:
     """Read the raw ``users:`` list off disk (absent / non-list → []).
 
-    Uses ``yaml.safe_load`` (read-only snapshot) — the ruamel round-trip is
-    only needed on the WRITE path to preserve comments. Validates each row
-    via :func:`validate_user` so a malformed registry fails loud on read.
+    Uses the fast safe loader (:func:`scitex_todo._yaml.safe_load`) — this is a
+    READ-only snapshot re-parsed on every ``resolve_user``, so the libyaml
+    speedup matters; the ruamel round-trip is only needed on the WRITE path to
+    preserve comments. Validates each row via :func:`validate_user` so a
+    malformed registry fails loud on read.
     """
     if not path.exists():
         return []
-    import yaml
+    from .._yaml import safe_load
 
     with path.open(encoding="utf-8") as handle:
-        data = yaml.safe_load(handle) or {}
+        data = safe_load(handle) or {}
     users = data.get("users")
     if not isinstance(users, list):
         return []

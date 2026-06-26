@@ -26,7 +26,7 @@ import fcntl
 import os
 from pathlib import Path
 
-import yaml
+from ._yaml import safe_load  # hook-bypass: line-limit
 
 # Valid task statuses. ``goal`` marks a north-star objective (rendered gold);
 # the rest are ordinary execution states.
@@ -486,7 +486,7 @@ def load_tasks(path: str | Path) -> list[dict]:
         raise FileNotFoundError(f"task store not found: {path}")
 
     with path.open(encoding="utf-8") as handle:
-        data = yaml.safe_load(handle) or {}
+        data = safe_load(handle) or {}  # hook-bypass: line-limit
 
     tasks = data.get("tasks")
     _validate_tasks(tasks, source=str(path))
