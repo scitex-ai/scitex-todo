@@ -1,0 +1,142 @@
+/* test__timeline_controls.js — node --test unit tests for the PURE HTML
+ * builders shipped in
+ * ``src/scitex_todo/_django/static/scitex_todo/board_v3/timelineControls.js``
+ * (the timeline controls row + the dependency-edge legend).
+ *
+ * Run from the repo root:
+ *   node --test tests/scitex_todo/test__timeline_controls.js
+ *
+ * No external deps; uses node's built-in test runner (>=18). JS, not TS —
+ * the module ships as a plain <script> for the Django board_v3 template
+ * (mirrors test__timeline_select.js). Only the PURE builders are covered;
+ * the hover-highlight DOM wiring is browser-only and short-circuited under
+ * node, so it has no automated test here (visual verification only).
+ */
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const path = require("node:path");
+
+const MOD = require(
+  path.resolve(
+    __dirname,
+    "..",
+    "..",
+    "src",
+    "scitex_todo",
+    "_django",
+    "static",
+    "scitex_todo",
+    "board_v3",
+    "timelineControls.js",
+  ),
+);
+
+const { controlsHtml, edgeLegendHtml } = MOD;
+
+// A faithful stand-in for the page's escapeHtml so the assertions exercise
+// the same escaping path the browser uses.
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+    return {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[c];
+  });
+}
+
+test("edgeLegendHtml: both swatches reuse the real .tl-edge--* classes", () => {
+  const html = edgeLegendHtml(esc);
+  assert.match(html, /tl-edge tl-edge--depends/);
+  assert.match(html, /tl-edge tl-edge--blocks/);
+});
+
+test("edgeLegendHtml: labels are 'depends on' + 'blocks'", () => {
+  const html = edgeLegendHtml(esc);
+  assert.match(html, /depends on/);
+  assert.match(html, /blocks/);
+});
+
+test("edgeLegendHtml: has an aria-label for the key", () => {
+  const html = edgeLegendHtml(esc);
+  assert.match(html, /aria-label="Edge key:/);
+  assert.match(html, /role="img"/);
+});
+
+test("edgeLegendHtml: stable legend container class", () => {
+  assert.match(edgeLegendHtml(esc), /class="tl-edge-legend"/);
+});
+
+test("edgeLegendHtml: no escape fn provided → still callable, no throw", () => {
+  assert.doesNotThrow(() => edgeLegendHtml());
+  assert.match(edgeLegendHtml(), /tl-edge--depends/);
+});
+
+test("controlsHtml: agent/project rasters include the edge legend", () => {
+  const agent = controlsHtml(
+    { view: "agent", windowKey: "1d" },
+    "3 events",
+    esc,
+  );
+  const project = controlsHtml(
+    { view: "project", windowKey: "1w" },
+    "5 events",
+    esc,
+  );
+  assert.match(agent, /tl-edge-legend/);
+  assert.match(project, /tl-edge-legend/);
+});
+
+test("controlsHtml: simple view OMITS the edge legend (no edges there)", () => {
+  const simple = controlsHtml(
+    { view: "simple", windowKey: "1d" },
+    "7 tasks",
+    esc,
+  );
+  assert.ok(!simple.includes("tl-edge-legend"));
+});
+
+test("controlsHtml: renders the View + Window selects and count", () => {
+  const html = controlsHtml(
+    { view: "agent", windowKey: "1m" },
+    "2 events",
+    esc,
+  );
+  assert.match(html, /setTimelineView\(this\.value\)/);
+  assert.match(html, /setTimelineWindow\(this\.value\)/);
+  assert.match(html, /class="tl-count">2 events</);
+});
+
+test("controlsHtml: marks the active view + window option selected", () => {
+  const html = controlsHtml({ view: "project", windowKey: "1w" }, "x", esc);
+  assert.match(html, /<option value="project" selected>/);
+  assert.match(html, /<option value="1w" selected>/);
+});
+
+test("controlsHtml: surfaces TL.error in a .tl-error span", () => {
+  const html = controlsHtml(
+    { view: "agent", windowKey: "1d", error: "boom" },
+    "x",
+    esc,
+  );
+  assert.match(html, /class="tl-error"[^>]*>! boom</);
+});
+
+test("controlsHtml: error text is escaped (no raw injection)", () => {
+  const html = controlsHtml(
+    { view: "agent", windowKey: "1d", error: "<img src=x onerror=1>" },
+    "x",
+    esc,
+  );
+  assert.ok(!html.includes("<img src=x"));
+  assert.match(html, /&lt;img src=x/);
+});
+
+test("controlsHtml: missing TL / esc → no throw, still renders count", () => {
+  assert.doesNotThrow(() => controlsHtml());
+  assert.match(controlsHtml(undefined, "9 events"), /9 events/);
+});
