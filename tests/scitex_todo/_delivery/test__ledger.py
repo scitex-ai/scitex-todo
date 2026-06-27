@@ -19,6 +19,7 @@ from scitex_todo._delivery._channel import DeliveryResult, Status
 from scitex_todo._delivery._ledger import (
     BASE_BACKOFF_SEC,
     MAX_ATTEMPTS,
+    MAX_BACKOFF_SEC,
     TERMINAL_STATUS,
     Ledger,
     ledger_path,
@@ -119,6 +120,67 @@ def test_exhausting_attempts_becomes_terminal_and_round_trips(tmp_path):
 
     reloaded = Ledger.load(store)
     assert reloaded.is_terminal("u_a", "n_1", "log") is True
+
+
+def _next_eligible(led, recipient, note_id, channel):
+    """Parse the stored ``next_eligible_ts`` back to an aware datetime."""
+    entry = led._get(recipient, note_id, channel)
+    return _dt.datetime.fromisoformat(
+        entry["next_eligible_ts"].replace("Z", "+00:00")
+    )
+
+
+def test_retry_after_hint_drives_backoff_instead_of_exponential(tmp_path):
+    """A failed result with ``retry_after`` HONORS the hint as the backoff.
+
+    Slice 3: a 429 ``Retry-After`` should set ``next_eligible_ts`` to
+    ``now + min(retry_after, MAX_BACKOFF_SEC)`` rather than the exponential
+    default — while still counting toward MAX_ATTEMPTS.
+    """
+    store = _store(tmp_path)
+    led = Ledger.load(store)
+    now = _dt.datetime(2026, 6, 27, 10, 0, 0, tzinfo=_dt.timezone.utc)
+
+    hinted = DeliveryResult(
+        status=Status.FAILED, channel="telegram", retry_after=900
+    )
+    led.record("u_a", "n_1", "telegram", hinted, now)
+
+    # next_eligible ~ now + min(900, MAX_BACKOFF_SEC); 900 < cap so == now+900.
+    expected = now + _dt.timedelta(seconds=min(900, MAX_BACKOFF_SEC))
+    assert _next_eligible(led, "u_a", "n_1", "telegram") == expected
+    # The hint did NOT cost extra budget — one attempt consumed.
+    assert led._get("u_a", "n_1", "telegram")["attempts"] == 1
+    # Still retryable (not terminal) after the hinted window elapses.
+    assert led.retry_eligible(
+        "u_a", "n_1", "telegram", expected + _dt.timedelta(seconds=1)
+    ) is True
+
+
+def test_retry_after_hint_is_clamped_to_max_backoff(tmp_path):
+    """A retry hint larger than MAX_BACKOFF_SEC is clamped to the cap."""
+    store = _store(tmp_path)
+    led = Ledger.load(store)
+    now = _dt.datetime(2026, 6, 27, 10, 0, 0, tzinfo=_dt.timezone.utc)
+    huge = DeliveryResult(
+        status=Status.FAILED, channel="telegram",
+        retry_after=MAX_BACKOFF_SEC * 10,
+    )
+    led.record("u_a", "n_1", "telegram", huge, now)
+    expected = now + _dt.timedelta(seconds=MAX_BACKOFF_SEC)
+    assert _next_eligible(led, "u_a", "n_1", "telegram") == expected
+
+
+def test_no_retry_after_keeps_exponential_default(tmp_path):
+    """Without a hint, the existing exponential backoff still applies."""
+    store = _store(tmp_path)
+    led = Ledger.load(store)
+    now = _dt.datetime(2026, 6, 27, 10, 0, 0, tzinfo=_dt.timezone.utc)
+    fail = DeliveryResult(status=Status.FAILED, channel="log")  # no retry_after
+    led.record("u_a", "n_1", "log", fail, now)
+    # First attempt → BASE_BACKOFF_SEC * 2**0 == BASE.
+    expected = now + _dt.timedelta(seconds=BASE_BACKOFF_SEC)
+    assert _next_eligible(led, "u_a", "n_1", "log") == expected
 
 
 def test_skipped_does_not_consume_attempts(tmp_path):

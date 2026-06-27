@@ -110,6 +110,7 @@ scitex-todo = "scitex_todo._jobs_provider:provide_jobs"
 # src/scitex_todo/_delivery/_registry.py.
 [project.entry-points."scitex_todo.delivery_channels"]
 log = "scitex_todo._delivery._channels.log:LogChannel"
+telegram = "scitex_todo._delivery._channels.telegram:TelegramChannel"
 
 [project.entry-points."scitex_todo.hooks"]
 # scitex-todo's built-in handler is invoked DIRECTLY by
