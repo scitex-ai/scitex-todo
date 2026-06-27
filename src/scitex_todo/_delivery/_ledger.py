@@ -202,8 +202,20 @@ class Ledger:
     # ------------------------------------------------------------------ #
     # Mutation                                                            #
     # ------------------------------------------------------------------ #
-    def _backoff_seconds(self, attempts: int) -> int:
-        """Exponential backoff: BASE * 2**(attempts-1), capped."""
+    def _backoff_seconds(
+        self, attempts: int, retry_after: float | None = None
+    ) -> int:
+        """Backoff in seconds for a failed attempt, capped at MAX_BACKOFF_SEC.
+
+        When ``retry_after`` is a positive hint (a 429 ``Retry-After``), HONOR
+        it — the server told us exactly how long to wait, so we obey that
+        rather than guessing with the exponential default. When it is ``None``
+        (or non-positive), fall back to the exponential schedule
+        ``BASE * 2**(attempts-1)``. Either way the result is clamped to
+        ``MAX_BACKOFF_SEC`` and the attempt still counts toward MAX_ATTEMPTS.
+        """
+        if retry_after is not None and retry_after > 0:
+            return min(int(retry_after), MAX_BACKOFF_SEC)
         if attempts <= 0:
             attempts = 1
         delay = BASE_BACKOFF_SEC * (2 ** (attempts - 1))
@@ -220,8 +232,9 @@ class Ledger:
         """Record ``result`` for the tuple and persist atomically.
 
         Increments ``attempts``, stamps ``last_ts``, sets ``status`` from
-        the result, and — for a FAILURE — computes the next exponential
-        backoff ``next_eligible_ts``. A ``sent`` clears any backoff (it's
+        the result, and — for a FAILURE — computes the next backoff
+        ``next_eligible_ts`` (honoring ``result.retry_after`` when set, else
+        the exponential default). A ``sent`` clears any backoff (it's
         terminal). A ``skipped`` is NON-terminal policy feedback: it stamps
         the entry but does NOT bump ``attempts`` and does NOT become a
         failure, so the item is freely re-evaluated next run.
@@ -258,7 +271,11 @@ class Ledger:
                     entry["next_eligible_ts"] = None
                 else:
                     entry["status"] = status.value
-                    backoff = self._backoff_seconds(attempts)
+                    # Honor a server retry hint (429 Retry-After) over the
+                    # exponential default; either way still capped + counted.
+                    backoff = self._backoff_seconds(
+                        attempts, getattr(result, "retry_after", None)
+                    )
                     entry["next_eligible_ts"] = _iso(
                         now + _dt.timedelta(seconds=backoff)
                     )

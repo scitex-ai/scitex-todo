@@ -99,4 +99,16 @@ def test_real_log_entry_point_discovered():
     assert found["log"].name == "log"
 
 
+def test_real_telegram_entry_point_discovered():
+    """The slice-3 ``telegram`` channel is discovered via its entry point.
+
+    Verifies the pyproject registration end-to-end (the worktree is
+    ``pip install -e .``): the registry instantiates the channel from the
+    entry point WITHOUT a token (lazy resolution) and exposes it by name.
+    """
+    found = discover_channels()
+    assert "telegram" in found
+    assert found["telegram"].name == "telegram"
+
+
 # EOF

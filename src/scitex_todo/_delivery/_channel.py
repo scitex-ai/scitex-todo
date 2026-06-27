@@ -59,11 +59,19 @@ class DeliveryResult:
     detail : str | None
         Optional human-readable note (an error message on ``failed``, a
         short trace on ``sent``); ``None`` when there is nothing to add.
+    retry_after : float | None
+        Optional server-provided backoff HINT in seconds (e.g. parsed from a
+        429 ``Retry-After`` header). When set on a ``failed`` result, the
+        ledger HONORS it as the next backoff instead of its exponential
+        default — a rate-limit signal drives the wait rather than burning the
+        retry budget on a guessed delay. ``None`` (the default) keeps slice
+        1/2 callers and the ledger's exponential behaviour unchanged.
     """
 
     status: Status
     channel: str
     detail: str | None = None
+    retry_after: float | None = None
 
 
 @runtime_checkable
