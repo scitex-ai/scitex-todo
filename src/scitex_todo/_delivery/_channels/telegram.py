@@ -208,6 +208,12 @@ class TelegramChannel:
             )
 
         if status_code == 429:
+            # NOTE: a 429 currently counts toward MAX_ATTEMPTS like any failure,
+            # so sustained per-chat throttling could false-terminal a reachable
+            # chat. Benign for now — notifyd surfaces it with this "rate-limited
+            # (429)" detail so it's visible + clearable, and volume is low.
+            # Revisit (separate/higher retry budget for 429) only if
+            # throttle-induced terminals are ever actually observed.
             retry_after = _parse_retry_after(headers, body)
             return DeliveryResult(
                 status=Status.FAILED,
