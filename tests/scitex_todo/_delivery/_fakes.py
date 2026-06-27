@@ -55,4 +55,20 @@ class FlakyChannel:
         return DeliveryResult(status=Status.SENT, channel=self.name)
 
 
+class AlwaysFailChannel:
+    """Raises on EVERY attempt — a permanently-down transport.
+
+    Used to prove the retry budget exhausts to a TERMINAL (surfaced, never
+    silently dropped) comm-miss rather than retrying forever.
+    """
+
+    def __init__(self, name: str = "log"):
+        self.name = name
+        self.attempts = 0
+
+    def deliver(self, *, recipient, address, notification) -> DeliveryResult:
+        self.attempts += 1
+        raise RuntimeError(f"transport permanently down (attempt {self.attempts})")
+
+
 # EOF

@@ -19,6 +19,7 @@ from scitex_todo._delivery._channel import DeliveryResult, Status
 from scitex_todo._delivery._ledger import (
     BASE_BACKOFF_SEC,
     MAX_ATTEMPTS,
+    TERMINAL_STATUS,
     Ledger,
     ledger_path,
 )
@@ -84,6 +85,40 @@ def test_failure_backoff_grows_and_caps_attempts(tmp_path):
         led.record("u_a", "n_1", "log", fail, t)
     far = t + _dt.timedelta(days=1)
     assert led.retry_eligible("u_a", "n_1", "log", far) is False
+
+
+def test_exhausting_attempts_becomes_terminal_and_round_trips(tmp_path):
+    """A failure that exhausts MAX_ATTEMPTS becomes a TERMINAL comm-miss.
+
+    Also exercises the full persist→reload→query round-trip of the 0x1f
+    composite key + the terminal status through PyYAML (minor note #2).
+    """
+    store = _store(tmp_path)
+    led = Ledger.load(store)
+    fail = DeliveryResult(status=Status.FAILED, channel="log", detail="boom")
+    now = _dt.datetime(2026, 6, 27, 10, 0, 0, tzinfo=_dt.timezone.utc)
+
+    # Record MAX_ATTEMPTS failures (far enough apart each is its own attempt).
+    for i in range(MAX_ATTEMPTS):
+        led.record("u_a", "n_1", "log", fail, now + _dt.timedelta(hours=i))
+
+    # Last record promoted it to terminal: not a plain failure, not retryable.
+    assert led.is_terminal("u_a", "n_1", "log") is True
+    assert led.has_failure("u_a", "n_1", "log") is False
+    assert led.retry_eligible(
+        "u_a", "n_1", "log", now + _dt.timedelta(days=365)
+    ) is False
+    assert led.already_done("u_a", "n_1", "log") is False
+
+    # Round-trips through disk: composite key + terminal status survive reload.
+    raw = yaml.safe_load((tmp_path / "delivery_ledger.yaml").read_text())
+    assert len(raw) == 1
+    (entry,) = raw.values()
+    assert entry["status"] == TERMINAL_STATUS
+    assert entry["attempts"] == MAX_ATTEMPTS
+
+    reloaded = Ledger.load(store)
+    assert reloaded.is_terminal("u_a", "n_1", "log") is True
 
 
 def test_skipped_does_not_consume_attempts(tmp_path):

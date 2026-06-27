@@ -43,6 +43,13 @@ LEDGER_FILENAME = "delivery_ledger.yaml"
 #: Max delivery attempts before a failed item is left terminal (no retry).
 MAX_ATTEMPTS = 5
 
+#: Ledger-only status for a failure whose retry budget is exhausted. NOT a
+#: channel result (channels only ever report sent/failed/skipped); the ledger
+#: promotes a ``failed`` entry to this once ``attempts >= MAX_ATTEMPTS`` so a
+#: permanently-undeliverable notification is a VISIBLE comm-miss marker, not a
+#: silently-dropped item. The loop surfaces this loudly exactly once.
+TERMINAL_STATUS = "failed_terminal"
+
 #: Base backoff in seconds; doubles per attempt, capped at MAX_BACKOFF_SEC.
 BASE_BACKOFF_SEC = 5
 
@@ -172,9 +179,25 @@ class Ledger:
         return now >= next_ts
 
     def has_failure(self, recipient: str, note_id: str, channel: str) -> bool:
-        """True iff a (non-sent) failure entry already exists for the tuple."""
+        """True iff a (non-terminal) failure entry already exists for the tuple.
+
+        Only the RETRYABLE ``failed`` status — a ``failed_terminal`` entry is
+        NOT a "has_failure" for the loop's backoff check (it's handled by
+        :meth:`is_terminal`, which stops re-attempts entirely).
+        """
         entry = self._get(recipient, note_id, channel)
         return bool(entry) and entry.get("status") == Status.FAILED.value
+
+    def is_terminal(self, recipient: str, note_id: str, channel: str) -> bool:
+        """True iff this tuple FAILED permanently (retry budget exhausted).
+
+        A terminal failure is recorded once (when ``attempts`` first reaches
+        ``MAX_ATTEMPTS``), surfaced loudly by the loop that one time, then left
+        as a persistent comm-miss marker — never retried, never re-warned. The
+        operator must intervene (fix the channel / address) to clear it.
+        """
+        entry = self._get(recipient, note_id, channel)
+        return bool(entry) and entry.get("status") == TERMINAL_STATUS
 
     # ------------------------------------------------------------------ #
     # Mutation                                                            #
@@ -213,6 +236,10 @@ class Ledger:
         if status == Status.SKIPPED:
             # Policy gate said "not now" — record state without consuming a
             # retry budget. Keep prior attempts; do not set a backoff.
+            # INTENTIONAL: this clears any prior failure's next_eligible_ts, so
+            # a failed item that becomes retry-due then gets quiet-hours-skipped
+            # resets its backoff clock but KEEPS attempts — MAX_ATTEMPTS still
+            # bounds it, so there is no infinite retry loop.
             entry["status"] = Status.SKIPPED.value
             entry.setdefault("attempts", int(entry.get("attempts", 0)))
             entry["last_ts"] = _iso(now)
@@ -220,14 +247,23 @@ class Ledger:
         else:
             attempts = int(entry.get("attempts", 0)) + 1
             entry["attempts"] = attempts
-            entry["status"] = status.value
             entry["last_ts"] = _iso(now)
             if status == Status.FAILED:
-                backoff = self._backoff_seconds(attempts)
-                entry["next_eligible_ts"] = _iso(
-                    now + _dt.timedelta(seconds=backoff)
-                )
-            else:  # SENT — terminal, no further retry.
+                if attempts >= MAX_ATTEMPTS:
+                    # Retry budget exhausted → TERMINAL. Promote to the
+                    # ledger-only failed_terminal status so the comm-miss is a
+                    # visible, queryable marker; the loop surfaces it loudly
+                    # once and never re-attempts it.
+                    entry["status"] = TERMINAL_STATUS
+                    entry["next_eligible_ts"] = None
+                else:
+                    entry["status"] = status.value
+                    backoff = self._backoff_seconds(attempts)
+                    entry["next_eligible_ts"] = _iso(
+                        now + _dt.timedelta(seconds=backoff)
+                    )
+            else:  # SENT — terminal success, no further retry.
+                entry["status"] = status.value
                 entry["next_eligible_ts"] = None
 
         if result.detail:
@@ -280,6 +316,7 @@ __all__ = [
     "LEDGER_FILENAME",
     "MAX_ATTEMPTS",
     "MAX_BACKOFF_SEC",
+    "TERMINAL_STATUS",
     "Ledger",
     "ledger_path",
 ]

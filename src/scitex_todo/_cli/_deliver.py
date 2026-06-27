@@ -62,9 +62,16 @@ def deliver_cmd(tasks_path: str | None, as_json: bool) -> None:
 
     click.echo(
         f"# delivery: sent={summary['sent']} "
-        f"failed={summary['failed']} skipped={summary['skipped']} "
+        f"failed={summary['failed']} "
+        f"failed_terminal={summary['failed_terminal']} "
+        f"skipped={summary['skipped']} "
         f"({len(summary['outcomes'])} item(s) recorded this run)"
     )
+    if summary["failed_terminal"]:
+        click.echo(
+            f"# WARNING: {summary['failed_terminal']} notification(s) gave up "
+            "after max attempts (comm-miss) — see stderr / delivery_ledger.yaml"
+        )
     for item in summary["outcomes"]:
         click.echo(
             f"  {item['outcome']:<8} {item['recipient']} "

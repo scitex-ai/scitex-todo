@@ -24,11 +24,11 @@ import datetime as _dt
 import yaml
 
 from scitex_todo._delivery import _recipients
-from scitex_todo._delivery._ledger import BASE_BACKOFF_SEC, Ledger
+from scitex_todo._delivery._ledger import BASE_BACKOFF_SEC, MAX_ATTEMPTS, Ledger
 from scitex_todo._delivery._loop import deliver_pending
 from scitex_todo._inbox import enqueue, poll_inbox
 
-from ._fakes import FlakyChannel, RecorderChannel
+from ._fakes import AlwaysFailChannel, FlakyChannel, RecorderChannel
 
 
 # --------------------------------------------------------------------------- #
@@ -125,6 +125,47 @@ def test_raising_channel_recorded_failed_then_retried_succeeds(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# (b2) permanently-down channel → TERMINAL comm-miss, surfaced not dropped     #
+# --------------------------------------------------------------------------- #
+def test_permanent_failure_becomes_terminal_and_surfaced(tmp_path, capsys):
+    store = _store(tmp_path)
+    note_id = _seed(store, "u_frank")
+    _write_recipients(tmp_path, {"u_frank": {"channels": [{"kind": "log"}]}})
+
+    chan = AlwaysFailChannel(name="log")
+    t = _dt.datetime(2026, 6, 27, 10, 0, 0, tzinfo=_dt.timezone.utc)
+
+    # Drive attempts, advancing well past each backoff window between runs.
+    terminal_seen = False
+    for _ in range(MAX_ATTEMPTS + 3):
+        s = deliver_pending(store=store, channels={"log": chan}, now=t)
+        if s["failed_terminal"]:
+            terminal_seen = True
+            assert s["failed_terminal"] == 1
+            assert any(o["outcome"] == "failed_terminal" for o in s["outcomes"])
+            break
+        t = t + _dt.timedelta(hours=2)
+
+    assert terminal_seen
+    assert chan.attempts == MAX_ATTEMPTS  # exactly MAX tries, then it gives up.
+
+    # The comm-miss is surfaced LOUDLY to stderr (not silently dropped).
+    err = capsys.readouterr().err
+    assert "TERMINAL comm-miss" in err
+    assert note_id in err
+
+    # Ledger marks it terminal; a later run NEVER re-attempts and does NOT
+    # re-warn (no per-run spam) — it is a persistent, queryable comm-miss.
+    led = Ledger.load(store)
+    assert led.is_terminal("u_frank", note_id, "log") is True
+    later = t + _dt.timedelta(days=1)
+    s_after = deliver_pending(store=store, channels={"log": chan}, now=later)
+    assert s_after["outcomes"] == []
+    assert chan.attempts == MAX_ATTEMPTS  # unchanged — terminal item noop'd.
+    assert "TERMINAL" not in capsys.readouterr().err  # not re-warned.
+
+
+# --------------------------------------------------------------------------- #
 # (c) should_deliver_now=False → skipped, does NOT consume seen cursor        #
 # --------------------------------------------------------------------------- #
 def test_policy_gate_false_yields_skipped_and_preserves_seen(tmp_path, env):
@@ -191,7 +232,13 @@ def test_missing_recipients_file_is_empty_no_crash(tmp_path):
     _seed(store, "u_eve")  # a notification exists, but no recipients.yaml.
     recorder = RecorderChannel(name="log")
     s = deliver_pending(store=store, channels={"log": recorder})
-    assert s == {"sent": 0, "failed": 0, "skipped": 0, "outcomes": []}
+    assert s == {
+        "sent": 0,
+        "failed": 0,
+        "skipped": 0,
+        "failed_terminal": 0,
+        "outcomes": [],
+    }
     assert recorder.calls == []
 
 

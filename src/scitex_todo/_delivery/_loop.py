@@ -26,7 +26,7 @@ from pathlib import Path
 
 from .._inbox import poll_inbox
 from ._channel import DeliveryChannel, DeliveryResult, Status
-from ._ledger import Ledger
+from ._ledger import MAX_ATTEMPTS, Ledger
 from ._recipients import Recipient, load_recipients, should_deliver_now
 from ._registry import discover_channels
 
@@ -66,6 +66,12 @@ def _attempt_one(
 
     # 1. Already delivered? Ledger is the truth — never re-send.
     if ledger.already_done(user, note_id, chan_name):
+        return "noop"
+
+    # 1b. Permanently failed (retry budget exhausted). Already recorded +
+    #     surfaced loudly once; never re-attempt and never re-warn (that would
+    #     spam every run). The terminal marker stays in the ledger for audit.
+    if ledger.is_terminal(user, note_id, chan_name):
         return "noop"
 
     # 2. A prior failure that is NOT yet due for retry → skip silently.
@@ -113,7 +119,18 @@ def _attempt_one(
             detail="channel returned non-DeliveryResult",
         )
 
-    ledger.record(user, note_id, chan_name, result, now)
+    entry = ledger.record(user, note_id, chan_name, result, now)
+
+    # This attempt may have EXHAUSTED the retry budget — the ledger promotes
+    # such a failure to a terminal state. Surface that comm-miss LOUDLY (once)
+    # and report it distinctly so it is never silently dropped.
+    if ledger.is_terminal(user, note_id, chan_name):
+        _warn(
+            f"TERMINAL comm-miss: channel {chan_name!r} could not deliver "
+            f"{note_id} to {user} after {MAX_ATTEMPTS} attempts — giving up. "
+            f"detail={entry.get('detail')!r}"
+        )
+        return "failed_terminal"
     if result.status == Status.SENT:
         return "sent"
     if result.status == Status.SKIPPED:
@@ -148,17 +165,20 @@ def deliver_pending(
     Returns
     -------
     dict
-        ``{"sent": n, "failed": n, "skipped": n, "outcomes": [...]}`` where
-        each outcome is ``{recipient, notification_id, channel, outcome}``
-        for every item that produced a ledger write this run (``noop`` items
-        — already-sent / not-yet-retry-due — are NOT listed).
+        ``{"sent": n, "failed": n, "skipped": n, "failed_terminal": n,
+        "outcomes": [...]}`` where each outcome is
+        ``{recipient, notification_id, channel, outcome}`` for every item that
+        produced a ledger write this run (``noop`` items — already-sent /
+        not-yet-retry-due / already-terminal — are NOT listed).
+        ``failed_terminal`` counts items whose retry budget was exhausted THIS
+        run (a comm-miss surfaced loudly to stderr).
     """
     now = now or _dt.datetime.now(_dt.timezone.utc)
     resolved_channels = _resolve_channels(channels)
     ledger = Ledger.load(store)
     recipients = load_recipients(store)
 
-    counts = {"sent": 0, "failed": 0, "skipped": 0}
+    counts = {"sent": 0, "failed": 0, "skipped": 0, "failed_terminal": 0}
     outcomes: list[dict] = []
 
     for recipient in recipients:
