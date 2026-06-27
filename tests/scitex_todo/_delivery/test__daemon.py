@@ -212,13 +212,20 @@ def test_flock_released_after_normal_stop(tmp_path):
 
 
 def test_flock_released_after_exception_midloop(tmp_path):
+    """An exception OUTSIDE the per-tick guard still releases the lock.
+
+    The per-tick body self-heals (see ``test_tick_exception_self_heals_*``), so
+    to exercise the finally-release guarantee we raise from the ``sleep`` seam —
+    a structural point that is intentionally NOT swallowed — and assert the lock
+    + pidfile are cleaned up even though ``run_notifyd`` propagates.
+    """
     store = _store(tmp_path)
     _seed(store, "u_eve")
     _write_recipients(tmp_path, {"u_eve": {"channels": [{"kind": "log"}]}})
 
-    boom = RuntimeError("clock blew up mid-tick")
+    boom = RuntimeError("sleep blew up between ticks")
 
-    def _explode():
+    def _explode(_s):
         raise boom
 
     raised = False
@@ -226,20 +233,57 @@ def test_flock_released_after_exception_midloop(tmp_path):
         run_notifyd(
             store=store,
             channels={"log": RecorderChannel(name="log")},
-            sleep=lambda _s: None,
-            now_fn=_explode,  # raises INSIDE the loop body
+            sleep=_explode,  # raises OUTSIDE the per-tick guard → propagates
             max_iterations=3,
         )
     except RuntimeError as exc:
         raised = True
         assert exc is boom
-    assert raised, "the mid-loop exception must propagate"
+    assert raised, "an exception outside the tick guard must propagate"
     # CRITICAL: even on a crash, the lock is released + pidfile removed so a
     # restart is never blocked by a stale lock.
     assert not pidfile_path(store).exists()
     again = _SingleInstanceLock(pidfile_path(store))
     again.acquire()
     again.release()
+
+
+def test_tick_exception_self_heals_and_continues(tmp_path, caplog):
+    """A raising tick is logged WITH a traceback and the daemon CONTINUES.
+
+    now_fn() runs inside the per-tick guard, so a tick that raises every time
+    must not kill the daemon — it logs and proceeds, finishing all ticks and
+    releasing the lock cleanly (tick resilience, scitex-dev review note).
+    """
+    store = _store(tmp_path)
+    _seed(store, "u_judy")
+    _write_recipients(tmp_path, {"u_judy": {"channels": [{"kind": "log"}]}})
+
+    boom = RuntimeError("clock blew up mid-tick")
+
+    def _explode():
+        raise boom  # inside the per-tick guard → caught + logged + continue
+
+    with caplog.at_level(logging.ERROR, logger="scitex_todo.delivery.notifyd"):
+        result = run_notifyd(
+            store=store,
+            channels={"log": RecorderChannel(name="log")},
+            sleep=lambda _s: None,
+            now_fn=_explode,
+            max_iterations=3,
+            terminal_report_every=0,
+        )
+
+    # Every tick raised, yet the daemon ran all 3 and stopped cleanly.
+    assert result["iterations"] == 3
+    assert result["stopped_by"] == "max_iterations"
+    # Each failing tick was logged (not silently swallowed).
+    tick_errors = [
+        r for r in caplog.records if "continuing to next tick" in r.getMessage()
+    ]
+    assert len(tick_errors) == 3
+    # Lock cleaned up despite the repeated tick failures.
+    assert not pidfile_path(store).exists()
 
 
 # --------------------------------------------------------------------------- #

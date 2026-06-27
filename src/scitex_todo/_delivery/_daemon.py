@@ -22,6 +22,10 @@ external cron:
   ledger via :func:`report_terminal_misses` and logs a THROTTLED WARNING that
   re-surfaces every outstanding comm-miss — a long-undeliverable user is never
   forgotten, but the warning does not spam every tick.
+* TICK RESILIENCE: each tick's work is wrapped so an unexpected error (ledger
+  corruption, a disk/clock fault) is logged with a traceback and the loop
+  CONTINUES to the next tick rather than dying. Combined with the unit's
+  ``Restart=on-failure`` this self-heals under both foreground and systemd runs.
 
 Test seams (NO mocks): inject ``sleep`` (a no-op so tests never sleep for
 real), ``now_fn`` (deterministic clock), a ``stop`` event (tripped after K
@@ -338,19 +342,30 @@ def run_notifyd(
                 stopped_by = "max_iterations"
                 break
             iterations += 1
-            summary = deliver_pending(
-                store=store,
-                channels=channels,
-                now=now_fn(),
-            )
-            for key in totals:
-                totals[key] += summary.get(key, 0)
-            _log_tick_summary(iterations, summary)
-            _report_terminal_if_due(
-                tick=iterations,
-                every=terminal_report_every,
-                store=store,
-            )
+            # TICK RESILIENCE: a single bad tick must NEVER kill an always-on
+            # daemon. deliver_pending is already fail-soft per recipient, but a
+            # ledger/disk/clock error could still raise — catch it, log with a
+            # traceback, and continue to the next tick. This self-heals under
+            # BOTH foreground `scitex-todo notifyd` AND systemd (which also has
+            # Restart=on-failure as a second safety net).
+            try:
+                summary = deliver_pending(
+                    store=store,
+                    channels=channels,
+                    now=now_fn(),
+                )
+                for key in totals:
+                    totals[key] += summary.get(key, 0)
+                _log_tick_summary(iterations, summary)
+                _report_terminal_if_due(
+                    tick=iterations,
+                    every=terminal_report_every,
+                    store=store,
+                )
+            except Exception:  # noqa: BLE001 — one bad tick != kill the daemon
+                logger.exception(
+                    "notifyd tick %d raised; continuing to next tick", iterations
+                )
 
             # Re-check stop BEFORE sleeping so a stop set during the tick (or
             # by max_iterations) ends the loop without an extra wait.
