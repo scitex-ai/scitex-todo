@@ -1057,6 +1057,7 @@ from . import (  # hook-bypass: line-limit (_main.py pre-existing over-cap; mini
     _introspect,
     _loop,
     _mcp,
+    _notifyd,
     _reconcile,
     _runnable,
     _skills,
@@ -1111,6 +1112,14 @@ _reconcile.register(main)  # hook-bypass: line-limit (pre-existing over-cap; min
 # runnable; the daemon + systemd unit are a LATER slice. See
 # src/scitex_todo/_delivery/.
 _deliver.register(main)
+# notifyd (slice 2 of the standalone notification-DELIVERY rail). The always-on
+# daemon: bare `scitex-todo notifyd` runs the foreground loop (systemd
+# ExecStart) ticking deliver_pending every --interval seconds, single-instance
+# locked + signal-aware, re-surfacing standing terminal comm-misses on a
+# throttle. `--once` is a single pass; `notifyd install-unit` writes the
+# operator-gated systemd user-unit template (never runs systemctl). See
+# src/scitex_todo/_delivery/_daemon.py + _systemd.py.
+_notifyd.register(main)
 
 
 if __name__ == "__main__":
