@@ -89,6 +89,55 @@ def list_tasks_filtered(
         )
 
 
+def list_blocking_operator(tasks_path: str | None, as_json: bool) -> None:
+    """Print the operator's decision queue — a glanceable, project-grouped view.
+
+    Surfaces the tasks the OPERATOR is blocking (the ``blocking_me`` predicate:
+    ``status=blocked AND blocker=operator-decision``) so the operator can see
+    and clear the queue at a glance. Grouped by ``project`` (falling back to
+    ``scope``), each row shows the title plus the first line of the card's
+    ``note`` as the WHY / how-to-unblock context. A card with no note is
+    flagged so the owner knows to add the decision context (the common reason a
+    block is un-actionable). ``--json`` emits the raw matching rows for tooling.
+    """
+    from .. import _store
+
+    rows = _store.list_tasks(tasks_path, blocking_me=True)
+    if as_json:
+        click.echo(json.dumps(rows))
+        return
+    resolved = resolve_tasks_path(tasks_path)
+    if not rows:
+        click.echo("✓ Nothing is waiting on the operator (0 operator-decision blocks).")
+        click.echo(f"# {resolved}")
+        return
+
+    groups: dict[str, list[dict]] = {}
+    for task in rows:
+        key = task.get("project") or task.get("scope") or "(no project)"
+        groups.setdefault(key, []).append(task)
+
+    click.echo(
+        f"# Waiting on operator — {len(rows)} decision(s) "
+        f"across {len(groups)} project(s)"
+    )
+    click.echo(f"# {resolved}")
+    for proj in sorted(groups):
+        members = groups[proj]
+        click.echo(f"\n{proj}  ({len(members)})")
+        for task in members:
+            click.echo(f"  • {task['id']:<28} {task['title']}")
+            note = (task.get("note") or "").strip()
+            if note:
+                click.echo(f"      ↳ {note.splitlines()[0]}")
+            else:
+                click.echo("      ↳ (no context noted — ask the owner to add why + options)")
+    click.echo(
+        "\nClear a block from the board, or via the CLI update/resolve verbs "
+        "once you've decided."
+    )
+
+
 # --------------------------------------------------------------------------- #
 # resolve-store (was `where` — renamed per audit §1: noun-like leaf)          #
 # --------------------------------------------------------------------------- #

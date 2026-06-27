@@ -204,6 +204,16 @@ def render_graph_cmd(tasks_path: str | None, output: str, print_mermaid: bool) -
     help="Predicate: status=blocked AND blocker=operator-decision (BLOCKING-YOU panel).",
 )
 @click.option(
+    "--blocking-operator",
+    "blocking_operator",
+    is_flag=True,  # hook-bypass: line-limit
+    help=(
+        "The operator's decision queue: same predicate as --blocking-me but "
+        "rendered as a glanceable, project-grouped view (title + why / "
+        "how-to-unblock). --json emits the raw rows."
+    ),
+)
+@click.option(
     "--overdue",
     is_flag=True,
     help=(
@@ -236,11 +246,19 @@ def list_tasks_cmd(
     kind: str | None,
     id_prefix: str | None,
     blocking_me: bool,
+    blocking_operator: bool,  # hook-bypass: line-limit
     overdue: bool,
     statuses: tuple,
     as_json: bool,
 ) -> None:
     """Print the resolved task list (filtered or not)."""
+    # The operator's decision queue is its OWN glanceable, project-grouped
+    # rendering (not the flat filter table), so dispatch it first.
+    if blocking_operator:
+        from ._admin import list_blocking_operator
+
+        list_blocking_operator(tasks_path, as_json)
+        return
     # Normalize: click's multiple=True returns a tuple; the helper
     # signature takes a list[str] | None. Empty tuple = no constraint.
     statuses_list: list[str] | None = list(statuses) if statuses else None
