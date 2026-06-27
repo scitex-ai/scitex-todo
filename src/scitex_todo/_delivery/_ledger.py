@@ -1,0 +1,287 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""The delivery ledger — a KEYED DEDUP MAP, the sole source of delivery truth.
+
+This is NOT an append-log. It is a map keyed by ``(recipient,
+notification_id, channel)`` whose value records the latest delivery state
+for that exact tuple::
+
+    {recipient}\\x1f{notification_id}\\x1f{channel}:
+      status: sent | failed
+      attempts: 3
+      last_ts: 2026-06-27T10:00:00Z
+      next_eligible_ts: 2026-06-27T10:00:30Z   # failures only
+
+Persisted as YAML at ``<store_dir>/delivery_ledger.yaml`` where
+``<store_dir>`` is the parent directory of the resolved task store
+(:func:`scitex_todo._inbox._resolved_store`). Reads go through the fast safe
+loader (:func:`scitex_todo._yaml.safe_load`); writes are ATOMIC (temp file +
+``os.replace``) and serialised behind the same advisory ``flock`` the task
+store uses (:func:`scitex_todo._model._store_lock`), keyed on the LEDGER
+path — single-writer per ledger file.
+
+The ledger is what makes delivery idempotent: it answers "have we already
+sent this?" (:meth:`Ledger.already_done`) and "is this failed item due for
+another try?" (:meth:`Ledger.retry_eligible`) WITHOUT ever touching the
+user's inbox ``seen`` cursor (that is the user's read state, separate).
+"""
+
+from __future__ import annotations
+
+import datetime as _dt
+import os
+from pathlib import Path
+
+from .._inbox import _resolved_store
+from .._model import _store_lock
+from .._yaml import safe_load
+from ._channel import DeliveryResult, Status
+
+#: Ledger filename, a sibling of the task store inside ``<store_dir>``.
+LEDGER_FILENAME = "delivery_ledger.yaml"
+
+#: Max delivery attempts before a failed item is left terminal (no retry).
+MAX_ATTEMPTS = 5
+
+#: Base backoff in seconds; doubles per attempt, capped at MAX_BACKOFF_SEC.
+BASE_BACKOFF_SEC = 5
+
+#: Upper bound on the exponential backoff window.
+MAX_BACKOFF_SEC = 3600
+
+#: Field separator inside the flat composite ledger key. ASCII Unit
+#: Separator (0x1f) — never appears in a recipient id / notification id /
+#: channel name, so the key round-trips through YAML unambiguously.
+_KEY_SEP = "\x1f"
+
+
+def _utc_now() -> _dt.datetime:
+    """Timezone-aware UTC now (the default ``now`` for ledger ops)."""
+    return _dt.datetime.now(_dt.timezone.utc)
+
+
+def _iso(ts: _dt.datetime) -> str:
+    """Render a datetime as canonical ``Z``-suffixed ISO-8601 (sec res)."""
+    return (
+        ts.astimezone(_dt.timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+def _parse_iso(value: str | None) -> _dt.datetime | None:
+    """Parse a stored ISO timestamp back to an aware datetime (None-safe)."""
+    if not value:
+        return None
+    try:
+        return _dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
+
+
+def ledger_path(store: str | Path | None = None) -> Path:
+    """Resolve the ledger path: ``<store_dir>/delivery_ledger.yaml``.
+
+    ``<store_dir>`` is the parent of the resolved task store, so the ledger
+    lives beside ``tasks.yaml`` under whichever scope the store resolved to.
+    """
+    return _resolved_store(store).parent / LEDGER_FILENAME
+
+
+def _make_key(recipient: str, note_id: str, channel: str) -> str:
+    """Build the flat composite ledger key for one delivery tuple."""
+    return f"{recipient}{_KEY_SEP}{note_id}{_KEY_SEP}{channel}"
+
+
+class Ledger:
+    """In-memory view of the delivery ledger, loaded from + saved to disk.
+
+    Construct via :meth:`load` (reads the YAML once), query with
+    :meth:`already_done` / :meth:`retry_eligible`, mutate with
+    :meth:`record` (which persists atomically under the lock). A single
+    delivery run loads the ledger once, records each outcome, and the file
+    is rewritten on every ``record`` — small files, single-writer, atomic.
+    """
+
+    def __init__(self, path: Path, entries: dict[str, dict]):
+        self._path = path
+        #: key -> {status, attempts, last_ts, next_eligible_ts}
+        self._entries: dict[str, dict] = entries
+
+    # ------------------------------------------------------------------ #
+    # Construction                                                        #
+    # ------------------------------------------------------------------ #
+    @classmethod
+    def load(cls, store: str | Path | None = None) -> "Ledger":
+        """Load the ledger map off disk (absent/malformed → empty)."""
+        path = ledger_path(store)
+        entries = cls._load_entries(path)
+        return cls(path, entries)
+
+    @staticmethod
+    def _load_entries(path: Path) -> dict[str, dict]:
+        """Read the raw ledger mapping (defensive: bad shapes → {})."""
+        if not path.exists():
+            return {}
+        with path.open(encoding="utf-8") as handle:
+            data = safe_load(handle) or {}
+        if not isinstance(data, dict):
+            return {}
+        out: dict[str, dict] = {}
+        for key, value in data.items():
+            if isinstance(key, str) and isinstance(value, dict):
+                out[key] = dict(value)
+        return out
+
+    # ------------------------------------------------------------------ #
+    # Queries                                                             #
+    # ------------------------------------------------------------------ #
+    def _get(self, recipient: str, note_id: str, channel: str) -> dict | None:
+        return self._entries.get(_make_key(recipient, note_id, channel))
+
+    def already_done(self, recipient: str, note_id: str, channel: str) -> bool:
+        """True iff this tuple was already ``sent`` (terminal success)."""
+        entry = self._get(recipient, note_id, channel)
+        return bool(entry) and entry.get("status") == Status.SENT.value
+
+    def retry_eligible(
+        self,
+        recipient: str,
+        note_id: str,
+        channel: str,
+        now: _dt.datetime | None = None,
+    ) -> bool:
+        """True iff a prior FAILURE is due for another attempt.
+
+        Eligible when: status==failed AND attempts < MAX_ATTEMPTS AND
+        ``now >= next_eligible_ts``. A tuple with no entry yet is NOT
+        "retry eligible" (it's a first attempt — handled by the loop's
+        already_done==False path); this predicate is only about resuming a
+        KNOWN failure after its backoff window.
+        """
+        entry = self._get(recipient, note_id, channel)
+        if not entry or entry.get("status") != Status.FAILED.value:
+            return False
+        if int(entry.get("attempts", 0)) >= MAX_ATTEMPTS:
+            return False
+        now = now or _utc_now()
+        next_ts = _parse_iso(entry.get("next_eligible_ts"))
+        if next_ts is None:
+            return True
+        return now >= next_ts
+
+    def has_failure(self, recipient: str, note_id: str, channel: str) -> bool:
+        """True iff a (non-sent) failure entry already exists for the tuple."""
+        entry = self._get(recipient, note_id, channel)
+        return bool(entry) and entry.get("status") == Status.FAILED.value
+
+    # ------------------------------------------------------------------ #
+    # Mutation                                                            #
+    # ------------------------------------------------------------------ #
+    def _backoff_seconds(self, attempts: int) -> int:
+        """Exponential backoff: BASE * 2**(attempts-1), capped."""
+        if attempts <= 0:
+            attempts = 1
+        delay = BASE_BACKOFF_SEC * (2 ** (attempts - 1))
+        return min(delay, MAX_BACKOFF_SEC)
+
+    def record(
+        self,
+        recipient: str,
+        note_id: str,
+        channel: str,
+        result: DeliveryResult,
+        now: _dt.datetime | None = None,
+    ) -> dict:
+        """Record ``result`` for the tuple and persist atomically.
+
+        Increments ``attempts``, stamps ``last_ts``, sets ``status`` from
+        the result, and — for a FAILURE — computes the next exponential
+        backoff ``next_eligible_ts``. A ``sent`` clears any backoff (it's
+        terminal). A ``skipped`` is NON-terminal policy feedback: it stamps
+        the entry but does NOT bump ``attempts`` and does NOT become a
+        failure, so the item is freely re-evaluated next run.
+
+        Returns the updated entry dict (a copy).
+        """
+        now = now or _utc_now()
+        key = _make_key(recipient, note_id, channel)
+        entry = dict(self._entries.get(key) or {})
+        status = result.status
+
+        if status == Status.SKIPPED:
+            # Policy gate said "not now" — record state without consuming a
+            # retry budget. Keep prior attempts; do not set a backoff.
+            entry["status"] = Status.SKIPPED.value
+            entry.setdefault("attempts", int(entry.get("attempts", 0)))
+            entry["last_ts"] = _iso(now)
+            entry["next_eligible_ts"] = None
+        else:
+            attempts = int(entry.get("attempts", 0)) + 1
+            entry["attempts"] = attempts
+            entry["status"] = status.value
+            entry["last_ts"] = _iso(now)
+            if status == Status.FAILED:
+                backoff = self._backoff_seconds(attempts)
+                entry["next_eligible_ts"] = _iso(
+                    now + _dt.timedelta(seconds=backoff)
+                )
+            else:  # SENT — terminal, no further retry.
+                entry["next_eligible_ts"] = None
+
+        if result.detail:
+            entry["detail"] = result.detail
+
+        self._entries[key] = entry
+        self._save()
+        return dict(entry)
+
+    # ------------------------------------------------------------------ #
+    # Persistence                                                         #
+    # ------------------------------------------------------------------ #
+    def _save(self) -> None:
+        """Write the ledger map atomically under the per-ledger flock.
+
+        temp file + ``os.replace`` so a crash mid-write never leaves a
+        half-written ledger; the advisory lock (keyed on the ledger path)
+        serialises concurrent writers — single-writer per file.
+        """
+        import yaml
+
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        with _store_lock(self._path):
+            tmp_path = self._path.parent / f".{self._path.name}.tmp"
+            try:
+                with tmp_path.open("w", encoding="utf-8") as handle:
+                    yaml.safe_dump(
+                        self._entries,
+                        handle,
+                        default_flow_style=False,
+                        sort_keys=True,
+                        allow_unicode=True,
+                    )
+                    handle.flush()
+                    try:
+                        os.fsync(handle.fileno())
+                    except OSError:
+                        pass
+                os.replace(tmp_path, self._path)
+            except Exception:
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                raise
+
+
+__all__ = [
+    "BASE_BACKOFF_SEC",
+    "LEDGER_FILENAME",
+    "MAX_ATTEMPTS",
+    "MAX_BACKOFF_SEC",
+    "Ledger",
+    "ledger_path",
+]
+
+# EOF

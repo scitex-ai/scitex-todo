@@ -1034,6 +1034,7 @@ def migration_apply_cmd(
 from . import (  # hook-bypass: line-limit (_main.py pre-existing over-cap; minimal wire)
     _ci_watch,
     _completion,
+    _deliver,
     _hooks,
     _introspect,
     _loop,
@@ -1085,6 +1086,13 @@ _ci_watch.register(main)
 # merge-state seam live in `_reconcile_prs.py`; DRY-RUN by default, --apply
 # to mutate. Paired with the scitex-todo.reconcile-merged-prs JobSpec.
 _reconcile.register(main)  # hook-bypass: line-limit (pre-existing over-cap; minimal wire)
+# deliver (slice 1 of the standalone notification-DELIVERY rail). One-shot
+# delivery pass — reads each recipient's pending notifications (read-only,
+# never touches the user's `seen` cursor) and hands them to the channels in
+# recipients.yaml, recording outcomes in the delivery ledger. cron/loop-
+# runnable; the daemon + systemd unit are a LATER slice. See
+# src/scitex_todo/_delivery/.
+_deliver.register(main)
 
 
 if __name__ == "__main__":
