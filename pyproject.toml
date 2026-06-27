@@ -98,6 +98,19 @@ scitex-todo = "scitex_todo._jobs_provider:provide_jobs"
 #
 # See `scitex_todo._hooks` for the canonical event-payload spec and
 # the built-in handlers (which run regardless of plugins).
+# Standalone notification-DELIVERY channel registry (slice 1). The
+# delivery loop (`scitex-todo deliver`) discovers channels registered
+# under this group via importlib.metadata and hands each pending
+# notification to the channels a user is configured for in
+# recipients.yaml. Channel plugin = a class implementing the
+# DeliveryChannel Protocol (attribute `name`, synchronous `deliver`).
+# This group name is DELIBERATELY distinct from any
+# `scitex_agent_container.*` group — scitex-todo's delivery rail is
+# fully independent of sac (ZERO sac imports). See
+# src/scitex_todo/_delivery/_registry.py.
+[project.entry-points."scitex_todo.delivery_channels"]
+log = "scitex_todo._delivery._channels.log:LogChannel"
+
 [project.entry-points."scitex_todo.hooks"]
 # scitex-todo's built-in handler is invoked DIRECTLY by
 # dispatch_event (not via the plugin loop). External producers add
