@@ -25,24 +25,37 @@ Hard separation of concerns
   ``sent | failed | skipped`` — they never decide WHETHER to deliver.
 
 Slice 1 ships the port + a stdlib-logging channel + registry + ledger +
-recipients + the loop + a ``scitex-todo deliver`` one-shot CLI command. The
-long-running daemon + systemd unit are a LATER slice.
+recipients + the loop + a ``scitex-todo deliver`` one-shot CLI command. Slice 2
+adds the always-on daemon (:func:`run_notifyd`, single-instance-locked +
+signal-aware, with throttled terminal-comm-miss re-surfacing), the
+``scitex-todo notifyd`` CLI verb, and an operator-gated systemd user-unit
+template + install helper.
 """
 
 from __future__ import annotations
 
 from ._channel import DeliveryChannel, DeliveryResult, Status
+from ._daemon import (
+    DaemonAlreadyRunning,
+    pidfile_path,
+    report_terminal_misses,
+    run_notifyd,
+)
 from ._loop import deliver_pending
 from ._recipients import load_recipients, should_deliver_now
 from ._registry import discover_channels
 
 __all__ = [
+    "DaemonAlreadyRunning",
     "DeliveryChannel",
     "DeliveryResult",
     "Status",
     "deliver_pending",
     "discover_channels",
     "load_recipients",
+    "pidfile_path",
+    "report_terminal_misses",
+    "run_notifyd",
     "should_deliver_now",
 ]
 
