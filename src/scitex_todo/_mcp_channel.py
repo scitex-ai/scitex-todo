@@ -120,6 +120,34 @@ def build_channel_params(rec: dict[str, Any], *, source: str = _DEFAULT_SOURCE) 
     }
 
 
+def recipient_keys(agent_id: str, *, store: str | None = None) -> list[str]:
+    """Inbox keys to drain for ``agent_id`` — MUST match the producer's keys.
+
+    The notify dispatcher enqueues to ``_resolve_name_to_id(name, store)``:
+    a REGISTERED name resolves to its stable user-id, an unregistered one
+    stays the raw name. If the channel polled only the raw name it would miss
+    every notification for an agent that IS a registered user (enqueued under
+    the user-id) — the silent-drop we hit live. So the channel computes the
+    SAME key the producer used (sac idiom: consumer keys exactly like the
+    producer) AND keeps the raw name for back-compat records keyed by name.
+    Returns a de-duplicated, order-stable list (raw name first).
+    """
+    keys = [agent_id]
+    try:
+        from ._notify._resolver import _resolve_name_to_id
+
+        resolved = _resolve_name_to_id(agent_id, store=store)
+        if resolved and resolved not in keys:
+            keys.append(resolved)
+    except Exception as exc:  # noqa: BLE001 — resolution must never break the drain
+        logger.warning(
+            "scitex-todo channel: recipient-key resolution for %r failed: %s",
+            agent_id,
+            exc,
+        )
+    return keys
+
+
 async def drain_once(
     agent_id: str,
     send: Callable[[dict[str, Any]], Awaitable[None]],
@@ -130,9 +158,11 @@ async def drain_once(
     """Drain one batch of unseen notifications, pushing each via ``send``.
 
     The seam that makes the receive→push path testable without a live MCP
-    session. Reads UNSEEN records (``mark_seen=False`` — we ack ONLY after a
-    successful push so a push failure is retried next drain), builds the
-    channel params, awaits ``send(params)``, and on success ack's the record.
+    session. Drains EVERY key in :func:`recipient_keys` (the raw agent name
+    AND its resolved user-id) so it always finds what the producer enqueued.
+    Reads UNSEEN records (``mark_seen=False`` — we ack ONLY after a successful
+    push so a push failure is retried next drain), builds the channel params,
+    awaits ``send(params)``, and on success ack's the record on the SAME key.
 
     Fail-soft per record: one bad push (``send`` raises) leaves THAT record
     un-ack'd (retried next drain) and does not abort the rest of the batch.
@@ -140,7 +170,7 @@ async def drain_once(
     Parameters
     ----------
     agent_id : str
-        The inbox key to drain.
+        The agent identity; expanded to its producer-matching inbox keys.
     send : Callable[[dict], Awaitable[None]]
         Async callable that delivers one channel-params payload (the real
         server passes a closure over the MCP session's ``send_message``).
@@ -154,32 +184,34 @@ async def drain_once(
     int
         The number of records successfully pushed AND ack'd this drain.
     """
-    records = _inbox.poll_inbox(
-        agent_id, unseen_only=True, mark_seen=False, store=store
-    )
     pushed = 0
-    for rec in records:
-        params = build_channel_params(rec, source=source)
-        try:
-            await send(params)
-        except Exception as exc:  # noqa: BLE001 — one bad push must not kill the loop
-            logger.warning(
-                "scitex-todo channel: pushing notification %s failed: %s",
-                rec.get("id"),
-                exc,
-            )
-            continue
-        # Ack ONLY after a successful send — a push failure stays unseen and
-        # is retried on the next drain.
-        rec_id = rec.get("id")
-        if rec_id:
+    for key in recipient_keys(agent_id, store=store):
+        records = _inbox.poll_inbox(
+            key, unseen_only=True, mark_seen=False, store=store
+        )
+        for rec in records:
+            params = build_channel_params(rec, source=source)
             try:
-                _inbox.ack(agent_id, [rec_id], store=store)
-            except Exception as exc:  # noqa: BLE001 — ack failure shouldn't kill the loop
+                await send(params)
+            except Exception as exc:  # noqa: BLE001 — one bad push must not kill the loop
                 logger.warning(
-                    "scitex-todo channel: ack of %s failed: %s", rec_id, exc
+                    "scitex-todo channel: pushing notification %s failed: %s",
+                    rec.get("id"),
+                    exc,
                 )
-        pushed += 1
+                continue
+            # Ack ONLY after a successful send — a push failure stays unseen
+            # and is retried on the next drain. Ack on the SAME key it came
+            # from.
+            rec_id = rec.get("id")
+            if rec_id:
+                try:
+                    _inbox.ack(key, [rec_id], store=store)
+                except Exception as exc:  # noqa: BLE001 — ack failure shouldn't kill the loop
+                    logger.warning(
+                        "scitex-todo channel: ack of %s failed: %s", rec_id, exc
+                    )
+            pushed += 1
     return pushed
 
 
@@ -311,6 +343,7 @@ __all__ = [
     "build_channel_params",
     "drain_once",
     "main",
+    "recipient_keys",
     "resolve_agent_id",
 ]
 

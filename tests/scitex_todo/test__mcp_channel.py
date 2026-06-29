@@ -20,8 +20,10 @@ from scitex_todo import _inbox
 from scitex_todo._mcp_channel import (
     build_channel_params,
     drain_once,
+    recipient_keys,
     resolve_agent_id,
 )
+from scitex_todo._users import register_user
 
 
 # --------------------------------------------------------------------------- #
@@ -201,6 +203,48 @@ def test_drain_once_custom_source_propagates(tmp_path):
     recorder = _SendRecorder()
     asyncio.run(drain_once(agent, recorder, source="custom-board", store=store))
     assert recorder.calls[0]["meta"]["source"] == "custom-board"
+
+
+# --------------------------------------------------------------------------- #
+# recipient_keys — consumer keys EXACTLY like the producer (registered→id)    #
+# --------------------------------------------------------------------------- #
+def test_recipient_keys_unregistered_is_raw_name_only(tmp_path):
+    store = _store(tmp_path)
+    assert recipient_keys("ghost", store=store) == ["ghost"]
+
+
+def test_recipient_keys_registered_name_includes_resolved_user_id(tmp_path):
+    store = _store(tmp_path)
+    alice = register_user(kind="agent", names=["alice"], store=store)
+    keys = recipient_keys("alice", store=store)
+    # Raw name first (back-compat), then the resolved user-id the producer
+    # enqueues under for a REGISTERED name.
+    assert keys == ["alice", alice.id]
+
+
+def test_drain_once_delivers_records_enqueued_under_resolved_user_id(tmp_path):
+    # The live silent-drop: the notify dispatcher enqueues to a registered
+    # agent's USER-ID, but the channel was launched with the raw NAME. The
+    # channel must still find + deliver it (it now drains both keys).
+    store = _store(tmp_path)
+    alice = register_user(kind="agent", names=["alice"], store=store)
+    _inbox.enqueue(
+        alice.id,  # producer key for a registered name
+        event_type="reassigned",
+        card_id="c1",
+        body="assigned to you",
+        actor="operator",
+        ts="2026-06-28T10:00:00Z",
+        store=store,
+    )
+
+    recorder = _SendRecorder()
+    pushed = asyncio.run(drain_once("alice", recorder, store=store))
+
+    assert pushed == 1
+    assert recorder.calls[0]["content"] == "assigned to you"
+    # Ack'd on the user-id key → a second drain pushes nothing.
+    assert asyncio.run(drain_once("alice", _SendRecorder(), store=store)) == 0
 
 
 # --------------------------------------------------------------------------- #
