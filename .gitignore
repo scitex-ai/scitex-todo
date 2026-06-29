@@ -61,3 +61,6 @@ docs/sphinx/_build/
 .scitex/todo/runtime/*
 !.scitex/todo/runtime/.gitkeep
 !.scitex/todo/runtime/README.md
+
+# local env — contains secrets (bot token); never track
+.envrc
