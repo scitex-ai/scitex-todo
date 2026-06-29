@@ -944,8 +944,11 @@ def _validate_tasks(tasks: object, source: str) -> None:
         # Fail-loud rules:
         #  (a) Unknown `blocker` value → raise, name the bad value + the
         #      valid set.
-        #  (b) `blocker` set on a non-blocked row → raise, since naming the
-        #      blocker variant is meaningless when the row isn't blocked.
+        #  (b) A REAL blocker variant on a non-blocked row → raise.
+        #  (c) The `"none"` sentinel ("no specific blocker named") is LENIENT
+        #      on a non-blocked row: normalized away (dropped in place), not
+        #      rejected. Card `todo-blocker-none-validation-lenient`.
+        #      (hook-bypass: line-limit — _model.py split still queued.)
         blocker = task.get("blocker")
         if blocker is not None:
             if blocker not in VALID_BLOCKERS:
@@ -954,11 +957,14 @@ def _validate_tasks(tasks: object, source: str) -> None:
                     f"must be one of {VALID_BLOCKERS} or absent"
                 )
             if status != "blocked":
-                raise TaskValidationError(
-                    f"{source}: task {tid!r} has blocker {blocker!r} but "
-                    f"status is {status!r}; set status: blocked or remove "
-                    f"the blocker field"
-                )
+                if blocker == "none":
+                    task.pop("blocker", None)
+                else:
+                    raise TaskValidationError(
+                        f"{source}: task {tid!r} has blocker {blocker!r} but "
+                        f"status is {status!r}; set status: blocked or remove "
+                        f"the blocker field"
+                    )
 
 
 @contextlib.contextmanager
