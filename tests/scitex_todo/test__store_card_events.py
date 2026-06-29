@@ -431,4 +431,44 @@ def test_reassign_persists_even_when_emit_raises(tmp_path: Path):
     assert t["agent"] == "proj-new" and t["scope"] == "agent:proj-new"
 
 
+# === store-threading regression — the REAL enqueue lands in the SAME store =
+
+
+# The captor tests above inject `entry_points=`, which intercepts the event
+# at the plugin level — BEFORE the built-in `dispatch_notifications` consumer
+# re-loads the card to resolve recipients. So they never exercised whether
+# that card-load uses the mutation's OWN store. It did not: the emit calls
+# omitted `store=`, so `dispatch_notifications` re-resolved the DEFAULT store,
+# failed to find a card written to a different store, and silently dropped
+# the notification. These tests drive the REAL dispatch (no injection) and
+# assert the notification lands in the mutation's own store's inbox.
+
+
+def test_add_task_enqueues_created_notification_into_same_store(tmp_path: Path):
+    # Arrange / Act — assignee != actor so the recipient is kept.
+    from scitex_todo import _inbox
+
+    store = tmp_path / "tasks.yaml"
+    add_task(store=store, id="c-1", title="x", assignee="alice", created_by="operator")
+    # Assert — the `created` notification is in THIS store's inbox for alice.
+    recs = _inbox.poll_inbox("alice", unseen_only=False, mark_seen=False, store=store)
+    assert len(recs) == 1
+    assert recs[0]["card_id"] == "c-1"
+
+
+def test_reassign_enqueues_notification_into_same_store(tmp_path: Path):
+    # Arrange
+    from scitex_todo import _inbox
+
+    store = tmp_path / "tasks.yaml"
+    add_task(store=store, id="c-1", title="x", agent="proj-old")
+    # Act
+    reassign_task(store, "c-1", "proj-new", by="operator")
+    # Assert — the new owner is notified in THIS store's inbox.
+    recs = _inbox.poll_inbox(
+        "proj-new", unseen_only=False, mark_seen=False, store=store
+    )
+    assert any(r.get("card_id") == "c-1" for r in recs)
+
+
 # EOF

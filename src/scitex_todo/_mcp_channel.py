@@ -70,8 +70,8 @@ def resolve_agent_id(arg: str | None = None) -> str:
     Raises
     ------
     RuntimeError
-        When the id resolves to empty or the ``"unknown"`` sentinel, with an
-        ACTIONABLE hint.
+        When the id resolves to empty, the ``"unknown"`` sentinel, or an
+        unexpanded ``$``-placeholder, with an ACTIONABLE hint.
     """
     resolved = (arg or os.environ.get(_ENV_AGENT) or "").strip()
     if not resolved or resolved == "unknown":
@@ -80,6 +80,20 @@ def resolve_agent_id(arg: str | None = None) -> str:
             "SCITEX_TODO_AGENT=<your-agent> or pass --agent <id>. The channel "
             "server must drain a REAL agent's inbox; no silent fallback to a "
             "blank/'unknown' id."
+        )
+    # An id that still looks like an env placeholder (e.g. "$SCITEX_TODO_AGENT"
+    # or "${SCITEX_TODO_AGENT}") means the launcher passed the literal text
+    # instead of expanding it — Claude Code's .mcp.json only expands the
+    # ``${VAR}`` (braces) form, never bare ``$VAR``. Draining an inbox keyed by
+    # that literal silently delivers nothing; fail loud instead of polling a
+    # dead key.
+    if resolved.startswith("$"):
+        raise RuntimeError(
+            f"scitex-todo mcp channel: agent id is an unexpanded placeholder "
+            f"({resolved!r}) — the launcher passed the literal text instead of "
+            "the value. In .mcp.json use the brace form "
+            '"SCITEX_TODO_AGENT": "${SCITEX_TODO_AGENT}" (Claude Code does not '
+            'expand bare "$VAR"), or pass a literal --agent <id>.'
         )
     return resolved
 

@@ -99,7 +99,10 @@ def test_emit_event_released_reaches_subscriber_inbox(tmp_path, env):
     store = _store_path(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
     eve = register_user(kind="human", names=["eve"], store=store)
-    add_task(store=store, id="card-rel", title="x", agent="alice", subscribers=["eve"])
+    # created_by == owner so the setup `created` event self-excludes the actor
+    # (creator isn't notified of their own creation) — keeps alice's inbox empty
+    # so the `released`-to-subscriber assertion is not polluted.
+    add_task(store=store, id="card-rel", title="x", agent="alice", subscribers=["eve"], created_by="alice")
     env.set("SCITEX_TODO_PUSH_DRY_RUN", "1")
     # Act — a `released` card-event for the card, caused by `ci` (the actor
     # is never self-notified; here the actor is neither alice nor eve).
