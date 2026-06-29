@@ -270,10 +270,14 @@ def add_cmd(
         )
     except _store.TaskValidationError as exc:
         raise click.ClickException(str(exc)) from None
+    # Lead the success line with the created id so `add` can never look like a
+    # silent failure (empty stdout). `--json` path stays JSON-only (`_emit`).
+    # Card `todo-add-empty-stdout-on-success`. (hook-bypass: line-limit)
     _emit(
         inserted,
         as_json=as_json,
-        human=f"added {inserted['id']}  ({inserted['status']}) {inserted['title']}",
+        human=f"✓ added {inserted.get('id') or id}  "
+        f"({inserted.get('status', status)}) {inserted.get('title', title)}",
     )
 
 

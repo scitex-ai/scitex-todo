@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Dogfood UX fixes: `add` success echo + lenient `blocker: none` validation.
+
+Covers two cards surfaced from the 2026-06-29 neurovista dogfood:
+
+  * ``todo-add-empty-stdout-on-success`` — a successful ``add`` must print a
+    one-line confirmation that LEADS with the created id, so success is never
+    indistinguishable from a silent failure (empty stdout). The ``--json``
+    path stays machine-readable (JSON only, no extra human line).
+  * ``todo-blocker-none-validation-lenient`` — the ``"none"`` sentinel ("no
+    specific blocker named") must NOT error on a non-blocked status; it is
+    normalized away. A REAL blocker variant on a non-blocked status still
+    errors.
+
+CliRunner + a real store under tmp_path. No mocks.
+"""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+from click.testing import CliRunner
+
+from scitex_todo import _model
+from scitex_todo._cli import main
+
+
+def _store_path(tmp_path) -> str:
+    return str(tmp_path / "tasks.yaml")
+
+
+def _add(runner, store, ident, title, *extra):
+    return runner.invoke(
+        main,
+        ["add", "--assignee", "agent:test-suite", ident, title,
+         "--tasks", store, *extra],
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Bug 1: add prints a non-empty success line that leads with the id           #
+# --------------------------------------------------------------------------- #
+def test_add_success_stdout_is_non_empty(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    # Act
+    result = _add(runner, store, "design", "Design phase")
+    # Assert
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() != ""
+
+
+def test_add_success_stdout_mentions_created_id(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    # Act
+    result = _add(runner, store, "design", "Design phase")
+    # Assert
+    assert "design" in result.output
+
+
+def test_add_json_stdout_is_pure_json(tmp_path):
+    """The --json path emits ONLY machine-readable JSON (no human line)."""
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    # Act
+    result = _add(runner, store, "design", "Design phase", "--json")
+    # Assert — the whole stdout parses as a single JSON object.
+    payload = json.loads(result.output.strip())
+    assert payload["id"] == "design"
+
+
+# --------------------------------------------------------------------------- #
+# Bug 2: blocker=none is lenient on a non-blocked status                       #
+# --------------------------------------------------------------------------- #
+def test_add_pending_blocker_none_succeeds(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    # Act
+    result = _add(
+        runner, store, "x", "X", "--status", "pending", "--blocker", "none"
+    )
+    # Assert
+    assert result.exit_code == 0, result.output
+
+
+def test_add_pending_blocker_none_stores_no_active_blocker(tmp_path):
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    _add(runner, store, "x", "X", "--status", "pending", "--blocker", "none")
+    # Act
+    tasks = _model.load_tasks(store)
+    # Assert — the "none" sentinel is normalized away on a non-blocked row.
+    assert tasks[0]["status"] == "pending"
+    assert tasks[0].get("blocker") in (None,)
+    assert "blocker" not in tasks[0]
+
+
+def test_add_pending_real_blocker_still_errors(tmp_path):
+    """A REAL blocker variant on a non-blocked status STILL fails loud."""
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    # Act
+    result = _add(
+        runner, store, "y", "Y", "--status", "pending", "--blocker", "compute"
+    )
+    # Assert
+    assert result.exit_code != 0
+    assert "blocker" in result.output.lower()
+
+
+# --------------------------------------------------------------------------- #
+# Bug 2 at the model layer (save_tasks / load_tasks validation gate)          #
+# --------------------------------------------------------------------------- #
+def test_save_tasks_normalizes_none_blocker_on_pending(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    tasks = [{"id": "x", "title": "X", "status": "pending", "blocker": "none"}]
+    # Act — must NOT raise; the field is dropped in place.
+    _model.save_tasks(tasks, store)
+    reloaded = _model.load_tasks(store)
+    # Assert
+    assert "blocker" not in reloaded[0]
+    assert "blocker" not in tasks[0]
+
+
+def test_save_tasks_real_blocker_on_pending_still_raises(tmp_path):
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    tasks = [
+        {"id": "x", "title": "X", "status": "pending", "blocker": "compute"}
+    ]
+    # Act / Assert
+    with pytest.raises(_model.TaskValidationError, match=r"blocker"):
+        _model.save_tasks(tasks, store)
+
+
+def test_save_tasks_none_blocker_on_blocked_is_preserved(tmp_path):
+    """On a BLOCKED row, `none` is a legitimate sentinel and is kept."""
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    tasks = [{"id": "x", "title": "X", "status": "blocked", "blocker": "none"}]
+    # Act
+    _model.save_tasks(tasks, store)
+    reloaded = _model.load_tasks(store)
+    # Assert
+    assert reloaded[0]["blocker"] == "none"
