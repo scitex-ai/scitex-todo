@@ -77,7 +77,10 @@ class _ExplodingDeliver:
 def test_reassigned_enqueues_to_new_owner(tmp_path):
     store = _store(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
-    add_task(store=store, id="c1", title="x", agent="alice")
+    # created_by == owner so the setup `created` event self-excludes the
+    # actor (the creator is not notified of their own creation) — keeps the
+    # inbox clean so this test asserts purely on the dispatched event.
+    add_task(store=store, id="c1", title="x", agent="alice", created_by="alice")
     rec = _ExplodingDeliver()
 
     summary = dispatch_notifications(
@@ -101,7 +104,10 @@ def test_reassigned_excludes_the_actor(tmp_path):
     # The actor caused the event → never notified, even if they're the owner.
     store = _store(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
-    add_task(store=store, id="c1", title="x", agent="alice")
+    # created_by == owner so the setup `created` event self-excludes the
+    # actor (the creator is not notified of their own creation) — keeps the
+    # inbox clean so this test asserts purely on the dispatched event.
+    add_task(store=store, id="c1", title="x", agent="alice", created_by="alice")
     rec = _ExplodingDeliver()
 
     # alice reassigns the card to herself → she is BOTH owner and actor.
@@ -121,7 +127,7 @@ def test_unregistered_owner_name_enqueues_via_raw_name(tmp_path):
     # recipient id (resolve_recipients returns the raw string), so its inbox
     # is keyed on that raw name.
     store = _store(tmp_path)
-    add_task(store=store, id="c1", title="x", agent="dave")
+    add_task(store=store, id="c1", title="x", agent="dave", created_by="dave")
     rec = _ExplodingDeliver()
 
     summary = dispatch_notifications(
@@ -154,6 +160,7 @@ def test_commented_enqueues_to_owner_collaborators_subscribers(tmp_path):
         agent="alice",
         collaborators=["carol"],
         subscribers=["eve"],
+        created_by="alice",
     )
     rec = _ExplodingDeliver()
 
@@ -182,7 +189,10 @@ def test_commented_no_double_delivery(tmp_path):
     # dispatcher dedups names into a set; the inbox dedups on the event key).
     store = _store(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
-    add_task(store=store, id="c1", title="x", agent="alice")
+    # created_by == owner so the setup `created` event self-excludes the
+    # actor (the creator is not notified of their own creation) — keeps the
+    # inbox clean so this test asserts purely on the dispatched event.
+    add_task(store=store, id="c1", title="x", agent="alice", created_by="alice")
     rec = _ExplodingDeliver()
 
     summary = dispatch_notifications(
@@ -202,7 +212,7 @@ def test_merged_enqueues_to_nobody_by_default(tmp_path):
     store = _store(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
     eve = register_user(kind="human", names=["eve"], store=store)
-    add_task(store=store, id="c1", title="x", agent="alice", subscribers=["eve"])
+    add_task(store=store, id="c1", title="x", agent="alice", subscribers=["eve"], created_by="alice")
     rec = _ExplodingDeliver()
 
     summary = dispatch_notifications(
@@ -223,7 +233,7 @@ def test_completed_enqueues_to_owner_and_subscribers(tmp_path):
     store = _store(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
     eve = register_user(kind="human", names=["eve"], store=store)
-    add_task(store=store, id="c1", title="x", agent="alice", subscribers=["eve"])
+    add_task(store=store, id="c1", title="x", agent="alice", subscribers=["eve"], created_by="alice")
     rec = _ExplodingDeliver()
 
     summary = dispatch_notifications(
@@ -284,7 +294,7 @@ def test_per_recipient_enqueue_is_independent(tmp_path):
     store = _store(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
     eve = register_user(kind="human", names=["eve"], store=store)
-    add_task(store=store, id="c1", title="x", agent="alice", subscribers=["eve"])
+    add_task(store=store, id="c1", title="x", agent="alice", subscribers=["eve"], created_by="alice")
     rec = _ExplodingDeliver()
 
     summary = dispatch_notifications(

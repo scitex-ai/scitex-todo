@@ -164,7 +164,9 @@ def test_falsy_recipient_and_empty_inbox_are_safe(tmp_path):
 def test_dispatch_reassigned_enqueues_new_owner_inbox(tmp_path):
     store = _store(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
-    add_task(store=store, id="c1", title="x", agent="alice")
+    # created_by == owner so the setup `created` event self-excludes the actor
+    # (creator isn't notified of their own creation) — keeps the inbox clean.
+    add_task(store=store, id="c1", title="x", agent="alice", created_by="alice")
     rec = _Recorder()
 
     summary = dispatch_notifications(
@@ -189,7 +191,7 @@ def test_dispatch_completed_enqueues_owner_and_subscribers(tmp_path):
     store = _store(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
     eve = register_user(kind="human", names=["eve"], store=store)
-    add_task(store=store, id="c1", title="x", agent="alice", subscribers=["eve"])
+    add_task(store=store, id="c1", title="x", agent="alice", subscribers=["eve"], created_by="alice")
     rec = _Recorder()
 
     summary = dispatch_notifications(
@@ -212,7 +214,9 @@ def test_dispatch_actor_is_not_enqueued(tmp_path):
     # The actor caused the event → no inbox entry, even if owner == actor.
     store = _store(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
-    add_task(store=store, id="c1", title="x", agent="alice")
+    # created_by == owner so the setup `created` event self-excludes the actor
+    # (creator isn't notified of their own creation) — keeps the inbox clean.
+    add_task(store=store, id="c1", title="x", agent="alice", created_by="alice")
     rec = _Recorder()
 
     summary = dispatch_notifications(
@@ -228,7 +232,7 @@ def test_dispatch_unregistered_owner_enqueues_under_raw_name(tmp_path):
     # Back-compat: an unregistered owner is enqueued under its raw name (the
     # same key resolve_recipients returns), so poll_notifications(name) finds it.
     store = _store(tmp_path)
-    add_task(store=store, id="c1", title="x", agent="dave")
+    add_task(store=store, id="c1", title="x", agent="dave", created_by="dave")
     rec = _Recorder()
 
     summary = dispatch_notifications(
@@ -244,7 +248,9 @@ def test_dispatch_redispatch_dedups_via_event_ts(tmp_path):
     # Re-dispatching the SAME event (same ts) must not double-enqueue.
     store = _store(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
-    add_task(store=store, id="c1", title="x", agent="alice")
+    # created_by == owner so the setup `created` event self-excludes the actor
+    # (creator isn't notified of their own creation) — keeps the inbox clean.
+    add_task(store=store, id="c1", title="x", agent="alice", created_by="alice")
     rec = _Recorder()
     event = Event(type=EventType.COMPLETED, card_id="c1", actor="bob")
 
@@ -267,7 +273,7 @@ def test_dispatch_via_bus_carries_enqueued_and_emit_non_raising(tmp_path, env):
 
     store = _store(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
-    add_task(store=store, id="c1", title="x", agent="alice")
+    add_task(store=store, id="c1", title="x", agent="alice", created_by="alice")
     env.set("SCITEX_TODO_TASKS", str(store))
     env.set("SCITEX_TODO_PUSH_DRY_RUN", "1")
 
@@ -339,7 +345,7 @@ def test_poll_notifications_resolves_name_to_inbox(tmp_path):
 
     store = _store(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
-    add_task(store=store, id="c1", title="x", agent="alice")
+    add_task(store=store, id="c1", title="x", agent="alice", created_by="alice")
     dispatch_notifications(
         Event(type=EventType.COMPLETED, card_id="c1", actor="bob"),
         store=store,
@@ -361,7 +367,7 @@ def test_poll_notifications_ack_advances_cursor(tmp_path):
 
     store = _store(tmp_path)
     register_user(kind="agent", names=["alice"], store=store)
-    add_task(store=store, id="c1", title="x", agent="alice")
+    add_task(store=store, id="c1", title="x", agent="alice", created_by="alice")
     dispatch_notifications(
         Event(type=EventType.COMPLETED, card_id="c1", actor="bob"),
         store=store,
@@ -386,7 +392,7 @@ def test_poll_notifications_unregistered_name_uses_raw_key(tmp_path):
     from scitex_todo._mcp_skills import poll_notifications
 
     store = _store(tmp_path)
-    add_task(store=store, id="c1", title="x", agent="dave")
+    add_task(store=store, id="c1", title="x", agent="dave", created_by="dave")
     dispatch_notifications(
         Event(type=EventType.REASSIGNED, card_id="c1", actor="bob"),
         store=store,

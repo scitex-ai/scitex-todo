@@ -234,4 +234,26 @@ def test_resolve_agent_id_blank_raises(monkeypatch):
         resolve_agent_id("   ")
 
 
+def test_resolve_agent_id_unexpanded_placeholder_arg_raises(monkeypatch):
+    # The launcher passed the literal text instead of expanding it — Claude
+    # Code only expands the `${VAR}` brace form, never bare `$VAR`. Draining an
+    # inbox keyed by that literal would silently deliver nothing, so fail loud.
+    monkeypatch.delenv("SCITEX_TODO_AGENT", raising=False)
+    with pytest.raises(RuntimeError) as exc:
+        resolve_agent_id("$SCITEX_TODO_AGENT")
+    assert "placeholder" in str(exc.value)
+
+
+def test_resolve_agent_id_unexpanded_placeholder_braces_arg_raises(monkeypatch):
+    monkeypatch.delenv("SCITEX_TODO_AGENT", raising=False)
+    with pytest.raises(RuntimeError):
+        resolve_agent_id("${SCITEX_TODO_AGENT}")
+
+
+def test_resolve_agent_id_unexpanded_placeholder_from_env_raises(monkeypatch):
+    monkeypatch.setenv("SCITEX_TODO_AGENT", "$SCITEX_TODO_AGENT")
+    with pytest.raises(RuntimeError):
+        resolve_agent_id()
+
+
 # EOF
