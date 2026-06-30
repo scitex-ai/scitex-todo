@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""scitex-todo's OWN standalone channel-notification MCP server (no sac).
+"""scitex-todo's OWN standalone channel-notification MCP server.
 
 A long-running MCP **stdio** server that pushes unsolicited
 ``notifications/claude/channel`` messages into the Claude session, draining
@@ -19,11 +19,10 @@ the ``claude/channel`` experimental capability or Claude Code drops every
 push ("server did not declare claude/channel capability").
 
 The shape of this server (own-the-session + manual incoming-message drive)
-is modelled on sac's ``_mcp/channel.py``, but this module has ZERO sac
-dependency: it drains the standalone :mod:`scitex_todo._inbox` pull-inbox
-instead of subscribing to sac's bus. NO ``import scitex_agent_container``,
-no ``sac`` shell-out — scitex-todo, sac, and claude-code-telegrammer are
-three independent standalone mechanisms.
+is a standard MCP-channel pattern, but this module has ZERO external
+runtime dependency: it drains the standalone :mod:`scitex_todo._inbox`
+pull-inbox — reads scitex-todo's own inbox rows; no external runtime
+import or shell-out. scitex-todo's delivery rail is fully self-contained.
 
 Wire format (exact)
 -------------------
@@ -128,7 +127,7 @@ def recipient_keys(agent_id: str, *, store: str | None = None) -> list[str]:
     stays the raw name. If the channel polled only the raw name it would miss
     every notification for an agent that IS a registered user (enqueued under
     the user-id) — the silent-drop we hit live. So the channel computes the
-    SAME key the producer used (sac idiom: consumer keys exactly like the
+    SAME key the producer used (the consumer keys exactly like the
     producer) AND keeps the raw name for back-compat records keyed by name.
     Returns a de-duplicated, order-stable list (raw name first).
     """

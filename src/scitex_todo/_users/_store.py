@@ -8,7 +8,7 @@ key (a sibling of ``tasks:``). This module reuses the task store's
 ``tasks:`` payload + inline comments + key order survive every user write
 untouched (and vice versa) — there is NO separate users file.
 
-Standalone constraint: ZERO sac / fleet imports. The id format is ``u_`` +
+Standalone constraint: ZERO external-runtime / fleet imports. The id format is ``u_`` +
 12 hex chars (48 bits, :func:`secrets.token_hex`); ids are generated here,
 stable for life, and never reused.
 """

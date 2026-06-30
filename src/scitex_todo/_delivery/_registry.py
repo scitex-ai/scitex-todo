@@ -9,8 +9,8 @@ return a DETERMINISTIC (name-sorted) result, and SKIP-AND-WARN (never
 silently swallow) any provider that fails to load — fail-loud to stderr.
 
 The entry-point group name is deliberately ``scitex_todo.delivery_channels``
-— distinct from any ``scitex_agent_container.*`` group — so the two fleets'
-channel registries never collide. This module has ZERO sac imports.
+— distinct from any external runtime's entry-point group — so separate
+channel registries never collide. This module has ZERO external imports.
 
 Test seam
 ---------

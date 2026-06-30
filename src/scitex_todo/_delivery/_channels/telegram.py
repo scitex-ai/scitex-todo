@@ -9,7 +9,7 @@ the bot token is read (lazily) from ``SCITEX_TODO_TELEGRAM_BOT_TOKEN`` (or an
 
 Why stdlib ``urllib`` (and a transport seam)
 --------------------------------------------
-The delivery rail has ZERO heavy deps and ZERO sac imports, so HTTP goes
+The delivery rail has ZERO heavy deps and ZERO external imports, so HTTP goes
 through stdlib :mod:`urllib.request`. To keep the channel testable WITHOUT
 mocks or a live network, the wire call is isolated behind an injectable
 ``http_post(url, data) -> (status_code, headers, body)`` seam: production

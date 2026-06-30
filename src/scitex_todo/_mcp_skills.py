@@ -128,11 +128,12 @@ async def poll_notifications(
 ) -> str:
     """PULL an agent's pending card-message notifications (STANDALONE).
 
-    The standalone (zero-sac) delivery read path: the C4 dispatcher ENQUEUEs
-    each card-event into the recipient's per-recipient pull-inbox (a sibling
-    ``inboxes:`` section in the shared store); this tool returns that inbox
-    so any agent's scitex-todo client can poll it WITHOUT sac. The sac push
-    rail stays an optional parallel accelerator, not a dependency.
+    The standalone (zero external runtime) delivery read path: the C4
+    dispatcher ENQUEUEs each card-event into the recipient's per-recipient
+    pull-inbox (a sibling ``inboxes:`` section in the shared store); this
+    tool returns that inbox so any agent's scitex-todo client can poll it
+    WITHOUT any external runtime. The optional out-of-band push rail stays a
+    parallel accelerator, not a dependency.
 
     ``agent`` is resolved to its stable user-id via
     :func:`scitex_todo._users.resolve_user` (so a rename still finds the

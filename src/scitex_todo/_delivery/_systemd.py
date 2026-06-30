@@ -10,8 +10,8 @@ convention: ``Type=simple`` + ``Restart=on-failure`` + ``WantedBy=default.
 target``).
 
 The unit is fully STANDALONE — its ``ExecStart`` is just the ``scitex-todo
-notifyd`` entry point (the foreground run), with no ``scitex_dev`` /
-``scitex_agent_container`` federation dependency.
+notifyd`` entry point (the foreground run), with no external federation
+dependency.
 """
 
 from __future__ import annotations

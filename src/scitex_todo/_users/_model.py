@@ -10,7 +10,7 @@ source — mirrors how ``_model.Task`` is the task schema), and the fail-loud
 
 Standalone constraint: the only cross-module reference is
 :func:`scitex_todo._ports.canonical_agent_id`, reused PURELY as a local
-``host@name`` string normaliser/validator — NO sac import, NO runtime pull.
+``host@name`` string normaliser/validator — NO external import, NO runtime pull.
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ class User:
     host_at_name : str | None
         Optional canonical ``host@name`` join key (validated via
         :func:`scitex_todo._ports.canonical_agent_id` when present). The
-        eventual sac identity bridge will MATCH on this, but this package
+        eventual identity bridge will MATCH on this, but this package
         never pulls runtime — it only stores/validates the string.
     notify : dict
         Reserved, opaque per-user notify-config bag (default ``{}``). This
@@ -68,15 +68,15 @@ class User:
         present it is used verbatim (highest precedence in
         :func:`user_turn_url`). ``None`` (the default) means "not pinned";
         the URL may then be derived from :attr:`a2a_port`. The shape
-        matches sac's ``agent_registered`` bus envelope, whose consumer (a
-        separate card) populates this field — this package only stores it.
+        matches the external ``agent_registered`` bus envelope, whose consumer
+        (a separate card) populates this field — this package only stores it.
     a2a_port : int | None
         Optional a2a listen port. When set (and no explicit
         :attr:`turn_url`), :func:`user_turn_url` derives the endpoint as
         ``http://<host>:<a2a_port>/v1/turn`` where ``<host>`` is the host
         half of :attr:`host_at_name` (loopback when the id is bare). This
-        is the field sac's ``agent_registered`` envelope carries alongside
-        ``host_at_name``; absent → ``None`` (backward-compatible).
+        is the field the external ``agent_registered`` envelope carries
+        alongside ``host_at_name``; absent → ``None`` (backward-compatible).
     created_at : str
         ISO-8601 UTC timestamp stamped at registration.
     """
@@ -197,7 +197,7 @@ def validate_user(user: "User | dict") -> None:
                 f"must be a non-empty 'host@name' string or absent"
             )
         try:
-            # Pure local normaliser/validator — NO sac import, NO runtime
+            # Pure local normaliser/validator — NO external import, NO runtime
             # pull. Just proves the string is a well-formed host@name (or a
             # bare name, which canonical_agent_id accepts as host-unknown).
             canonical_agent_id(host_at_name)

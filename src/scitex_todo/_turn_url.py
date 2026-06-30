@@ -13,17 +13,18 @@ Resolution precedence (see :func:`turn_url_for`):
   0. scitex-todo's OWN user registry (``users:`` section of the task
      store) — file-local, NO bearer, the reliable PRIMARY source.
   1. ``SCITEX_TODO_AGENT_TURN_URLS`` JSON map (operator-pinned).
-  2. ``SCITEX_TODO_TURN_URL_<SLUG>`` per-agent env (telegrammer wire).
-  3. sac listen daemon's ``/agents`` HTTP registry (HTTP-only contract,
-     locked by lead a2a `8e51b1e0` / `ffc6629c80`).
+  2. ``SCITEX_TODO_TURN_URL_<SLUG>`` per-agent env (scitex-todo's own
+     per-agent turn-url env contract).
+  3. agent-runtime listen daemon's ``/agents`` HTTP registry (HTTP-only
+     contract, locked by lead a2a `8e51b1e0` / `ffc6629c80`).
   4. None → caller falls through to fail-loud "no-turn-url-configured".
 
 Step 0 is the durable root fix (card
 ``todo-push-turn-url-from-user-registry-20260626``): the board OWNS the
 registry, so that file-local, bearer-free source is consulted FIRST. It is
-NOT a pull from sac — it reads scitex-todo's own ``users:`` rows (no sac
+NOT a runtime pull — it reads scitex-todo's own ``users:`` rows (no external
 import, no HTTP, no bearer); the endpoint fields are populated by explicit
-registration and (later) by sac's ``agent_registered`` bus consumer, a
+registration and (later) by an external ``agent_registered`` bus consumer, a
 separate card.
 """
 
@@ -41,15 +42,16 @@ ENV_MAP = "SCITEX_TODO_AGENT_TURN_URLS"
 PER_AGENT_PREFIX = "SCITEX_TODO_TURN_URL_"
 
 #: Lead-defined env (a2a `90acf63b4276422cbe9270cd936b2b45`,
-#: 2026-06-12): point at the sac listen daemon's HTTP control-plane.
-#: Named per scitex env-var convention (no ``SAC_`` rename — the
-#: package must not appear to import sac). Defaults to the in-container
-#: loopback URL the sac runtime sets up at agent boot.
+#: 2026-06-12): point at the agent-runtime listen daemon's HTTP
+#: control-plane. Named per scitex env-var convention (this is
+#: scitex-todo's own env name; the package imports no external runtime).
+#: Defaults to the in-container loopback URL the agent runtime sets up at
+#: agent boot.
 ENV_SAC_LISTEN = "SCITEX_TODO_SAC_LISTEN_URL"
-#: Bearer-token env, matching the value sac listen populates in every
-#: agent container. We read the existing ``SAC_LISTEN_BEARER`` so no
-#: extra wiring is required from agent-container's side; if it ever
-#: changes, the env name is a single-line update here.
+#: Bearer-token env, matching the value the listen daemon populates in
+#: every agent container. We read the runtime's existing
+#: ``SAC_LISTEN_BEARER`` so no extra wiring is required on the runtime
+#: side; if it ever changes, the env name is a single-line update here.
 ENV_SAC_BEARER = "SAC_LISTEN_BEARER"
 DEFAULT_SAC_LISTEN = "http://127.0.0.1:7878"
 #: Aggressive: a slow registry must not block per-agent nudge fan-out.
@@ -59,7 +61,7 @@ SAC_REGISTRY_TIMEOUT_S = 2.0
 
 
 def _slug(agent: str) -> str:
-    """Match claude-code-telegrammer's env-slug convention."""
+    """scitex-todo's per-agent env-slug convention."""
     return agent.upper().replace("-", "_").replace("/", "_")
 
 
@@ -69,12 +71,12 @@ def _turn_url_from_user_registry(agent: str) -> str | None:
     File-local, NO-bearer PRIMARY source (step 0 of :func:`turn_url_for`):
     resolves ``agent`` to a :class:`scitex_todo._users.User` and returns its
     :func:`scitex_todo._users.user_turn_url` (explicit ``turn_url`` else one
-    derived from ``a2a_port`` + the host in ``host_at_name``). NOT a sac
-    pull — reads the ``users:`` store section; no sac import, no HTTP, no
-    bearer (the endpoint is populated by registration + sac's
+    derived from ``a2a_port`` + the host in ``host_at_name``). NOT a runtime
+    pull — reads the ``users:`` store section; no external import, no HTTP, no
+    bearer (the endpoint is populated by registration + an external
     ``agent_registered`` bus consumer, a separate card). ``_users`` is
     imported LAZILY to avoid an import cycle. Any failure → ``None`` so the
-    caller falls through to the env / sac-registry chain (fail-loud ``None``
+    caller falls through to the env / HTTP-registry chain (fail-loud ``None``
     preserved).
     """
     try:
@@ -91,15 +93,16 @@ def _turn_url_from_user_registry(agent: str) -> str | None:
 
 
 def _turn_url_from_registry(agent: str) -> str | None:
-    """Resolve ``agent``'s turn URL via the sac listen daemon's HTTP registry.
+    """Resolve ``agent``'s turn URL via the agent-runtime listen daemon's
+    HTTP registry.
 
     HTTP-only contract (lead a2a `8e51b1e0` + `90acf63b`): we never
-    import the sac CLI or Python — the registry shape is exchanged
-    purely over HTTP. Reads:
+    import any external CLI or Python module — the registry shape is
+    exchanged purely over HTTP. Reads:
 
-      * ``SCITEX_TODO_SAC_LISTEN_URL`` — base URL of the sac listen
+      * ``SCITEX_TODO_SAC_LISTEN_URL`` — base URL of the listen
         daemon (default ``http://127.0.0.1:7878``).
-      * ``SAC_LISTEN_BEARER`` — bearer token the sac runtime sets in
+      * ``SAC_LISTEN_BEARER`` — bearer token the agent runtime sets in
         every agent container.
 
     Endpoint: ``GET <base>/agents`` returns ``{"agents": [{name,
@@ -116,19 +119,19 @@ def _turn_url_from_registry(agent: str) -> str | None:
         set, the agent isn't in the list, or the row lacks dispatch
         fields. The caller then falls through to the next precedence
         step (today, the file-local user registry is tried FIRST; this
-        sac HTTP path is now a last-resort fallback).
+        HTTP path is now a last-resort fallback).
 
     Note: the dispatch fields (``turn_url`` / ``a2a_port``) are NOT
-    yet exposed on the ``/agents`` row in the sac listen daemon as of
-    2026-06-12. Agent-container is the owner of that field addition
-    (lead-confirmed via a2a `90acf63b`); this function ships ready to
+    yet exposed on the ``/agents`` row in the listen daemon as of
+    2026-06-12. The runtime that populates the registry owns that field
+    addition (lead-confirmed via a2a `90acf63b`); this function ships ready to
     consume them the moment they appear. Until then every agent falls
     through, and the failure mode is unchanged from the prior code.
     """
     bearer = os.environ.get(ENV_SAC_BEARER, "").strip()
     if not bearer:
-        # No bearer → we're not inside a sac-managed container OR sac
-        # is down. Either way, registry path can't help — silent miss.
+        # No bearer → we're not inside a runtime-managed container OR the
+        # runtime is down. Either way, registry path can't help — silent miss.
         return None
     base = os.environ.get(ENV_SAC_LISTEN, DEFAULT_SAC_LISTEN).strip().rstrip("/")
     if not base:
@@ -172,8 +175,8 @@ def _turn_url_from_registry(agent: str) -> str | None:
             parsed = urlparse(base)
             host = parsed.hostname or "127.0.0.1"
             return f"http://{host}:{port}/v1/turn"
-        # Row exists but lacks dispatch fields — known gap until
-        # agent-container ships the field. Treat as miss.
+        # Row exists but lacks dispatch fields — known gap until the
+        # runtime that populates the registry ships the field. Treat as miss.
         return None
     return None
 
@@ -187,16 +190,17 @@ def turn_url_for(agent: str) -> str | None:
          :func:`_turn_url_from_user_registry`. (Root fix, card
          ``todo-push-turn-url-from-user-registry-20260626``.)
       1. ``SCITEX_TODO_AGENT_TURN_URLS`` JSON map entry (operator-pinned).
-      2. ``SCITEX_TODO_TURN_URL_<SLUG>`` per-agent env (telegrammer wire).
-      3. sac listen daemon's ``/agents`` HTTP registry — derive from the
-         row's ``turn_url`` (preferred) or ``a2a_port``. See
+      2. ``SCITEX_TODO_TURN_URL_<SLUG>`` per-agent env (scitex-todo's own
+         per-agent turn-url env contract).
+      3. agent-runtime listen daemon's ``/agents`` HTTP registry — derive
+         from the row's ``turn_url`` (preferred) or ``a2a_port``. See
          :func:`_turn_url_from_registry` (HTTP-only contract, locked by
          lead a2a `8e51b1e0` / `ffc6629c80`).
       4. None — caller falls through to fail-loud "no-turn-url-configured".
 
     Step 0 is the durable root fix: the board OWNS the registry, so that
     file-local, bearer-free source is consulted FIRST. The env steps stay
-    operator-overrides; the sac HTTP registry remains a last-resort
+    operator-overrides; the HTTP registry remains a last-resort
     fallback. The final fail-loud ``None`` is unchanged.
     """
     registry_user_url = _turn_url_from_user_registry(agent)
