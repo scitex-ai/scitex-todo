@@ -158,10 +158,12 @@ def _build_graph(board) -> dict:
 
 # Statuses that exclude a task from the "runnable" count for liveness.
 # Mirrors the task-harvest skill's non-runnable set (40_task-harvest.md):
-# blocked / done / deferred / failed are not "could be progressed now";
-# `goal` rows are umbrella nodes the harvest doesn't escalate either.
+# blocked / done / deferred / failed / cancelled are not "could be
+# progressed now"; `goal` rows are umbrella nodes the harvest doesn't
+# escalate either. ``cancelled`` (closed as not planned) is terminal, so
+# it never counts toward runnable liveness — same as done/failed.
 _LIVENESS_NONRUNNABLE: frozenset[str] = frozenset(
-    {"blocked", "done", "deferred", "failed", "goal"}
+    {"blocked", "done", "deferred", "failed", "cancelled", "goal"}
 )
 
 
