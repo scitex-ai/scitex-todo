@@ -100,9 +100,12 @@ def test_main_blocks_with_exit_2(tmp_path, monkeypatch, capsys):
 
 
 def test_main_allows_with_exit_0(tmp_path, monkeypatch):
-    store = _store(tmp_path, [_t(id="fresh", owner="alice", status="in_progress", hours_ago=0.1)])
+    # No in_progress card → no claimed work to abandon → allow stop. Uses only a
+    # pending card so the result is independent of the wall clock (main() reads
+    # the real `now`, so an in_progress fixture anchored to a fixed past time
+    # would flake once it aged past the stale threshold).
+    store = _store(tmp_path, [_t(id="pend", owner="alice", status="pending", hours_ago=99)])
     monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
-    monkeypatch.setenv("SCITEX_TODO_STALE_ACTIVE_HOURS", "2")
     _silence_stdin(monkeypatch)
 
     assert _idle_guard.main(["--agent", "alice"]) == 0
