@@ -230,6 +230,31 @@ def _report_terminal_if_due(
         )
 
 
+def _run_reminder_sweep(*, store, now) -> None:
+    """Enqueue any DUE nag reminders + operator escalations for this tick.
+
+    Fully guarded: loads the task list, runs the escalating-cadence sweep
+    (:func:`scitex_todo._reminders.sweep_reminders`), and logs a one-line
+    summary. Any error (bad store, etc.) is logged and swallowed so the
+    reminder sweep can NEVER block the delivery pass that follows it.
+    """
+    try:
+        from .._model import load_tasks
+        from .._reminders import sweep_reminders
+
+        tasks = load_tasks(store)
+        result = sweep_reminders(tasks, store=store, now=now)
+        if result["reminded"] or result["escalated"]:
+            logger.info(
+                "notifyd nag sweep: %d reminded, %d escalated, %d not-yet-due",
+                len(result["reminded"]),
+                len(result["escalated"]),
+                len(result["skipped"]),
+            )
+    except Exception:  # noqa: BLE001 — a sweep error must never block delivery
+        logger.exception("notifyd reminder sweep raised; continuing to delivery")
+
+
 def _install_signal_handlers(stop: threading.Event):
     """Wire SIGTERM/SIGINT to trip the stop event (graceful shutdown).
 
@@ -349,6 +374,10 @@ def run_notifyd(
             # BOTH foreground `scitex-todo notifyd` AND systemd (which also has
             # Restart=on-failure as a second safety net).
             try:
+                # NAG sweep FIRST: enqueue any due reminders / escalations so
+                # this same tick's deliver_pending sends them. Its own guard so
+                # a sweep error never blocks delivery of already-queued notes.
+                _run_reminder_sweep(store=store, now=now_fn())
                 summary = deliver_pending(
                     store=store,
                     channels=channels,
