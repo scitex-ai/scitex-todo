@@ -88,6 +88,12 @@ DEFAULT_ESCALATE_PRIORITY = 1
 ENV_OPERATOR = "SCITEX_TODO_OPERATOR"
 DEFAULT_OPERATOR = "operator"
 
+#: Optional owner ALLOWLIST for a phased rollout. Comma-separated owner
+#: names; when set, ONLY those owners are nagged (every other owner is left
+#: untouched). Empty / unset = nag every owner. Lets the engine start scoped
+#: to one agent and widen deliberately, with no fleet-wide first-sweep storm.
+ENV_REMINDER_OWNERS = "SCITEX_TODO_REMINDER_OWNERS"
+
 #: Event types (also the inbox dedup discriminator + the ledger key prefix).
 EVENT_REMINDER = "reminder"
 EVENT_ESCALATION = "escalation"
@@ -101,6 +107,12 @@ def _env_float(name: str, default: float) -> float:
         return float(raw)
     except (TypeError, ValueError):
         return default
+
+
+def _owner_allowlist() -> set[str]:
+    """Parse :data:`ENV_REMINDER_OWNERS` → a set of allowed owners (empty = all)."""
+    raw = os.environ.get(ENV_REMINDER_OWNERS) or ""
+    return {o.strip() for o in raw.split(",") if o.strip()}
 
 
 def _env_int(name: str, default: int) -> int:
@@ -214,6 +226,7 @@ def sweep_reminders(
     cap_hours: float | None = None,
     escalate_after: int | None = None,
     escalate_priority: int | None = None,
+    owners: set[str] | None = None,
 ) -> dict[str, list[str]]:
     """One nag sweep: enqueue due reminders + escalate high-priority overdue.
 
@@ -255,6 +268,12 @@ def sweep_reminders(
         buckets.setdefault(owner, []).extend(cards)
     for owner, cards in detect_pending_backlog(tasks, now=cur).items():
         buckets.setdefault(owner, []).extend(cards)
+
+    # Phased-rollout allowlist: when set (arg or env), nag ONLY these owners
+    # and leave every other owner untouched (no fleet-wide first-sweep storm).
+    allow = owners if owners is not None else _owner_allowlist()
+    if allow:
+        buckets = {o: c for o, c in buckets.items() if o in allow}
 
     state = load_reminder_state(store)
     stale_ids: set[str] = set()
@@ -374,6 +393,7 @@ def _escalation_body(sc, owner: str, count: int) -> str:
 
 __all__ = [
     "REMINDER_SIDECAR_NAME",
+    "ENV_REMINDER_OWNERS",
     "EVENT_REMINDER",
     "EVENT_ESCALATION",
     "DEFAULT_REMINDER_BASE_HOURS",

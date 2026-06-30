@@ -215,4 +215,47 @@ def test_unassigned_cards_are_not_nagged(tmp_path):
     assert rec.calls == []
 
 
+# === owner allowlist — phased rollout (nag only listed owners) ============
+
+
+def test_owner_allowlist_arg_nags_only_listed_owner(tmp_path):
+    store = tmp_path / "tasks.yaml"
+    rec = _EnqueueRecorder()
+    tasks = [
+        _t(id="c1", owner="alice", hours_ago=10.0),
+        _t(id="c2", owner="bob", hours_ago=10.0),
+    ]
+    out = sweep_reminders(
+        tasks, store=store, now=_NOW, enqueue=rec, resolve_key=_resolver({}),
+        owners={"alice"},
+    )
+    assert out["reminded"] == ["c1"]  # bob left untouched
+    assert [c["card_id"] for c in rec.calls] == ["c1"]
+
+
+def test_owner_allowlist_env_scopes_the_sweep(tmp_path, monkeypatch):
+    from scitex_todo._reminders import ENV_REMINDER_OWNERS
+
+    monkeypatch.setenv(ENV_REMINDER_OWNERS, "alice, carol")
+    store = tmp_path / "tasks.yaml"
+    rec = _EnqueueRecorder()
+    tasks = [
+        _t(id="c1", owner="alice", hours_ago=10.0),
+        _t(id="c2", owner="bob", hours_ago=10.0),
+    ]
+    out = sweep_reminders(tasks, store=store, now=_NOW, enqueue=rec, resolve_key=_resolver({}))
+    assert out["reminded"] == ["c1"]
+
+
+def test_empty_allowlist_nags_all_owners(tmp_path):
+    store = tmp_path / "tasks.yaml"
+    rec = _EnqueueRecorder()
+    tasks = [
+        _t(id="c1", owner="alice", hours_ago=10.0),
+        _t(id="c2", owner="bob", hours_ago=10.0),
+    ]
+    out = sweep_reminders(tasks, store=store, now=_NOW, enqueue=rec, resolve_key=_resolver({}), owners=set())
+    assert sorted(out["reminded"]) == ["c1", "c2"]
+
+
 # EOF
