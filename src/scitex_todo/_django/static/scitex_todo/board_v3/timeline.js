@@ -30,10 +30,13 @@
   // Layout constants for the raster SVG.
   var LANE_H = 26; // px floor per lane row (a 1-row lane keeps this height)
   var BAR_INSET = 4; // vertical padding inside a lane
-  var LABEL_W = 150; // lane-label gutter width
+  var LABEL_W = 124; // lane-label gutter width (tightened 150→124 to give the
+  //                    plot more of the left side; labels truncate to 22 chars
+  //                    which fit in ~120px at the 11px bold lane-label font)
   var AXIS_H = 22; // top time-axis height
   var TICKS = 6; // axis tick count (incl. both ends)
-  var SUB_ROW_H = 18; // px per beeswarm sub-row inside a lane
+  var SUB_ROW_H = 20; // px per beeswarm sub-row inside a lane (18→20 so the
+  //                     larger r=7 dots + selected ring don't collide)
   var SUB_ROW_GAP = 2; // px gap two markers need to share one sub-row
   var MAX_ROWS = 12; // cap on sub-rows per lane (overflow clamps)
 
@@ -321,7 +324,7 @@
         d.cx +
         '" cy="' +
         d.cy +
-        '" r="5" onclick="openDetail(\'' +
+        '" r="7" onclick="openDetail(\'' +
         escapeHtml(String(d.ev.id)) +
         "')\"><title>" +
         escapeHtml(title) +
