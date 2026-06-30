@@ -237,9 +237,18 @@ def _build_fleet(tasks: list[dict], *, now=None) -> list[dict]:
                               for "what's queued waiting to be picked up";
                               feeds the task-harvest sweep's ESCALATE list)
       blocked_count           tasks with status=blocked
-      blocking_operator_count tasks with blocker=operator-decision (the
-                              "stuck on YOU" subset the operator needs to
-                              see jump out)
+      blocking_operator_count count of the "waiting-on-operator" queue:
+                              cards matching the board's BLOCKING-YOU
+                              predicate (status=blocked AND
+                              blocker=operator-decision), the "stuck on
+                              YOU" subset the operator needs to see jump
+                              out. Derived from the SAME predicate as
+                              ``list_tasks(blocking_me=True)`` (the
+                              ``_match(..., blocking_me=True)`` SSOT) — NOT
+                              a re-implemented check.
+      blocking_operator_ids   the ids of those same cards, so the FE can
+                              link straight to the queue without re-walking
+                              the store.
     """
     import datetime as _dt
     import os
@@ -326,6 +335,21 @@ def _build_fleet(tasks: list[dict], *, now=None) -> list[dict]:
         # tally without re-walking the store on the client side.
         from scitex_todo._model import is_overdue as _is_overdue
 
+        # "Waiting-on-operator" queue (operator P1
+        # todo-operator-blocking-queue-view): cards stuck on a
+        # human decision. SSOT — reuse the board's BLOCKING-YOU
+        # predicate (``_match(..., blocking_me=True)`` == the same
+        # filter ``list_tasks(blocking_me=True)`` uses) so the count
+        # and id list never drift from the canonical
+        # ``status==blocked AND blocker==operator-decision`` rule.
+        from ..._store import _match
+
+        blocking_operator_ids = [
+            str(t.get("id"))
+            for t in items
+            if _match(t, blocking_me=True) and t.get("id") is not None
+        ]
+
         out.append(
             {
                 "name": agent,
@@ -340,9 +364,8 @@ def _build_fleet(tasks: list[dict], *, now=None) -> list[dict]:
                     if str(t.get("status") or "") not in _LIVENESS_NONRUNNABLE
                 ),
                 "blocked_count": sum(1 for t in items if t.get("status") == "blocked"),
-                "blocking_operator_count": sum(
-                    1 for t in items if t.get("blocker") == "operator-decision"
-                ),
+                "blocking_operator_count": len(blocking_operator_ids),
+                "blocking_operator_ids": blocking_operator_ids,
                 "overdue_count": sum(1 for t in items if _is_overdue(t, now=cur)),
             }
         )
