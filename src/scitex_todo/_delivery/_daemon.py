@@ -242,8 +242,13 @@ def _run_reminder_sweep(*, store, now) -> None:
         from .._model import load_tasks
         from .._reminders import sweep_reminders
 
-        tasks = load_tasks(store)
-        result = sweep_reminders(tasks, store=store, now=now)
+        # Resolve the store BEFORE use: notifyd's `store` is None by default
+        # (deliver_pending resolves it internally), but load_tasks / the sweep
+        # need a concrete path — passing None trips Path(None). Use the same
+        # resolver the daemon logs with so all three see one store.
+        resolved = _resolved_store(store)
+        tasks = load_tasks(resolved)
+        result = sweep_reminders(tasks, store=resolved, now=now)
         if result["reminded"] or result["escalated"]:
             logger.info(
                 "notifyd nag sweep: %d reminded, %d escalated, %d not-yet-due",
