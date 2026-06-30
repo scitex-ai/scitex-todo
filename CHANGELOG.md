@@ -4,6 +4,65 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.28] - 2026-06-26 — board UX (timeline beeswarm/anti-flash, marker copy, user roles) + CI off paid runners
+
+### Added
+
+- **Timeline marker multi-select + copy + right-click menu** (`timelineSelect.js`):
+  click markers to select, right-click for a menu, copy selected cards' contents
+  to the clipboard.
+- **Card detail user roles**: the detail drawer shows Creator / Assignee /
+  Collaborators / Subscribers in user vocabulary; a `created_by` field is now
+  captured at task creation (CLI `--created-by` + MCP), back-compatible with
+  legacy rows; the `/graph` node payload emits `created_by` / `collaborators` /
+  `subscribers`.
+- **`help-wait` / `help-clear`** verbs + MCP tools (also in 0.7.27) — the SSOT
+  card primitive the agent-waiting escalation hook calls.
+
+### Changed
+
+- **Timeline no longer flashes / jumps to top**: the raster skips its rebuild
+  when the `/timeline` payload is unchanged and preserves scroll position; the
+  main board likewise skips redraw on unchanged `/graph` and keeps scroll.
+- **Comment posting is non-blocking + fail-loud**: the in-request agent relay
+  uses a short (2s) timeout instead of 30s and surfaces a loud toast on a
+  notify failure (comment is still saved).
+- **CI moved off GitHub paid runners**: `cla.yml` + `auto-merge-to-develop.yaml`
+  now run on self-hosted Spartan (auto-merge's `gh` calls rewritten as `curl`
+  REST since Spartan has no `gh`); `newb-docs-quality` disabled (docker-only,
+  pending apptainer). No workflow uses `ubuntu-latest`.
+
+### Fixed
+
+- **Fleet-adapter tests** skip (not fail) when `sac` is absent/non-functional,
+  so a broken optional dependency can't red-gate CI (also in 0.7.27).
+
+## [0.7.27] - 2026-06-25 — Timeline beeswarm + `help-wait` verb + sac-decoupled CI
+
+### Added
+
+- **Timeline beeswarm y-packing** (PR #245). In the board_v3 Timeline raster,
+  time-overlapping markers in a lane used to render at the same vertical
+  center and occlude each other. A deterministic sub-row packer
+  (`timelinePack.js::packRows` — greedy interval partitioning, capped at
+  `MAX_ROWS`) now fans co-located markers into stacked sub-rows and grows the
+  lane to fit, so every task is visible. x/time math and the time-axis are
+  unchanged.
+- **`scitex-todo help-wait` / `help-clear`** CLI verbs + `help_wait` /
+  `help_clear` MCP tools (PR #242). First-class "an agent is waiting on the
+  operator" card semantics (`help-<agent>-waiting`, `status=blocked`,
+  `blocker=operator-decision`), idempotent atomic upsert / resolve. Lifts the
+  card shape out of the dotfiles Notification hook so scitex-todo owns the
+  single source of truth; the hook becomes a thin trigger that calls the verb.
+
+### Changed
+
+- **Fleet-adapter tests decoupled from the live `sac` binary** (PR #244). The
+  happy-path hosts tests now SKIP (not FAIL) when `sac` is absent or
+  non-functional, via a shared probe guard — so a broken/missing optional
+  fleet dependency can never red-gate the standalone package's CI. Fail-loud
+  adapter-error tests still run (they need no working sac).
+
 ## [0.7.25] - 2026-06-15 — `scitex-todo ci-watch` (record-only CI poller)
 
 ### Added
