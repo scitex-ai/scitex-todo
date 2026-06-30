@@ -70,4 +70,28 @@ def test_notifyd_install_unit_writes_and_no_systemctl(tmp_path, monkeypatch):
     assert calls == []
 
 
+def test_run_reminder_sweep_resolves_none_store_and_enqueues(tmp_path, monkeypatch):
+    # Regression: the notifyd tick calls _run_reminder_sweep(store=None) (the
+    # daemon resolves its store internally), but the sweep passed None straight
+    # to load_tasks → Path(None) → TypeError, so the nag never ran. It must now
+    # resolve None via $SCITEX_TODO_TASKS, load the store, and enqueue a
+    # reminder for a stale card — without raising.
+    from scitex_todo._delivery._daemon import _run_reminder_sweep
+    from scitex_todo._inbox import poll_inbox
+    from scitex_todo._throughput import _now_utc
+
+    store = tmp_path / "tasks.yaml"
+    store.write_text(
+        "tasks:\n  - id: c1\n    title: x\n    status: pending\n"
+        "    agent: alice\n    last_activity: '2026-01-01T00:00:00Z'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
+
+    _run_reminder_sweep(store=None, now=_now_utc())  # must NOT raise
+
+    notes = poll_inbox("alice", unseen_only=False, mark_seen=False, store=store)
+    assert any(n["event_type"] == "reminder" for n in notes)
+
+
 # EOF
