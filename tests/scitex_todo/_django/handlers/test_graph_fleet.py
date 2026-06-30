@@ -356,3 +356,91 @@ def test_overdue_count_counts_pending_past_deadline(overdue_store):
     fleet = _fleet_by_name(_graph(overdue_store))
     # Assert
     assert fleet["proj-late"]["overdue_count"] == 1
+
+
+# === Waiting-on-operator queue (operator P1 ============================ #
+# todo-operator-blocking-queue-view): the per-agent count + id list of
+# cards stuck on the operator. SSOT predicate is
+# `_match(..., blocking_me=True)` == status==blocked AND
+# blocker==operator-decision. These tests cover the three discriminating
+# cases: a matching card IS counted/listed, a blocked card with a DIFFERENT
+# blocker is NOT, and a non-blocked card is NOT. (An in_progress card with
+# blocker=operator-decision is IMPOSSIBLE — the store validator forbids a
+# blocker on a non-blocked status — which is itself why the count can never
+# include non-blocked cards.)
+
+_BLOCKING_FIXTURE = (
+    "tasks:\n"
+    # MATCH: blocked + operator-decision → in the queue.
+    "  - id: bq-stuck-on-op\n"
+    "    title: 'stuck on operator decision'\n"
+    "    status: blocked\n"
+    "    blocker: operator-decision\n"
+    "    agent: proj-blockq\n"
+    # NOT a match: blocked but a DIFFERENT blocker (dependency).
+    "  - id: bq-blocked-on-dep\n"
+    "    title: 'blocked on a dependency, not the operator'\n"
+    "    status: blocked\n"
+    "    blocker: dependency\n"
+    "    agent: proj-blockq\n"
+    # NOT a match: a non-blocked (pending) card — the canonical predicate
+    # requires status==blocked.
+    "  - id: bq-pending\n"
+    "    title: 'pending, not waiting on the operator'\n"
+    "    status: pending\n"
+    "    agent: proj-blockq\n"
+)
+
+
+@pytest.fixture
+def blocking_store(tmp_path):
+    path = tmp_path / "tasks.yaml"
+    path.write_text(_BLOCKING_FIXTURE, encoding="utf-8")
+    _reset_cache()
+    yield str(path)
+    _reset_cache()
+
+
+def test_blocking_operator_count_uses_canonical_predicate(blocking_store):
+    # Arrange — proj-blockq has exactly ONE card matching the BLOCKING-YOU
+    # predicate (blocked + operator-decision). The blocked-on-dependency
+    # and the pending cards must NOT count.
+    # Act
+    fleet = _fleet_by_name(_graph(blocking_store))
+    # Assert
+    assert fleet["proj-blockq"]["blocking_operator_count"] == 1
+
+
+def test_blocking_operator_ids_lists_only_the_matching_card(blocking_store):
+    # Arrange — same fixture; the id list must contain only the
+    # blocked+operator-decision card.
+    # Act
+    fleet = _fleet_by_name(_graph(blocking_store))
+    # Assert
+    assert fleet["proj-blockq"]["blocking_operator_ids"] == ["bq-stuck-on-op"]
+
+
+def test_blocked_on_other_blocker_not_in_operator_queue(blocking_store):
+    # Arrange — a blocked card whose blocker is NOT operator-decision.
+    # Act
+    fleet = _fleet_by_name(_graph(blocking_store))
+    # Assert
+    assert "bq-blocked-on-dep" not in fleet["proj-blockq"]["blocking_operator_ids"]
+
+
+def test_non_blocked_card_not_in_queue(blocking_store):
+    # Arrange — a non-blocked (pending) card; the canonical predicate
+    # requires status==blocked, so it must NOT surface.
+    # Act
+    fleet = _fleet_by_name(_graph(blocking_store))
+    # Assert
+    assert "bq-pending" not in fleet["proj-blockq"]["blocking_operator_ids"]
+
+
+def test_blocking_operator_ids_present_on_every_fleet_row(store):
+    # The field must always be present (possibly empty) so the FE never
+    # null-checks, mirroring overdue_count's contract.
+    # Act
+    fleet = _fleet_by_name(_graph(store))
+    # Assert
+    assert all("blocking_operator_ids" in row for row in fleet.values())
