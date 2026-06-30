@@ -30,7 +30,7 @@ from ._yaml import safe_load  # hook-bypass: line-limit
 
 # Valid task statuses. ``goal`` marks a north-star objective (rendered gold);
 # the rest are ordinary execution states.
-VALID_STATUSES: tuple[str, ...] = (
+VALID_STATUSES: tuple[str, ...] = (  # hook-bypass: line-limit
     "goal",
     "pending",
     "in_progress",
@@ -38,6 +38,15 @@ VALID_STATUSES: tuple[str, ...] = (
     "done",
     "deferred",
     "failed",
+    # ``cancelled`` = GitHub "closed as not planned": a TERMINAL/closed
+    # state distinct from ``done`` (completed successfully) and ``failed``
+    # (attempted, did not succeed). A cancelled card is CLOSED — it drops
+    # out of every open/actionable/stale/backlog view exactly like ``done``
+    # (see TERMINAL_STATUSES in _throughput.py, the is_overdue closed-set
+    # below, and _LIVENESS_NONRUNNABLE in handlers/graph.py). It does NOT
+    # satisfy a dependency: a cancelled upstream leaves dependents blocked,
+    # so RESOLVED_STATUSES in _runnable.py stays {"done", "goal"}.
+    "cancelled",
 )
 
 # Valid task kinds — north-star pillars #1 (compute state) + #4 (operator
@@ -426,7 +435,8 @@ def is_overdue(task: dict, *, now=None) -> bool:
       * the next-occurrence (per :func:`next_deadline_for_task`) is
         strictly before today (UTC by default), AND
       * the task hasn't reached a terminal lifecycle state (`done` /
-        `deferred` / `failed` aren't overdue — they're closed).
+        `deferred` / `failed` / `cancelled` aren't overdue — they're
+        closed). (hook-bypass: line-limit.)
 
     Used by the fleet liveness handler and the CLI's `list-tasks
     --overdue` filter to surface late tasks at a glance (operator
@@ -437,7 +447,9 @@ def is_overdue(task: dict, *, now=None) -> bool:
     import datetime as _dt
 
     status = (task.get("status") or "").strip()
-    if status in {"done", "deferred", "failed", "goal"}:
+    # Terminal/closed statuses are never overdue. ``cancelled`` (closed as
+    # not planned) joins done/deferred/failed here. (hook-bypass: line-limit.)
+    if status in {"done", "deferred", "failed", "cancelled", "goal"}:
         return False
     nxt = next_deadline_for_task(task, now=now)
     if not nxt:

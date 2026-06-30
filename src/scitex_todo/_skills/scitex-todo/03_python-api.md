@@ -65,7 +65,7 @@ the path to the generic example shipped in the wheel.
 
 | Name               | Meaning                                                       |
 |--------------------|---------------------------------------------------------------|
-| `VALID_STATUSES`   | `goal`/`pending`/`in_progress`/`blocked`/`done`/`deferred`/`failed` |
+| `VALID_STATUSES`   | `goal`/`pending`/`in_progress`/`blocked`/`done`/`deferred`/`failed`/`cancelled` (cancelled = closed-as-not-planned, terminal) |
 | `STATUS_STYLE`     | per-status fill color + edge style used by `build_mermaid`     |
 | `TaskValidationError` | raised by `load_tasks`/`save_tasks` on a bad task           |
 | `RenderError`      | raised by `render*` when no backend can produce the PNG       |

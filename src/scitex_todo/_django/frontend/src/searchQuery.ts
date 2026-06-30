@@ -44,6 +44,9 @@ export const VALID_STATUSES = [
   "done",
   "deferred",
   "failed",
+  // cancelled = closed-as-not-planned (terminal). Mirrors _model.py
+  // VALID_STATUSES so `status:cancelled` is a recognized search qualifier.
+  "cancelled",
 ] as const;
 
 export const VALID_KINDS = ["task", "compute", "decision"] as const;

@@ -53,6 +53,11 @@ STATUS_TO_ORG: dict[str, str] = {
     "done": "DONE",
     "deferred": "SOMEDAY",
     "failed": "CANCELLED",
+    # ``cancelled`` (closed as not planned) maps to org CANCELLED — a closed
+    # org state, same family as ``failed``. Both are declared after the org
+    # ``|`` separator in the ``#+TODO`` line so org-agenda treats them as DONE-
+    # type (closed) keywords.
+    "cancelled": "CANCELLED",
     "goal": "GOAL",
 }
 

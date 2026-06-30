@@ -31,7 +31,11 @@ import re
 from dataclasses import dataclass, field
 
 DONE_STATUSES = frozenset({"done"})
-TERMINAL_STATUSES = frozenset({"done", "deferred", "failed"})
+# Closed/terminal states — a card here is NOT open and does NOT count as
+# backlog. ``cancelled`` (GitHub "closed as not planned") joins done/
+# deferred/failed so a cancelled card drops out of ``open_count`` exactly
+# like ``done`` (see the open-count gate in ``aggregate``).
+TERMINAL_STATUSES = frozenset({"done", "deferred", "failed", "cancelled"})
 WIP_EXCLUDED_STATUSES = frozenset({"done", "goal"})  # goal-tier umbrellas don't consume WIP.
 
 # ``--notify`` truncation constants. The first 10 RUNNABLE-first tasks

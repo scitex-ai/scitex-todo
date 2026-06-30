@@ -49,7 +49,9 @@ from pathlib import Path
 from typing import Callable, Iterable, Optional
 
 # Statuses we consider "open work that may have merged". A card outside
-# this set (done / deferred / failed / goal) is never auto-closed.
+# this set (done / deferred / failed / cancelled / goal) is never
+# auto-closed — ``cancelled`` is already terminal, so it returns
+# ACTION_SKIP_NOT_OPEN like the other closed states.
 OPEN_STATUSES: frozenset[str] = frozenset({"pending", "in_progress", "blocked"})
 
 # Merge-state vocabulary the seam returns. "unknown" is the fail-soft value
