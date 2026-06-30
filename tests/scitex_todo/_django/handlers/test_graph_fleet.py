@@ -363,9 +363,11 @@ def test_overdue_count_counts_pending_past_deadline(overdue_store):
 # cards stuck on the operator. SSOT predicate is
 # `_match(..., blocking_me=True)` == status==blocked AND
 # blocker==operator-decision. These tests cover the three discriminating
-# cases the operator cares about: a matching card IS counted/listed, a
-# blocked card with a DIFFERENT blocker is NOT, and a non-blocked card is
-# NOT (even when it carries blocker=operator-decision).
+# cases: a matching card IS counted/listed, a blocked card with a DIFFERENT
+# blocker is NOT, and a non-blocked card is NOT. (An in_progress card with
+# blocker=operator-decision is IMPOSSIBLE — the store validator forbids a
+# blocker on a non-blocked status — which is itself why the count can never
+# include non-blocked cards.)
 
 _BLOCKING_FIXTURE = (
     "tasks:\n"
@@ -381,12 +383,11 @@ _BLOCKING_FIXTURE = (
     "    status: blocked\n"
     "    blocker: dependency\n"
     "    agent: proj-blockq\n"
-    # NOT a match: NOT blocked (in_progress) even though blocker names the
-    # operator — the canonical predicate requires status==blocked too.
-    "  - id: bq-inprogress-op\n"
-    "    title: 'in progress, operator-decision blocker but not blocked'\n"
-    "    status: in_progress\n"
-    "    blocker: operator-decision\n"
+    # NOT a match: a non-blocked (pending) card — the canonical predicate
+    # requires status==blocked.
+    "  - id: bq-pending\n"
+    "    title: 'pending, not waiting on the operator'\n"
+    "    status: pending\n"
     "    agent: proj-blockq\n"
 )
 
@@ -403,7 +404,7 @@ def blocking_store(tmp_path):
 def test_blocking_operator_count_uses_canonical_predicate(blocking_store):
     # Arrange — proj-blockq has exactly ONE card matching the BLOCKING-YOU
     # predicate (blocked + operator-decision). The blocked-on-dependency
-    # and the in_progress-operator-decision cards must NOT count.
+    # and the pending cards must NOT count.
     # Act
     fleet = _fleet_by_name(_graph(blocking_store))
     # Assert
@@ -427,13 +428,13 @@ def test_blocked_on_other_blocker_not_in_operator_queue(blocking_store):
     assert "bq-blocked-on-dep" not in fleet["proj-blockq"]["blocking_operator_ids"]
 
 
-def test_non_blocked_operator_decision_card_not_in_queue(blocking_store):
-    # Arrange — an in_progress card carrying blocker=operator-decision; the
-    # canonical predicate requires status==blocked, so it must NOT surface.
+def test_non_blocked_card_not_in_queue(blocking_store):
+    # Arrange — a non-blocked (pending) card; the canonical predicate
+    # requires status==blocked, so it must NOT surface.
     # Act
     fleet = _fleet_by_name(_graph(blocking_store))
     # Assert
-    assert "bq-inprogress-op" not in fleet["proj-blockq"]["blocking_operator_ids"]
+    assert "bq-pending" not in fleet["proj-blockq"]["blocking_operator_ids"]
 
 
 def test_blocking_operator_ids_present_on_every_fleet_row(store):
