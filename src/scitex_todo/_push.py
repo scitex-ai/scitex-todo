@@ -4,13 +4,13 @@
 
 Operator standing direction (lead a2a `8e51b1e072d14e2a81f5171cb5aca9f8`
 + `ffc6629c80e4462a8401fb7e4ebb7240`, 2026-06-12, operator TG12617): the
-package must NOT depend on the `sac` CLI for outbound notifications.
-Push delivery lives inside scitex-todo itself; the contract is HTTP,
-not Python imports (ecosystem doctrine).
+package must NOT depend on any external agent-runtime CLI for outbound
+notifications. Push delivery lives inside scitex-todo itself; the
+contract is HTTP, not Python imports (ecosystem doctrine).
 
-Operator TG12618 follow-up: the long-term architecture mirrors
-claude-code-telegrammer — a dedicated stdio MCP channel + a board-event
-poller per agent, wired via per-agent `.mcp.json`. That is queued as
+Operator TG12618 follow-up: the long-term architecture is a dedicated
+stdio MCP channel + a board-event poller per agent, wired via per-agent
+`.mcp.json`, all owned by scitex-todo. That is queued as
 PR (j) in the implementation roadmap. THIS module is the v1
 **HTTP-push** half: a one-shot wake of the agent's turn URL with the
 board-event body. Agents that read MCP inbox first (via the future
@@ -22,22 +22,22 @@ Configuration
 their turn URLs (any HTTP endpoint that accepts a JSON ``POST``):
 
     SCITEX_TODO_AGENT_TURN_URLS='{
-        "proj-scitex-todo": "https://sac.scitex/v1/turn/proj-scitex-todo",
-        "lead": "https://sac.scitex/v1/turn/lead"
+        "proj-scitex-todo": "https://agents.example/v1/turn/proj-scitex-todo",
+        "lead": "https://agents.example/v1/turn/lead"
     }'
 
 Per-agent fallback ``SCITEX_TODO_TURN_URL_<AGENT_SLUG>`` (agent slug
-upper-case + hyphens → underscores) — same shape as
-claude-code-telegrammer's `TURN_URL` env.
+upper-case + hyphens → underscores) — scitex-todo's own per-agent
+turn-url env contract.
 
 Registry fallback (lead a2a ``90acf63b4276422cbe9270cd936b2b45``,
-2026-06-12): when neither env is set we query the sac listen daemon
-at ``SCITEX_TODO_SAC_LISTEN_URL`` (default ``http://127.0.0.1:7878``)
+2026-06-12): when neither env is set we query the agent-runtime listen
+daemon at ``SCITEX_TODO_SAC_LISTEN_URL`` (default ``http://127.0.0.1:7878``)
 for ``GET /agents`` and derive the turn URL from the matching row's
 ``turn_url`` (preferred) or ``a2a_port`` (HTTP-only contract — no
-sac CLI / Python imports). The dispatch fields aren't on the row
-shape as of 2026-06-12; agent-container is the owner of that field
-addition. The code is wired and waits.
+external CLI / Python imports). The dispatch fields aren't on the row
+shape as of 2026-06-12; the runtime that populates the registry owns
+that field addition. The code is wired and waits.
 
 Loud-but-not-fatal policy (lead-confirmed)
 ------------------------------------------
@@ -91,7 +91,7 @@ ENV_DRY_RUN = "SCITEX_TODO_PUSH_DRY_RUN"
 #:
 #: Why 30 (not 5):
 #:
-#: SAC's ``/v1/turn`` runs the agent's turn SYNCHRONOUSLY before
+#: The receiver's ``/v1/turn`` runs the agent's turn SYNCHRONOUSLY before
 #: responding (up to its own ``timeout_s=120`` budget). With the prior
 #: 5 s client cap, the cron's POST timed out before the receiver had
 #: even queued the turn — proj-scitex-dev's ``session.jsonl`` had ZERO
@@ -244,11 +244,11 @@ def deliver(
             "reason": "no-turn-url-configured",
         }
 
-    # ``text`` is the field SAC's /v1/turn (and claude-code-telegrammer's
-    # TURN_URL) expects; ``body`` is scitex-todo's historical name. We send
-    # BOTH so the wire is back-compat: consumers that key off ``text`` (SAC,
-    # the telegrammer) succeed, and any older consumer keying off ``body``
-    # still works. Without this alias the SAC receiver returns
+    # ``text`` is the field the turn-url receiver expects; ``body`` is
+    # scitex-todo's historical name. We send BOTH so the wire is
+    # back-compat: consumers that key off ``text`` succeed, and any older
+    # consumer keying off ``body`` still works. Without this alias a
+    # text-keyed receiver returns
     # ``HTTP 400 missing or empty 'text' field`` and the whole nudge chain
     # is dead on arrival (proj-scitex-todo P3a(c) pilot, 2026-06-13 — see
     # lead a2a ``8afe659e``).

@@ -19,8 +19,8 @@ def attach_channel_verb(mcp_group: click.Group) -> None:
     Runs scitex-todo's OWN long-running MCP stdio server (foreground) that
     pushes unsolicited ``notifications/claude/channel`` messages (rendered
     ``<- scitex-todo``) into the Claude session, draining this agent's
-    standalone inbox. ZERO sac dependency. This is what an ``.mcp.json`` entry
-    execs.
+    standalone inbox. ZERO external-runtime dependency. This is what an
+    ``.mcp.json`` entry execs.
     """
 
     @mcp_group.command(

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Standalone notification-DELIVERY loop for scitex-todo (no sac).
+"""Standalone notification-DELIVERY loop for scitex-todo.
 
 scitex-todo already EMITS card-events and ENQUEUEs per-recipient
 notifications into the YAML pull-inbox (:mod:`scitex_todo._inbox`), but
@@ -10,8 +10,8 @@ each user's pending notifications and hands them to the channels configured
 for that user (log, telegram, …), tracking what was delivered in a keyed
 dedup ledger so nothing is double-sent.
 
-Modeled on scitex-agent-container (sac) BUT fully independent — this package
-has ZERO dependency on ``scitex_agent_container`` in either direction. The
+A self-contained delivery rail, fully independent — this package has ZERO
+dependency on any external agent runtime in either direction. The
 first-class recipient here is a "user" (not an "agent"): policy + addressing
 live in :mod:`scitex_todo._delivery._recipients`, never inside a channel.
 

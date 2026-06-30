@@ -22,12 +22,12 @@ versa). There is NO separate users file.
 
 Hard standalone constraint
 ---------------------------
-This package has ZERO dependency on scitex-agent-container (sac) or any
-fleet package, in either direction, and works with zero sac present. It
+This package has ZERO dependency on any external agent runtime or fleet
+package, in either direction, and works with no external runtime present. It
 reuses :func:`scitex_todo._ports.canonical_agent_id` purely as a local
 string normaliser/validator for the optional ``host_at_name`` join key —
 it does NOT import ``AgentDirectoryPort`` or perform any liveness pull. The
-eventual identity bridge (mapping a user to sac's live ``host@name``
+eventual identity bridge (mapping a user to a live ``host@name`` agent
 runtime) is a BUS-ONLY, separate follow-up and is intentionally NOT built
 here.
 
