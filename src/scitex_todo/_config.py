@@ -70,6 +70,8 @@ def _read_one(path: Path) -> dict:
     """Read one config file → mapping; missing/malformed → ``{}`` (fail-soft)."""
     import yaml
 
+    from ._yaml import safe_load
+
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -78,7 +80,7 @@ def _read_one(path: Path) -> dict:
         logger.warning("config: cannot read %s: %s", path, exc)
         return {}
     try:
-        data = yaml.safe_load(text) or {}
+        data = safe_load(text) or {}
     except yaml.YAMLError as exc:
         logger.warning("config: malformed %s: %s", path, exc)
         return {}
