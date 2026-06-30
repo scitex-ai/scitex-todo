@@ -30,14 +30,9 @@ Per-agent fallback ``SCITEX_TODO_TURN_URL_<AGENT_SLUG>`` (agent slug
 upper-case + hyphens → underscores) — scitex-todo's own per-agent
 turn-url env contract.
 
-Registry fallback (lead a2a ``90acf63b4276422cbe9270cd936b2b45``,
-2026-06-12): when neither env is set we query the agent-runtime listen
-daemon at ``SCITEX_TODO_SAC_LISTEN_URL`` (default ``http://127.0.0.1:7878``)
-for ``GET /agents`` and derive the turn URL from the matching row's
-``turn_url`` (preferred) or ``a2a_port`` (HTTP-only contract — no
-external CLI / Python imports). The dispatch fields aren't on the row
-shape as of 2026-06-12; the runtime that populates the registry owns
-that field addition. The code is wired and waits.
+When neither env nor the user registry resolves a URL, delivery
+returns ``no-turn-url-configured`` (fail-loud); scitex-todo has no
+external-runtime fallback.
 
 Loud-but-not-fatal policy (lead-confirmed)
 ------------------------------------------
@@ -70,15 +65,11 @@ import urllib.request
 # Turn-URL RESOLUTION (the "where do I deliver?" concern) lives in
 # ``_turn_url``; this module owns the delivery WIRE. We re-export the
 # resolution surface so existing ``from scitex_todo._push import
-# turn_url_for / ENV_MAP / ENV_SAC_BEARER / PER_AGENT_PREFIX / ...``
+# turn_url_for / ENV_MAP / PER_AGENT_PREFIX / ...``
 # imports keep resolving unchanged.
 from ._turn_url import (
-    DEFAULT_SAC_LISTEN,
     ENV_MAP,
-    ENV_SAC_BEARER,
-    ENV_SAC_LISTEN,
     PER_AGENT_PREFIX,
-    SAC_REGISTRY_TIMEOUT_S,
     _slug,
     turn_url_for,
 )
@@ -351,10 +342,6 @@ __all__ = [
     "ENV_DRY_RUN",
     "ENV_PUSH_TIMEOUT_S",
     "PER_AGENT_PREFIX",
-    "ENV_SAC_LISTEN",
-    "ENV_SAC_BEARER",
-    "DEFAULT_SAC_LISTEN",
-    "SAC_REGISTRY_TIMEOUT_S",
     "DEFAULT_TIMEOUT_S",
     "NOTIFY_TIMEOUT_S",
     "turn_url_for",

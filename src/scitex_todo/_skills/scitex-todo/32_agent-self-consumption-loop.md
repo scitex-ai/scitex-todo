@@ -120,9 +120,10 @@ operator's; the lead is the single operator-facing voice).
 Agent-registry resolution (where the watcher finds each peer's
 a2a port):
 
-1. PRIMARY — auto-discover via `sac a2a_peers`.
-2. FALLBACK — a top-level `agents:` list in `tasks.yaml`:
-   `[{name: proj-foo, a2a_port: 41234}, ...]`.
+- A top-level `agents:` list in `tasks.yaml`:
+  `[{name: proj-foo, a2a_port: 41234}, ...]`. This static list is
+  scitex-todo's own SSoT for the agent port table — no external
+  runtime is consulted.
 
 ---
 

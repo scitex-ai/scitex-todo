@@ -138,11 +138,10 @@ class TestDispatchNoUrl:
     failures from a CONFIGURED URL."""
 
     def test_no_turn_url_returns_200(self, store, env):
-        # Arrange — strip env precedence 1 + 2 + 3 so resolution fails.
-        from scitex_todo._push import ENV_MAP, ENV_SAC_BEARER, PER_AGENT_PREFIX
+        # Arrange — strip env precedence 1 + 2 so resolution fails.
+        from scitex_todo._push import ENV_MAP, PER_AGENT_PREFIX
 
         env.delete(ENV_MAP)
-        env.delete(ENV_SAC_BEARER)
         for k in list(__import__("os").environ):
             if k.startswith(PER_AGENT_PREFIX):
                 env.delete(k)
@@ -153,10 +152,9 @@ class TestDispatchNoUrl:
 
     def test_no_turn_url_body_carries_reason(self, store, env):
         # Arrange
-        from scitex_todo._push import ENV_MAP, ENV_SAC_BEARER, PER_AGENT_PREFIX
+        from scitex_todo._push import ENV_MAP, PER_AGENT_PREFIX
 
         env.delete(ENV_MAP)
-        env.delete(ENV_SAC_BEARER)
         for k in list(__import__("os").environ):
             if k.startswith(PER_AGENT_PREFIX):
                 env.delete(k)

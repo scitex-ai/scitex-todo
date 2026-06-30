@@ -30,12 +30,10 @@ consumption-loop.md`` for the canonical 7-step loop.
 
 Agent registry (where to find each peer's a2a port):
 
-  (iii) PRIMARY  — auto-discover via the ``sac a2a_peers`` MCP /
-        local registry. The watcher imports lazily so a missing sac
-        does not crash the loop.
-  (i)  FALLBACK — a ``agents:`` top-level list in tasks.yaml. Each
-        entry: ``{name: proj-scitex-todo, a2a_port: 41234}``. Used
-        when the sac peer table is unreachable.
+  A ``agents:`` top-level list in tasks.yaml. Each entry:
+  ``{name: proj-scitex-todo, a2a_port: 41234}``. This static list is
+  scitex-todo's own SSoT for the agent port table — no external
+  runtime is consulted.
 
 Per-agent debounce: at most ONE wake per ``min_wake_interval`` seconds
 per agent. Prevents a hot-loop when an agent comments on its own task

@@ -78,7 +78,6 @@ class TestSweepAndNudge:
         # The sweep must NOT raise and must still emit a summary.
         monkeypatch.delenv(ENV_DRY_RUN, raising=False)
         monkeypatch.delenv("SCITEX_TODO_AGENT_TURN_URLS", raising=False)
-        monkeypatch.delenv("SAC_LISTEN_BEARER", raising=False)
         monkeypatch.setenv(ENV_STALE_ACTIVE_HOURS, "2")
         tasks = [_stale("a1", "nourlowner")]
         lines = sweep_and_nudge(tasks)
