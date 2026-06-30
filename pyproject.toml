@@ -116,6 +116,12 @@ telegram = "scitex_todo._delivery._channels.telegram:TelegramChannel"
 # scitex-todo's built-in handler is invoked DIRECTLY by
 # dispatch_event (not via the plugin loop). External producers add
 # their plugins under this group in their own pyproject.toml.
+#
+# `anomaly`: scitex-todo's OWN consumer of sac's liveness-tick anomaly
+# events (sac PR #475 is the producer). Records a durable comment on the
+# stuck card + drives a severity-graduated operator push through the
+# existing notify rail. See src/scitex_todo/_hooks/_anomaly.py.
+anomaly = "scitex_todo._hooks._anomaly:consume_anomaly"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/scitex_todo"]
