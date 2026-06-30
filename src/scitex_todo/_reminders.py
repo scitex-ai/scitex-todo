@@ -79,14 +79,6 @@ logger = logging.getLogger(__name__)
 #: Sidecar file (sibling of ``tasks.yaml``) holding the reminder state.
 REMINDER_SIDECAR_NAME = "reminders.yaml"
 
-#: First re-digest interval (hours): how long after a digest before the next.
-ENV_REMINDER_BASE_HOURS = "SCITEX_TODO_REMINDER_BASE_HOURS"
-DEFAULT_REMINDER_BASE_HOURS = 2.0
-
-#: Cap on the (escalating) re-digest interval so it never goes silent for long.
-ENV_REMINDER_MAX_HOURS = "SCITEX_TODO_REMINDER_MAX_HOURS"
-DEFAULT_REMINDER_MAX_HOURS = 24.0
-
 #: Digests to an owner before a HIGH-PRIORITY card also escalates to the
 #: operator. Escalation fires once per stale streak (reset when the card
 #: leaves the stale set).
@@ -125,20 +117,28 @@ EVENT_ESCALATION = "escalation"
 DIGEST_CARD_ID = "(digest)"
 
 
-def _env_float(name: str, default: float) -> float:
-    raw = os.environ.get(name)
-    if raw is None:
+def _cfg_int(cfg: dict, key: str, default: int) -> int:
+    """Read an int knob from the ``reminders:`` config section, else default."""
+    raw = cfg.get(key)
+    if isinstance(raw, bool):  # bool is an int subclass — never a knob value
         return default
-    try:
-        return float(raw)
-    except (TypeError, ValueError):
-        return default
+    return raw if isinstance(raw, int) else default
 
 
-def _owner_allowlist() -> set[str]:
-    """Parse :data:`ENV_REMINDER_OWNERS` → a set of allowed owners (empty = all)."""
-    raw = os.environ.get(ENV_REMINDER_OWNERS) or ""
-    return {o.strip() for o in raw.split(",") if o.strip()}
+def _owner_allowlist(cfg: dict | None = None) -> set[str]:
+    """Owner ALLOWLIST for a phased rollout (empty = nag every owner).
+
+    Env :data:`ENV_REMINDER_OWNERS` (comma-separated) wins so the agent spec
+    can scope the sweep; otherwise the ``reminders.owners`` config list
+    (``[name, ...]``) applies. Either way an empty result means "all owners".
+    """
+    raw = os.environ.get(ENV_REMINDER_OWNERS)
+    if raw is not None:
+        return {o.strip() for o in raw.split(",") if o.strip()}
+    owners = (cfg or {}).get("owners")
+    if isinstance(owners, (list, tuple)):
+        return {str(o).strip() for o in owners if str(o).strip()}
+    return set()
 
 
 def _env_int(name: str, default: int) -> int:
@@ -151,29 +151,21 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-def reminder_interval_hours(count: int, *, base: float, cap: float) -> float:
-    """Escalating gap before the next digest, given prior ``count`` sent.
+def _due(last_at: str | None, now: _dt.datetime, *, interval_minutes: float) -> bool:
+    """True when a digest is due: never sent, or the flat interval has elapsed.
 
-    Exponential backoff on the digest cadence: each successive digest waits
-    longer (``base * 2**(count-1)``) up to ``cap`` — so a freshly-stale owner
-    is nagged promptly, a chronically-ignored one is not spammed every tick
-    but never goes silent for more than ``cap`` hours. ``count<=0`` means
-    "never digested" → due immediately (interval 0).
+    Flat cadence (operator knob): an owner is re-digested every
+    ``interval_minutes`` for as long as they hold open stale cards. No
+    backoff — the gap is a single configured value (default 5 min), tightenable
+    per card. ``last_at`` missing/unparseable → due now.
     """
-    if count <= 0:
-        return 0.0
-    return min(base * (2.0 ** (count - 1)), cap)
-
-
-def _due(last_at: str | None, count: int, now: _dt.datetime, *, base: float, cap: float) -> bool:
-    """True when a digest is due: never sent, or the interval has elapsed."""
     if not last_at:
         return True
     parsed = _parse_iso(last_at)
     if parsed is None:
         return True
-    elapsed_h = (now - parsed).total_seconds() / 3600.0
-    return elapsed_h >= reminder_interval_hours(count, base=base, cap=cap)
+    elapsed_min = (now - parsed).total_seconds() / 60.0
+    return elapsed_min >= interval_minutes
 
 
 def _sidecar_path(store: str | Path | None) -> Path:
@@ -267,8 +259,7 @@ def sweep_reminders(
     enqueue: Callable[..., Any] | None = None,
     resolve_key: Callable[[str], str] | None = None,
     operator: str | None = None,
-    base_hours: float | None = None,
-    cap_hours: float | None = None,
+    interval_minutes: float | None = None,
     escalate_after: int | None = None,
     escalate_priority: int | None = None,
     owners: set[str] | None = None,
@@ -279,21 +270,25 @@ def sweep_reminders(
     "skipped": [owner, ...]}`` (skipped = owner has stale cards but the
     digest is not yet due this sweep).
 
+    The re-digest cadence is a flat interval (operator knob): per owner it is
+    the TIGHTEST of their cards' resolved intervals — a per-card
+    ``reminder_interval_minutes`` > ``config.yaml`` ``reminders.interval_minutes``
+    > the built-in default. ``interval_minutes`` here forces a flat value for
+    every owner (a test seam); leave it ``None`` for the config/card resolution.
+
     Fail-soft: a per-owner enqueue error is logged and the sweep continues.
     Never raises into the caller (notifyd tick).
     """
+    from ._config import reminders_config, resolve_interval_minutes
+
     cur = now or _now_utc()
-    base = base_hours if base_hours is not None else _env_float(
-        ENV_REMINDER_BASE_HOURS, DEFAULT_REMINDER_BASE_HOURS
-    )
-    cap = cap_hours if cap_hours is not None else _env_float(
-        ENV_REMINDER_MAX_HOURS, DEFAULT_REMINDER_MAX_HOURS
-    )
+    cfg = reminders_config()
     esc_after = escalate_after if escalate_after is not None else _env_int(
-        ENV_ESCALATE_AFTER, DEFAULT_ESCALATE_AFTER
+        ENV_ESCALATE_AFTER, _cfg_int(cfg, "escalate_after", DEFAULT_ESCALATE_AFTER)
     )
     esc_prio = escalate_priority if escalate_priority is not None else _env_int(
-        ENV_ESCALATE_PRIORITY, DEFAULT_ESCALATE_PRIORITY
+        ENV_ESCALATE_PRIORITY,
+        _cfg_int(cfg, "escalate_priority", DEFAULT_ESCALATE_PRIORITY),
     )
     operator_name = operator or os.environ.get(ENV_OPERATOR, DEFAULT_OPERATOR)
 
@@ -318,7 +313,7 @@ def sweep_reminders(
 
     # Phased-rollout allowlist: when set (arg or env), nag ONLY these owners
     # and leave every other owner untouched (no fleet-wide first-sweep storm).
-    allow = owners if owners is not None else _owner_allowlist()
+    allow = owners if owners is not None else _owner_allowlist(cfg)
     if allow:
         buckets = {o: c for o, c in buckets.items() if o in allow}
 
@@ -341,9 +336,19 @@ def sweep_reminders(
         stale_owners.add(owner)
         stale_card_ids.update(sc.id for sc in cards)
 
+        # Effective cadence for this owner: the TIGHTEST interval any of their
+        # stale cards asks for (a per-card override pulls the whole digest onto
+        # a faster clock). A flat `interval_minutes` arg forces one value.
+        if interval_minutes is not None:
+            owner_interval = interval_minutes
+        else:
+            owner_interval = min(
+                resolve_interval_minutes(by_id.get(sc.id), cfg) for sc in cards
+            )
+
         entry = owner_state.get(owner) or {}
         count = int(entry.get("count") or 0)
-        if not _due(entry.get("last_at"), count, cur, base=base, cap=cap):
+        if not _due(entry.get("last_at"), cur, interval_minutes=owner_interval):
             skipped.append(owner)
             owner_state[owner] = entry
             continue
@@ -477,12 +482,9 @@ __all__ = [
     "EVENT_ESCALATION",
     "DIGEST_CARD_CAP",
     "DIGEST_CARD_ID",
-    "DEFAULT_REMINDER_BASE_HOURS",
-    "DEFAULT_REMINDER_MAX_HOURS",
     "DEFAULT_ESCALATE_AFTER",
     "DEFAULT_ESCALATE_PRIORITY",
     "DEFAULT_OPERATOR",
-    "reminder_interval_hours",
     "load_reminder_state",
     "save_reminder_state",
     "sweep_reminders",

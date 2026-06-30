@@ -88,8 +88,10 @@ def test_run_reminder_sweep_resolves_none_store_and_enqueues(tmp_path, monkeypat
     )
     monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
     # Hermetic: a deployed container scopes the nag to one agent via
-    # SCITEX_TODO_REMINDER_OWNERS; clear it so this owner ("alice") is nagged.
+    # SCITEX_TODO_REMINDER_OWNERS / a real config.yaml; neutralise both so this
+    # owner ("alice") is nagged regardless of the host's settings.
     monkeypatch.delenv("SCITEX_TODO_REMINDER_OWNERS", raising=False)
+    monkeypatch.setattr("scitex_todo._config.config_paths", lambda: [])
 
     _run_reminder_sweep(store=None, now=_now_utc())  # must NOT raise
 
