@@ -4,7 +4,7 @@
 
 Real YAML round-trips against a real ``tmp_path`` store — NO mocks. Verifies
 the ledger is a KEYED MAP (not an append-log), persists at
-``<store_dir>/delivery_ledger.yaml``, and that ``already_done`` /
+``<store_dir>/runtime/delivery_ledger.yaml``, and that ``already_done`` /
 ``retry_eligible`` / ``record`` behave per spec (exponential backoff, capped
 attempts).
 """
@@ -30,9 +30,9 @@ def _store(tmp_path):
     return tmp_path / "tasks.yaml"
 
 
-def test_ledger_path_is_sibling_of_store(tmp_path):
+def test_ledger_path_under_store_runtime_dir(tmp_path):
     store = _store(tmp_path)
-    assert ledger_path(store) == tmp_path / "delivery_ledger.yaml"
+    assert ledger_path(store) == tmp_path / "runtime" / "delivery_ledger.yaml"
 
 
 def test_record_sent_is_terminal_and_already_done(tmp_path):
@@ -48,7 +48,7 @@ def test_record_sent_is_terminal_and_already_done(tmp_path):
     reloaded = Ledger.load(store)
     assert reloaded.already_done("u_a", "n_1", "log") is True
 
-    raw = yaml.safe_load((tmp_path / "delivery_ledger.yaml").read_text())
+    raw = yaml.safe_load((tmp_path / "runtime" / "delivery_ledger.yaml").read_text())
     assert isinstance(raw, dict)
     assert len(raw) == 1  # ONE keyed entry, not an append list.
     (entry,) = raw.values()
@@ -112,7 +112,7 @@ def test_exhausting_attempts_becomes_terminal_and_round_trips(tmp_path):
     assert led.already_done("u_a", "n_1", "log") is False
 
     # Round-trips through disk: composite key + terminal status survive reload.
-    raw = yaml.safe_load((tmp_path / "delivery_ledger.yaml").read_text())
+    raw = yaml.safe_load((tmp_path / "runtime" / "delivery_ledger.yaml").read_text())
     assert len(raw) == 1
     (entry,) = raw.values()
     assert entry["status"] == TERMINAL_STATUS

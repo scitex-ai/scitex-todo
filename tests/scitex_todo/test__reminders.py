@@ -402,7 +402,8 @@ def test_empty_allowlist_nags_all_owners(tmp_path):
 
 def test_legacy_cards_only_sidecar_loads_and_digests(tmp_path):
     store = tmp_path / "tasks.yaml"
-    sidecar = tmp_path / "reminders.yaml"
+    sidecar = tmp_path / "runtime" / "reminders.yaml"
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
     # Old engine wrote a bare ``cards:`` mapping with per-card cadence fields.
     sidecar.write_text(
         "cards:\n  c1:\n    count: 2\n    last_at: 2026-06-01T00:00:00Z\n"

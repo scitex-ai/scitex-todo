@@ -65,13 +65,15 @@ class DaemonAlreadyRunning(RuntimeError):
 
 
 def pidfile_path(store: str | Path | None = None) -> Path:
-    """Resolve the daemon pidfile: ``<store_dir>/notifyd.pid``.
+    """Resolve the daemon pidfile: ``<store_dir>/runtime/notifyd.pid``.
 
-    ``<store_dir>`` is the parent of the resolved task store, so the pidfile
-    lives beside ``tasks.yaml`` + the delivery ledger under whichever scope
-    the store resolved to.
+    Lives under the store's ``runtime/`` dir (scitex convention for
+    non-git-tracked runtime state) alongside the delivery ledger, under
+    whichever scope the store resolved to.
     """
-    return _resolved_store(store).parent / PIDFILE_NAME
+    from .._paths import runtime_dir
+
+    return runtime_dir(store) / PIDFILE_NAME
 
 
 class _SingleInstanceLock:

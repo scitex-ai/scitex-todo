@@ -88,12 +88,14 @@ def _parse_iso(value: str | None) -> _dt.datetime | None:
 
 
 def ledger_path(store: str | Path | None = None) -> Path:
-    """Resolve the ledger path: ``<store_dir>/delivery_ledger.yaml``.
+    """Resolve the ledger path: ``<store_dir>/runtime/delivery_ledger.yaml``.
 
-    ``<store_dir>`` is the parent of the resolved task store, so the ledger
-    lives beside ``tasks.yaml`` under whichever scope the store resolved to.
+    Lives under the store's ``runtime/`` dir (scitex convention for
+    non-git-tracked runtime state), under whichever scope the store resolved to.
     """
-    return _resolved_store(store).parent / LEDGER_FILENAME
+    from .._paths import runtime_dir
+
+    return runtime_dir(store) / LEDGER_FILENAME
 
 
 def _make_key(recipient: str, note_id: str, channel: str) -> str:

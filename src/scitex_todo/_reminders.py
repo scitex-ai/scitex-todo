@@ -169,11 +169,10 @@ def _due(last_at: str | None, now: _dt.datetime, *, interval_minutes: float) -> 
 
 
 def _sidecar_path(store: str | Path | None) -> Path:
-    """``reminders.yaml`` sibling of the resolved task store."""
-    from ._paths import resolve_tasks_path
+    """``reminders.yaml`` under the store's ``runtime/`` dir (scitex convention)."""
+    from ._paths import runtime_dir
 
-    tasks_path = Path(resolve_tasks_path(store))
-    return tasks_path.parent / REMINDER_SIDECAR_NAME
+    return runtime_dir(store) / REMINDER_SIDECAR_NAME
 
 
 def load_reminder_state(store: str | Path | None = None) -> dict[str, dict]:
