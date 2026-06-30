@@ -231,7 +231,7 @@ def _report_terminal_if_due(
 
 
 def _run_reminder_sweep(*, store, now) -> None:
-    """Enqueue any DUE nag reminders + operator escalations for this tick.
+    """Enqueue any DUE owner digests + operator escalations for this tick.
 
     Fully guarded: loads the task list, runs the escalating-cadence sweep
     (:func:`scitex_todo._reminders.sweep_reminders`), and logs a one-line
@@ -249,10 +249,11 @@ def _run_reminder_sweep(*, store, now) -> None:
         resolved = _resolved_store(store)
         tasks = load_tasks(resolved)
         result = sweep_reminders(tasks, store=resolved, now=now)
-        if result["reminded"] or result["escalated"]:
+        if result["digested"] or result["escalated"]:
             logger.info(
-                "notifyd nag sweep: %d reminded, %d escalated, %d not-yet-due",
-                len(result["reminded"]),
+                "notifyd nag sweep: %d owner digest(s), %d escalated, "
+                "%d not-yet-due",
+                len(result["digested"]),
                 len(result["escalated"]),
                 len(result["skipped"]),
             )

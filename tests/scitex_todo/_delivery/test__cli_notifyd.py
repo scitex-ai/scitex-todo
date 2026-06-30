@@ -87,11 +87,17 @@ def test_run_reminder_sweep_resolves_none_store_and_enqueues(tmp_path, monkeypat
         encoding="utf-8",
     )
     monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
+    # Hermetic: a deployed container scopes the nag to one agent via
+    # SCITEX_TODO_REMINDER_OWNERS; clear it so this owner ("alice") is nagged.
+    monkeypatch.delenv("SCITEX_TODO_REMINDER_OWNERS", raising=False)
 
     _run_reminder_sweep(store=None, now=_now_utc())  # must NOT raise
 
+    # The owner gets ONE digest (event_type "reminder") listing their stale card.
     notes = poll_inbox("alice", unseen_only=False, mark_seen=False, store=store)
-    assert any(n["event_type"] == "reminder" for n in notes)
+    digest = [n for n in notes if n["event_type"] == "reminder"]
+    assert len(digest) == 1
+    assert "c1" in digest[0]["body"]
 
 
 # EOF
