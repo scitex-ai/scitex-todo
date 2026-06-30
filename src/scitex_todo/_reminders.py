@@ -192,6 +192,8 @@ def load_reminder_state(store: str | Path | None = None) -> dict[str, dict]:
     """
     import yaml
 
+    from ._yaml import safe_load
+
     path = _sidecar_path(store)
     empty = {"owners": {}, "cards": {}}
     try:
@@ -202,7 +204,7 @@ def load_reminder_state(store: str | Path | None = None) -> dict[str, dict]:
         logger.warning("reminders: cannot read %s: %s", path, exc)
         return empty
     try:
-        data = yaml.safe_load(text) or {}
+        data = safe_load(text) or {}
     except yaml.YAMLError as exc:
         logger.warning("reminders: malformed %s: %s", path, exc)
         return empty
