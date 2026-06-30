@@ -277,27 +277,12 @@ def resolve_agent_port(
     *,
     static_agents: Optional[list[dict]] = None,
 ) -> Optional[int]:
-    """Resolve an agent's a2a port via (iii) sac auto-discover, then (i)
-    a static ``agents:`` list passed in from the watcher.
+    """Resolve an agent's a2a port from a static ``agents:`` list
+    passed in from the watcher.
 
     Returns the port int, or ``None`` if the agent is unknown.
     """
-    # (iii) sac auto-discover — lazy import so a missing sac doesn't
-    # crash the watcher loop. The sac MCP / table exposes ``a2a_peers``
-    # mapping agent name -> port; if the API surface changes the
-    # try / except keeps the watcher running.
-    try:  # pragma: no cover - relies on optional dep
-        from sac import a2a_peers  # type: ignore[import-not-found]
-
-        for peer in a2a_peers() or []:
-            if peer.get("name") == agent:
-                port = peer.get("a2a_port") or peer.get("port")
-                if isinstance(port, int):
-                    return port
-    except Exception:  # pragma: no cover - sac not installed / network err
-        logger.debug("wake-watcher: sac peer lookup unavailable", exc_info=True)
-
-    # (i) static fallback — pass an ``agents:`` list from tasks.yaml.
+    # Static lookup — pass an ``agents:`` list from tasks.yaml.
     if static_agents:
         for entry in static_agents:
             if not isinstance(entry, dict):
