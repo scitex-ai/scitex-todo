@@ -242,6 +242,12 @@ def _iso(now: _dt.datetime) -> str:
     return now.astimezone(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _is_parked(card: dict | None) -> bool:
+    # A blocked card WITH a blocker waits on someone else — owner can't act, so
+    # it's not actionable staleness (excluded from the nag). No blocker = ambiguous, kept.
+    return bool(card) and card.get("status") == "blocked" and bool(card.get("blocker"))
+
+
 def _card_priority(card: dict) -> int | None:
     p = card.get("priority")
     return p if isinstance(p, int) else None
@@ -331,7 +337,10 @@ def sweep_reminders(
     for owner in sorted(buckets):
         if owner == "(unassigned)":
             continue  # nobody to nag; the gap is surfaced by the stats sweep
-        cards = [sc for sc in buckets[owner] if sc.id]
+        # Skip PARKED cards (blocked WITH a blocker = waiting on someone else,
+        # owner can't act → noise). Nag only ACTIONABLE staleness.
+        cards = [sc for sc in buckets[owner]
+                 if sc.id and not _is_parked(by_id.get(sc.id))]
         if not cards:
             continue
         stale_owners.add(owner)

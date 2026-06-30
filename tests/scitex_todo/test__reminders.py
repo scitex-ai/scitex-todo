@@ -328,6 +328,40 @@ def test_escalation_latch_pruned_when_card_no_longer_stale(tmp_path):
     assert "c1" not in load_reminder_state(store)["cards"]
 
 
+def test_parked_blocked_card_is_excluded_from_digest(tmp_path):
+    store = tmp_path / "tasks.yaml"
+    rec = _EnqueueRecorder()
+    # alice's stale cards: one in_progress (actionable) + one blocked-with-blocker
+    # (parked, waiting on a dep). The digest must list only the actionable one.
+    actionable = _t(id="go", owner="alice", status="in_progress", hours_ago=10.0)
+    parked = _t(id="wait", owner="alice", status="blocked", hours_ago=10.0)
+    parked["blocker"] = "dependency"
+    out = sweep_reminders([actionable, parked], store=store, now=_NOW,
+                          enqueue=rec, resolve_key=_resolver({}))
+    assert out["digested"] == ["alice"]
+    body = rec.calls[0]["body"]
+    assert "go" in body and "wait" not in body
+
+
+def test_owner_with_only_parked_blocked_is_not_nagged(tmp_path):
+    store = tmp_path / "tasks.yaml"
+    rec = _EnqueueRecorder()
+    parked = _t(id="c1", owner="alice", status="blocked", hours_ago=10.0)
+    parked["blocker"] = "operator-decision"
+    out = sweep_reminders([parked], store=store, now=_NOW, enqueue=rec, resolve_key=_resolver({}))
+    assert out["digested"] == []
+    assert rec.calls == []
+
+
+def test_blocked_without_blocker_is_still_digested(tmp_path):
+    store = tmp_path / "tasks.yaml"
+    rec = _EnqueueRecorder()
+    # Blocked but NO blocker = ambiguous (not clearly parked) → still surfaced.
+    amb = _t(id="c1", owner="alice", status="blocked", hours_ago=10.0)
+    out = sweep_reminders([amb], store=store, now=_NOW, enqueue=rec, resolve_key=_resolver({}))
+    assert out["digested"] == ["alice"]
+
+
 def test_unassigned_cards_are_not_nagged(tmp_path):
     store = tmp_path / "tasks.yaml"
     rec = _EnqueueRecorder()
