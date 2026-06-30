@@ -34,6 +34,14 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      # Serialize the 3 legs onto ONE self-hosted runner at a time. scitex-todo
+      # has exactly 3 spartan-cpu runners; running py3.11/3.12/3.13 in parallel
+      # saturates ALL of them, so any concurrent workflow (or another PR) queues
+      # at pending-0 until a leg frees — and a single stuck leg can hold a runner
+      # busy indefinitely, starving the pool. max-parallel:1 caps one PR's matrix
+      # to a single runner (2 always free for others); no coverage loss, just
+      # serial (~3x wall-time per PR). Bump runner capacity to relax this.
+      max-parallel: 1
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
     steps:
