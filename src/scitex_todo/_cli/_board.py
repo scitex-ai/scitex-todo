@@ -20,65 +20,26 @@ Extracted verbatim from ``_main.py`` to keep that module under the
 
 from __future__ import annotations
 
-from pathlib import Path as _Path
-
 import click
 
-BOARD_PIDFILE = _Path.home() / ".scitex" / "todo" / "board.pid"
+# Process/pidfile helpers live in the sibling ``_board_proc`` module
+# (extracted to keep this file under the 512-line cap). Re-imported here
+# so existing call sites + tests keep importing them from ``_board``.
+from scitex_todo._cli._board_proc import (
+    BOARD_PIDFILE,  # noqa: F401  (public re-export)
+    _board_cmdline_is_board,  # noqa: F401  (public re-export)
+    _board_pid_alive,
+    _board_pid_on_port,  # noqa: F401  (public re-export)
+    _board_pidfile,
+    _board_read_pid,
+    _board_resolve_pid,
+    _board_write_pid,
+)
 
 
 def register(main: click.Group) -> None:
     """Attach the ``board`` noun group to the root group."""
     main.add_command(board_group)
-
-
-def _board_pidfile() -> _Path:
-    """Return the pidfile path (function so tests can override via env)."""
-    import os as _os
-
-    override = _os.environ.get("SCITEX_TODO_BOARD_PIDFILE")
-    if override:
-        return _Path(override)
-    return BOARD_PIDFILE
-
-
-def _board_pid_alive(pid: int) -> bool:
-    """``os.kill(pid, 0)`` is the POSIX 'is this PID up?' probe."""
-    import os as _os
-
-    try:
-        _os.kill(pid, 0)
-    except (ProcessLookupError, PermissionError):
-        return False
-    except OSError:
-        return False
-    return True
-
-
-def _board_read_pid() -> int | None:
-    """Read the pidfile; return None when absent/unreadable/dead."""
-    pf = _board_pidfile()
-    if not pf.exists():
-        return None
-    try:
-        pid = int(pf.read_text().strip())
-    except (OSError, ValueError):
-        return None
-    if not _board_pid_alive(pid):
-        # Stale pidfile from a crashed process — clean it up.
-        try:
-            pf.unlink()
-        except OSError:
-            pass
-        return None
-    return pid
-
-
-def _board_write_pid(pid: int) -> None:
-    """Write the pidfile, creating parent dirs as needed."""
-    pf = _board_pidfile()
-    pf.parent.mkdir(parents=True, exist_ok=True)
-    pf.write_text(str(pid))
 
 
 def _board_run_server(
@@ -261,10 +222,19 @@ def board_start_cmd(
 @board_group.command(
     "stop",
     help=(
-        "Stop the running board via the pidfile (SIGTERM).\n\n"
+        "Stop the running board (SIGTERM). Uses the pidfile when valid; "
+        "if the pidfile pid is dead/missing, falls back to the (verified) "
+        "board serving on --port and cleans up the stale pidfile.\n\n"
         "Example:\n"
         "  $ scitex-todo board stop"
     ),
+)
+@click.option(
+    "--port",
+    type=int,
+    default=8051,
+    show_default=True,
+    help="Port to fall back to when the pidfile is stale/missing.",
 )
 @click.option(
     "--timeout",
@@ -287,20 +257,30 @@ def board_start_cmd(
     help="Skip the interactive confirmation (no-op today; `stop` is "
     "non-interactive). Accepted per SciTeX §2 audit on mutating verbs.",
 )
-def board_stop_cmd(timeout: float, dry_run: bool, assume_yes: bool) -> None:
-    """Read the pidfile, SIGTERM, wait, escalate to SIGKILL if needed.
+def board_stop_cmd(
+    port: int, timeout: float, dry_run: bool, assume_yes: bool
+) -> None:
+    """SIGTERM the board: pidfile if valid, else the port-found board.
+
+    When the pidfile pid is dead/missing but a verified board is serving
+    on ``--port`` (an untracked process holding the port — the
+    stale-pidfile incident), we fall back to that PID and clean up the
+    stale pidfile. NOTE (OS limit, not a bug): we can only signal a
+    process owned by the SAME user — a cross-user kill is denied by the
+    kernel and surfaces as a clear error below.
 
     Example:
       $ scitex-todo board stop
     """
     _ = assume_yes  # accepted for §2 compliance; non-interactive verb.
     if dry_run:
-        pid = _board_read_pid()
+        pid, untracked = _board_resolve_pid(port)
         if pid is None:
             click.echo("# dry-run: board is not running (no pidfile / stale).")
         else:
+            note = " (untracked pidfile; found on port)" if untracked else ""
             click.echo(
-                f"# dry-run: would SIGTERM pid {pid} "
+                f"# dry-run: would SIGTERM pid {pid}{note} "
                 f"(timeout {timeout}s, then SIGKILL).",
             )
         return
@@ -308,10 +288,15 @@ def board_stop_cmd(timeout: float, dry_run: bool, assume_yes: bool) -> None:
     import signal as _signal
     import time as _time
 
-    pid = _board_read_pid()
+    pid, untracked = _board_resolve_pid(port)
     if pid is None:
         click.echo("# board is not running (no pidfile / stale).")
         return
+    if untracked:
+        click.echo(
+            f"# pidfile stale/missing; found live board on port {port} "
+            f"(pid {pid}); stopping it.",
+        )
     try:
         _os.kill(pid, _signal.SIGTERM)
     except OSError as e:
@@ -389,8 +374,13 @@ def board_restart_cmd(
     """
     _ = assume_yes  # accepted for §2 compliance; non-interactive verb.
     if dry_run:
-        pid = _board_read_pid()
-        prefix = "running" if pid else "not running"
+        pid, untracked = _board_resolve_pid(port)
+        if pid is None:
+            prefix = "not running"
+        elif untracked:
+            prefix = "running (untracked pidfile)"
+        else:
+            prefix = "running"
         click.echo(
             f"# dry-run: would stop (currently {prefix}) then start "
             f"on port {port}, "
@@ -398,8 +388,12 @@ def board_restart_cmd(
             f"no-browser={bool(no_browser)}",
         )
         return
-    # `stop` is a no-op if nothing's running — that's fine.
-    ctx.invoke(board_stop_cmd, timeout=5.0, dry_run=False, assume_yes=True)
+    # `stop` is a no-op if nothing's running — that's fine. Pass --port so
+    # the stop step can fall back to a port-found board when the pidfile
+    # is stale (the stale-pidfile incident this hardening targets).
+    ctx.invoke(
+        board_stop_cmd, port=port, timeout=5.0, dry_run=False, assume_yes=True
+    )
     ctx.invoke(
         board_start_cmd,
         tasks_path=tasks_path,
@@ -413,10 +407,19 @@ def board_restart_cmd(
 @board_group.command(
     "status",
     help=(
-        "Print whether the board is running + its pid + the pidfile path."
+        "Print whether the board is running + its pid + the pidfile path. "
+        "If the pidfile is stale/missing but a verified board is serving "
+        "on --port, reports it as running with an 'untracked pidfile' note."
         "\n\nExample:\n  $ scitex-todo board status\n"
         "  $ scitex-todo board status --json"
     ),
+)
+@click.option(
+    "--port",
+    type=int,
+    default=8051,
+    show_default=True,
+    help="Port to fall back to when the pidfile is stale/missing.",
 )
 @click.option(
     "--json",
@@ -425,8 +428,8 @@ def board_restart_cmd(
     help="Emit a JSON object (machine-readable). Required by SciTeX "
     "§2 audit on read verbs.",
 )
-def board_status_cmd(as_json: bool) -> None:
-    """One-line status read off the pidfile.
+def board_status_cmd(port: int, as_json: bool) -> None:
+    """One-line status: pidfile first, port fallback if it's stale.
 
     Example:
       $ scitex-todo board status
@@ -434,7 +437,7 @@ def board_status_cmd(as_json: bool) -> None:
     """
     import json as _json
 
-    pid = _board_read_pid()
+    pid, untracked = _board_resolve_pid(port)
     pf = _board_pidfile()
     running = pid is not None
     if as_json:
@@ -444,12 +447,19 @@ def board_status_cmd(as_json: bool) -> None:
                     "running": running,
                     "pid": pid,
                     "pidfile": str(pf),
+                    "untracked": untracked,
                 }
             )
         )
         return
     if not running:
         click.echo(f"# board is NOT running (pidfile: {pf})")
+        return
+    if untracked:
+        click.echo(
+            f"# board is running (pid {pid}, port {port}; untracked "
+            f"pidfile — pidfile {pf} was stale/missing)"
+        )
         return
     click.echo(f"# board is running (pid {pid}, pidfile: {pf})")
 
