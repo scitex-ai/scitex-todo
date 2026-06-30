@@ -161,7 +161,7 @@
   transition: r 0.08s ease;
 }
 .tl-dot:hover {
-  r: 8;
+  r: 10;
   filter: brightness(1.2);
 }
 /* Per-status dot color — single-sourced from STATUS_STYLE via the
@@ -209,8 +209,20 @@
 .tl-dot--selected {
   stroke: var(--purple, #8e6cff);
   stroke-width: 3;
-  r: 7;
+  r: 9;
   filter: drop-shadow(0 0 3px var(--purple, #8e6cff));
+}
+
+/* ── marquee (rubber-band) selection rectangle — timelineMarquee.js ────
+   A dashed accent box drawn while the operator drags across empty raster
+   space; dots whose centres fall inside it get selected on mouseup. */
+.tl-marquee {
+  fill: var(--purple, #8e6cff);
+  fill-opacity: 0.12;
+  stroke: var(--purple, #8e6cff);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
 }
 
 /* ── simple per-task cards ─────────────────────────────────────────── */

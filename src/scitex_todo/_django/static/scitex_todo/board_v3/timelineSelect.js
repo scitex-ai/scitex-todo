@@ -306,6 +306,11 @@
     _copySelected();
   };
 
+  // Set by the marquee handler right before the synthetic background click
+  // that ends a drag, so _onClickCapture below does NOT wipe the selection
+  // the rubber-band just filled.
+  var _suppressNextBgClear = false;
+
   // ── event delegation on #columns (survives raster rebuilds) ─────────
   function _host() {
     return document.getElementById("columns");
@@ -322,6 +327,12 @@
     if (!_isTimeline()) return;
     var marker = _markerFrom(e.target);
     if (!marker) {
+      // A marquee drag ends with a background click; the marquee just filled
+      // SELECTED, so skip the clear for that one synthetic event.
+      if (_suppressNextBgClear) {
+        _suppressNextBgClear = false;
+        return;
+      }
       // click on empty timeline background → clear selection
       if (e.target && e.target.closest && e.target.closest("#columns")) {
         if (SELECTED.size) _clear();
@@ -355,12 +366,105 @@
     _openMenu(e, id, marker);
   }
 
+  // Ctrl/Cmd+C while ≥1 marker is selected on the timeline → copy the whole
+  // selection to the clipboard WITHOUT opening any card. Skips when the focus
+  // is in a text input / contentEditable so normal text copy still works.
+  function _onKeyDown(e) {
+    if (!_isTimeline()) return;
+    if (!(e.key === "c" || e.key === "C")) return;
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    if (!SELECTED.size) return;
+    var ae = document.activeElement;
+    if (ae) {
+      var tag = (ae.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || ae.isContentEditable) return;
+    }
+    // Only hijack copy when the user hasn't manually highlighted page text.
+    var sel = window.getSelection && window.getSelection();
+    if (sel && String(sel).length) return;
+    e.preventDefault();
+    _copySelected();
+  }
+
+  // ── marquee (rubber-band) selection ─────────────────────────────────
+  // Drag across EMPTY raster space (not starting on a dot) to draw a box;
+  // every .tl-dot whose centre falls inside it is added to SELECTED on
+  // mouseup. Plain left-drag only — keeps single-click toggle + dblclick-open
+  // intact. Coords are in the SVG's user space (cx/cy are unitless px there),
+  // derived from the SVG's bounding rect so we don't depend on a viewBox.
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var _mq = null; // { svg, rect, x0, y0 } while a drag is live
+
+  function _svgPoint(svg, e) {
+    var r = svg.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  function _onMouseDown(e) {
+    if (e.button !== 0 || !_isTimeline()) return;
+    if (!e.target || !e.target.closest) return;
+    if (e.target.closest(".tl-dot")) return; // a dot → let click-toggle run
+    var svg = e.target.closest(".tl-svg");
+    if (!svg) return;
+    var p = _svgPoint(svg, e);
+    var rect = document.createElementNS(SVG_NS, "rect");
+    rect.setAttribute("class", "tl-marquee");
+    svg.appendChild(rect);
+    _mq = { svg: svg, rect: rect, x0: p.x, y0: p.y, moved: false };
+    document.addEventListener("mousemove", _onMouseMove, true);
+    document.addEventListener("mouseup", _onMouseUp, true);
+  }
+
+  function _onMouseMove(e) {
+    if (!_mq) return;
+    var p = _svgPoint(_mq.svg, e);
+    var x = Math.min(p.x, _mq.x0),
+      y = Math.min(p.y, _mq.y0);
+    var w = Math.abs(p.x - _mq.x0),
+      h = Math.abs(p.y - _mq.y0);
+    if (w > 3 || h > 3) _mq.moved = true;
+    _mq.rect.setAttribute("x", x);
+    _mq.rect.setAttribute("y", y);
+    _mq.rect.setAttribute("width", w);
+    _mq.rect.setAttribute("height", h);
+    if (_mq.moved && e.preventDefault) e.preventDefault();
+  }
+
+  function _onMouseUp() {
+    var mq = _mq;
+    _mq = null;
+    document.removeEventListener("mousemove", _onMouseMove, true);
+    document.removeEventListener("mouseup", _onMouseUp, true);
+    if (!mq) return;
+    var x = +mq.rect.getAttribute("x") || 0,
+      y = +mq.rect.getAttribute("y") || 0;
+    var w = +mq.rect.getAttribute("width") || 0,
+      h = +mq.rect.getAttribute("height") || 0;
+    if (mq.rect.parentNode) mq.rect.parentNode.removeChild(mq.rect);
+    if (!mq.moved || (w < 3 && h < 3)) return; // a click, not a drag
+    mq.svg.querySelectorAll(".tl-dot").forEach(function (dot) {
+      var cx = +dot.getAttribute("cx"),
+        cy = +dot.getAttribute("cy");
+      if (cx >= x && cx <= x + w && cy >= y && cy <= y + h) {
+        var id = _idOf(dot);
+        if (id != null) {
+          SELECTED.add(String(id));
+          _applySelClass(dot, true);
+        }
+      }
+    });
+    // The trailing background click that closes the drag must NOT clear it.
+    _suppressNextBgClear = true;
+  }
+
   function _install() {
     var host = _host() || document;
     // capture phase so we beat the marker's inline onclick
     host.addEventListener("click", _onClickCapture, true);
     host.addEventListener("dblclick", _onDblClick, false);
     host.addEventListener("contextmenu", _onContextMenu, false);
+    host.addEventListener("mousedown", _onMouseDown, false);
+    document.addEventListener("keydown", _onKeyDown, false);
     // re-mark selected dots after each raster rebuild
     var mo = new MutationObserver(function () {
       if (_isTimeline() && SELECTED.size) _refreshSelClasses();
