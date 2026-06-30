@@ -243,9 +243,7 @@ def user_turn_url(user: "User | dict") -> str | None:
        ``http://<host>:<a2a_port>/v1/turn`` where ``<host>`` is the host
        half of :attr:`User.host_at_name` (via :func:`parse_agent_id`); a
        bare / absent ``host_at_name`` (host unknown) yields the loopback
-       host ``127.0.0.1`` — the same loopback convention
-       :func:`scitex_todo._turn_url._turn_url_from_registry` uses when it
-       derives from an ``a2a_port``.
+       host ``127.0.0.1``.
     3. Else ``None`` — the member has no configured endpoint.
 
     Accepts either a :class:`User` or a plain ``users:`` dict (so callers

@@ -35,8 +35,6 @@ from scitex_todo._push import (
     ENV_DRY_RUN,
     ENV_MAP,
     ENV_PUSH_TIMEOUT_S,
-    ENV_SAC_BEARER,
-    ENV_SAC_LISTEN,
     PER_AGENT_PREFIX,
     _default_timeout_s,
     announce_missing_at_boot,
@@ -56,28 +54,20 @@ def _hermetic_resolution(tmp_path):
     """Isolate ``turn_url_for`` from the test HOST's live resolution sources.
 
     ``turn_url_for`` resolves through scitex-todo's OWN user registry (step
-    0, the DEFAULT store via ``resolve_tasks_path(None)``) AND the sac
-    listen daemon's ``/agents`` HTTP registry (step 3, gated on
-    ``SAC_LISTEN_BEARER``). On a real agent host BOTH are live: the user
-    store at ``~/.scitex/todo/tasks.yaml`` and a running sac daemon at
-    ``127.0.0.1:7878`` that now actually serves ``a2a_port`` rows. Either
-    would leak a non-None URL into the env-only tests and make them
-    flaky/host-dependent.
+    0, the DEFAULT store via ``resolve_tasks_path(None)``). On a real agent
+    host that store at ``~/.scitex/todo/tasks.yaml`` is live and would leak
+    a non-None URL into the env-only tests, making them flaky/host-dependent.
 
-    This fixture pins step 0 at an EMPTY per-test store and strips the sac
-    bearer so step 3 short-circuits — leaving the env map / per-agent env
-    as the only resolution path unless a test opts back in:
+    This fixture pins step 0 at an EMPTY per-test store — leaving the env map
+    / per-agent env as the only resolution path unless a test opts back in:
       * user-registry tests override ``SCITEX_TODO_TASKS`` with their own
-        populated ``tmp_path`` store;
-      * sac-registry tests set their own ``SAC_LISTEN_BEARER`` +
-        ``SCITEX_TODO_SAC_LISTEN_URL`` pointing at a local test server.
+        populated ``tmp_path`` store.
     PA-306-compliant: plain os.environ save/restore, no monkeypatch.
     """
     store = tmp_path / "_empty_push_store.yaml"
     store.write_text("tasks: []\n", encoding="utf-8")
-    saved = {k: os.environ.get(k) for k in (ENV_TASKS, ENV_SAC_BEARER)}
+    saved = {k: os.environ.get(k) for k in (ENV_TASKS,)}
     os.environ[ENV_TASKS] = str(store)
-    os.environ.pop(ENV_SAC_BEARER, None)
     try:
         yield
     finally:
@@ -132,44 +122,6 @@ def _server(capture: _Capture):
     th.start()
     try:
         yield f"http://127.0.0.1:{port}/turn"
-    finally:
-        httpd.shutdown()
-
-
-@contextmanager
-def _registry_server(payload: dict, response_code: int = 200):
-    """Spawn a localhost sac-listen-shaped registry server.
-
-    Responds to ``GET /agents`` with ``payload`` (already a Python
-    dict, encoded as JSON on each request). Any other method or path
-    returns 404. Bearer token is accepted unconditionally — auth is
-    sac's concern, not this test's. Used by the registry-lookup
-    precedence-3 tests.
-    """
-
-    body = json.dumps(payload).encode("utf-8")
-
-    class Handler(http.server.BaseHTTPRequestHandler):
-        def do_GET(self):  # noqa: N802
-            if self.path != "/agents":
-                self.send_response(404)
-                self.end_headers()
-                return
-            self.send_response(response_code)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, *a, **kw):  # silence test noise
-            return
-
-    port = _free_port()
-    httpd = http.server.HTTPServer(("127.0.0.1", port), Handler)
-    th = threading.Thread(target=httpd.serve_forever, daemon=True)
-    th.start()
-    try:
-        yield f"http://127.0.0.1:{port}"
     finally:
         httpd.shutdown()
 
@@ -233,13 +185,12 @@ class TestUserRegistryResolution:
     """
 
     def _isolate(self, env, store):
-        """Point the default store at ``store`` and strip env/sac precedence.
+        """Point the default store at ``store`` and strip env precedence.
 
         So the user registry is the only resolution path that can win.
         """
         env.set(ENV_TASKS, str(store))
         env.delete(ENV_MAP)
-        env.delete(ENV_SAC_BEARER)
         for k in list(os.environ):
             if k.startswith(PER_AGENT_PREFIX):
                 env.delete(k)
@@ -329,137 +280,6 @@ class TestUserRegistryResolution:
         url = turn_url_for("ghost")
         # Assert
         assert url is None
-
-
-# --------------------------------------------------------------------------- #
-# turn_url_for — registry lookup (precedence 3)                              #
-# --------------------------------------------------------------------------- #
-
-
-class TestRegistryLookup:
-    """The sac listen daemon's /agents endpoint as a precedence-3
-    fallback. End-to-end via a real localhost http.server (no mocks
-    per STX-NM / PA-306).
-
-    Field shape we honor on a row:
-      * ``turn_url`` (str) — used verbatim.
-      * ``a2a_port`` (int) — derive ``http://<base-host>:<port>/v1/turn``.
-
-    Neither is on the sac listen row shape as of 2026-06-12 — the
-    field addition is agent-container's side. These tests pin the
-    contract so the code is ready the moment they land.
-    """
-
-    def _clear_env(self, env):
-        """Strip env precedence 1+2 so registry path is the only winner."""
-        env.delete(ENV_MAP)
-        # Also clear any per-agent env that might leak in via the shell.
-        for k in list(os.environ):
-            if k.startswith(PER_AGENT_PREFIX):
-                env.delete(k)
-
-    def test_explicit_turn_url_field_is_returned_verbatim(self, env):
-        # Arrange
-        self._clear_env(env)
-        env.set(ENV_SAC_BEARER, "any-token")
-        payload = {
-            "agents": [
-                {"name": "proj-alpha", "turn_url": "https://explicit/v1/turn/alpha"},
-            ]
-        }
-        with _registry_server(payload) as base:
-            env.set(ENV_SAC_LISTEN, base)
-            # Act
-            url = turn_url_for("proj-alpha")
-        # Assert
-        assert url == "https://explicit/v1/turn/alpha"
-
-    def test_a2a_port_derives_loopback_turn_url(self, env):
-        # Arrange
-        self._clear_env(env)
-        env.set(ENV_SAC_BEARER, "any-token")
-        payload = {"agents": [{"name": "proj-beta", "a2a_port": 19007}]}
-        with _registry_server(payload) as base:
-            env.set(ENV_SAC_LISTEN, base)
-            # Act
-            url = turn_url_for("proj-beta")
-        # Assert
-        assert url == "http://127.0.0.1:19007/v1/turn"
-
-    def test_row_without_dispatch_fields_returns_none(self, env):
-        # Arrange — today's actual sac listen row shape (the gap).
-        self._clear_env(env)
-        env.set(ENV_SAC_BEARER, "any-token")
-        payload = {
-            "agents": [
-                {
-                    "name": "proj-gamma",
-                    "config": "/some/path/spec.yaml",
-                    "pid": 1234,
-                    "started_at": "2026-06-12T00:00:00Z",
-                    "screen": "proj-gamma",
-                },
-            ]
-        }
-        with _registry_server(payload) as base:
-            env.set(ENV_SAC_LISTEN, base)
-            # Act
-            url = turn_url_for("proj-gamma")
-        # Assert — known gap until agent-container ships the field.
-        assert url is None
-
-    def test_agent_not_in_registry_returns_none(self, env):
-        # Arrange
-        self._clear_env(env)
-        env.set(ENV_SAC_BEARER, "any-token")
-        payload = {"agents": [{"name": "proj-other", "a2a_port": 19999}]}
-        with _registry_server(payload) as base:
-            env.set(ENV_SAC_LISTEN, base)
-            # Act
-            url = turn_url_for("proj-ghost")
-        # Assert
-        assert url is None
-
-    def test_missing_bearer_short_circuits(self, env):
-        # Arrange — no bearer → we don't even reach out.
-        self._clear_env(env)
-        env.delete(ENV_SAC_BEARER)
-        # Point at an unbound port: if we DID reach out, we'd get a
-        # transport error; the short-circuit means we never try.
-        env.set(ENV_SAC_LISTEN, f"http://127.0.0.1:{_free_port()}")
-        # Act
-        url = turn_url_for("proj-alpha")
-        # Assert
-        assert url is None
-
-    def test_unreachable_registry_returns_none_silently(self, env):
-        # Arrange — bearer set, listen URL points at no server.
-        self._clear_env(env)
-        env.set(ENV_SAC_BEARER, "any-token")
-        env.set(ENV_SAC_LISTEN, f"http://127.0.0.1:{_free_port()}")
-        # Act
-        url = turn_url_for("proj-alpha")
-        # Assert
-        assert url is None
-
-    def test_env_precedence_wins_over_registry(self, env):
-        # Arrange — both env map AND registry would resolve; env wins.
-        env.set(
-            ENV_MAP,
-            json.dumps({"proj-alpha": "https://env-pin/turn"}),
-        )
-        env.set(ENV_SAC_BEARER, "any-token")
-        payload = {
-            "agents": [
-                {"name": "proj-alpha", "turn_url": "https://registry/turn"},
-            ]
-        }
-        with _registry_server(payload) as base:
-            env.set(ENV_SAC_LISTEN, base)
-            # Act
-            url = turn_url_for("proj-alpha")
-        # Assert
-        assert url == "https://env-pin/turn"
 
 
 # --------------------------------------------------------------------------- #
@@ -729,11 +549,6 @@ class TestAnnounceMissing:
     def test_returns_missing_agents(self, env):
         # Arrange
         env.delete(ENV_MAP)
-        # Isolate the precedence-3 sac-daemon lookup: on a host with a LIVE
-        # sac listen daemon (every agent container) `turn_url_for` would
-        # resolve these names via GET /agents and they'd drop from "missing".
-        # Point it at an unreachable port so the test is deterministic.
-        env.set(ENV_SAC_LISTEN, "http://127.0.0.1:1")
         tasks = [
             {"agent": "alpha"},
             {"agent": "beta"},
@@ -749,9 +564,6 @@ class TestAnnounceMissing:
     def test_configured_agents_dropped_from_missing(self, env):
         # Arrange
         env.set(ENV_MAP, json.dumps({"alpha": "http://x/"}))
-        # Isolate the sac-daemon precedence (see sibling test) so `beta` is
-        # reported missing regardless of any live daemon on the host.
-        env.set(ENV_SAC_LISTEN, "http://127.0.0.1:1")
         tasks = [{"agent": "alpha"}, {"agent": "beta"}]
         # Act
         missing = announce_missing_at_boot(tasks)
