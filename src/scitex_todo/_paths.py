@@ -95,4 +95,24 @@ def resolve_tasks_path(explicit: str | Path | None = None) -> Path:
     return bundled_example()
 
 
+#: Subdirectory of the store dir holding NON-git-tracked runtime state
+#: (pidfiles, the delivery ledger, the reminder sidecar). scitex convention:
+#: runtime state lives under ``runtime/`` (gitignored), never scattered in the
+#: store root. Superseded files go to ``.old/<timestamp>/`` instead.
+RUNTIME_DIRNAME = "runtime"
+
+
+def runtime_dir(store: str | Path | None = None, *, create: bool = True) -> Path:
+    """Return ``<store_dir>/runtime`` — the home for non-tracked runtime state.
+
+    ``<store_dir>`` is the parent of the resolved task store, so the runtime
+    dir tracks whichever scope the store resolved to. Created on demand
+    (``create=True``) so callers can write into it without a prior mkdir.
+    """
+    d = resolve_tasks_path(store).parent / RUNTIME_DIRNAME
+    if create:
+        d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 # EOF
