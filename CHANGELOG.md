@@ -4,6 +4,57 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.29] - 2026-07-02 — standalone user-delivery rail, notify/reminder engine, user registry + identity, and the release-pipeline fix
+
+First successful PyPI publish since 0.7.10 — the release pipeline had been
+broken (see Fixed below), so the accumulated work below shipped only now.
+
+### Added
+
+- **Standalone user-delivery rail**: scitex-todo's own notification path —
+  channels + a delivery ledger + an always-on `notifyd` daemon (with a systemd
+  unit) + a standalone MCP channel-notification server. Users-first, with no
+  dependency on scitex-agent-container.
+- **Notify / reminder engine**: nag-until-closed reminders with per-owner
+  digest cadence, an owner allowlist for phased rollout, operator escalation
+  for high-priority stale cards, and liveness-triggered escalation to the card
+  creator when an assignee is unreachable.
+- **User registry + canonical identity resolver**: collapses owner naming
+  drift (host@name aliases) so notifications resolve to the right inbox;
+  assignee liveness surfaced at assign time.
+- **Model**: `cancelled` status (closed-as-not-planned terminal state).
+- **Idle-guard Stop-hook**: blocks going idle while in-progress work is
+  abandoned.
+- **Fleet payload**: surfaces the waiting-on-operator queue (ids + SSOT count).
+
+### Changed
+
+- **Standalone decoupling from scitex-agent-container**: removed the sac
+  listen-daemon HTTP fallback for turn URLs (zero runtime sac coupling) and
+  reworded sibling-system names out of standalone-claim docstrings.
+- **Store performance**: replaced the ruamel round-trip writer with a fast
+  C-backed safe dump; config + reminders sidecar reads use the fast loader.
+- **Board runtime state** now lives under `<store>/runtime/`.
+- **Board v3 UX**: bigger timeline scatters with marquee select + Ctrl/Cmd+C
+  copy + right-click menu; tighter left gutter; timeline edge legend on hover.
+- **CI**: pytest-matrix serialized so one PR can't saturate all three runners.
+
+### Fixed
+
+- **Release pipeline**: the `publish` job declared `permissions: id-token: write`
+  only, which defaults every other scope (including `contents`) to `none`, so
+  `actions/checkout` could not clone the private repo ("Repository not found").
+  Added `contents: read`. This had broken every tagged release since 0.7.10.
+- **Fail-loud on unresolved actor/author** at task creation (no `getuser`
+  fallback); board create-form requires creator/assignee.
+- **Multi-select toolbar** no longer stretches to full column height.
+- **Reminders**: parked-blocked cards excluded from the per-owner nag digest;
+  store resolved before the notifyd reminder sweep.
+- **Channel delivery**: drains producer-matching keys (raw name + resolved
+  user-id); mutation store threaded into card-event emit so notifications
+  actually enqueue.
+- **Board**: falls back to the port-found board when the pidfile is stale.
+
 ## [0.7.28] - 2026-06-26 — board UX (timeline beeswarm/anti-flash, marker copy, user roles) + CI off paid runners
 
 ### Added
