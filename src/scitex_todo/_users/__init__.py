@@ -46,9 +46,11 @@ surface so ``from scitex_todo._users import register_user`` keeps working.
 from __future__ import annotations
 
 from ._model import (
+    DEFAULT_LIVENESS_TTL_SECONDS,
     VALID_USER_KINDS,
     User,
     UserValidationError,
+    is_alive,
     user_turn_url,
     validate_user,
 )
@@ -60,19 +62,23 @@ from ._store import (
     register_user,
     resolve_user,
     set_notify,
+    touch_user,
 )
 
 __all__ = [
+    "DEFAULT_LIVENESS_TTL_SECONDS",
     "VALID_USER_KINDS",
     "User",
     "UserValidationError",
     "add_alias",
     "get_user",
+    "is_alive",
     "list_users",
     "load_users",
     "register_user",
     "resolve_user",
     "set_notify",
+    "touch_user",
     "user_turn_url",
     "validate_user",
 ]

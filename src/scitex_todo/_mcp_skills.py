@@ -151,10 +151,23 @@ async def poll_notifications(
       ack: when true, advance the cursor — mark the RETURNED notifications
         seen so a later poll does not return them again.
     """
-    from ._users import resolve_user
+    from ._users import resolve_user, touch_user
 
     user = resolve_user(agent, store=tasks_path)
     recipient_id = user.id if user is not None else agent
+    # Liveness heartbeat (assignee-liveness feature): polling the inbox is an
+    # agent touching the store → stamp its own registry ``last_seen`` so
+    # ``is_alive`` can surface it as running. Fail-soft: a stamping failure
+    # (e.g. unregistered agent) must never break the poll. Reuses the SAME
+    # identity seam (no second path); STANDALONE (local registry write only).
+    try:
+        touch_user(agent, store=tasks_path)
+    except Exception:  # noqa: BLE001 — heartbeat must not break the poll
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "poll_notifications: heartbeat failed for %r", agent, exc_info=True
+        )
     notifications = _inbox.poll_inbox(
         recipient_id,
         unseen_only=unseen_only,

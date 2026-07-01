@@ -343,4 +343,129 @@ def test_get_user_unknown_returns_none(tmp_path):
     _users.register_user(kind="agent", names=["a"], store=store)
     assert _users.get_user("u_nope00000000", store=store) is None
 
+
+# --------------------------------------------------------------------------- #
+# is_alive: alive / stale / unknown boundaries (pure classifier)              #
+# --------------------------------------------------------------------------- #
+import datetime as _dt  # noqa: E402
+
+from scitex_todo._users import User as _User  # noqa: E402
+from scitex_todo._users import is_alive as _is_alive  # noqa: E402
+
+
+def _now():
+    return _dt.datetime(2026, 7, 1, 12, 0, 0, tzinfo=_dt.timezone.utc)
+
+
+def test_is_alive_unknown_when_no_last_seen():
+    u = _User(id="u_x", kind="agent", names=["a"])
+    out = _is_alive(u, now=_now())
+    assert out == {"status": "unknown", "last_seen": None, "age_seconds": None}
+
+
+def test_is_alive_unknown_when_user_none():
+    out = _is_alive(None, now=_now())
+    assert out["status"] == "unknown"
+    assert out["age_seconds"] is None
+
+
+def test_is_alive_alive_within_ttl():
+    # 5 minutes ago, default ttl 600s → alive.
+    seen = (_now() - _dt.timedelta(seconds=300)).isoformat().replace("+00:00", "Z")
+    u = _User(id="u_x", kind="agent", names=["a"], last_seen=seen)
+    out = _is_alive(u, now=_now())
+    assert out["status"] == "alive"
+    assert out["age_seconds"] == 300
+    assert out["last_seen"] == seen
+
+
+def test_is_alive_at_ttl_boundary_is_alive():
+    # Exactly ttl old → alive (inclusive boundary).
+    seen = (_now() - _dt.timedelta(seconds=600)).isoformat().replace("+00:00", "Z")
+    u = _User(id="u_x", kind="agent", names=["a"], last_seen=seen)
+    assert _is_alive(u, now=_now(), ttl_seconds=600)["status"] == "alive"
+
+
+def test_is_alive_stale_past_ttl():
+    # 601s old, ttl 600 → stale.
+    seen = (_now() - _dt.timedelta(seconds=601)).isoformat().replace("+00:00", "Z")
+    u = _User(id="u_x", kind="agent", names=["a"], last_seen=seen)
+    out = _is_alive(u, now=_now(), ttl_seconds=600)
+    assert out["status"] == "stale"
+    assert out["age_seconds"] == 601
+
+
+def test_is_alive_unknown_on_malformed_last_seen():
+    u = _User(id="u_x", kind="agent", names=["a"], last_seen="not-a-timestamp")
+    assert _is_alive(u, now=_now())["status"] == "unknown"
+
+
+def test_is_alive_accepts_plain_offset_stamp():
+    # +00:00 form (not the Z form) still parses.
+    seen = (_now() - _dt.timedelta(seconds=10)).isoformat()  # +00:00
+    u = _User(id="u_x", kind="agent", names=["a"], last_seen=seen)
+    assert _is_alive(u, now=_now())["status"] == "alive"
+
+
+# --------------------------------------------------------------------------- #
+# last_seen persistence + touch_user heartbeat                               #
+# --------------------------------------------------------------------------- #
+def test_last_seen_round_trips_on_reload(tmp_path):
+    store = tmp_path / "tasks.yaml"
+    created = _users.register_user(kind="agent", names=["hb"], store=store)
+    assert created.last_seen is None  # never seen at registration
+    touched = _users.touch_user("hb", store=store)
+    assert touched is not None and touched.last_seen
+    reloaded = _users.get_user(created.id, store=store)
+    assert reloaded is not None and reloaded.last_seen == touched.last_seen
+
+
+def test_touch_user_by_id_and_host_at_name(tmp_path):
+    store = tmp_path / "tasks.yaml"
+    u = _users.register_user(
+        kind="agent",
+        names=["hb2"],
+        host_at_name="ywata-note-win@hb2",
+        store=store,
+    )
+    assert _users.touch_user(u.id, store=store) is not None
+    assert _users.touch_user("ywata-note-win@hb2", store=store) is not None
+
+
+def test_touch_user_unknown_returns_none(tmp_path):
+    store = tmp_path / "tasks.yaml"
+    _users.register_user(kind="agent", names=["hb3"], store=store)
+    # An unregistered actor has no record to stamp → None (never raises).
+    assert _users.touch_user("nobody", store=store) is None
+
+
+def test_touch_user_preserves_other_keys(tmp_path):
+    store = tmp_path / "tasks.yaml"
+    created = _users.register_user(
+        kind="agent",
+        names=["hb4", "old-hb4"],
+        host_at_name="host@hb4",
+        notify={"telegram": True},
+        store=store,
+    )
+    _users.touch_user("hb4", store=store)
+    reloaded = _users.get_user(created.id, store=store)
+    assert reloaded is not None
+    assert reloaded.names == ["hb4", "old-hb4"]
+    assert reloaded.host_at_name == "host@hb4"
+    assert reloaded.notify == {"telegram": True}
+    assert reloaded.last_seen
+
+
+def test_store_action_stamps_last_seen_on_actor(tmp_path, monkeypatch):
+    # A store action (comment) by a REGISTERED actor stamps its last_seen.
+    store = tmp_path / "tasks.yaml"
+    _users.register_user(kind="agent", names=["actor-1"], store=store)
+    monkeypatch.setenv("SCITEX_TODO_AGENT", "actor-1")
+    _store.add_task(store, id="t1", title="T", assignee="actor-1", created_by="actor-1")
+    # created_by heartbeat already stamped; comment re-stamps.
+    _store.comment_task(store, "t1", "hello", by="actor-1")
+    seen = _users.resolve_user("actor-1", store=store)
+    assert seen is not None and seen.last_seen
+
 # EOF

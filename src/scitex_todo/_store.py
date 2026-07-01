@@ -430,7 +430,18 @@ def add_task(
         store=resolved,
         entry_points=entry_points,
     )
-    return dict(new)
+    # Liveness (assignee-liveness feature): the creator just touched the
+    # store → stamp its heartbeat; and surface the ASSIGNEE's liveness in
+    # the result so the caller learns immediately if it just assigned to a
+    # non-running agent. Both fail-soft (never break the durable write).
+    from ._liveness import _assignee_liveness, _heartbeat
+
+    _heartbeat(new.get("created_by"), resolved)
+    result = dict(new)
+    _liveness = _assignee_liveness(new.get("assignee"), resolved)
+    if _liveness is not None:
+        result["assignee_liveness"] = _liveness
+    return result
 
 
 def _wip_excluded_statuses() -> frozenset[str]:
@@ -531,6 +542,21 @@ def update_task(
                 store=resolved,
                 entry_points=entry_points,
             )
+    # Liveness (assignee-liveness feature). Heartbeat the acting agent
+    # (best-effort from $SCITEX_TODO_AGENT — update_task has no `by`, and we
+    # deliberately reuse the SAME env identity seam rather than inventing a
+    # second one; fail-soft so a missing env never breaks the update). When
+    # this update SET an assignee/agent, surface that owner's liveness in the
+    # result so a reassign-via-update also tells the caller "you assigned to
+    # a non-running agent."
+    from ._liveness import _assignee_liveness, _heartbeat
+
+    _heartbeat(os.environ.get(ENV_AGENT), resolved)
+    if "assignee" in fields or "agent" in fields:
+        _owner = result.get("assignee") or result.get("agent")
+        _liveness = _assignee_liveness(_owner, resolved)
+        if _liveness is not None:
+            result["assignee_liveness"] = _liveness
     return result
 
 
@@ -1134,6 +1160,11 @@ def comment_task(
         store=tasks_path,  # hook-bypass: line-limit
         entry_points=entry_points,
     )
+    # Liveness heartbeat: the comment author just touched the store.
+    # Fail-soft; reuses the already-resolved actor (no second identity path).
+    from ._liveness import _heartbeat
+
+    _heartbeat(author, tasks_path)
     return {"task_id": task_id, "comment": entry}
 
 
@@ -1466,7 +1497,13 @@ def reassign_task(
             store=tasks_path,
             entry_points=entry_points,
         )
-    return {
+    # Liveness (assignee-liveness feature): heartbeat the reassigning actor,
+    # and surface the NEW owner's liveness so the caller learns immediately
+    # if it just reassigned the card to a non-running agent. Both fail-soft.
+    from ._liveness import _assignee_liveness, _heartbeat
+
+    _heartbeat(actor, tasks_path)
+    out = {
         "task_id": task_id,
         "from_owner": old_owner,
         "to_owner": new_owner,
@@ -1474,6 +1511,10 @@ def reassign_task(
         "changed": changed,
         "task": result_task,
     }
+    _liveness = _assignee_liveness(new_owner, tasks_path)
+    if _liveness is not None:
+        out["assignee_liveness"] = _liveness
+    return out
 
 
 __all__ = [
