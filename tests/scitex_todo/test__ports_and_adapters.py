@@ -99,19 +99,25 @@ def test_local_file_sync_load_returns_validated_tasks(tmp_path):
     assert tasks[0]["id"] == "a"
 
 
-def test_local_file_sync_save_round_trips_through_ruamel(tmp_path):
+def test_local_file_sync_save_round_trips_task_data(tmp_path):
+    # Contract CHANGE (fix/fast-store-write): the underlying save_tasks now
+    # uses a fast safe dump. Comments are intentionally dropped; the task
+    # DATA must round-trip through LocalFileSync unchanged.
     # Arrange
     p = _write_tasks_yaml(
         tmp_path,
-        "# preserved comment\ntasks:\n  - {id: a, title: A, status: pending}\n",
+        "# comment intentionally NOT preserved\n"
+        "tasks:\n  - {id: a, title: A, status: pending}\n",
     )
     sync = LocalFileSync(p)
     tasks = sync.load()
     tasks[0]["status"] = "done"
     # Act
     sync.save(tasks)
-    # Assert — comment must survive the round-trip.
-    assert "# preserved comment" in p.read_text()
+    reloaded = sync.load()
+    # Assert — the mutation round-trips; the comment is gone (accepted).
+    assert reloaded[0]["status"] == "done"
+    assert "# comment intentionally NOT preserved" not in p.read_text()
 
 
 def test_local_file_sync_reload_detects_external_mutation(tmp_path):
