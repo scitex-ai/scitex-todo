@@ -112,6 +112,17 @@
 {% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/timelineControls.js' %}"></script>
 {% comment %}
+  timelineMagnet.js — "magnet / snap pointer to nearest scatter dot" for the
+  raster. MUST load AFTER timelineControls.js: it reuses that module's shared
+  highlight API (applyDotHighlight / clearHighlight) so the magnet drives the
+  SAME dependency-subgraph hover-highlight the real dot hover does (never
+  forks it). Self-wires an rAF-throttled mousemove delegation on #columns so it
+  survives the raster's auto-rebuilds without timeline.js re-attaching. The
+  pure nearestDotWithin() is node-testable. Factored out so timeline.js stays
+  under the per-file cap.
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/timelineMagnet.js' %}"></script>
+{% comment %}
   timeline.js — the Timeline layout renderer (raster by agent/project +
   a rich per-task "simple" list). Classic <script defer> so it shares the
   page globals (STATE / escapeHtml / openDetail / bucket / render); it

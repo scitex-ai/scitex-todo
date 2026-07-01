@@ -164,6 +164,23 @@
   r: 10;
   filter: brightness(1.2);
 }
+/* ── magnet / snap (timelineMagnet.js) ─────────────────────────────────
+   The nearest dot to the cursor is "grabbed" WITHOUT a pixel-precise hover:
+   it grows + brightens like the real :hover so it feels magnetically caught,
+   and restores when the magnet moves on (the class is removed). Uses the same
+   r transition as the base .tl-dot so the grow animates. This is purely the
+   grow cue; the dependency-subgraph brighten/dim is driven by the shared
+   .tl--highlighting path (reused from the hover feature, not forked). */
+.tl-dot--magnet {
+  r: 10;
+  filter: brightness(1.2);
+}
+/* Keep the magnet-grabbed dot readable + grown even while the highlight dims
+   the rest of the subgraph (it also carries .tl-dot--hot as its own centre). */
+.tl-svg.tl--highlighting .tl-dot--magnet {
+  opacity: 1;
+  r: 10;
+}
 /* Per-status dot color — single-sourced from STATUS_STYLE via the
    server-rendered `--status-fill-<s>` / `--status-stroke-<s>` CSS vars
    (board_v3.html `#status-color-vars`). 7 distinct, matching cards +

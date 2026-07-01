@@ -133,6 +133,22 @@
   }
   if (typeof document === "undefined") return;
 
+  // ── shared highlight API (so the magnet reuses this path, never forks) ──
+  // timelineMagnet.js snaps the cursor to the nearest dot without a real
+  // pixel-precise hover; it must drive the SAME dependency-subgraph highlight
+  // the mouse hover does. Rather than duplicate the class-toggling logic
+  // (which would drift), we expose the two operations it needs on the public
+  // API: applyDotHighlight(svg, dot) and clearHighlight(svg). They wrap the
+  // private _clear / _highlightDot below, so both callers stay single-sourced.
+  _api.applyDotHighlight = function (svg, dot) {
+    if (!svg || !dot) return;
+    _clear(svg);
+    _highlightDot(svg, dot);
+  };
+  _api.clearHighlight = function (svg) {
+    _clear(svg);
+  };
+
   // ── hover-highlight (DOM; delegated on #columns) ────────────────────
   function _isTimeline() {
     return (
