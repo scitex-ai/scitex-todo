@@ -362,6 +362,48 @@ def set_notify(
         return User.from_dict(target)
 
 
+def touch_user(
+    name_or_id: str,
+    store: str | Path | None = None,
+) -> "User | None":
+    """Stamp ``last_seen = now(UTC)`` on the acting agent's registry record.
+
+    The heartbeat write. ``name_or_id`` is resolved via the SAME identity
+    seam as everything else (:func:`resolve_user`, then an exact id match),
+    so there is NO second identity path. Returns the updated :class:`User`,
+    or ``None`` when the actor maps to no registered user (an UNREGISTERED
+    actor has no record to stamp — the caller decides whether that is
+    tolerable; the heartbeat itself never raises for that case).
+
+    This is scitex-todo's OWN liveness signal — a local write to the local
+    registry, NEVER an external-runtime probe.
+    """
+    if not (isinstance(name_or_id, str) and name_or_id.strip()):
+        return None
+    key = name_or_id.strip()
+    path = _resolved_store(store)
+    with _store_lock(path):
+        users = _load_users_section(path)
+        target = None
+        # Resolution order mirrors resolve_user: exact id → name alias →
+        # host_at_name join key. One identity seam, no second path.
+        for u in users:
+            if u.get("id") == key or key in (u.get("names") or []):
+                target = u
+                break
+        if target is None:
+            for u in users:
+                if u.get("host_at_name") and u.get("host_at_name") == key:
+                    target = u
+                    break
+        if target is None:
+            return None
+        target["last_seen"] = _utc_now_iso()
+        validate_user(target)
+        _save_users_unlocked(users, path)
+        return User.from_dict(target)
+
+
 def resolve_user(
     name_or_host_at_name: str,
     store: str | Path | None = None,
@@ -423,6 +465,7 @@ __all__ = [
     "register_user",
     "resolve_user",
     "set_notify",
+    "touch_user",
 ]
 
 # EOF

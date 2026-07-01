@@ -56,9 +56,11 @@ from ._identity import (
     strict_identity_enabled,
 )
 from ._model import (
+    DEFAULT_LIVENESS_TTL_SECONDS,
     VALID_USER_KINDS,
     User,
     UserValidationError,
+    is_alive,
     user_turn_url,
     validate_user,
 )
@@ -70,9 +72,11 @@ from ._store import (
     register_user,
     resolve_user,
     set_notify,
+    touch_user,
 )
 
 __all__ = [
+    "DEFAULT_LIVENESS_TTL_SECONDS",
     "ENV_STRICT_IDENTITY",
     "IDENTITY_ALIASES",
     "IDENTITY_PREFIXES",
@@ -84,6 +88,7 @@ __all__ = [
     "add_alias",
     "canonical_identity",
     "get_user",
+    "is_alive",
     "list_users",
     "load_users",
     "register_user",
@@ -91,6 +96,7 @@ __all__ = [
     "resolve_user",
     "set_notify",
     "strict_identity_enabled",
+    "touch_user",
     "user_turn_url",
     "validate_user",
 ]
