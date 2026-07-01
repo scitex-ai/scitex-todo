@@ -123,6 +123,55 @@ def test_add_task_lockstep_agent_only_sets_assignee(tmp_path, env):
 
 
 # --------------------------------------------------------------------------- #
+# _default_agent — FAIL LOUD actor/author resolution (operator mandate)       #
+#                                                                             #
+# Completion/comment authorship used to fall back to getpass.getuser() /      #
+# "unknown", which mis-attributed an unresolved acting agent on the board.    #
+# It now fails loud EXACTLY like the creator resolver (constitution rule 2,   #
+# "NO silent fallbacks") — it delegates to _resolve_creator_or_raise.         #
+# --------------------------------------------------------------------------- #
+def test_default_agent_raises_when_unresolved(env):
+    # No explicit arg AND no $SCITEX_TODO_AGENT → fail loud (no getuser()).
+    env.delete("SCITEX_TODO_AGENT")
+    with pytest.raises(TaskValidationError) as exc:
+        _store._default_agent(None)
+    msg = str(exc.value)
+    assert "SCITEX_TODO_AGENT" in msg
+    assert "by=" in msg
+
+
+def test_default_agent_unknown_sentinel_also_raises(env):
+    # The "unknown" placeholder is NOT a real actor — fail loud, never stamp it.
+    env.set("SCITEX_TODO_AGENT", "unknown")
+    with pytest.raises(TaskValidationError):
+        _store._default_agent(None)
+
+
+def test_default_agent_resolves_from_env(env):
+    env.set("SCITEX_TODO_AGENT", "agent:actor-env")
+    assert _store._default_agent(None) == "agent:actor-env"
+
+
+def test_default_agent_explicit_arg_wins(env):
+    # An explicit by=/actor is used even with the env unset — the raise only
+    # fires when NOTHING is resolvable (legitimate callers are unaffected).
+    env.delete("SCITEX_TODO_AGENT")
+    assert _store._default_agent("agent:explicit-actor") == "agent:explicit-actor"
+
+
+def test_default_agent_matches_creator_resolver(env):
+    # DRY: _default_agent now shares the SSOT fail-loud behaviour with
+    # _resolve_creator_or_raise (both resolve/raise identically).
+    env.set("SCITEX_TODO_AGENT", "agent:same")
+    assert _store._default_agent(None) == _store._resolve_creator_or_raise(None)
+    env.delete("SCITEX_TODO_AGENT")
+    with pytest.raises(TaskValidationError):
+        _store._default_agent(None)
+    with pytest.raises(TaskValidationError):
+        _store._resolve_creator_or_raise(None)
+
+
+# --------------------------------------------------------------------------- #
 # comment toast — INBOX QUEUE shape + SSOT target; actor never queued           #
 # --------------------------------------------------------------------------- #
 def _toast():
