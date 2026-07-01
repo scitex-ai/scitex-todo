@@ -79,6 +79,14 @@ class User:
         alongside ``host_at_name``; absent → ``None`` (backward-compatible).
     created_at : str
         ISO-8601 UTC timestamp stamped at registration.
+    last_seen : str | None
+        ISO-8601 UTC timestamp of the most recent time this user's acting
+        agent touched the store (inbox poll, comment/create/update). This is
+        scitex-todo's OWN liveness signal — stamped by the mutation layer,
+        NEVER pulled from an external runtime (the standalone constraint).
+        ``None`` (the default) means "never seen" → :func:`is_alive` returns
+        ``"unknown"``. See :func:`is_alive` for the alive/stale/unknown TTL
+        semantics.
     """
 
     id: str
@@ -89,6 +97,7 @@ class User:
     turn_url: str | None = None
     a2a_port: int | None = None
     created_at: str | None = None
+    last_seen: str | None = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "User":
@@ -132,6 +141,8 @@ class User:
             result["turn_url"] = self.turn_url
         if self.a2a_port is not None:
             result["a2a_port"] = self.a2a_port
+        if self.last_seen is not None:
+            result["last_seen"] = self.last_seen
         return result
 
 
@@ -231,6 +242,13 @@ def validate_user(user: "User | dict") -> None:
                 f"a2a_port must be a positive int or absent"
             )
 
+    last_seen = d.get("last_seen")
+    if last_seen is not None and not (isinstance(last_seen, str) and last_seen):
+        raise UserValidationError(
+            f"user {uid!r} has invalid last_seen {last_seen!r}; "
+            f"last_seen must be a non-empty ISO-8601 string or absent"
+        )
+
 
 def user_turn_url(user: "User | dict") -> str | None:
     """Resolve a user's delivery endpoint (turn URL), or ``None``.
@@ -271,10 +289,83 @@ def user_turn_url(user: "User | dict") -> str | None:
     return f"http://{host}:{port}/v1/turn"
 
 
+#: Default liveness TTL (seconds). A ``last_seen`` within this window of
+#: ``now`` is ``"alive"``; older is ``"stale"``. 10 minutes — long enough
+#: to ride out a slow turn / poll gap, short enough to catch a dead agent
+#: before it silently swallows an assignment.
+DEFAULT_LIVENESS_TTL_SECONDS = 600
+
+
+def _parse_iso_utc(ts: str) -> "object | None":
+    """Parse an ISO-8601 timestamp (canonical ``Z`` or ``+00:00``) → datetime.
+
+    Returns ``None`` on any parse failure so :func:`is_alive` degrades to
+    ``"unknown"`` rather than raising on a malformed stamp. The stamp is
+    normalised to timezone-aware UTC.
+    """
+    import datetime as _dt
+
+    if not (isinstance(ts, str) and ts):
+        return None
+    try:
+        parsed = _dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=_dt.timezone.utc)
+    return parsed.astimezone(_dt.timezone.utc)
+
+
+def is_alive(
+    user: "User | dict | None",
+    *,
+    now,
+    ttl_seconds: int = DEFAULT_LIVENESS_TTL_SECONDS,
+) -> dict:
+    """Pure liveness classifier off a user's ``last_seen`` stamp.
+
+    scitex-todo's OWN liveness signal — computed purely from the registry
+    record's ``last_seen`` (stamped by the mutation layer whenever an agent
+    touches the store), NEVER from an external runtime probe.
+
+    Parameters
+    ----------
+    user : User | dict | None
+        The user record (or its ``users:`` dict row), or ``None``.
+    now : datetime.datetime
+        The reference "now" (timezone-aware UTC recommended). Passed in so
+        this stays pure/testable — no hidden clock read.
+    ttl_seconds : int
+        Freshness window; a ``last_seen`` within ``ttl_seconds`` of ``now``
+        is ``"alive"``, older is ``"stale"``. Default
+        :data:`DEFAULT_LIVENESS_TTL_SECONDS` (10 min).
+
+    Returns
+    -------
+    dict
+        ``{"status": "alive"|"stale"|"unknown",
+           "last_seen": <iso str or None>,
+           "age_seconds": <int or None>}``. ``"unknown"`` (age ``None``)
+        when the user is ``None`` or has no parseable ``last_seen``.
+    """
+    if user is None:
+        return {"status": "unknown", "last_seen": None, "age_seconds": None}
+    d = user.to_dict() if isinstance(user, User) else user
+    last_seen = d.get("last_seen") if isinstance(d, dict) else None
+    parsed = _parse_iso_utc(last_seen) if last_seen is not None else None
+    if parsed is None:
+        return {"status": "unknown", "last_seen": None, "age_seconds": None}
+    age = int((now - parsed).total_seconds())
+    status = "alive" if age <= ttl_seconds else "stale"
+    return {"status": status, "last_seen": last_seen, "age_seconds": age}
+
+
 __all__ = [
+    "DEFAULT_LIVENESS_TTL_SECONDS",
     "VALID_USER_KINDS",
     "User",
     "UserValidationError",
+    "is_alive",
     "user_turn_url",
     "validate_user",
 ]
