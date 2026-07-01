@@ -66,7 +66,6 @@ already over the 512-line cap by design; targeted edits only.)
 from __future__ import annotations
 
 import datetime as _dt
-import getpass
 import os
 from pathlib import Path
 
@@ -125,37 +124,40 @@ def _default_scope(arg: str | None) -> str | None:
 
 
 def _default_agent(arg: str | None) -> str:
-    """Resolve a `completed_by` argument with the env→login→unknown chain.
+    """Resolve an ACTOR/AUTHOR — FAIL LOUD when it cannot be resolved.
 
-    Per ``GITIGNORED/QUESTIONS.md`` #2 the precedence is
-    ``$SCITEX_TODO_AGENT`` → ``getpass.getuser()`` → ``"unknown"`` (final
-    fallback handles environments where login info isn't available).
+    Precedence: an explicit ``by=``/``actor`` arg → ``$SCITEX_TODO_AGENT``.
+    Deliberately does NOT fall back to ``getpass.getuser()`` / ``"unknown"``
+    (the former lenient chain): the operator mandate (constitution rule 2
+    "fail fast and fail loud, NO silent fallbacks") requires completion /
+    comment authorship to record a REAL acting agent, never a blank or
+    ``"unknown"`` placeholder that mis-attributes the action on the board.
 
-    NB: this is the LENIENT chain used by completion/comment authorship,
-    where a best-effort label is fine. Card CREATION uses the STRICT
-    :func:`_resolve_creator_or_raise` instead — a blank/"unknown" creator
-    is a fail-loud error there (operator mandate). (hook-bypass: line-limit)
+    Now identical in behaviour to :func:`_resolve_creator_or_raise` — it
+    simply delegates to keep a single source of truth (DRY) while preserving
+    this public name for the completion/comment callers. (hook-bypass:
+    line-limit)
+
+    Raises
+    ------
+    TaskValidationError
+        When the actor resolves to empty or the ``"unknown"`` sentinel, with
+        an ACTIONABLE hint naming both fixes.
     """
-    if arg:
-        return arg
-    env = os.environ.get(ENV_AGENT)
-    if env:
-        return env
-    try:
-        return getpass.getuser()
-    except Exception:  # pragma: no cover — extremely rare environments
-        return "unknown"
+    return _resolve_creator_or_raise(arg)
 
 
 def _resolve_creator_or_raise(arg: str | None) -> str:
     """Resolve a card CREATOR — FAIL LOUD when it cannot be resolved.
 
-    Precedence: an explicit ``created_by`` arg → ``$SCITEX_TODO_AGENT``.
-    Deliberately does NOT fall back to ``getpass.getuser()`` / ``"unknown"``
-    the way :func:`_default_agent` does: the operator mandate (constitution
-    rule 2 "fail fast and fail loud, NO silent fallbacks") requires a card to
-    record a REAL creator, never a blank or ``"unknown"`` placeholder. A card
-    whose creator can't be resolved must not be born. (hook-bypass: line-limit)
+    Precedence: an explicit ``created_by``/``by=`` arg → ``$SCITEX_TODO_AGENT``.
+    Deliberately does NOT fall back to ``getpass.getuser()`` / ``"unknown"``:
+    the operator mandate (constitution rule 2 "fail fast and fail loud, NO
+    silent fallbacks") requires a card to record a REAL creator, never a blank
+    or ``"unknown"`` placeholder. A card whose creator can't be resolved must
+    not be born. This is the SSOT resolver — :func:`_default_agent` (actor /
+    author for completion & comments) now delegates here so both share the
+    identical fail-loud behaviour. (hook-bypass: line-limit)
 
     Raises
     ------
