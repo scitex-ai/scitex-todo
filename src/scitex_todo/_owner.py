@@ -47,6 +47,19 @@ def card_owner(card: Any) -> str | None:
 
     Tolerant of any mapping (a task dict, a ``Task.to_dict()`` round-trip); a
     non-mapping yields ``None``.
+
+    NOTE (identity canonicalisation): this returns the RAW owner string on
+    purpose — it is the DISPLAY / grouping key rendered verbatim across the
+    board (card render, lanes, timeline). Canonicalising here would silently
+    rewrite every displayed owner and is deliberately NOT done. The identity
+    collapse happens downstream at the RESOLUTION seams instead
+    (:func:`scitex_todo._users.resolve_user` and the notify recipient
+    resolver both route through
+    :func:`scitex_todo._users.canonical_identity`), so drifted owners still
+    resolve to one user without changing what the board shows. A future,
+    deliberate display-canonicalisation pass (once the fleet is fully
+    registered) could route this through ``canonical_identity`` too — left as
+    a TODO to keep this change small and low-risk.
     """
     if not isinstance(card, dict):
         return None

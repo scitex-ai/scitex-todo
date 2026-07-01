@@ -374,6 +374,13 @@ def resolve_user(
        resolves after a rename, as long as the old name was kept in
        ``names``).
     2. Match against any user's ``host_at_name`` join key.
+    3. CANONICALISED retry: run the raw string through
+       :func:`scitex_todo._users.canonical_identity` (NON-strict) to collapse
+       naming drift (``proj-scitex-dev`` -> ``scitex-dev``, ``sac`` ->
+       ``scitex-agent-container``) and re-try steps 1/2 on the canonical
+       form. This only ever ADDS a resolution that steps 1/2 missed — a
+       string that resolved before still resolves the same way — so it is a
+       pure, back-compatible widening.
 
     Returns ``None`` when the string maps to no registered user — callers
     fall back to the raw name string, which preserves back-compat with the
@@ -382,12 +389,29 @@ def resolve_user(
     if not name_or_host_at_name:
         return None
     users = load_users(store)
-    for user in users:
-        if name_or_host_at_name in user.names:
-            return user
-    for user in users:
-        if user.host_at_name and user.host_at_name == name_or_host_at_name:
-            return user
+
+    def _exact(key: str) -> "User | None":
+        for user in users:
+            if key in user.names:
+                return user
+        for user in users:
+            if user.host_at_name and user.host_at_name == key:
+                return user
+        return None
+
+    hit = _exact(name_or_host_at_name)
+    if hit is not None:
+        return hit
+
+    # (3) canonicalise (non-strict, reusing the snapshot already loaded) and
+    # retry — never raises, only widens.
+    from ._identity import canonical_identity
+
+    canonical = canonical_identity(
+        name_or_host_at_name, users=users, strict=False
+    )
+    if canonical != name_or_host_at_name:
+        return _exact(canonical)
     return None
 
 
