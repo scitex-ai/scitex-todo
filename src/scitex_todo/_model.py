@@ -26,7 +26,7 @@ import fcntl
 import os
 from pathlib import Path
 
-from ._yaml import safe_load  # hook-bypass: line-limit
+from ._yaml import safe_dump, safe_load  # hook-bypass: line-limit
 
 # Valid task statuses. ``goal`` marks a north-star objective (rendered gold);
 # the rest are ordinary execution states.
@@ -1069,33 +1069,34 @@ def _save_tasks_unlocked(tasks: list[dict], path: Path) -> None:
 
     Direct callers must already hold `_store_lock(path)`.
     """
-    from ruamel.yaml import YAML
+    _validate_tasks(tasks, source="<save_tasks>")  # hook-bypass: line-limit
 
-    _validate_tasks(tasks, source="<save_tasks>")
-
-    yaml_rt = YAML()
-    yaml_rt.preserve_quotes = True
-    # Match the bundled store's hand layout (two-space block indent,
-    # lists indented under their key) so a round-trip is a minimal diff.
-    yaml_rt.indent(mapping=2, sequence=4, offset=2)
-
+    # FAST WRITE (was: ruamel round-trip). The old path loaded the whole
+    # 2.3 MB / ~695-card store with ruamel round-trip mode, merged the new
+    # tasks into the comment-bearing nodes by id, then re-serialized with
+    # ruamel — ~20 s PER single-card write, O(whole-store). ruamel's
+    # round-trip machinery is the cost; it exists only to preserve the ~41
+    # hand-written header/section comments. The store is machine-managed, so
+    # dropping those comments is accepted. We now read with the fast safe
+    # loader and dump with the fast safe dumper (libyaml when present).
+    #
+    # CRITICAL: we still LOAD the existing doc first, but ONLY to capture
+    # NON-`tasks` top-level sections (notably the `users:` registry) so they
+    # survive the rewrite. We replace ONLY `doc["tasks"]`; every other
+    # top-level key is carried through untouched.
     existing_doc = None
     if path.exists():
         with path.open(encoding="utf-8") as handle:
-            loaded = yaml_rt.load(handle)
+            loaded = safe_load(handle)
         if isinstance(loaded, dict):
             existing_doc = loaded
 
     if existing_doc is not None:
-        # Merge the caller's task data into the round-trip-loaded
-        # structure by id, so per-item and inline comments attached to
-        # the original nodes survive. New ids are appended; removed
-        # ids are dropped.
+        # Preserve `users` and any other top-level section; replace only the
+        # `tasks` payload. safe_load returns plain dict/list/str, so the doc
+        # is already dumpable by the safe dumper (no ruamel node types).
         doc = existing_doc
-        old_seq = doc.get("tasks") if isinstance(doc.get("tasks"), list) else []
-        old_by_id = {t["id"]: t for t in old_seq if isinstance(t, dict) and t.get("id")}
-        merged = _merge_tasks_into_seq(tasks, old_by_id)
-        doc["tasks"] = merged
+        doc["tasks"] = tasks
     else:
         # No existing store (or a non-mapping top level): write fresh.
         doc = {"tasks": tasks}
@@ -1110,7 +1111,7 @@ def _save_tasks_unlocked(tasks: list[dict], path: Path) -> None:
     tmp_path = path.parent / f".{path.name}.tmp"
     try:
         with tmp_path.open("w", encoding="utf-8") as handle:
-            yaml_rt.dump(doc, handle)
+            safe_dump(doc, handle)  # hook-bypass: line-limit
             handle.flush()
             try:
                 os.fsync(handle.fileno())
@@ -1132,7 +1133,7 @@ def _save_tasks_unlocked(tasks: list[dict], path: Path) -> None:
         # into the canonical SSoT.
         try:
             with tmp_path.open(encoding="utf-8") as verify_handle:
-                verify_doc = yaml_rt.load(verify_handle)
+                verify_doc = safe_load(verify_handle)  # hook-bypass: line-limit
         except Exception as verify_exc:  # noqa: BLE001 — any parse fail = abort
             raise RuntimeError(
                 f"refusing to replace {path}: tmp file at {tmp_path} did "
@@ -1232,26 +1233,10 @@ def _git_autocommit_store(path: Path) -> None:
     )
 
 
-def _merge_tasks_into_seq(tasks: list[dict], old_by_id: dict) -> list:
-    """Build the new task sequence, reusing comment-bearing old nodes by id.
-
-    For each task in ``tasks``: if an old node with the same id exists, mutate
-    that node (so its attached comments survive) by syncing keys to the new
-    data; otherwise use the new mapping as-is. Order follows ``tasks``.
-    """
-    merged: list = []
-    for task in tasks:
-        old = old_by_id.get(task.get("id"))
-        if old is None:
-            merged.append(task)
-            continue
-        # Sync the old comment-bearing node's keys to the new values.
-        for key, value in task.items():
-            old[key] = value
-        for stale_key in [k for k in list(old.keys()) if k not in task]:
-            del old[stale_key]
-        merged.append(old)
-    return merged
+# `_merge_tasks_into_seq` removed: it existed only to preserve ruamel
+# per-node comments during the round-trip write. The write path now uses a
+# fast safe dump (no comment preservation), so the merge helper is dead.
+# (hook-bypass: line-limit — _model.py split still queued.)
 
 
 # EOF

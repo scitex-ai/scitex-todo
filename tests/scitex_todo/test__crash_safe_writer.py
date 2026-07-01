@@ -204,3 +204,140 @@ def test_clean_save_leaves_no_stale_tmp_sidecar(tmp_path: Path):
 
     # Assert — successful save deletes the tmp via os.replace; no sidecar.
     assert not tmp.exists()
+
+
+# === 4. Non-`tasks` top-level sections survive the fast write ===============
+#
+# The fast write (safe dump, replacing the ruamel round-trip) must still
+# LOAD the existing doc to carry through EVERY non-`tasks` top-level key —
+# notably the `users:` registry and the `inboxes:` section the live store
+# carries. Replacing only `doc["tasks"]` and dropping `users`/`inboxes`
+# would silently destroy the user registry on the next card mutation.
+
+
+def _write_store_with_extra_sections(store: Path) -> None:
+    """Write a store that has `tasks` PLUS `users` + a custom top-level key."""
+    from scitex_todo._yaml import safe_dump
+
+    doc = {
+        "tasks": [
+            {"id": "t-a", "title": "task a", "status": "pending"},
+        ],
+        "users": {
+            "alice": {"telegram_id": 123, "display": "Alice"},
+            "bob": {"telegram_id": 456, "display": "Bob"},
+        },
+        "inboxes": {"default": ["t-a"]},
+    }
+    with store.open("w", encoding="utf-8") as handle:
+        safe_dump(doc, handle)
+
+
+def test_save_preserves_users_section(tmp_path: Path):
+    from scitex_todo._yaml import safe_load
+
+    # Arrange — a store with a populated `users:` registry.
+    store = tmp_path / "tasks.yaml"
+    _write_store_with_extra_sections(store)
+    tasks = load_tasks(store)
+
+    # Act — mutate + save via the write path under test.
+    tasks[0]["status"] = "done"
+    save_tasks(tasks, store)
+
+    # Assert — the `users:` registry is intact byte-for-value.
+    with store.open(encoding="utf-8") as handle:
+        after = safe_load(handle)
+    assert after["users"] == {
+        "alice": {"telegram_id": 123, "display": "Alice"},
+        "bob": {"telegram_id": 456, "display": "Bob"},
+    }
+
+
+def test_save_preserves_all_top_level_keys(tmp_path: Path):
+    from scitex_todo._yaml import safe_load
+
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    _write_store_with_extra_sections(store)
+    tasks = load_tasks(store)
+
+    # Act
+    tasks[0]["title"] = "task a (edited)"
+    save_tasks(tasks, store)
+
+    # Assert — every top-level section survives (order + membership).
+    with store.open(encoding="utf-8") as handle:
+        after = safe_load(handle)
+    assert list(after.keys()) == ["tasks", "users", "inboxes"]
+
+
+def test_save_preserves_custom_inboxes_section_value(tmp_path: Path):
+    from scitex_todo._yaml import safe_load
+
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    _write_store_with_extra_sections(store)
+    tasks = load_tasks(store)
+
+    # Act
+    save_tasks(tasks, store)
+
+    # Assert — the non-`tasks`, non-`users` section is preserved verbatim.
+    with store.open(encoding="utf-8") as handle:
+        after = safe_load(handle)
+    assert after["inboxes"] == {"default": ["t-a"]}
+
+
+# === 5. Tasks round-trip exactly (load -> save -> load equals) ==============
+
+
+def test_save_round_trips_tasks_exactly(tmp_path: Path):
+    # Arrange — a store with rich task fields.
+    store = tmp_path / "tasks.yaml"
+    tasks_in = [
+        {
+            "id": "t-a",
+            "title": "task a",
+            "status": "pending",
+            "priority": 1,
+            "note": "multi\nline\nnote",
+            "tags": ["x", "y"],
+        },
+        {"id": "t-b", "title": "タスク b", "status": "done"},
+    ]
+    save_tasks(tasks_in, store)
+
+    # Act — load, then save unchanged, then load again.
+    loaded_once = load_tasks(store)
+    save_tasks(loaded_once, store)
+    loaded_twice = load_tasks(store)
+
+    # Assert — load -> save -> load is a fixed point (values equal).
+    assert loaded_twice == loaded_once
+
+
+# === 6. Crash-safe path uses tmp + os.replace (no partial canonical) ========
+
+
+def test_save_yields_no_partial_file_and_leaves_no_tmp(tmp_path: Path):
+    from scitex_todo._yaml import safe_load
+
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    tmp = store.parent / f".{store.name}.tmp"
+    _write_store_with_extra_sections(store)
+    tasks = load_tasks(store)
+
+    # Act
+    tasks.append({"id": "t-new", "title": "new", "status": "pending"})
+    save_tasks(tasks, store)
+
+    # Assert — no tmp sidecar left, and the canonical file parses to a
+    # complete, valid document (a partial write would fail to parse or
+    # miss sections).
+    assert not tmp.exists()
+    with store.open(encoding="utf-8") as handle:
+        after = safe_load(handle)
+    assert [t["id"] for t in after["tasks"]] == ["t-a", "t-new"]
+    assert "users" in after

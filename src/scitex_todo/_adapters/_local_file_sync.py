@@ -18,7 +18,7 @@ from .._model import load_tasks, save_tasks
 class LocalFileSync:
     """Read + write the task store as a local YAML file.
 
-    Atomic via :func:`scitex_todo._model.save_tasks` (ruamel round-trip +
+    Atomic via :func:`scitex_todo._model.save_tasks` (fast safe-dump write +
     advisory ``fcntl.flock`` on a sibling ``.lock`` sentinel). Change
     detection via the file's mtime (cheap, polling-friendly).
 
@@ -57,7 +57,7 @@ class LocalFileSync:
         return tasks
 
     def save(self, tasks: list[dict]) -> None:
-        """Atomic ruamel-preserved write. Refreshes the mtime snapshot."""
+        """Atomic fast safe-dump write. Refreshes the mtime snapshot."""
         save_tasks(tasks, self._path)
         try:
             self._last_mtime = self._path.stat().st_mtime
