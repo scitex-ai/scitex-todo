@@ -360,12 +360,16 @@ def test_comment_toast_reports_inbox_queue_not_connection_error(tmp_path):
 
 def test_comment_does_not_await_a_turn_url_post(tmp_path, monkeypatch):
     # A comment must NOT depend on / await a turn-URL POST. Point the owner at
-    # a CLOSED port (a real refused connection): with the direct-POST removed,
-    # the comment is enqueued to the inbox and the POST returns FAST regardless.
+    # a CLOSED port (a real refused connection) and assert the relay went over
+    # the inbox rail (wire == "inbox"). That structural guarantee — not a
+    # wall-clock threshold — is what proves the comment path never awaits the
+    # turn-URL: a refused connection resolves instantly, so timing cannot tell
+    # a correct run from a regressed one, and under CI load the correct path
+    # alone can exceed any tight threshold (a wall-clock assert here was a
+    # flaky release blocker). Speed is covered structurally by the inbox wire.
     # Arrange
     import json as _json
     import socket
-    import time
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(("127.0.0.1", 0))
@@ -380,16 +384,14 @@ def test_comment_does_not_await_a_turn_url_post(tmp_path, monkeypatch):
     monkeypatch.delenv("SCITEX_TODO_PUSH_DRY_RUN", raising=False)
     try:
         # Act
-        t0 = time.monotonic()
         resp = _post(
             "comment", store_path, {"id": "owned", "text": "ping", "author": "operator"}
         )
-        elapsed = time.monotonic() - t0
         payload = json.loads(resp.content)
     finally:
         _reset_cache()
-    # Assert — fast (no network on the path) AND the toast is the inbox queue.
-    assert elapsed < 2.0
+    # Assert — the relay went over the inbox rail, not a synchronous turn-URL
+    # POST (the structural proof that the comment path does not await one).
     assert payload["relay"]["wire"] == "inbox"
 
 
