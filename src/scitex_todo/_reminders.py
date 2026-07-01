@@ -3,64 +3,56 @@
 """Nag-until-closed reminder engine — per-owner digest + operator escalation.
 
 The board is the fleet's direction system, so a requested-and-carded task
-that silently stops progressing is a real incident (operator, 2026-06-30:
-"register ALL manuscript claims in clew" stalled at 6/17 and was found by
-hand). This engine forces the board to keep surfacing such cards until they
-are closed — and to ESCALATE the worst ones to the operator.
+that silently stops progressing is a real incident (operator, 2026-06-30).
+This engine forces the board to keep surfacing such cards until they are
+closed — and to ESCALATE the worst ones to the operator (or, when the
+assignee is dead, to the card's creator).
 
 Why a DIGEST, not per-card reminders
 ------------------------------------
-The first cut nagged once PER stale card, which produced a wall of near-
-identical "Reminder #N: card X…" lines whenever an owner had many open
-cards — noise that trains the owner to ignore the whole stream. The
-operator's refinement (2026-06-30, via NeuroVista): do NOT push a single
-rigid "next card" either. Instead, present the owner's ASSIGNED-CARD LIST
-as ONE digest and let the agent decide AGENTICALLY which to advance —
-priority is dynamic and lives in the agent's head, not in a fixed per-card
-schedule. So the MECHANICAL part is: (a) detect an owner has open assigned
-cards, (b) periodically surface that scoped list; the SELECTION stays
-agentic.
+Nagging once PER stale card produced a wall of near-identical lines that
+trains the owner to ignore the whole stream (operator, 2026-06-30). Instead:
+(a) detect an owner has open assigned cards, (b) periodically surface that
+scoped list as ONE digest; the SELECTION of which to advance stays agentic.
 
 What it does each sweep
 -----------------------
 1. Detect the cards that need nagging — the SAME pure detectors the stats
-   cron uses (:func:`scitex_todo._stale_active.detect_stale_active` for
-   ``in_progress``/``blocked`` untouched cards, and
-   :func:`~scitex_todo._stale_active.detect_pending_backlog` for accepted-
-   but-unstarted ``pending`` cards), grouped by owner.
-2. Decide, PER OWNER, whether a digest is *due* now — using an ESCALATING
-   cadence (the more times we've already digested an owner, the longer we
-   wait, capped) tracked in a sidecar so we do not re-nag every tick. When
-   an owner closes/touches their cards they drop out of the stale set and
-   the digest naturally stops — the "until closed" guarantee.
-3. Enqueue ONE digest per due owner into that owner's inbox via the
-   standalone delivery rail (:func:`scitex_todo._inbox.enqueue`). The
-   digest lists the owner's open stale cards (capped) so the agent picks
-   which to advance.
+   cron uses (:func:`scitex_todo._stale_active.detect_stale_active` +
+   :func:`~scitex_todo._stale_active.detect_pending_backlog`), by owner.
+2. Decide, PER OWNER, whether a digest is *due* now (flat cadence tracked in
+   a sidecar so we do not re-nag every tick). Closing/touching cards drops
+   them from the stale set and the digest stops — the "until closed" guarantee.
+3. Enqueue ONE digest per due owner via the standalone delivery rail
+   (:func:`scitex_todo._inbox.enqueue`), listing their open stale cards
+   (capped) so the agent picks which to advance.
 4. ESCALATE: a HIGH-PRIORITY card still stale after
    :data:`DEFAULT_ESCALATE_AFTER` digests to its owner also enqueues a
    rising-urgency notice to the OPERATOR, once per card, until the card
    leaves the stale set. Escalation stays PER CARD (the operator needs the
    specific stuck card, not a digest).
+5. LIVENESS ESCALATE (to the CREATOR): when a stale card's owner is NOT
+   ALIVE (:func:`scitex_todo._users.is_alive` off the registry ``last_seen``)
+   the assignee will never act, so the card escalates to its ``created_by``.
+   Distinct from (4): NOT gated on the digest count or priority (a dead owner
+   won't recover by waiting), latched once per streak under
+   ``creator_escalated``, falling back to the operator when the creator is
+   absent or IS the dead owner itself.
 
 Design
 ------
 * The reminder STATE lives in a sidecar ``reminders.yaml`` next to
-  ``tasks.yaml`` (same SoC as ``notify.yaml`` / ``recipients.yaml``) — the
-  card payloads are never mutated, so the detectors stay pure and the
-  620-card board stays clean. Two sections:
-  ``owners: {owner_name: {count, last_at}}`` (the per-owner digest cadence)
-  and ``cards: {card_id: {escalated}}`` (the per-card escalation latch).
-  Owner entries are pruned when the owner has no stale cards; card entries
-  are pruned when the card leaves the stale set (so a future stall
-  re-escalates).
-* Recipient keying matches the producer/dispatch convention exactly
-  (:func:`scitex_todo._notify._resolver._resolve_name_to_id`): a registered
-  owner name resolves to its stable user-id, else the raw name — so the
-  digest lands on the SAME key the channel/notifyd drain.
-* Pure-ish + injectable: ``enqueue``, ``resolve_key`` and ``now`` are
-  injectable so tests drive the cadence/escalation state machine with real
-  fakes (no mocks, no network, no clock).
+  ``tasks.yaml`` — card payloads are never mutated (detectors stay pure).
+  Two sections: ``owners: {owner_name: {count, last_at}}`` (the per-owner
+  digest cadence) and ``cards: {card_id: {escalated, creator_escalated}}``
+  (the per-card escalation latches). Owner entries are pruned when the owner
+  has no stale cards; card entries are pruned when the card leaves the stale
+  set (so a future stall re-escalates on either latch).
+* Recipient keying matches the producer/dispatch convention
+  (:func:`scitex_todo._notify._resolver._resolve_name_to_id`).
+* Pure-ish + injectable: ``enqueue``, ``resolve_key``, ``resolve_user`` and
+  ``now`` are injectable so tests drive the cadence/escalation/liveness state
+  machine with real fakes (no mocks, no network, no clock).
 """
 
 from __future__ import annotations
@@ -71,6 +63,13 @@ import os
 from pathlib import Path
 from typing import Any, Callable
 
+from ._reminder_bodies import (
+    DIGEST_CARD_CAP,
+    _creator_escalation_body,
+    _digest_body,
+    _escalation_body,
+)
+from ._reminder_liveness import _card_creator, _owner_liveness
 from ._stale_active import detect_pending_backlog, detect_stale_active
 from ._throughput import _now_utc, _parse_iso
 
@@ -91,6 +90,13 @@ DEFAULT_ESCALATE_AFTER = 3
 ENV_ESCALATE_PRIORITY = "SCITEX_TODO_REMINDER_ESCALATE_PRIORITY"
 DEFAULT_ESCALATE_PRIORITY = 1
 
+#: Liveness TTL (seconds) for the creator-escalation path: a card's owner
+#: whose registry ``last_seen`` is older than this (or absent) is "not alive"
+#: and the card escalates to its CREATOR. Mirrors the users-layer default;
+#: overridable per-sweep via the ``liveness_ttl`` arg or this env knob.
+ENV_LIVENESS_TTL = "SCITEX_TODO_REMINDER_LIVENESS_TTL"
+DEFAULT_LIVENESS_TTL = 600
+
 #: The operator identity escalations are addressed to (resolved like any
 #: other recipient). Delivery to Telegram is operator-gated config
 #: (recipients.yaml + token); the engine only enqueues.
@@ -103,13 +109,14 @@ DEFAULT_OPERATOR = "operator"
 #: to one agent and widen deliberately, with no fleet-wide first-sweep storm.
 ENV_REMINDER_OWNERS = "SCITEX_TODO_REMINDER_OWNERS"
 
-#: Max cards listed in one digest body; a runaway lane gets a "+K more" tail
-#: instead of a multi-kilobyte note.
-DIGEST_CARD_CAP = 15
-
 #: Event types (also the inbox dedup discriminator + the ledger key prefix).
 EVENT_DIGEST = "reminder"
 EVENT_ESCALATION = "escalation"
+#: Liveness-triggered escalation to a card's CREATOR — a DISTINCT path from
+#: the staleness→operator :data:`EVENT_ESCALATION`. Fired when the card's
+#: owner (assignee) is not alive, so the assignee will never act; the creator
+#: is asked to reassign / drive / close. See :func:`sweep_reminders`.
+EVENT_CREATOR_ESCALATION = "creator_escalation"
 
 #: Synthetic ``card_id`` for a digest record (a digest is about many cards,
 #: not one). One digest per owner per sweep + a fresh ``ts`` keeps the inbox
@@ -128,9 +135,8 @@ def _cfg_int(cfg: dict, key: str, default: int) -> int:
 def _owner_allowlist(cfg: dict | None = None) -> set[str]:
     """Owner ALLOWLIST for a phased rollout (empty = nag every owner).
 
-    Env :data:`ENV_REMINDER_OWNERS` (comma-separated) wins so the agent spec
-    can scope the sweep; otherwise the ``reminders.owners`` config list
-    (``[name, ...]``) applies. Either way an empty result means "all owners".
+    Env :data:`ENV_REMINDER_OWNERS` (comma-separated) wins, else the
+    ``reminders.owners`` config list; an empty result means "all owners".
     """
     raw = os.environ.get(ENV_REMINDER_OWNERS)
     if raw is not None:
@@ -154,10 +160,8 @@ def _env_int(name: str, default: int) -> int:
 def _due(last_at: str | None, now: _dt.datetime, *, interval_minutes: float) -> bool:
     """True when a digest is due: never sent, or the flat interval has elapsed.
 
-    Flat cadence (operator knob): an owner is re-digested every
-    ``interval_minutes`` for as long as they hold open stale cards. No
-    backoff — the gap is a single configured value (default 5 min), tightenable
-    per card. ``last_at`` missing/unparseable → due now.
+    Flat cadence (operator knob): re-digest every ``interval_minutes`` while
+    stale cards remain (no backoff). ``last_at`` missing/unparseable → due now.
     """
     if not last_at:
         return True
@@ -180,14 +184,9 @@ def load_reminder_state(store: str | Path | None = None) -> dict[str, dict]:
 
     Missing / unreadable / malformed sidecar → empty sections (fail-soft: a
     bad sidecar must never break a sweep). Always returns both sections so
-    callers can index them without guarding.
-
-    A legacy sidecar from the per-card engine carried only a ``cards:``
-    mapping of ``{card_id: {count, last_at, escalated}}``. We read it
-    leniently: any ``cards`` mapping loads into the ``cards`` section (the
-    stale per-card cadence fields are simply ignored; only ``escalated`` is
-    still meaningful), and ``owners`` starts empty — the per-owner cadence
-    rebuilds itself from the first sweep. No migration step needed.
+    callers can index them without guarding. A legacy ``cards:``-only sidecar
+    loads leniently (only the ``escalated`` latch is still meaningful; the
+    per-owner cadence rebuilds from the first sweep — no migration needed).
     """
     import yaml
 
@@ -270,18 +269,24 @@ def sweep_reminders(
     escalate_after: int | None = None,
     escalate_priority: int | None = None,
     owners: set[str] | None = None,
+    resolve_user: Callable[[str], Any] | None = None,
+    liveness_ttl: int | None = None,
 ) -> dict[str, list[str]]:
     """One nag sweep: enqueue a due DIGEST per owner + escalate stuck cards.
 
     Returns ``{"digested": [owner, ...], "escalated": [card_id, ...],
-    "skipped": [owner, ...]}`` (skipped = owner has stale cards but the
-    digest is not yet due this sweep).
+    "creator_escalated": [card_id, ...], "skipped": [owner, ...]}`` (skipped =
+    owner has stale cards but the digest is not yet due this sweep).
 
-    The re-digest cadence is a flat interval (operator knob): per owner it is
-    the TIGHTEST of their cards' resolved intervals — a per-card
-    ``reminder_interval_minutes`` > ``config.yaml`` ``reminders.interval_minutes``
-    > the built-in default. ``interval_minutes`` here forces a flat value for
-    every owner (a test seam); leave it ``None`` for the config/card resolution.
+    The re-digest cadence is a flat interval (operator knob): per owner the
+    TIGHTEST of their cards' resolved intervals (per-card
+    ``reminder_interval_minutes`` > config > default). ``interval_minutes``
+    forces a flat value (a test seam); ``None`` uses config/card resolution.
+
+    Liveness→creator escalation: ``resolve_user`` (name → user record/dict or
+    ``None``) and ``liveness_ttl`` (seconds) are injectable seams so tests
+    drive the alive/stale/unknown machine with real fakes; left ``None`` they
+    resolve to :func:`scitex_todo._users.resolve_user` and the configured TTL.
 
     Fail-soft: a per-owner enqueue error is logged and the sweep continues.
     Never raises into the caller (notifyd tick).
@@ -306,6 +311,16 @@ def sweep_reminders(
 
         def resolve_key(name: str) -> str:  # type: ignore[misc]
             return _resolve_name_to_id(name, store=store)
+
+    if resolve_user is None:
+        from ._users import resolve_user as _resolve_user_real
+
+        def resolve_user(name: str) -> Any:  # type: ignore[misc]
+            return _resolve_user_real(name, store=store)
+
+    ttl = liveness_ttl if liveness_ttl is not None else _env_int(
+        ENV_LIVENESS_TTL, _cfg_int(cfg, "liveness_ttl", DEFAULT_LIVENESS_TTL)
+    )
 
     # Index cards by id for priority/title lookup during escalation.
     by_id = {str(t.get("id") or ""): t for t in tasks if t.get("id")}
@@ -332,6 +347,7 @@ def sweep_reminders(
     stale_card_ids: set[str] = set()
     digested: list[str] = []
     escalated: list[str] = []
+    creator_escalated: list[str] = []
     skipped: list[str] = []
 
     for owner in sorted(buckets):
@@ -345,6 +361,29 @@ def sweep_reminders(
             continue
         stale_owners.add(owner)
         stale_card_ids.update(sc.id for sc in cards)
+
+        # LIVENESS→CREATOR escalation: if the (registered) owner is NOT ALIVE
+        # the assignee will never act, so escalate each of their stale cards to
+        # its CREATOR now. Independent of the digest cadence (runs BEFORE the
+        # `_due` early-continue) and NOT gated on count/priority — a dead owner
+        # won't recover by waiting; the per-card `creator_escalated` latch keeps
+        # it a nudge. A non-registered (free-form) owner has no liveness signal.
+        owner_user, liveness = _owner_liveness(resolve_user, owner, now=cur, ttl_seconds=ttl)
+        if owner_user is not None and liveness.get("status") != "alive":
+            for sc in cards:
+                centry = card_state.get(sc.id) or {}
+                if centry.get("creator_escalated"):
+                    card_state[sc.id] = centry
+                    continue
+                creator = _card_creator(by_id.get(sc.id, {}), owner, operator_name)
+                creator_key = _safe_resolve(resolve_key, creator)
+                cbody = _creator_escalation_body(sc, owner, liveness.get("age_seconds"))
+                if _safe_enqueue(
+                    enqueue, creator_key, EVENT_CREATOR_ESCALATION, sc.id, cbody, cur, store
+                ):
+                    centry["creator_escalated"] = True
+                    creator_escalated.append(sc.id)
+                card_state[sc.id] = centry
 
         # Effective cadence for this owner: the TIGHTEST interval any of their
         # stale cards asks for (a per-card override pulls the whole digest onto
@@ -374,9 +413,8 @@ def sweep_reminders(
             digested.append(owner)
         owner_state[owner] = entry
 
-        # Escalate each high-priority card that has survived enough digests to
-        # its owner and has not yet escalated this stale streak. Per CARD: the
-        # operator needs the specific stuck card, not the owner's whole list.
+        # Escalate to the OPERATOR each high-priority card that survived enough
+        # digests and has not yet escalated this streak (per card, once).
         if count >= esc_after:
             for sc in cards:
                 card = by_id.get(sc.id, {})
@@ -395,9 +433,8 @@ def sweep_reminders(
                     escalated.append(sc.id)
                 card_state[sc.id] = centry
 
-    # Prune state for owners/cards no longer stale — the nag STOPS when work
-    # is closed or touched (it drops out of the stale set), and a card's
-    # escalation latch resets so a future stall re-escalates.
+    # Prune state for owners/cards no longer stale — the nag STOPS when work is
+    # closed/touched, and a card's escalation latches reset for a future stall.
     for owner in list(owner_state):
         if owner not in stale_owners:
             del owner_state[owner]
@@ -406,7 +443,12 @@ def sweep_reminders(
             del card_state[cid]
 
     save_reminder_state(state, store)
-    return {"digested": digested, "escalated": escalated, "skipped": skipped}
+    return {
+        "digested": digested,
+        "escalated": escalated,
+        "creator_escalated": creator_escalated,
+        "skipped": skipped,
+    }
 
 
 def _safe_resolve(resolve_key: Callable[[str], str], name: str) -> str:
@@ -428,9 +470,8 @@ def _safe_enqueue(
 ) -> bool:
     """Enqueue one notification; fail-soft. Returns True on a real enqueue.
 
-    ``ts`` is the sweep instant so each re-nag is a DISTINCT inbox record
-    (the inbox dedups on ``(event_type, card_id, ts, actor)``); a new digest
-    at a new time is genuinely new, not a duplicate.
+    ``ts`` is the sweep instant so each re-nag is a DISTINCT inbox record (the
+    inbox dedups on ``(event_type, card_id, ts, actor)``).
     """
     try:
         rec = enqueue(
@@ -451,45 +492,12 @@ def _safe_enqueue(
         return False
 
 
-def _card_line(sc) -> str:
-    title = (sc.title or "").strip() or "(untitled)"
-    age = "" if sc.age_hours is None else f", ~{sc.age_hours:.0f}h"
-    return f"  - {sc.id} [{sc.status}{age}] \"{title}\""
-
-
-def _digest_body(cards: list, attempt: int) -> str:
-    """One digest listing an owner's open stale cards; agent picks which to advance.
-
-    Lists up to :data:`DIGEST_CARD_CAP` cards (oldest-first, as the detectors
-    order them) with a "+K more" tail. The selection is intentionally LEFT TO
-    THE AGENT — the digest surfaces the scoped list, it does not dictate a
-    single "next card".
-    """
-    shown = cards[:DIGEST_CARD_CAP]
-    lines = [_card_line(sc) for sc in shown]
-    if len(cards) > DIGEST_CARD_CAP:
-        lines.append(f"  - (+{len(cards) - DIGEST_CARD_CAP} more)")
-    return (
-        f"Assigned-card digest #{attempt}: you own {len(cards)} open card(s) "
-        f"that need attention — decide which to advance now (work it, update "
-        f"it, reassign, or close):\n" + "\n".join(lines)
-    )
-
-
-def _escalation_body(sc, owner: str, count: int) -> str:
-    title = (sc.title or "").strip() or "(untitled)"
-    return (
-        f"ESCALATION: high-priority card {sc.id} owned by {owner} has been "
-        f"digested {count}x and is still {sc.status} and untouched. Needs "
-        f"attention. \"{title}\""
-    )
-
-
 __all__ = [
     "REMINDER_SIDECAR_NAME",
     "ENV_REMINDER_OWNERS",
     "EVENT_DIGEST",
     "EVENT_ESCALATION",
+    "EVENT_CREATOR_ESCALATION",
     "DIGEST_CARD_CAP",
     "DIGEST_CARD_ID",
     "DEFAULT_ESCALATE_AFTER",
