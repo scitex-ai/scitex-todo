@@ -67,7 +67,12 @@ def _resolve_name_to_id(name: str, *, store: str | Path | None) -> str:
         user = resolve_user(canonical, store=store)
         if user is not None:
             return user.id
-    return canonical
+    # Neither the raw name nor its canonical form is a registered user →
+    # return the RAW name unchanged: the enqueue key must match the card's
+    # stored owner string (and what pollers look up). Canonicalising an
+    # UNREGISTERED owner here silently re-routed its notifications (e.g.
+    # `proj-new` -> `new`), which broke reassign/notify delivery.
+    return name
 
 
 def _card_field_names(card: Mapping[str, Any], field: str) -> list[str]:
