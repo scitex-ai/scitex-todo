@@ -16,7 +16,13 @@ import dataclasses
 from pathlib import Path
 from typing import Any, Mapping
 
-from .._users import User, get_user, resolve_user
+from .._users import (
+    User,
+    canonical_identity,
+    get_user,
+    load_users,
+    resolve_user,
+)
 from ._config import (
     coerce_id_list,
     coerce_rules_mapping,
@@ -42,12 +48,31 @@ def _resolve_name_to_id(name: str, *, store: str | Path | None) -> str:
     """Map a card-owner name to a stable user id, falling back to the name.
 
     Reuses :func:`scitex_todo._users.resolve_user` as the SSOT for identity.
-    When the name maps to no registered user (``resolve_user`` returns
-    ``None``), the raw name string is returned — preserving back-compat with
-    the pre-registry world where owners were free-form strings.
+    When the raw name maps to no registered user, the name is first run
+    through :func:`scitex_todo._users.canonical_identity` to collapse naming
+    drift (``proj-scitex-dev`` -> ``scitex-dev``, ``sac`` ->
+    ``scitex-agent-container``, ``lead-ywata-note-win`` -> ``lead``) and
+    re-resolved. ``canonical_identity`` runs NON-strict here (``strict=False``)
+    so an unregistered owner never raises — it just returns the (possibly
+    canonicalised) name string, preserving back-compat with the pre-registry
+    world where owners were free-form strings.
     """
     user = resolve_user(name, store=store)
-    return user.id if user is not None else name
+    if user is not None:
+        return user.id
+    canonical = canonical_identity(
+        name, users=load_users(store), strict=False
+    )
+    if canonical != name:
+        user = resolve_user(canonical, store=store)
+        if user is not None:
+            return user.id
+    # Neither the raw name nor its canonical form is a registered user →
+    # return the RAW name unchanged: the enqueue key must match the card's
+    # stored owner string (and what pollers look up). Canonicalising an
+    # UNREGISTERED owner here silently re-routed its notifications (e.g.
+    # `proj-new` -> `new`), which broke reassign/notify delivery.
+    return name
 
 
 def _card_field_names(card: Mapping[str, Any], field: str) -> list[str]:

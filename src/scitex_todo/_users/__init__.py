@@ -45,6 +45,16 @@ surface so ``from scitex_todo._users import register_user`` keeps working.
 
 from __future__ import annotations
 
+from ._identity import (
+    ENV_STRICT_IDENTITY,
+    IDENTITY_ALIASES,
+    IDENTITY_PREFIXES,
+    KNOWN_HOSTS,
+    UnknownIdentityError,
+    canonical_identity,
+    resolve_identity,
+    strict_identity_enabled,
+)
 from ._model import (
     DEFAULT_LIVENESS_TTL_SECONDS,
     VALID_USER_KINDS,
@@ -67,17 +77,25 @@ from ._store import (
 
 __all__ = [
     "DEFAULT_LIVENESS_TTL_SECONDS",
+    "ENV_STRICT_IDENTITY",
+    "IDENTITY_ALIASES",
+    "IDENTITY_PREFIXES",
+    "KNOWN_HOSTS",
     "VALID_USER_KINDS",
+    "UnknownIdentityError",
     "User",
     "UserValidationError",
     "add_alias",
+    "canonical_identity",
     "get_user",
     "is_alive",
     "list_users",
     "load_users",
     "register_user",
+    "resolve_identity",
     "resolve_user",
     "set_notify",
+    "strict_identity_enabled",
     "touch_user",
     "user_turn_url",
     "validate_user",
