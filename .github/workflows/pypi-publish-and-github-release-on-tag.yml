@@ -122,8 +122,13 @@ jobs:
       url: https://pypi.org/p/scitex-todo
     # id-token: write is what populates ACTIONS_ID_TOKEN_REQUEST_{TOKEN,URL},
     # which publish-in-sif.sh uses to mint the OIDC JWT. Keep it.
+    # contents: read is REQUIRED for actions/checkout to clone this PRIVATE
+    # repo — declaring `permissions:` at all defaults every unlisted scope to
+    # `none`, so without this the token can't read the repo and checkout fails
+    # with "Repository not found" (the release break v0.7.21..v0.7.28).
     permissions:
       id-token: write
+      contents: read
     steps:
       # Need the repo checked out so .github/ci/exec-in-sif.sh +
       # publish-in-sif.sh are on disk (the build job uploaded only dist/).
