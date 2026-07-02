@@ -57,35 +57,58 @@ def _try_import_mcp():
         return None, _INSTALL_HINT
 
 
-def _fallback_mcp_group() -> click.Group:
-    """Hand-rolled `mcp` group used when scitex-dev's helper isn't present.
+def _run_unified_server() -> None:
+    """Run the ONE scitex-todo MCP server over stdio: it serves the card TOOLS
+    AND pushes this agent's digest (``notifications/claude/channel``).
 
-    Implements §3's required four (``start``, ``doctor``, ``list-tools``,
-    ``install``) plus ``install-fleet`` and the ``channel`` verb. Keeps
-    behavior parity with the scitex-dev helper so users see the same
-    surface either way.
+    This merges what used to be two servers — the FastMCP tool server
+    (``mcp start``) and the standalone channel server (``mcp channel``) — into a
+    single ``scitex-todo`` MCP integration (one ``.mcp.json`` entry). It reuses
+    FastMCP's underlying low-level server (``mcp._mcp_server``, which already
+    has every ``@mcp.tool()`` registered) and drives it with the channel
+    module's own-the-session serve loop so the poll loop can push.
+
+    The agent id is OPTIONAL: with ``$SCITEX_TODO_AGENT_ID`` set the digest is
+    pushed; without it the server still serves tools (push disabled) rather than
+    failing — the tools surface must work even with no identity configured.
+    """
+    import asyncio
+
+    from .._mcp_server import mcp  # FastMCP instance (tools registered)
+    from .. import _mcp_channel
+
+    agent_id = _mcp_channel.resolve_agent_id_optional(None)
+
+    asyncio.run(
+        _mcp_channel._run(
+            agent_id=agent_id,
+            source=_mcp_channel._resolve_source(None),
+            interval=_mcp_channel._resolve_interval(None),
+            server=mcp._mcp_server,
+        )
+    )
+
+
+def _attach_unified_start(group: click.Group) -> None:
+    """Register (or override) the ``start`` verb with the UNIFIED server.
+
+    ``add_command`` keyed by name replaces any existing ``start`` — so this
+    overrides the scitex-dev-provided ``start`` (which runs tools-only) with the
+    unified tools+push server on the default stdio path. ``--http`` keeps the
+    plain FastMCP transport (HTTP cannot carry the claude/channel push, so it is
+    tools-only by nature).
     """
 
-    @click.group(
-        "mcp",
-        help=(
-            "MCP server subcommands.\n\n"
-            "Required: start, doctor, list-tools, install (SciTeX §3)."
-        ),
-    )
-    def mcp_group() -> None:
-        pass
-
-    # ── start ─────────────────────────────────────────────────────────── #
-    @mcp_group.command(
+    @group.command(
         "start",
         help=(
-            "Launch the MCP server (stdio).\n\n"
-            "Example:\n  scitex-todo mcp start            # stdio (default)\n"
-            "  scitex-todo mcp start --http --port 7700"
+            "Launch the scitex-todo MCP server (stdio): serves the card tools "
+            "AND pushes this agent's digest.\n\n"
+            "Example:\n  scitex-todo mcp start            # stdio (tools + digest)\n"
+            "  scitex-todo mcp start --http --port 7700   # HTTP, tools only"
         ),
     )
-    @click.option("--http", is_flag=True, help="Use HTTP transport instead of stdio.")
+    @click.option("--http", is_flag=True, help="Use HTTP transport (tools only, no digest push).")
     @click.option("--host", default="127.0.0.1", show_default=True)
     @click.option("--port", type=int, default=0, help="HTTP port (0 = auto).")
     @click.option(
@@ -105,22 +128,45 @@ def _fallback_mcp_group() -> click.Group:
             transport = "http" if http else "stdio"
             click.echo(
                 f"# dry-run: would launch MCP server transport={transport} "
-                f"host={host} port={port or 'auto'}"
+                f"host={host} port={port or 'auto'} "
+                f"({'tools only' if http else 'tools + digest push'})"
             )
             return
         mcp_obj, hint = _try_import_mcp()
         if mcp_obj is None:
             raise click.ClickException(hint)
         if http:
-            # FastMCP's HTTP transport (sync wrapper); fall through to stdio
-            # if the helper isn't available on the installed fastmcp.
+            # HTTP transport can't carry the server-initiated claude/channel
+            # push; serve tools only via FastMCP's own runner.
             try:
                 mcp_obj.run(transport="http", host=host, port=port or None)
             except TypeError:
-                # Older fastmcp uses run_http(...)
                 mcp_obj.run_http(host=host, port=port or 0)
             return
-        mcp_obj.run()
+        _run_unified_server()
+
+
+def _fallback_mcp_group() -> click.Group:
+    """Hand-rolled `mcp` group used when scitex-dev's helper isn't present.
+
+    Implements §3's required four (``start``, ``doctor``, ``list-tools``,
+    ``install``) plus ``install-fleet`` and the ``channel`` verb. Keeps
+    behavior parity with the scitex-dev helper so users see the same
+    surface either way.
+    """
+
+    @click.group(
+        "mcp",
+        help=(
+            "MCP server subcommands.\n\n"
+            "Required: start, doctor, list-tools, install (SciTeX §3)."
+        ),
+    )
+    def mcp_group() -> None:
+        pass
+
+    # ── start (unified: tools + digest push) ─────────────────────────── #
+    _attach_unified_start(mcp_group)
 
     # ── doctor ────────────────────────────────────────────────────────── #
     @mcp_group.command(
@@ -225,8 +271,11 @@ def register(main: click.Group) -> None:
             pass
 
         attach_mcp_subcommands(mcp_group, server_path=_SERVER_PATH, cli_name=_CLI_NAME)
+        # Override scitex-dev's tools-only `start` with scitex-todo's UNIFIED
+        # server (tools + digest push) — one `scitex-todo` MCP integration.
+        _attach_unified_start(mcp_group)
         # scitex-todo's OWN channel verb has no scitex-dev parallel — wire it
-        # on regardless of which path built the group.
+        # on regardless of which path built the group (kept for back-compat).
         attach_channel_verb(mcp_group)
         main.add_command(mcp_group, name="mcp")
         return
