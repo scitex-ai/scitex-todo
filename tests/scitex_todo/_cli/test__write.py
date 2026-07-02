@@ -446,7 +446,7 @@ def test_done_exits_zero(tmp_path, env):
     runner = CliRunner()
     store = _store_path(tmp_path)
     runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store])
-    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:cli-test")
     # Act
     result = runner.invoke(main, ["done", "a", "--tasks", store])
     # Assert
@@ -458,7 +458,7 @@ def test_done_output_mentions_id(tmp_path, env):
     runner = CliRunner()
     store = _store_path(tmp_path)
     runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store])
-    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:cli-test")
     # Act
     result = runner.invoke(main, ["done", "a", "--tasks", store])
     # Assert
@@ -470,7 +470,7 @@ def test_done_persists_status(tmp_path, env):
     runner = CliRunner()
     store = _store_path(tmp_path)
     runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store])
-    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:cli-test")
     runner.invoke(main, ["done", "a", "--tasks", store])
     # Act
     on_disk = _model.load_tasks(store)[0]
@@ -483,7 +483,7 @@ def test_done_persists_completed_by(tmp_path, env):
     runner = CliRunner()
     store = _store_path(tmp_path)
     runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store])
-    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:cli-test")
     runner.invoke(main, ["done", "a", "--tasks", store])
     # Act
     on_disk = _model.load_tasks(store)[0]
@@ -496,7 +496,7 @@ def test_done_persists_completed_at_z_suffix(tmp_path, env):
     runner = CliRunner()
     store = _store_path(tmp_path)
     runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store])
-    env.set("SCITEX_TODO_AGENT", "agent:cli-test")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:cli-test")
     runner.invoke(main, ["done", "a", "--tasks", store])
     # Act
     on_disk = _model.load_tasks(store)[0]
@@ -509,7 +509,7 @@ def test_done_by_overrides_env_exits_zero(tmp_path, env):
     runner = CliRunner()
     store = _store_path(tmp_path)
     runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store])
-    env.set("SCITEX_TODO_AGENT", "agent:env")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:env")
     # Act
     result = runner.invoke(
         main, ["done", "a", "--tasks", store, "--by", "agent:explicit"]
@@ -523,7 +523,7 @@ def test_done_by_overrides_env_on_disk(tmp_path, env):
     runner = CliRunner()
     store = _store_path(tmp_path)
     runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store])
-    env.set("SCITEX_TODO_AGENT", "agent:env")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:env")
     runner.invoke(main, ["done", "a", "--tasks", store, "--by", "agent:explicit"])
     # Act
     on_disk = _model.load_tasks(store)[0]

@@ -14,7 +14,7 @@ The agent-facing convention these verbs honor (per
 - ``--scope LABEL`` / ``--assignee LABEL`` on read verbs respect
   ``$SCITEX_TODO_SCOPE`` as the default. Pass ``--scope ""`` to opt out.
 - ``--by NAME`` on ``done`` overrides the
-  ``$SCITEX_TODO_AGENT`` → ``$USER`` precedence chain.
+  ``$SCITEX_TODO_AGENT_ID`` → ``$USER`` precedence chain.
 
 The ``sync`` verb is a deliberate Phase-1 no-op stub (Req 2 substrate
 lands in Phase 2). The stable name + flag shape exist now so docs and
@@ -180,7 +180,7 @@ def _emit(payload, *, as_json: bool, human: str) -> None:
 @click.option("--repo", default=None, help="Repo association (free-form string).")
 @click.option(
     "--created-by", "created_by", default=None,  # hook-bypass: line-limit
-    help="Creating USER (agent/human). Absent => $SCITEX_TODO_AGENT -> $USER.",
+    help="Creating USER (agent/human). Absent => $SCITEX_TODO_AGENT_ID -> $USER.",
 )
 @click.option("--json", "as_json", is_flag=True, help="Emit the inserted task as JSON.")
 @click.option(
@@ -480,7 +480,7 @@ def update_cmd(
 @click.option(
     "--by",
     default=None,
-    help="Override completed_by (default: $SCITEX_TODO_AGENT, then $USER).",
+    help="Override completed_by (default: $SCITEX_TODO_AGENT_ID, then $USER).",
 )
 @click.option("--json", "as_json", is_flag=True)
 @_TASKS_OPTION

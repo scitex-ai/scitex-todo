@@ -222,7 +222,7 @@ scitex-todo list-tasks --kind status        # status-tracking only
 scitex-todo update todo-pYY --depends-on todo-pXX
 
 # Pick the next runnable task FOR THIS AGENT (single canonical rule).
-SCITEX_TODO_AGENT=proj-scitex-todo \
+SCITEX_TODO_AGENT_ID=proj-scitex-todo \
   scitex-todo next --mine --auto-claim --json
 
 # Push side — wake the owning agent on new/commented/changed tasks.
@@ -234,7 +234,7 @@ landed): `add_task`, `update_task`, `comment_task`, `list_tasks`,
 plus the upcoming `next` (P3d). Schema in
 [05_mcp-tools.md](05_mcp-tools.md).
 
-Attribution: every write tags the agent via `SCITEX_TODO_AGENT`
+Attribution: every write tags the agent via `SCITEX_TODO_AGENT_ID`
 (P3a env). A missing tag is a config bug — fix the agent's
 `to_home/.mcp.json` rather than committing under a wrong name.
 

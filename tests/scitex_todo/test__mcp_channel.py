@@ -255,25 +255,25 @@ def test_resolve_agent_id_explicit_arg():
 
 
 def test_resolve_agent_id_from_env(monkeypatch):
-    monkeypatch.setenv("SCITEX_TODO_AGENT", "env-agent")
+    monkeypatch.setenv("SCITEX_TODO_AGENT_ID", "env-agent")
     assert resolve_agent_id() == "env-agent"
 
 
 def test_resolve_agent_id_unresolved_raises(monkeypatch):
-    monkeypatch.delenv("SCITEX_TODO_AGENT", raising=False)
+    monkeypatch.delenv("SCITEX_TODO_AGENT_ID", raising=False)
     with pytest.raises(RuntimeError) as exc:
         resolve_agent_id()
-    assert "SCITEX_TODO_AGENT" in str(exc.value)
+    assert "SCITEX_TODO_AGENT_ID" in str(exc.value)
 
 
 def test_resolve_agent_id_unknown_sentinel_raises(monkeypatch):
-    monkeypatch.delenv("SCITEX_TODO_AGENT", raising=False)
+    monkeypatch.delenv("SCITEX_TODO_AGENT_ID", raising=False)
     with pytest.raises(RuntimeError):
         resolve_agent_id("unknown")
 
 
 def test_resolve_agent_id_blank_raises(monkeypatch):
-    monkeypatch.delenv("SCITEX_TODO_AGENT", raising=False)
+    monkeypatch.delenv("SCITEX_TODO_AGENT_ID", raising=False)
     with pytest.raises(RuntimeError):
         resolve_agent_id("   ")
 
@@ -282,21 +282,34 @@ def test_resolve_agent_id_unexpanded_placeholder_arg_raises(monkeypatch):
     # The launcher passed the literal text instead of expanding it — Claude
     # Code only expands the `${VAR}` brace form, never bare `$VAR`. Draining an
     # inbox keyed by that literal would silently deliver nothing, so fail loud.
-    monkeypatch.delenv("SCITEX_TODO_AGENT", raising=False)
+    monkeypatch.delenv("SCITEX_TODO_AGENT_ID", raising=False)
     with pytest.raises(RuntimeError) as exc:
-        resolve_agent_id("$SCITEX_TODO_AGENT")
+        resolve_agent_id("$SCITEX_TODO_AGENT_ID")
     assert "placeholder" in str(exc.value)
 
 
 def test_resolve_agent_id_unexpanded_placeholder_braces_arg_raises(monkeypatch):
-    monkeypatch.delenv("SCITEX_TODO_AGENT", raising=False)
+    monkeypatch.delenv("SCITEX_TODO_AGENT_ID", raising=False)
     with pytest.raises(RuntimeError):
-        resolve_agent_id("${SCITEX_TODO_AGENT}")
+        resolve_agent_id("${SCITEX_TODO_AGENT_ID}")
 
 
 def test_resolve_agent_id_unexpanded_placeholder_from_env_raises(monkeypatch):
-    monkeypatch.setenv("SCITEX_TODO_AGENT", "$SCITEX_TODO_AGENT")
+    monkeypatch.setenv("SCITEX_TODO_AGENT_ID", "$SCITEX_TODO_AGENT_ID")
     with pytest.raises(RuntimeError):
+        resolve_agent_id()
+
+
+def test_resolve_agent_id_deprecated_env_var_fails_loud(monkeypatch):
+    """The renamed-away $SCITEX_TODO_AGENT must never be silently honoured: if
+    it is still exported, resolution fails LOUD pointing at the new name so a
+    stale export can't quietly drain the wrong agent's inbox."""
+    # Arrange: a valid NEW-name id is present AND the deprecated old name is
+    # set — the guard must still fire (it never silently prefers the new one).
+    monkeypatch.setenv("SCITEX_TODO_AGENT_ID", "env-agent")
+    monkeypatch.setenv("SCITEX_TODO_AGENT", "legacy-agent")
+    # Act / Assert
+    with pytest.raises(RuntimeError, match="SCITEX_TODO_AGENT_ID"):
         resolve_agent_id()
 
 

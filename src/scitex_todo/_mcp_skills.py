@@ -80,7 +80,7 @@ async def reassign_task(
     Args:
       task_id: the card id.
       new_owner: the new owning agent.
-      by: the actor ($SCITEX_TODO_AGENT → $USER precedence).
+      by: the actor ($SCITEX_TODO_AGENT_ID → $USER precedence).
     """
     return json.dumps(_store.reassign_task(tasks_path, task_id, new_owner, by=by))
 

@@ -241,7 +241,7 @@ async def complete_task(
     """Mark a task done and stamp `_log_meta.completed_{at,by}`.
 
     Idempotent: re-completing a `done` task keeps the original stamp.
-    `by` overrides the $SCITEX_TODO_AGENT → $USER precedence.
+    `by` overrides the $SCITEX_TODO_AGENT_ID → $USER precedence.
     """
     done = _store.complete_task(tasks_path, task_id, by=by)
     return json.dumps(done)
@@ -364,7 +364,7 @@ async def comment_task(
 ) -> str:
     """Append an entry to a task's ``comments[]`` thread (the
     Gitea-compatible Issue-activity log). ``by`` overrides the default
-    author resolution ($SCITEX_TODO_AGENT → $USER).
+    author resolution ($SCITEX_TODO_AGENT_ID → $USER).
     """
     return json.dumps(_store.comment_task(tasks_path, task_id, text, by=by))
 

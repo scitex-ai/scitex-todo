@@ -30,14 +30,14 @@ def test_mcp_channel_help_describes_standalone_server():
     assert "--interval" in result.output
 
 
-def test_mcp_channel_unresolved_agent_fails_loud(monkeypatch):
+def test_mcp_channel_unresolved_agent_fails_loud(env):
     # No agent id in the env and none passed → fail loud (non-zero exit) with
     # an actionable hint, rather than draining an "unknown" inbox.
-    monkeypatch.delenv("SCITEX_TODO_AGENT", raising=False)
+    env.delete("SCITEX_TODO_AGENT_ID")
     runner = CliRunner()
     result = runner.invoke(main, ["mcp", "channel", "--interval", "0.01"])
     assert result.exit_code != 0
-    assert "SCITEX_TODO_AGENT" in result.output
+    assert "SCITEX_TODO_AGENT_ID" in result.output
 
 
 # EOF

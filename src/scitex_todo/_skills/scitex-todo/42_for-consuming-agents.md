@@ -328,7 +328,7 @@ scitex-todo done proj-scitex-todo-fleet-rollout --by proj-scitex-todo
 ```
 
 Stamps `_log_meta.completed_at` (UTC ISO-8601) + `completed_by` (the
-`--by` value, defaults to `$SCITEX_TODO_AGENT` then `$USER`).
+`--by` value, defaults to `$SCITEX_TODO_AGENT_ID` then `$USER`).
 Idempotent (re-doneing a `done` task keeps the original stamp).
 
 MCP: `complete_task`. Python: `scitex_todo.complete_task`.

@@ -302,10 +302,10 @@ def test_cli_runnable_exit_1_when_queue_empty(tmp_path: Path):
 
 
 def test_cli_runnable_mine_uses_env_agent(tmp_path: Path, env):
-    # Arrange — --mine reads $SCITEX_TODO_AGENT.
+    # Arrange — --mine reads $SCITEX_TODO_AGENT_ID.
     store = tmp_path / "tasks.yaml"
     add_task(store=store, id="t-a", title="x", agent="proj-scitex-todo")
-    env.set("SCITEX_TODO_AGENT", "proj-scitex-todo")
+    env.set("SCITEX_TODO_AGENT_ID", "proj-scitex-todo")
     runner = CliRunner()
     # Act
     result = runner.invoke(

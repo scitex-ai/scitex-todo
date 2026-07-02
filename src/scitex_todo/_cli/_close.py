@@ -53,7 +53,7 @@ from ._write import _TASKS_OPTION, _emit
 @click.option(
     "--by",
     default=None,
-    help="Override closed_by / comment.author (default: $SCITEX_TODO_AGENT, then $USER).",
+    help="Override closed_by / comment.author (default: $SCITEX_TODO_AGENT_ID, then $USER).",
 )
 @click.option("--json", "as_json", is_flag=True, help="Emit the close payload as JSON.")
 @click.option(

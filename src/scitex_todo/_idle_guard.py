@@ -34,7 +34,7 @@ engine + freshness campaign use (:func:`scitex_todo._stale_active.detect_stale_a
 Wiring (the fleet-wide enforcement)
 -----------------------------------
 Add a Stop hook to each agent's Claude settings so the guard runs whenever the
-agent tries to go idle (``SCITEX_TODO_AGENT`` + ``SCITEX_TODO_TASKS_YAML_SHARED`` are already
+agent tries to go idle (``SCITEX_TODO_AGENT_ID`` + ``SCITEX_TODO_TASKS_YAML_SHARED`` are already
 in the agent's env)::
 
     "hooks": {
@@ -67,7 +67,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 #: Env var naming the current agent (the owner whose claimed work we guard).
-ENV_AGENT = "SCITEX_TODO_AGENT"
+ENV_AGENT = "SCITEX_TODO_AGENT_ID"
 
 #: Cap on cards listed in the block reason (keep the message bounded).
 _REASON_CARD_CAP = 15

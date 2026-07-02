@@ -7,7 +7,7 @@ exists and is exported). Matches the surface shape of the sibling
 mutation verbs in ``_write.py`` (``add`` / ``update`` / ``done``):
 
   * positional ``TASK_ID`` + ``TEXT``
-  * ``--author`` overrides the ``$SCITEX_TODO_AGENT`` → ``$USER``
+  * ``--author`` overrides the ``$SCITEX_TODO_AGENT_ID`` → ``$USER``
     precedence chain (mirrors ``done --by``)
   * ``--json`` emits the structured ``{task_id, comment}`` payload
   * ``--dry-run`` prints the intended mutation and exits 0
@@ -28,7 +28,7 @@ from ._write import _TASKS_OPTION, _emit
     help=(
         "Append a comment entry to task.comments[] (Gitea-compatible shape).\n\n"
         "Wraps `_store.comment_task`. The timestamp is auto-stamped UTC by the\n"
-        "store; --author overrides $SCITEX_TODO_AGENT -> $USER precedence.\n\n"
+        "store; --author overrides $SCITEX_TODO_AGENT_ID -> $USER precedence.\n\n"
         "Example:\n"
         "  scitex-todo comment my-task 'investigating crash' "
         "--author agent:proj-scitex-todo"
@@ -39,7 +39,7 @@ from ._write import _TASKS_OPTION, _emit
 @click.option(
     "--author",
     default=None,
-    help="Override comment author (default: $SCITEX_TODO_AGENT, then $USER).",
+    help="Override comment author (default: $SCITEX_TODO_AGENT_ID, then $USER).",
 )
 @click.option("--json", "as_json", is_flag=True, help="Emit the comment payload as JSON.")
 @click.option(

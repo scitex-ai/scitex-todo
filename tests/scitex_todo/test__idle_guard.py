@@ -21,7 +21,7 @@ _NOW = _dt.datetime(2026, 6, 30, 12, 0, 0, tzinfo=_dt.timezone.utc)
 
 @pytest.fixture(autouse=True)
 def _hermetic_env(monkeypatch):
-    for var in ("SCITEX_TODO_STALE_ACTIVE_HOURS", "SCITEX_TODO_AGENT", "SCITEX_TODO_TASKS_YAML_SHARED"):
+    for var in ("SCITEX_TODO_STALE_ACTIVE_HOURS", "SCITEX_TODO_AGENT_ID", "SCITEX_TODO_TASKS_YAML_SHARED"):
         monkeypatch.delenv(var, raising=False)
 
 
@@ -113,7 +113,7 @@ def test_main_allows_with_exit_0(tmp_path, monkeypatch):
 
 def test_main_no_agent_allows(tmp_path, monkeypatch):
     _silence_stdin(monkeypatch)
-    # No --agent, no SCITEX_TODO_AGENT → cannot attribute work → allow stop.
+    # No --agent, no SCITEX_TODO_AGENT_ID → cannot attribute work → allow stop.
     assert _idle_guard.main([]) == 0
 
 
