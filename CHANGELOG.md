@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.31] - 2026-07-03 — one unified scitex-todo MCP server (tools + digest push)
+
+The turn-on release for fleet-wide notifications. Together with the 0.7.30
+env-var standardization, this is what the coordinated fleet flip deploys.
+
+### Changed
+
+- **One MCP server instead of two**: `scitex-todo mcp start` now runs a SINGLE
+  server that both serves the card tools AND pushes this agent's digest
+  (`notifications/claude/channel`). Previously the tools server (`mcp start`)
+  and the digest-push server (`mcp channel`) were separate, needing two
+  `.mcp.json` entries. Now one `scitex-todo` entry (`args: ["mcp", "start"]`)
+  does both — matching the one-server-per-project convention.
+  - It reuses FastMCP's underlying low-level server (which has every registered
+    tool) and declares the `claude/channel` capability alongside the tools
+    capability, so no tool behaviour changes.
+  - The agent id is optional: with `SCITEX_TODO_AGENT_ID` set, the digest is
+    pushed; without it, the server serves tools only (a loud warning, never a
+    hard failure on the tools surface).
+  - `--http` transport remains tools-only (HTTP cannot carry the push).
+  - The standalone `scitex-todo mcp channel` verb is retained for
+    back-compatibility.
+
 ## [0.7.30] - 2026-07-02 — env-var standardization for fleet-wide notification delivery
 
 Enables the per-agent channel-drain server to be wired fleet-wide (each agent
