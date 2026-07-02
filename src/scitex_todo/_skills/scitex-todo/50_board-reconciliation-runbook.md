@@ -69,7 +69,7 @@ The `close` verb landed in PR #151 (2026-06-13). It records the reason in `comme
 ```sh
 scitex-todo close <task-id> --reason "<short reason in imperative or past tense>"
 
-# With author override (default chain: $SCITEX_TODO_AGENT -> $USER):
+# With author override (default chain: $SCITEX_TODO_AGENT_ID -> $USER):
 scitex-todo close <task-id> --reason "<text>" --by <author>
 
 # Dry-run first (prints intent, does NOT mutate):
@@ -110,7 +110,7 @@ A complete sweep for ONE agent looks like:
 
 ```sh
 # 0) Snapshot current state (saves a copy you can diff against later).
-scitex-todo list-tasks --assignee $SCITEX_TODO_AGENT --json > /tmp/my-cards-before.json
+scitex-todo list-tasks --assignee $SCITEX_TODO_AGENT_ID --json > /tmp/my-cards-before.json
 
 # 1) For every recently-merged PR you owned: mark its card done with the PR pointer.
 scitex-todo update <card-id> --status done --pr-url <pr-url>
@@ -122,7 +122,7 @@ scitex-todo close <card-id> --reason "<short why>"
 scitex-todo comment <card-id> "<update>"
 
 # 4) Re-snapshot + diff to verify your sweep landed:
-scitex-todo list-tasks --assignee $SCITEX_TODO_AGENT --json > /tmp/my-cards-after.json
+scitex-todo list-tasks --assignee $SCITEX_TODO_AGENT_ID --json > /tmp/my-cards-after.json
 diff <(jq -S . /tmp/my-cards-before.json) <(jq -S . /tmp/my-cards-after.json) | head -200
 ```
 

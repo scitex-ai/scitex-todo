@@ -312,7 +312,7 @@ flags always override env vars; the full list of variables (with inline comments
 
 ```bash
 export SCITEX_TODO_TASKS_YAML_SHARED=/path/to/tasks.yaml   # override the store outright
-export SCITEX_TODO_AGENT='agent:<name>'        # this agent's identity (channel + author + last_seen)
+export SCITEX_TODO_AGENT_ID='agent:<name>'     # this agent's identity (channel + author + last_seen)
 export SCITEX_TODO_SCOPE='agent:<name>'        # default list/summary filter
 ```
 

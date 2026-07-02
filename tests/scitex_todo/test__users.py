@@ -461,7 +461,7 @@ def test_store_action_stamps_last_seen_on_actor(tmp_path, monkeypatch):
     # A store action (comment) by a REGISTERED actor stamps its last_seen.
     store = tmp_path / "tasks.yaml"
     _users.register_user(kind="agent", names=["actor-1"], store=store)
-    monkeypatch.setenv("SCITEX_TODO_AGENT", "actor-1")
+    monkeypatch.setenv("SCITEX_TODO_AGENT_ID", "actor-1")
     _store.add_task(store, id="t1", title="T", assignee="actor-1", created_by="actor-1")
     # created_by heartbeat already stamped; comment re-stamps.
     _store.comment_task(store, "t1", "hello", by="actor-1")

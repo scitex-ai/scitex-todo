@@ -86,7 +86,25 @@ ENV_SCOPE = "SCITEX_TODO_SCOPE"
 
 #: Env var name carrying the agent's identity. Used as the default
 #: `completed_by` when :func:`complete_task` doesn't get an explicit `by=`.
-ENV_AGENT = "SCITEX_TODO_AGENT"
+ENV_AGENT = "SCITEX_TODO_AGENT_ID"
+
+#: previous name of :data:`ENV_AGENT`. Renamed 2026-07-02. We fail LOUD (never
+#: silently honour it) if it is still set, so a stale export can't quietly
+#: mis-attribute a write — the operator must migrate to the new name.
+ENV_AGENT_DEPRECATED = "SCITEX_TODO_AGENT"
+
+
+def _reject_deprecated_agent_env() -> None:
+    """Fail loud if the old ``SCITEX_TODO_AGENT`` var is still set.
+
+    No silent fallback: a leftover export of the old name is a configuration
+    error the operator must fix, not something we quietly translate.
+    """
+    if os.environ.get(ENV_AGENT_DEPRECATED) is not None:
+        raise RuntimeError(
+            f"{ENV_AGENT_DEPRECATED} was renamed to {ENV_AGENT}; "
+            f"unset the old var (it is no longer honoured)."
+        )
 
 
 class TaskNotFoundError(KeyError):
@@ -126,7 +144,7 @@ def _default_scope(arg: str | None) -> str | None:
 def _default_agent(arg: str | None) -> str:
     """Resolve an ACTOR/AUTHOR — FAIL LOUD when it cannot be resolved.
 
-    Precedence: an explicit ``by=``/``actor`` arg → ``$SCITEX_TODO_AGENT``.
+    Precedence: an explicit ``by=``/``actor`` arg → ``$SCITEX_TODO_AGENT_ID``.
     Deliberately does NOT fall back to ``getpass.getuser()`` / ``"unknown"``
     (the former lenient chain): the operator mandate (constitution rule 2
     "fail fast and fail loud, NO silent fallbacks") requires completion /
@@ -150,7 +168,7 @@ def _default_agent(arg: str | None) -> str:
 def _resolve_creator_or_raise(arg: str | None) -> str:
     """Resolve a card CREATOR — FAIL LOUD when it cannot be resolved.
 
-    Precedence: an explicit ``created_by``/``by=`` arg → ``$SCITEX_TODO_AGENT``.
+    Precedence: an explicit ``created_by``/``by=`` arg → ``$SCITEX_TODO_AGENT_ID``.
     Deliberately does NOT fall back to ``getpass.getuser()`` / ``"unknown"``:
     the operator mandate (constitution rule 2 "fail fast and fail loud, NO
     silent fallbacks") requires a card to record a REAL creator, never a blank
@@ -161,14 +179,18 @@ def _resolve_creator_or_raise(arg: str | None) -> str:
 
     Raises
     ------
+    RuntimeError
+        When the deprecated ``$SCITEX_TODO_AGENT`` is still exported (renamed
+        away — see :func:`_reject_deprecated_agent_env`).
     TaskValidationError
         When the creator resolves to empty or the ``"unknown"`` sentinel,
         with an ACTIONABLE hint naming both fixes.
     """
+    _reject_deprecated_agent_env()
     resolved = (arg or os.environ.get(ENV_AGENT) or "").strip()
     if not resolved or resolved == "unknown":
         raise TaskValidationError(
-            "creator unresolved — set SCITEX_TODO_AGENT=<your-agent> or pass "
+            "creator unresolved — set SCITEX_TODO_AGENT_ID=<your-agent> or pass "
             "created_by=/by= (creator+assignee are mandatory; no silent "
             "fallback to a blank/'unknown' creator; see constitution)."
         )
@@ -543,7 +565,7 @@ def update_task(
                 entry_points=entry_points,
             )
     # Liveness (assignee-liveness feature). Heartbeat the acting agent
-    # (best-effort from $SCITEX_TODO_AGENT — update_task has no `by`, and we
+    # (best-effort from $SCITEX_TODO_AGENT_ID — update_task has no `by`, and we
     # deliberately reuse the SAME env identity seam rather than inventing a
     # second one; fail-soft so a missing env never breaks the update). When
     # this update SET an assignee/agent, surface that owner's liveness in the
@@ -572,7 +594,7 @@ def complete_task(
     Idempotent per ``GITIGNORED/QUESTIONS.md`` #3: re-completing a
     ``done`` task is a no-op (timestamps stay frozen from the first
     completion). Pass ``by=`` to override the
-    ``$SCITEX_TODO_AGENT`` → ``$USER`` → ``"unknown"`` precedence chain.
+    ``$SCITEX_TODO_AGENT_ID`` → ``$USER`` → ``"unknown"`` precedence chain.
 
     Returns the (post-mutation) task mapping.
 
@@ -1031,7 +1053,7 @@ def comment_task(
     """Append an entry to ``task.comments[]`` (the established Issue-
     activity-log shape from skill 30, Gitea-compatible field).
 
-    `by` overrides the $SCITEX_TODO_AGENT → $USER precedence used by
+    `by` overrides the $SCITEX_TODO_AGENT_ID → $USER precedence used by
     add_task / complete_task.
 
     `kind` is an optional feedback-ring / event tag (e.g. ``push`` /
@@ -1425,7 +1447,7 @@ def reassign_task(
         The new owning agent (required, non-empty).
     by : str, optional
         The actor performing the reassignment; resolved through the usual
-        ``$SCITEX_TODO_AGENT`` → ``$USER`` → ``"unknown"`` chain.
+        ``$SCITEX_TODO_AGENT_ID`` → ``$USER`` → ``"unknown"`` chain.
     entry_points : iterable, optional
         In-process injection seam forwarded to the event emit (real fake
         handler in tests); ``None`` uses real plugin discovery.

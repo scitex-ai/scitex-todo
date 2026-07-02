@@ -108,7 +108,7 @@ def test_create_rejects_get_with_405(store):
 def test_create_owns_card_and_stamps_creator(store, monkeypatch):
     # Fully-OWNED card + stamped creator: assignee set, agent in lock-step,
     # created_by defaulting to "operator" (the board's identity).
-    monkeypatch.delenv("SCITEX_TODO_AGENT", raising=False)
+    monkeypatch.delenv("SCITEX_TODO_AGENT_ID", raising=False)
     task = json.loads(
         _post("create", store, {"title": "Owned Card", "assignee": "bob"}).content
     )["task"]

@@ -45,7 +45,20 @@ logger = logging.getLogger(__name__)
 #: Env var carrying the agent identity — same key the rest of the package
 #: uses (``scitex_todo._store.ENV_AGENT``). Imported lazily in
 #: :func:`resolve_agent_id` to avoid a heavy import at module load.
-_ENV_AGENT = "SCITEX_TODO_AGENT"
+_ENV_AGENT = "SCITEX_TODO_AGENT_ID"
+
+#: previous name of :data:`_ENV_AGENT`. Renamed 2026-07-02. We fail LOUD
+#: (never silently honour it) if it is still set, so a stale export can't
+#: quietly drain the wrong agent's inbox — the operator must migrate.
+_ENV_AGENT_DEPRECATED = "SCITEX_TODO_AGENT"
+
+#: Env var overriding ``meta.source`` (the ``<- scitex-todo`` render name)
+#: when ``--name`` is not passed explicitly. Precedence: CLI > env > default.
+_ENV_SOURCE = "SCITEX_TODO_CHANNEL_SOURCE"
+
+#: Env var overriding the poll interval (seconds) when ``--interval`` is not
+#: passed explicitly. Precedence: CLI > env > default.
+_ENV_INTERVAL = "SCITEX_TODO_CHANNEL_INTERVAL"
 
 #: Default poll interval (seconds) between inbox drains.
 _DEFAULT_INTERVAL = 5.0
@@ -54,13 +67,26 @@ _DEFAULT_INTERVAL = 5.0
 _DEFAULT_SOURCE = "scitex-todo"
 
 
+def _reject_deprecated_agent_env() -> None:
+    """Fail loud if the old ``SCITEX_TODO_AGENT`` var is still set.
+
+    No silent fallback: a leftover export of the old name is a configuration
+    error the operator must fix, not something we quietly translate.
+    """
+    if os.environ.get(_ENV_AGENT_DEPRECATED) is not None:
+        raise RuntimeError(
+            f"{_ENV_AGENT_DEPRECATED} was renamed to {_ENV_AGENT}; "
+            f"unset the old var (it is no longer honoured)."
+        )
+
+
 # --------------------------------------------------------------------------- #
 # Pure logic (tested directly — no live MCP session needed)                   #
 # --------------------------------------------------------------------------- #
 def resolve_agent_id(arg: str | None = None) -> str:
     """Resolve the agent id; FAIL LOUD when unresolved.
 
-    Precedence: explicit ``arg`` → ``$SCITEX_TODO_AGENT``. Deliberately does
+    Precedence: explicit ``arg`` → ``$SCITEX_TODO_AGENT_ID``. Deliberately does
     NOT fall back to ``getpass.getuser()`` / ``"unknown"`` — a channel server
     that drains "unknown"'s inbox would silently deliver the wrong agent's
     notifications. The operator mandate (constitution rule 2 "fail fast and
@@ -69,19 +95,21 @@ def resolve_agent_id(arg: str | None = None) -> str:
     Raises
     ------
     RuntimeError
-        When the id resolves to empty, the ``"unknown"`` sentinel, or an
-        unexpanded ``$``-placeholder, with an ACTIONABLE hint.
+        When the deprecated ``$SCITEX_TODO_AGENT`` is still exported, or the
+        id resolves to empty, the ``"unknown"`` sentinel, or an unexpanded
+        ``$``-placeholder, with an ACTIONABLE hint.
     """
+    _reject_deprecated_agent_env()
     resolved = (arg or os.environ.get(_ENV_AGENT) or "").strip()
     if not resolved or resolved == "unknown":
         raise RuntimeError(
             "scitex-todo mcp channel: agent id unresolved — set "
-            "SCITEX_TODO_AGENT=<your-agent> or pass --agent <id>. The channel "
+            "SCITEX_TODO_AGENT_ID=<your-agent> or pass --agent <id>. The channel "
             "server must drain a REAL agent's inbox; no silent fallback to a "
             "blank/'unknown' id."
         )
-    # An id that still looks like an env placeholder (e.g. "$SCITEX_TODO_AGENT"
-    # or "${SCITEX_TODO_AGENT}") means the launcher passed the literal text
+    # An id that still looks like an env placeholder (e.g. "$SCITEX_TODO_AGENT_ID"
+    # or "${SCITEX_TODO_AGENT_ID}") means the launcher passed the literal text
     # instead of expanding it — Claude Code's .mcp.json only expands the
     # ``${VAR}`` (braces) form, never bare ``$VAR``. Draining an inbox keyed by
     # that literal silently delivers nothing; fail loud instead of polling a
@@ -91,8 +119,8 @@ def resolve_agent_id(arg: str | None = None) -> str:
             f"scitex-todo mcp channel: agent id is an unexpanded placeholder "
             f"({resolved!r}) — the launcher passed the literal text instead of "
             "the value. In .mcp.json use the brace form "
-            '"SCITEX_TODO_AGENT": "${SCITEX_TODO_AGENT}" (Claude Code does not '
-            'expand bare "$VAR"), or pass a literal --agent <id>.'
+            '"SCITEX_TODO_AGENT_ID": "${SCITEX_TODO_AGENT_ID}" (Claude Code does '
+            'not expand bare "$VAR"), or pass a literal --agent <id>.'
         )
     return resolved
 
@@ -323,19 +351,58 @@ async def _run(*, agent_id: str, source: str, interval: float) -> None:
         )
 
 
+def _resolve_source(name: str | None) -> str:
+    """Resolve ``meta.source``: explicit ``name`` → ``$SCITEX_TODO_CHANNEL_SOURCE``
+    → the built-in default. Fully env-configurable so the ``.mcp.json`` entry
+    needs zero config args."""
+    if name is not None:
+        return name
+    return os.environ.get(_ENV_SOURCE) or _DEFAULT_SOURCE
+
+
+def _resolve_interval(interval: float | None) -> float:
+    """Resolve the poll interval (seconds): explicit ``interval`` →
+    ``$SCITEX_TODO_CHANNEL_INTERVAL`` → the built-in default. A malformed env
+    value falls back to the default rather than crashing the server."""
+    if interval is not None:
+        return float(interval)
+    env_val = os.environ.get(_ENV_INTERVAL)
+    if env_val:
+        try:
+            return float(env_val)
+        except ValueError:
+            logger.warning(
+                "%s=%r is not a number; using default %s",
+                _ENV_INTERVAL,
+                env_val,
+                _DEFAULT_INTERVAL,
+            )
+    return _DEFAULT_INTERVAL
+
+
 def main(
-    name: str = _DEFAULT_SOURCE,
-    interval: float = _DEFAULT_INTERVAL,
+    name: str | None = None,
+    interval: float | None = None,
     agent: str | None = None,
 ) -> None:
     """CLI entry point — run the channel server in the foreground (stdio).
 
-    ``name`` sets ``meta.source`` (default ``"scitex-todo"``). ``agent``
-    overrides the agent id; otherwise it is resolved from
-    ``$SCITEX_TODO_AGENT`` (fail-loud when unresolved).
+    All three params are optional overrides; each falls back to an env var
+    then a built-in default so the ``.mcp.json`` entry can carry zero config
+    args (``args: ["mcp", "channel"]``). Precedence for every param is
+    explicit-value > env var > default:
+
+    * ``name`` sets ``meta.source`` — env ``$SCITEX_TODO_CHANNEL_SOURCE``,
+      default ``"scitex-todo"``.
+    * ``interval`` is the poll seconds — env ``$SCITEX_TODO_CHANNEL_INTERVAL``,
+      default ``5.0``.
+    * ``agent`` overrides the agent id; otherwise resolved from
+      ``$SCITEX_TODO_AGENT_ID`` (fail-loud when unresolved).
     """
     agent_id = resolve_agent_id(agent)
-    asyncio.run(_run(agent_id=agent_id, source=name, interval=float(interval)))
+    source = _resolve_source(name)
+    poll_interval = _resolve_interval(interval)
+    asyncio.run(_run(agent_id=agent_id, source=source, interval=poll_interval))
 
 
 __all__ = [

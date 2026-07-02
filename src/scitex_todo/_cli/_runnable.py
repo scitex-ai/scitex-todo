@@ -39,7 +39,7 @@ def register(main: click.Group) -> None:
         "  --agent <name>      Restrict to one agent's queue.\n"
         "  --group <G>         Restrict to dispatch cluster <G> (T1.1).\n"
         "                       Empty string ('') = ungrouped only.\n"
-        "  --mine              Same as --agent $SCITEX_TODO_AGENT.\n"
+        "  --mine              Same as --agent $SCITEX_TODO_AGENT_ID.\n"
         "\n"
         "Output:\n"
         "  Human: one row per task (id | pri | title | deadline).\n"
@@ -59,7 +59,7 @@ def register(main: click.Group) -> None:
 )
 @click.option(
     "--mine", "use_mine", is_flag=True,
-    help="Filter on $SCITEX_TODO_AGENT.",
+    help="Filter on $SCITEX_TODO_AGENT_ID.",
 )
 @click.option(
     "--group", default=None,
@@ -87,10 +87,10 @@ def runnable_cmd(
     if agent and use_mine:
         raise click.ClickException("Pass --agent OR --mine, not both.")
     if use_mine:
-        env = os.environ.get("SCITEX_TODO_AGENT")
+        env = os.environ.get("SCITEX_TODO_AGENT_ID")
         if not env:
             raise click.ClickException(
-                "--mine needs SCITEX_TODO_AGENT to be set in the env."
+                "--mine needs SCITEX_TODO_AGENT_ID to be set in the env."
             )
         agent = env
 
@@ -145,7 +145,7 @@ def runnable_cmd(
         "Filter:\n"
         "  --agent <name>      Restrict to one agent's queue.\n"
         "  --group <G>         Restrict to dispatch cluster <G> (T1.1).\n"
-        "  --mine              Same as --agent $SCITEX_TODO_AGENT.\n"
+        "  --mine              Same as --agent $SCITEX_TODO_AGENT_ID.\n"
         "\n"
         "Output:\n"
         "  Human: `id | reason | chain | title` per row + by-reason\n"
@@ -166,7 +166,7 @@ def runnable_cmd(
 )
 @click.option(
     "--mine", "use_mine", is_flag=True,
-    help="Filter on $SCITEX_TODO_AGENT.",
+    help="Filter on $SCITEX_TODO_AGENT_ID.",
 )
 @click.option(
     "--group", default=None,
@@ -191,10 +191,10 @@ def blocked_cmd(
     if agent and use_mine:
         raise click.ClickException("Pass --agent OR --mine, not both.")
     if use_mine:
-        env = os.environ.get("SCITEX_TODO_AGENT")
+        env = os.environ.get("SCITEX_TODO_AGENT_ID")
         if not env:
             raise click.ClickException(
-                "--mine needs SCITEX_TODO_AGENT to be set in the env."
+                "--mine needs SCITEX_TODO_AGENT_ID to be set in the env."
             )
         agent = env
 

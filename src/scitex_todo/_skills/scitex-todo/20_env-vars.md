@@ -12,6 +12,9 @@ tags: [scitex-todo-env-vars]
 | Name                | Default                      | Purpose                                              |
 |---------------------|------------------------------|------------------------------------------------------|
 | `SCITEX_TODO_TASKS_YAML_SHARED` | (unset)                      | Absolute path to the task store; wins over the project/user/bundled fallback (a `--tasks` flag still overrides it). |
+| `SCITEX_TODO_AGENT_ID` | (unset)                   | This agent's identity — stamps every write's `created_by`/`updated_by`, keys the channel inbox, and is the `--mine` filter. Fail-loud when unresolved. (Renamed 2026-07-02 from the now-rejected `SCITEX_TODO_AGENT`.) |
+| `SCITEX_TODO_CHANNEL_SOURCE` | `scitex-todo`       | `mcp channel` `meta.source` (drives the `<- scitex-todo` render). Overridden by `--name`. |
+| `SCITEX_TODO_CHANNEL_INTERVAL` | `5.0`             | `mcp channel` poll interval (seconds) between inbox drains. Overridden by `--interval`. |
 | `SCITEX_DIR`        | `~/.scitex`                  | Relocates the user-scope state root, so the user store becomes `$SCITEX_DIR/todo/tasks.yaml`. |
 
 Copy [`.env.example`](../../../../.env.example) to `.env` at your project root

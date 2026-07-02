@@ -403,7 +403,7 @@ def test_update_task_empty_id_typeerror(tmp_path):
 def test_complete_task_sets_status_done(tmp_path, env):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    env.set("SCITEX_TODO_AGENT", "agent:test")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:test")
     _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
     # Act
     done = _store.complete_task(store, "a")
@@ -414,7 +414,7 @@ def test_complete_task_sets_status_done(tmp_path, env):
 def test_complete_task_stamps_completed_by(tmp_path, env):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    env.set("SCITEX_TODO_AGENT", "agent:test")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:test")
     _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
     # Act
     done = _store.complete_task(store, "a")
@@ -425,7 +425,7 @@ def test_complete_task_stamps_completed_by(tmp_path, env):
 def test_complete_task_stamps_completed_at_z_suffix(tmp_path, env):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    env.set("SCITEX_TODO_AGENT", "agent:test")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:test")
     _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
     # Act
     done = _store.complete_task(store, "a")
@@ -436,7 +436,7 @@ def test_complete_task_stamps_completed_at_z_suffix(tmp_path, env):
 def test_complete_task_stamps_completed_at_iso_format(tmp_path, env):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    env.set("SCITEX_TODO_AGENT", "agent:test")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:test")
     _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
     # Act
     done = _store.complete_task(store, "a")
@@ -447,7 +447,7 @@ def test_complete_task_stamps_completed_at_iso_format(tmp_path, env):
 def test_complete_task_persists_completed_by(tmp_path, env):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    env.set("SCITEX_TODO_AGENT", "agent:test")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:test")
     _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
     done = _store.complete_task(store, "a")
     # Act
@@ -459,7 +459,7 @@ def test_complete_task_persists_completed_by(tmp_path, env):
 def test_complete_task_persists_completed_at(tmp_path, env):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    env.set("SCITEX_TODO_AGENT", "agent:test")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:test")
     _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
     done = _store.complete_task(store, "a")
     stamp = done["_log_meta"]["completed_at"]
@@ -472,7 +472,7 @@ def test_complete_task_persists_completed_at(tmp_path, env):
 def test_complete_task_explicit_by_overrides_env(tmp_path, env):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    env.set("SCITEX_TODO_AGENT", "agent:env")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:env")
     _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
     # Act
     done = _store.complete_task(store, "a", by="agent:cli")
@@ -483,10 +483,10 @@ def test_complete_task_explicit_by_overrides_env(tmp_path, env):
 def test_complete_task_is_idempotent_timestamp(tmp_path, env):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    env.set("SCITEX_TODO_AGENT", "agent:first")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:first")
     _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
     first = _store.complete_task(store, "a")
-    env.set("SCITEX_TODO_AGENT", "agent:second")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:second")
     # Act
     second = _store.complete_task(store, "a")
     # Assert
@@ -496,10 +496,10 @@ def test_complete_task_is_idempotent_timestamp(tmp_path, env):
 def test_complete_task_is_idempotent_preserves_original_by(tmp_path, env):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    env.set("SCITEX_TODO_AGENT", "agent:first")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:first")
     _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
     _store.complete_task(store, "a")
-    env.set("SCITEX_TODO_AGENT", "agent:second")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:second")
     # Act
     second = _store.complete_task(store, "a")
     # Assert
@@ -1003,10 +1003,10 @@ def test_add_task_stores_created_by_explicit(tmp_path):
 
 
 def test_add_task_defaults_created_by_from_env(tmp_path, env):
-    # Arrange — no explicit author; resolves from $SCITEX_TODO_AGENT, the
+    # Arrange — no explicit author; resolves from $SCITEX_TODO_AGENT_ID, the
     # same chain comment authorship uses.
     store = tmp_path / "tasks.yaml"
-    env.set("SCITEX_TODO_AGENT", "agent:fromenv")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:fromenv")
     # Act
     inserted = _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
     # Assert
