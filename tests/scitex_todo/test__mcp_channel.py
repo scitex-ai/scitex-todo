@@ -22,6 +22,7 @@ from scitex_todo._mcp_channel import (
     drain_once,
     recipient_keys,
     resolve_agent_id,
+    resolve_agent_id_optional,
 )
 from scitex_todo._users import register_user
 
@@ -311,6 +312,57 @@ def test_resolve_agent_id_deprecated_env_var_fails_loud(monkeypatch):
     # Act / Assert
     with pytest.raises(RuntimeError, match="SCITEX_TODO_AGENT_ID"):
         resolve_agent_id()
+
+
+# === resolve_agent_id_optional — the unified server's tools-only fallback =====
+
+
+def test_resolve_agent_id_optional_returns_id_when_set(monkeypatch):
+    """With an identity, the unified server enables the digest push."""
+    monkeypatch.setenv("SCITEX_TODO_AGENT_ID", "env-agent")
+    assert resolve_agent_id_optional() == "env-agent"
+
+
+def test_resolve_agent_id_optional_returns_none_when_unset(monkeypatch):
+    """No identity ⇒ the unified server serves tools ONLY (push disabled).
+    It must NOT raise — the tools surface has to work without an agent id."""
+    monkeypatch.delenv("SCITEX_TODO_AGENT_ID", raising=False)
+    assert resolve_agent_id_optional() is None
+
+
+def test_resolve_agent_id_optional_none_on_deprecated_env(monkeypatch):
+    """The deprecated $SCITEX_TODO_AGENT makes resolve fail loud; the optional
+    variant swallows it to None (tools-only) rather than crashing the server —
+    but the loud warning still surfaces the misconfiguration."""
+    monkeypatch.delenv("SCITEX_TODO_AGENT_ID", raising=False)
+    monkeypatch.setenv("SCITEX_TODO_AGENT", "legacy-agent")
+    assert resolve_agent_id_optional() is None
+
+
+# === unified server: one scitex-todo serves tools AND declares the channel ====
+
+
+def test_unified_server_keeps_tools_and_adds_channel_capability():
+    """The unified `mcp start` runs FastMCP's underlying low-level server (which
+    has the card tools) with the `claude/channel` capability added — so ONE
+    server both serves tools AND pushes the digest. Adding the channel capability
+    must NOT drop the tools capability."""
+    fastmcp = pytest.importorskip("fastmcp")  # noqa: F841
+    from scitex_todo._mcp_server import mcp
+
+    opts = mcp._mcp_server.create_initialization_options(
+        experimental_capabilities={"claude/channel": {}}
+    )
+    assert opts.capabilities.tools is not None, "tools capability was dropped"
+    assert opts.capabilities.experimental == {"claude/channel": {}}
+
+
+def test_unified_start_wiring_present():
+    """`scitex-todo mcp start` is wired to the unified server (tools + push)."""
+    from scitex_todo._cli import _mcp
+
+    assert hasattr(_mcp, "_run_unified_server")
+    assert hasattr(_mcp, "_attach_unified_start")
 
 
 # EOF

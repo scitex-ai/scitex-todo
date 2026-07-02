@@ -125,6 +125,23 @@ def resolve_agent_id(arg: str | None = None) -> str:
     return resolved
 
 
+def resolve_agent_id_optional(arg: str | None = None) -> str | None:
+    """Like :func:`resolve_agent_id` but returns ``None`` instead of raising.
+
+    For the UNIFIED server (``scitex-todo mcp start``): when no identity is
+    configured we still serve the card tools — only the digest push is disabled.
+    A resolvable id enables the push; an unresolved one logs a loud warning and
+    returns ``None`` so the caller runs tools-only rather than dying.
+    """
+    try:
+        return resolve_agent_id(arg)
+    except Exception as exc:  # noqa: BLE001 — absence ⇒ tools-only, not fatal
+        logger.warning(
+            "scitex-todo mcp: %s — serving tools only, digest push disabled.", exc
+        )
+        return None
+
+
 def build_channel_params(rec: dict[str, Any], *, source: str = _DEFAULT_SOURCE) -> dict[str, Any]:
     """Project an inbox record onto the Claude channel notification shape.
 
@@ -269,17 +286,25 @@ async def _serve(
     read_stream: Any,
     write_stream: Any,
     *,
-    agent_id: str,
+    agent_id: str | None,
     source: str,
     interval: float,
+    server: Any | None = None,
 ) -> None:
-    """Drive the MCP session AND the inbox poll loop over the given streams.
+    """Drive the MCP session AND (when an agent id is known) the inbox poll loop.
 
     We deliberately do NOT call ``Server.run``: it constructs its
     ``ServerSession`` internally and never exposes it, so the poll loop would
     have no session handle to push ``notifications/claude/channel`` through.
     Owning the session here is the supported way to send server-initiated
     notifications with the low-level API.
+
+    ``server`` lets a caller pass an EXISTING low-level server that already has
+    tool handlers registered (e.g. FastMCP's ``mcp._mcp_server``) so ONE server
+    serves tools AND pushes the digest — the unified ``scitex-todo mcp start``.
+    When omitted, a bare push-only server is created (the standalone
+    ``mcp channel``). ``agent_id`` may be ``None`` (tools-only, no push) so the
+    tools surface still works when no identity is configured.
     """
     from contextlib import AsyncExitStack
 
@@ -289,7 +314,8 @@ async def _serve(
     from mcp.shared.message import SessionMessage
     from mcp.types import JSONRPCMessage, JSONRPCNotification
 
-    server: Server = Server(name=f"scitex-todo-channel-{agent_id}")
+    if server is None:
+        server = Server(name=f"scitex-todo-channel-{agent_id}")
 
     async with AsyncExitStack() as stack:
         lifespan_context = await stack.enter_async_context(server.lifespan(server))
@@ -320,9 +346,13 @@ async def _serve(
                 )
             )
 
-        poll_task: asyncio.Task[None] = asyncio.create_task(
-            _poll_loop(agent_id, _send, interval=interval, source=source)
-        )
+        # Only run the drain→push loop when we know whose inbox to drain. With
+        # no agent id we still serve tools (the loop is simply not started).
+        poll_task: asyncio.Task[None] | None = None
+        if agent_id:
+            poll_task = asyncio.create_task(
+                _poll_loop(agent_id, _send, interval=interval, source=source)
+            )
 
         try:
             async with anyio.create_task_group() as tg:
@@ -335,10 +365,17 @@ async def _serve(
                         False,
                     )
         finally:
-            poll_task.cancel()
+            if poll_task is not None:
+                poll_task.cancel()
 
 
-async def _run(*, agent_id: str, source: str, interval: float) -> None:
+async def _run(
+    *,
+    agent_id: str | None,
+    source: str,
+    interval: float,
+    server: Any | None = None,
+) -> None:
     from mcp.server.stdio import stdio_server
 
     async with stdio_server() as (read_stream, write_stream):
@@ -348,6 +385,7 @@ async def _run(*, agent_id: str, source: str, interval: float) -> None:
             agent_id=agent_id,
             source=source,
             interval=interval,
+            server=server,
         )
 
 
@@ -411,6 +449,7 @@ __all__ = [
     "main",
     "recipient_keys",
     "resolve_agent_id",
+    "resolve_agent_id_optional",
 ]
 
 # EOF
