@@ -78,7 +78,7 @@ def attach_install_verbs(mcp_group: click.Group) -> None:
         type=str,
         default=None,
         help=(
-            "Pin SCITEX_TODO_TASKS in the snippet's `env` block — the MCP\n"
+            "Pin SCITEX_TODO_TASKS_YAML_SHARED in the snippet's `env` block — the MCP\n"
             "subprocess uses this path as the task-store via the normal\n"
             "resolution chain (explicit env > project > user > example).\n"
             "Fleet P3a use case: when this CLI is run by agent-container\n"
@@ -112,13 +112,13 @@ def attach_install_verbs(mcp_group: click.Group) -> None:
         }
         # P3a host-store wire-up: when an explicit task-store path is
         # provided, pin it in the MCP entry's `env` block. The MCP server
-        # subprocess picks up SCITEX_TODO_TASKS via the normal resolution
+        # subprocess picks up SCITEX_TODO_TASKS_YAML_SHARED via the normal resolution
         # chain (env beats project/user scopes), so a containerized agent
         # ends up reading the shared host store regardless of its $HOME or
         # symlink state. Keeping this OPT-IN preserves back-compat with
         # the existing snippet shape.
         if env_tasks_path:
-            entry["env"] = {"SCITEX_TODO_TASKS": env_tasks_path}
+            entry["env"] = {"SCITEX_TODO_TASKS_YAML_SHARED": env_tasks_path}
         snippet = {"mcpServers": {_CLI_NAME: entry}}
 
         if not do_apply:
@@ -223,7 +223,7 @@ def attach_install_verbs(mcp_group: click.Group) -> None:
         "env_tasks_path",
         type=str,
         default=None,
-        help="Pin SCITEX_TODO_TASKS in every emitted entry's env block.",
+        help="Pin SCITEX_TODO_TASKS_YAML_SHARED in every emitted entry's env block.",
     )
     @click.option(
         "--dry-run", is_flag=True, help="Print planned per-agent action; no writes."
@@ -238,7 +238,7 @@ def attach_install_verbs(mcp_group: click.Group) -> None:
             )
         entry: dict = {"command": _CLI_NAME, "args": ["mcp", "start"]}
         if env_tasks_path:
-            entry["env"] = {"SCITEX_TODO_TASKS": env_tasks_path}
+            entry["env"] = {"SCITEX_TODO_TASKS_YAML_SHARED": env_tasks_path}
 
         agent_count = applied = noop = 0
         errors: list[str] = []

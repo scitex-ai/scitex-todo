@@ -34,7 +34,7 @@ engine + freshness campaign use (:func:`scitex_todo._stale_active.detect_stale_a
 Wiring (the fleet-wide enforcement)
 -----------------------------------
 Add a Stop hook to each agent's Claude settings so the guard runs whenever the
-agent tries to go idle (``SCITEX_TODO_AGENT`` + ``SCITEX_TODO_TASKS`` are already
+agent tries to go idle (``SCITEX_TODO_AGENT`` + ``SCITEX_TODO_TASKS_YAML_SHARED`` are already
 in the agent's env)::
 
     "hooks": {
@@ -133,7 +133,7 @@ def evaluate(
     from ._paths import resolve_tasks_path
 
     # Resolve BEFORE load: load_tasks(None) trips on Path(None); the precedence
-    # chain ($SCITEX_TODO_TASKS → project → user) yields a concrete path.
+    # chain ($SCITEX_TODO_TASKS_YAML_SHARED → project → user) yields a concrete path.
     tasks = load_tasks(resolve_tasks_path(store))
     cards = stale_in_progress(agent, tasks, now=now, stale_hours=stale_hours)
     if not cards:
@@ -145,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
     """Stop-hook entry point. Exit 2 (block) when claimed work is abandoned, else 0.
 
     Resolves the agent from ``--agent`` or :data:`ENV_AGENT`; reads the store from
-    the standard precedence (``$SCITEX_TODO_TASKS`` …). Reads — but does not
+    the standard precedence (``$SCITEX_TODO_TASKS_YAML_SHARED`` …). Reads — but does not
     require — the Stop-hook JSON on stdin. Fail-soft: any error allows the stop.
     """
     argv = list(sys.argv[1:] if argv is None else argv)

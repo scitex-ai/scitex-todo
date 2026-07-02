@@ -730,7 +730,7 @@ def test_where_exits_zero(tmp_path, env):
     runner = CliRunner()
     store = _store_path(tmp_path)
     Path(store).write_text("tasks: []\n", encoding="utf-8")
-    env.delete("SCITEX_TODO_TASKS")
+    env.delete("SCITEX_TODO_TASKS_YAML_SHARED")
     # Act
     result = runner.invoke(main, ["resolve-store", "--tasks", store, "--json"])
     # Assert
@@ -742,7 +742,7 @@ def test_where_resolved_path(tmp_path, env):
     runner = CliRunner()
     store = _store_path(tmp_path)
     Path(store).write_text("tasks: []\n", encoding="utf-8")
-    env.delete("SCITEX_TODO_TASKS")
+    env.delete("SCITEX_TODO_TASKS_YAML_SHARED")
     result = runner.invoke(main, ["resolve-store", "--tasks", store, "--json"])
     # Act
     info = json.loads(result.output.strip())
@@ -755,7 +755,7 @@ def test_where_exists_true(tmp_path, env):
     runner = CliRunner()
     store = _store_path(tmp_path)
     Path(store).write_text("tasks: []\n", encoding="utf-8")
-    env.delete("SCITEX_TODO_TASKS")
+    env.delete("SCITEX_TODO_TASKS_YAML_SHARED")
     result = runner.invoke(main, ["resolve-store", "--tasks", store, "--json"])
     # Act
     info = json.loads(result.output.strip())

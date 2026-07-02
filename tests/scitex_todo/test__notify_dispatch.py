@@ -336,7 +336,7 @@ def test_emit_stays_non_raising_and_does_not_call_deliver_fn(tmp_path, env):
     store = _store(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
     add_task(store=store, id="c1", title="x", agent="alice")
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
 
     rec = _ExplodingDeliver()
     summary = dispatch_notifications(
@@ -360,7 +360,7 @@ def test_dispatch_event_runs_builtin_notify_for_card_event(tmp_path, env):
     store = _store(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
     add_task(store=store, id="c1", title="x", agent="alice")
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
 
     envelope = Event(
         type=EventType.REASSIGNED, card_id="c1", actor="bob"
@@ -383,7 +383,7 @@ def test_dispatch_event_card_event_with_no_recipients_is_clean(tmp_path, env):
     store = _store(tmp_path)
     register_user(kind="agent", names=["alice"], store=store)
     add_task(store=store, id="c1", title="x", agent="alice")
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
 
     envelope = Event(
         type=EventType.MERGED, card_id="c1", actor="bob", repo="o/r"
@@ -405,7 +405,7 @@ def test_emit_reassigned_reaches_recorder_via_real_dispatch(tmp_path, env):
     store = _store(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
     add_task(store=store, id="c1", title="x", agent="alice")
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     env.set("SCITEX_TODO_PUSH_DRY_RUN", "1")
 
     # emit() is non-raising AND now RETURNS the dispatch summary (additive —

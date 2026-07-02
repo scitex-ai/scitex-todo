@@ -88,7 +88,7 @@ The store is resolved by the precedence chain (first existing wins), from `scite
 | Precedence | Source | Path |
 |---|---|---|
 | 1 | explicit `--tasks` flag / function arg | any path (wins even if missing) |
-| 2 | `$SCITEX_TODO_TASKS` | any path |
+| 2 | `$SCITEX_TODO_TASKS_YAML_SHARED` | any path |
 | 3 | project scope | `<git-root>/.scitex/todo/tasks.yaml` |
 | 4 | user scope (the shared-fleet default) | `$SCITEX_DIR/todo/tasks.yaml` (default `~/.scitex/todo`) |
 | 5 | bundled generic example | `scitex_todo/examples/tasks.yaml` |
@@ -275,7 +275,7 @@ rows = todo.list_tasks(None, status="in_progress")
 From the shell:
 
 ```bash
-# default store: project -> user -> bundled example (or $SCITEX_TODO_TASKS)
+# default store: project -> user -> bundled example (or $SCITEX_TODO_TASKS_YAML_SHARED)
 scitex-todo render-graph -o tasks.png     # YAML -> dependency PNG
 scitex-todo render-graph --print-mermaid  # inspect the mermaid without rendering
 scitex-todo list-tasks --json             # resolved tasks, machine-readable
@@ -311,7 +311,7 @@ flags always override env vars; the full list of variables (with inline comments
 `.env.example`. Notable ones for the fleet slice:
 
 ```bash
-export SCITEX_TODO_TASKS=/path/to/tasks.yaml   # override the store outright
+export SCITEX_TODO_TASKS_YAML_SHARED=/path/to/tasks.yaml   # override the store outright
 export SCITEX_TODO_AGENT='agent:<name>'        # this agent's identity (channel + author + last_seen)
 export SCITEX_TODO_SCOPE='agent:<name>'        # default list/summary filter
 ```

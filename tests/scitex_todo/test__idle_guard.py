@@ -21,7 +21,7 @@ _NOW = _dt.datetime(2026, 6, 30, 12, 0, 0, tzinfo=_dt.timezone.utc)
 
 @pytest.fixture(autouse=True)
 def _hermetic_env(monkeypatch):
-    for var in ("SCITEX_TODO_STALE_ACTIVE_HOURS", "SCITEX_TODO_AGENT", "SCITEX_TODO_TASKS"):
+    for var in ("SCITEX_TODO_STALE_ACTIVE_HOURS", "SCITEX_TODO_AGENT", "SCITEX_TODO_TASKS_YAML_SHARED"):
         monkeypatch.delenv(var, raising=False)
 
 
@@ -89,7 +89,7 @@ def _silence_stdin(monkeypatch):
 
 def test_main_blocks_with_exit_2(tmp_path, monkeypatch, capsys):
     store = _store(tmp_path, [_t(id="c1", owner="alice", status="in_progress", hours_ago=10)])
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
+    monkeypatch.setenv("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     monkeypatch.setenv("SCITEX_TODO_STALE_ACTIVE_HOURS", "2")
     _silence_stdin(monkeypatch)
 
@@ -105,7 +105,7 @@ def test_main_allows_with_exit_0(tmp_path, monkeypatch):
     # the real `now`, so an in_progress fixture anchored to a fixed past time
     # would flake once it aged past the stale threshold).
     store = _store(tmp_path, [_t(id="pend", owner="alice", status="pending", hours_ago=99)])
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
+    monkeypatch.setenv("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     _silence_stdin(monkeypatch)
 
     assert _idle_guard.main(["--agent", "alice"]) == 0
@@ -119,7 +119,7 @@ def test_main_no_agent_allows(tmp_path, monkeypatch):
 
 def test_main_failsoft_allows_on_error(monkeypatch):
     # A broken store path makes load_tasks raise; the guard must NOT trap (exit 0).
-    monkeypatch.setenv("SCITEX_TODO_TASKS", "/no/such/dir/tasks.yaml")
+    monkeypatch.setenv("SCITEX_TODO_TASKS_YAML_SHARED", "/no/such/dir/tasks.yaml")
     _silence_stdin(monkeypatch)
     assert _idle_guard.main(["--agent", "alice"]) == 0
 

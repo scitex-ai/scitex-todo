@@ -42,7 +42,7 @@ mcp = FastMCP(
         "Use list_tasks with a `scope` arg (e.g. "
         "'agent:proj-scitex-todo') to see only your slice. The canonical "
         "store lives at ~/.scitex/todo/tasks.yaml; precedence is "
-        "explicit > $SCITEX_TODO_TASKS > project (<git-root>/.scitex/todo) > "
+        "explicit > $SCITEX_TODO_TASKS_YAML_SHARED > project (<git-root>/.scitex/todo) > "
         "user (~/.scitex/todo) > bundled example."
     ),
 )

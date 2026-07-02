@@ -158,7 +158,7 @@ def board_group(ctx: click.Context) -> None:
     "tasks_path",
     default=None,
     help="Path to tasks.yaml (default: project -> user -> bundled, "
-    "or $SCITEX_TODO_TASKS).",
+    "or $SCITEX_TODO_TASKS_YAML_SHARED).",
 )
 @click.option(
     "--port",

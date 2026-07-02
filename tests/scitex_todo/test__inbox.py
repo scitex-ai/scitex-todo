@@ -274,7 +274,7 @@ def test_dispatch_via_bus_carries_enqueued_and_emit_non_raising(tmp_path, env):
     store = _store(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
     add_task(store=store, id="c1", title="x", agent="alice", created_by="alice")
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     env.set("SCITEX_TODO_PUSH_DRY_RUN", "1")
 
     envelope = Event(type=EventType.REASSIGNED, card_id="c1", actor="bob").to_dict()

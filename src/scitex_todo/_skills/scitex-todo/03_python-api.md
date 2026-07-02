@@ -58,7 +58,7 @@ raise `RenderError`.
 ### `resolve_tasks_path(explicit=None) -> Path`
 
 Returns the first existing store in precedence order (explicit →
-`$SCITEX_TODO_TASKS` → project → user → bundled). `bundled_example()` returns
+`$SCITEX_TODO_TASKS_YAML_SHARED` → project → user → bundled). `bundled_example()` returns
 the path to the generic example shipped in the wheel.
 
 ## Constants and exceptions

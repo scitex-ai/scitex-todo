@@ -4,7 +4,7 @@
 
 Wraps :mod:`scitex_todo._store` (the Python API). Each verb is a thin
 click command that resolves the store path through the usual precedence
-chain (CLI ``--tasks`` → ``$SCITEX_TODO_TASKS`` → project → user →
+chain (CLI ``--tasks`` → ``$SCITEX_TODO_TASKS_YAML_SHARED`` → project → user →
 bundled example), forwards keyword args, and prints either a human-
 readable line or JSON via ``--json``.
 
@@ -39,7 +39,7 @@ _TASKS_OPTION = click.option(
     "tasks_path",
     default=None,
     help="Path to tasks.yaml (default: project -> user -> bundled example, "
-    "or $SCITEX_TODO_TASKS).",
+    "or $SCITEX_TODO_TASKS_YAML_SHARED).",
 )
 
 # Closed-enum CLI validation (fail-fast at click-parse time) — mirrors

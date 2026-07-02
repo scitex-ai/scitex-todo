@@ -3,7 +3,7 @@
 """Django view tests for ``GET /fleet/timing``.
 
 No mocks (STX-NM/PA-306). Drives the view via Django's RequestFactory
-against a real on-disk task store pinned through ``SCITEX_TODO_TASKS``,
+against a real on-disk task store pinned through ``SCITEX_TODO_TASKS_YAML_SHARED``,
 following the same pattern as ``test__timeline_view.py``.
 
 Contract pinned here:
@@ -47,7 +47,7 @@ def _now_minus(minutes: float) -> str:
 def store_with_done_task(tmp_path: Path, env) -> Path:
     """Seed a tmp store with one done task carrying a full ``_log_meta``
     set so the timing compute has something to aggregate. Pinned via
-    ``SCITEX_TODO_TASKS`` so the view's ``resolve_tasks_path(None)``
+    ``SCITEX_TODO_TASKS_YAML_SHARED`` so the view's ``resolve_tasks_path(None)``
     picks it up."""
     store = tmp_path / "tasks.yaml"
     # add_task's **extras pathway accepts arbitrary keys; the writer
@@ -68,7 +68,7 @@ def store_with_done_task(tmp_path: Path, env) -> Path:
             "completed_by": "agent-alpha",
         },
     )
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     return store
 
 

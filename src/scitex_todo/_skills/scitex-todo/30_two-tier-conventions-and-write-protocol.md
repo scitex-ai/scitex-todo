@@ -147,7 +147,7 @@ Follows the SciTeX local-state-directories ecosystem convention
 
 ```
 resolve_tasks_path(): highest precedence wins
-  1. $SCITEX_TODO_TASKS env var (if set)
+  1. $SCITEX_TODO_TASKS_YAML_SHARED env var (if set)
   2. <git-root>/.scitex/todo/tasks.yaml (project tier, if exists)
   3. $SCITEX_DIR/todo/tasks.yaml  (default ~/.scitex/todo/tasks.yaml,
      global tier)

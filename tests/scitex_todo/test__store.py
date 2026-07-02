@@ -978,7 +978,7 @@ def test_two_concurrent_writers_serialize_via_flock(tmp_path):
 def test_explicit_store_path_wins(tmp_path, env):
     # Arrange
     other = tmp_path / "elsewhere.yaml"
-    env.set("SCITEX_TODO_TASKS", str(tmp_path / "envdefault.yaml"))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(tmp_path / "envdefault.yaml"))
     _store.add_task(other, id="here", title="Here", assignee="agent:test-suite")
     # Act
     on_disk = _model.load_tasks(other)

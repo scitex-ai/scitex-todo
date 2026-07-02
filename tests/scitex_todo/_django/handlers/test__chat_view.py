@@ -35,7 +35,7 @@ from scitex_todo._store import add_task, comment_task
 @pytest.fixture()
 def store_with_chat_task(tmp_path: Path, env) -> Path:
     """Seed a tmp store with one task that already carries one comment,
-    pinned via ``SCITEX_TODO_TASKS`` so the view's ``resolve_tasks_path(None)``
+    pinned via ``SCITEX_TODO_TASKS_YAML_SHARED`` so the view's ``resolve_tasks_path(None)``
     picks it up.
 
     The pre-existing comment exercises the GET shape; the empty
@@ -61,7 +61,7 @@ def store_with_chat_task(tmp_path: Path, env) -> Path:
         text="hello from agent-a",
         by="agent-a",
     )
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     return store
 
 

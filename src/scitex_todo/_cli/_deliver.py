@@ -42,7 +42,7 @@ def register(main: click.Group) -> None:
     "tasks_path",
     default=None,
     help="Path to tasks.yaml (default: project -> user -> bundled example, "
-    "or $SCITEX_TODO_TASKS). Resolves the inbox + ledger + recipients dir.",
+    "or $SCITEX_TODO_TASKS_YAML_SHARED). Resolves the inbox + ledger + recipients dir.",
 )
 @click.option(
     "--json",

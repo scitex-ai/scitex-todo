@@ -39,7 +39,7 @@ from scitex_todo._store import add_task, complete_task
 @pytest.fixture()
 def store_with_timeline_tasks(tmp_path: Path, env) -> Path:
     """Seed a tmp store with one in-window + one out-of-window task plus
-    a depends_on edge. Pinned via ``SCITEX_TODO_TASKS`` so the view's
+    a depends_on edge. Pinned via ``SCITEX_TODO_TASKS_YAML_SHARED`` so the view's
     ``resolve_tasks_path(None)`` picks it up.
 
     The fresh task uses ``add_task`` which stamps ``created_at`` to NOW
@@ -74,7 +74,7 @@ def store_with_timeline_tasks(tmp_path: Path, env) -> Path:
         # validator gates closed enums; created_at is free-form ISO.
         created_at="2020-01-01T00:00:00+00:00",
     )
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     return store
 
 
@@ -102,7 +102,7 @@ def store_ungrouped(tmp_path: Path, env) -> Path:
         f"    last_activity: {now!r}\n",
         encoding="utf-8",
     )
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     return store
 
 
@@ -325,7 +325,7 @@ def test_timeline_view_edge_dropped_when_endpoint_out_of_window(tmp_path: Path, 
         agent="a",
         depends_on=["t-old"],
     )
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     rf = RequestFactory()
     req = rf.get("/timeline")
     # Act
@@ -399,7 +399,7 @@ def test_timeline_view_completed_task_in_window_renders(tmp_path: Path, env):
         created_at="2020-01-01T00:00:00+00:00",
     )
     complete_task(store=store, task_id="t-done")
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     rf = RequestFactory()
     req = rf.get("/timeline")
     # Act

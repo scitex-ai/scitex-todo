@@ -60,7 +60,7 @@ def _hermetic_resolution(tmp_path):
 
     This fixture pins step 0 at an EMPTY per-test store — leaving the env map
     / per-agent env as the only resolution path unless a test opts back in:
-      * user-registry tests override ``SCITEX_TODO_TASKS`` with their own
+      * user-registry tests override ``SCITEX_TODO_TASKS_YAML_SHARED`` with their own
         populated ``tmp_path`` store.
     PA-306-compliant: plain os.environ save/restore, no monkeypatch.
     """
@@ -180,7 +180,7 @@ class TestTurnUrlFor:
 class TestUserRegistryResolution:
     """scitex-todo's OWN ``users:`` registry as the file-local, NO-bearer
     PRIMARY source (step 0). Real temp store via ``register_user`` + the
-    ``SCITEX_TODO_TASKS`` env so ``turn_url_for(agent)`` (which resolves the
+    ``SCITEX_TODO_TASKS_YAML_SHARED`` env so ``turn_url_for(agent)`` (which resolves the
     DEFAULT store) reads the same file (no mocks per STX-NM / PA-306).
     """
 
