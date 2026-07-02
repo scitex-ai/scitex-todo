@@ -4,6 +4,34 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.30] - 2026-07-02 — env-var standardization for fleet-wide notification delivery
+
+Enables the per-agent channel-drain server to be wired fleet-wide (each agent
+receives its own periodic digests + action-hooked card notifications), the
+crucial rail for task-driven fleet coordination. Coordinated with the container
+layer: the env-injection + `.mcp.json` wiring flip in lockstep with this release.
+
+### Changed
+
+- **Env var rename**: the agent-identity var `SCITEX_TODO_AGENT` is renamed to
+  `SCITEX_TODO_AGENT_ID` (encodes that it is an identity). It stamps
+  `created_by`/`updated_by`, keys the channel inbox, and drives the `--mine`
+  filter.
+- **Env var rename**: the task-store override `SCITEX_TODO_TASKS` is renamed to
+  `SCITEX_TODO_TASKS_YAML_SHARED` (encodes the shared-yaml store).
+- **Channel server is fully env-configurable**: `scitex-todo mcp channel` now
+  reads `SCITEX_TODO_CHANNEL_SOURCE` (meta.source, default `scitex-todo`) and
+  `SCITEX_TODO_CHANNEL_INTERVAL` (poll seconds, default `5`), with CLI flags as
+  optional overrides. The `.mcp.json` entry needs zero config args — every
+  parameter is a `SCITEX_TODO_`-prefixed env var.
+
+### Fixed
+
+- **Fail-loud on the deprecated env-var names**: if `SCITEX_TODO_AGENT` or
+  `SCITEX_TODO_TASKS` is still set, resolution raises with an actionable
+  "renamed to …; unset the old var" message instead of silently honouring a
+  stale export that could pin the wrong identity or store.
+
 ## [0.7.29] - 2026-07-02 — standalone user-delivery rail, notify/reminder engine, user registry + identity, and the release-pipeline fix
 
 First successful PyPI publish since 0.7.10 — the release pipeline had been
