@@ -68,7 +68,7 @@ def _store_with(tmp_path: Path) -> Path:
 def test_new_commit_link_emits_one_committed_event(tmp_path: Path, env):
     # Arrange
     store = _store_with(tmp_path)
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     sink = _Capturing()
     event = event_validate(
         {
@@ -90,7 +90,7 @@ def test_new_commit_link_emits_one_committed_event(tmp_path: Path, env):
 def test_committed_event_carries_card_id_repo_sha(tmp_path: Path, env):
     # Arrange
     store = _store_with(tmp_path)
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     sink = _Capturing()
     event = event_validate(
         {
@@ -116,7 +116,7 @@ def test_committed_event_carries_card_id_repo_sha(tmp_path: Path, env):
 def test_relink_of_recorded_commit_emits_no_event(tmp_path: Path, env):
     # Arrange — first link records the sha; the second is idempotent.
     store = _store_with(tmp_path)
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     event = event_validate(
         {
             "kind": "push",
@@ -141,7 +141,7 @@ def test_relink_of_recorded_commit_emits_no_event(tmp_path: Path, env):
 def test_push_trigger_emits_pushed_event(tmp_path: Path, env):
     # Arrange
     store = _store_with(tmp_path)
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     sink = _Capturing()
     event = event_validate(
         {
@@ -163,7 +163,7 @@ def test_push_trigger_emits_pushed_event(tmp_path: Path, env):
 def test_absent_trigger_defaults_to_pushed(tmp_path: Path, env):
     # Arrange — an older producer omits `trigger`; default is `pushed`.
     store = _store_with(tmp_path)
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     sink = _Capturing()
     event = event_validate(
         {
@@ -183,7 +183,7 @@ def test_absent_trigger_defaults_to_pushed(tmp_path: Path, env):
 def test_pushed_event_carries_branch(tmp_path: Path, env):
     # Arrange
     store = _store_with(tmp_path)
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     sink = _Capturing()
     event = event_validate(
         {
@@ -205,7 +205,7 @@ def test_pushed_event_carries_branch(tmp_path: Path, env):
 def test_unknown_card_id_emits_no_event(tmp_path: Path, env):
     # Arrange — producer hinted at a card that doesn't exist → no link.
     store = _store_with(tmp_path)
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     sink = _Capturing()
     event = event_validate(
         {

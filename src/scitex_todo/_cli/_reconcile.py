@@ -52,7 +52,7 @@ from .._reconcile_prs import reconcile_merged_prs
     "tasks_path",
     default=None,
     help="Path to tasks.yaml (default: project -> user -> bundled example, "
-    "or $SCITEX_TODO_TASKS).",
+    "or $SCITEX_TODO_TASKS_YAML_SHARED).",
 )
 @click.option(
     "--json",

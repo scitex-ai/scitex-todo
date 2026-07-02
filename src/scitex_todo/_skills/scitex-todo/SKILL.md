@@ -34,7 +34,7 @@ import it. The mermaid adapter (YAML → dependency PNG) and a read-only web
 board ship today; org-mode and drag-to-reprioritize are on the roadmap.
 
 The store is resolved in precedence order: explicit `--tasks` →
-`$SCITEX_TODO_TASKS` → project `<git-root>/.scitex/todo/tasks.yaml` → user
+`$SCITEX_TODO_TASKS_YAML_SHARED` → project `<git-root>/.scitex/todo/tasks.yaml` → user
 `~/.scitex/todo/tasks.yaml` → the bundled generic example.
 
 ## ⚑ MANDATE — single source of truth (operator + lead, 2026-06-12)

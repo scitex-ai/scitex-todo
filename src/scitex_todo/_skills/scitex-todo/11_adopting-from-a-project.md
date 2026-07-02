@@ -155,13 +155,13 @@ in `30_two-tier-conventions-and-write-protocol.md`.
 ## Path resolution precedence
 
 ```
-$SCITEX_TODO_TASKS  →  <git-root>/.scitex/todo/tasks.yaml  →  ~/.scitex/todo/tasks.yaml  →  bundled example
+$SCITEX_TODO_TASKS_YAML_SHARED  →  <git-root>/.scitex/todo/tasks.yaml  →  ~/.scitex/todo/tasks.yaml  →  bundled example
 ```
 
 Your project's `.scitex/todo/tasks.yaml` overrides the global one
 WHEN PRESENT — useful for per-project drafts. To write directly to
 the global, either omit the per-project file OR set
-`SCITEX_TODO_TASKS=~/.scitex/todo/tasks.yaml` for that call.
+`SCITEX_TODO_TASKS_YAML_SHARED=~/.scitex/todo/tasks.yaml` for that call.
 
 ## Operator's open questions = `kind: decision` + `blocker: operator-decision`
 

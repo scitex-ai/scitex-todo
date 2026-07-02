@@ -74,7 +74,7 @@ def test_run_reminder_sweep_resolves_none_store_and_enqueues(tmp_path, monkeypat
     # Regression: the notifyd tick calls _run_reminder_sweep(store=None) (the
     # daemon resolves its store internally), but the sweep passed None straight
     # to load_tasks → Path(None) → TypeError, so the nag never ran. It must now
-    # resolve None via $SCITEX_TODO_TASKS, load the store, and enqueue a
+    # resolve None via $SCITEX_TODO_TASKS_YAML_SHARED, load the store, and enqueue a
     # reminder for a stale card — without raising.
     from scitex_todo._delivery._daemon import _run_reminder_sweep
     from scitex_todo._inbox import poll_inbox
@@ -86,7 +86,7 @@ def test_run_reminder_sweep_resolves_none_store_and_enqueues(tmp_path, monkeypat
         "    agent: alice\n    last_activity: '2026-01-01T00:00:00Z'\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("SCITEX_TODO_TASKS", str(store))
+    monkeypatch.setenv("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     # Hermetic: a deployed container scopes the nag to one agent via
     # SCITEX_TODO_REMINDER_OWNERS / a real config.yaml; neutralise both so this
     # owner ("alice") is nagged regardless of the host's settings.

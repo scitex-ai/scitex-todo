@@ -146,7 +146,7 @@ def _push_notify(agent: str, body: str) -> str:
     "--tasks",
     "tasks_path",
     default=None,
-    help="Path to tasks.yaml (default: project -> user -> bundled example, or $SCITEX_TODO_TASKS).",
+    help="Path to tasks.yaml (default: project -> user -> bundled example, or $SCITEX_TODO_TASKS_YAML_SHARED).",
 )
 def stats_cmd(
     by: str, since: str | None, fmt: str, notify: bool,

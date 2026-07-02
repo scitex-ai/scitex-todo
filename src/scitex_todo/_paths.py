@@ -5,7 +5,7 @@
 Resolution order (highest priority first):
 
     1. an explicit path argument (CLI ``--tasks`` / function arg)
-    2. ``$SCITEX_TODO_TASKS`` environment variable
+    2. ``$SCITEX_TODO_TASKS_YAML_SHARED`` environment variable
     3. project scope:  ``<git-root>/.scitex/todo/tasks.yaml``
     4. user scope:     ``$SCITEX_DIR/todo/tasks.yaml`` (default ``~/.scitex/todo``)
     5. bundled generic example:  ``scitex_todo/examples/tasks.yaml``
@@ -24,8 +24,27 @@ from pathlib import Path
 #: package short name (``scitex-todo`` with the ``scitex-`` prefix stripped).
 PKG_SHORT = "todo"
 
-#: env var that overrides the resolved task-store path entirely.
-ENV_TASKS = "SCITEX_TODO_TASKS"
+#: env var that overrides the resolved task-store path entirely. The name
+#: encodes that it points at the SHARED yaml store.
+ENV_TASKS = "SCITEX_TODO_TASKS_YAML_SHARED"
+
+#: previous name of :data:`ENV_TASKS`. Renamed 2026-07-02. We fail LOUD (never
+#: silently honour it) if it is still set, so a stale export can't quietly pin
+#: the wrong store — the operator must migrate to the new name.
+ENV_TASKS_DEPRECATED = "SCITEX_TODO_TASKS"
+
+
+def _reject_deprecated_env() -> None:
+    """Fail loud if the old ``SCITEX_TODO_TASKS`` var is still set.
+
+    No silent fallback: a leftover export of the old name is a configuration
+    error the operator must fix, not something we quietly translate.
+    """
+    if os.environ.get(ENV_TASKS_DEPRECATED) is not None:
+        raise RuntimeError(
+            f"{ENV_TASKS_DEPRECATED} was renamed to {ENV_TASKS}; "
+            f"unset the old var (it is no longer honoured)."
+        )
 
 
 def _user_root() -> Path:
@@ -78,6 +97,7 @@ def resolve_tasks_path(explicit: str | Path | None = None) -> Path:
         # the loader raises a clear FileNotFoundError on that path.
         return cand
 
+    _reject_deprecated_env()
     env_val = os.environ.get(ENV_TASKS)
     if env_val:
         return Path(env_val).expanduser()

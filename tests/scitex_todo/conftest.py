@@ -153,4 +153,25 @@ def _default_resolvable_creator():
     finally:
         helper.restore()
 
+
+# === Suite-wide: never let the deprecated store var leak in ==================
+#
+# ``SCITEX_TODO_TASKS`` was renamed to ``SCITEX_TODO_TASKS_YAML_SHARED``
+# (2026-07-02) and is now REJECTED fail-loud by ``resolve_tasks_path`` if set.
+# A dev/agent shell may still export the old name; without this, any test that
+# resolves the store in such an environment would raise. Clear it for every
+# test by default. The dedicated fail-loud test opts BACK IN (sets the old var)
+# to prove the raise; this fixture restores the pre-test value on teardown.
+
+
+@pytest.fixture(autouse=True)
+def _reject_deprecated_tasks_env():
+    """Unset the deprecated ``SCITEX_TODO_TASKS`` for every test by default."""
+    helper = _EnvHelper()
+    helper.delete("SCITEX_TODO_TASKS")
+    try:
+        yield
+    finally:
+        helper.restore()
+
 # EOF

@@ -10,21 +10,28 @@ from pathlib import Path
 import pytest
 
 from scitex_todo._paths import bundled_example, resolve_tasks_path
-from scitex_todo._paths import ENV_TASKS
+from scitex_todo._paths import ENV_TASKS, ENV_TASKS_DEPRECATED
 
 
 @pytest.fixture
 def clean_tasks_env():
-    """Save and restore $SCITEX_TODO_TASKS around a test."""
-    saved = os.environ.get(ENV_TASKS)
-    os.environ.pop(ENV_TASKS, None)
+    """Save and restore the task-store env vars around a test.
+
+    Clears BOTH the current ``$SCITEX_TODO_TASKS_YAML_SHARED`` and the
+    deprecated ``$SCITEX_TODO_TASKS`` so a stale export in the ambient
+    environment can't leak in and trip the fail-loud guard mid-test.
+    """
+    saved = {v: os.environ.get(v) for v in (ENV_TASKS, ENV_TASKS_DEPRECATED)}
+    for v in (ENV_TASKS, ENV_TASKS_DEPRECATED):
+        os.environ.pop(v, None)
     try:
         yield
     finally:
-        if saved is None:
-            os.environ.pop(ENV_TASKS, None)
-        else:
-            os.environ[ENV_TASKS] = saved
+        for v, val in saved.items():
+            if val is None:
+                os.environ.pop(v, None)
+            else:
+                os.environ[v] = val
 
 
 @pytest.fixture
@@ -79,6 +86,17 @@ def test_falls_back_to_bundled_example(clean_tasks_env, isolated_cwd):
     resolved = resolve_tasks_path(None)
     # Assert
     assert resolved == expected
+
+
+def test_deprecated_env_var_fails_loud(monkeypatch, clean_tasks_env):
+    """The renamed-away $SCITEX_TODO_TASKS must never be silently honoured: if
+    it is still set, resolution fails LOUD pointing at the new name so a stale
+    export can't quietly pin the wrong store."""
+    # Arrange
+    monkeypatch.setenv(ENV_TASKS_DEPRECATED, "/some/legacy/tasks.yaml")
+    # Act / Assert
+    with pytest.raises(RuntimeError, match=ENV_TASKS):
+        resolve_tasks_path(None)
 
 
 def test_bundled_example_file_exists_and_loads():

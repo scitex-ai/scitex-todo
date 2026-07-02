@@ -20,7 +20,7 @@ from .._paths import resolve_tasks_path
 
 _ROOT_EPILOG = (
     "Task store resolution (first existing wins): an explicit --tasks path, "
-    "then $SCITEX_TODO_TASKS, then the project store "
+    "then $SCITEX_TODO_TASKS_YAML_SHARED, then the project store "
     "<git-root>/.scitex/todo/tasks.yaml, then the user store "
     "~/.scitex/todo/tasks.yaml (relocatable via $SCITEX_DIR), then the bundled "
     "generic example. See the README 'Where your task data lives' section."
@@ -111,7 +111,7 @@ def main(ctx: click.Context, help_recursive: bool, as_json: bool) -> None:
     "tasks_path",
     default=None,
     help="Path to tasks.yaml (default: project -> user -> bundled example, "
-    "or $SCITEX_TODO_TASKS).",
+    "or $SCITEX_TODO_TASKS_YAML_SHARED).",
 )
 @click.option(
     "-o",
@@ -162,7 +162,7 @@ def render_graph_cmd(tasks_path: str | None, output: str, print_mermaid: bool) -
     "tasks_path",
     default=None,
     help="Path to tasks.yaml (default: project -> user -> bundled example, "
-    "or $SCITEX_TODO_TASKS).",
+    "or $SCITEX_TODO_TASKS_YAML_SHARED).",
 )
 @click.option(
     "--scope",

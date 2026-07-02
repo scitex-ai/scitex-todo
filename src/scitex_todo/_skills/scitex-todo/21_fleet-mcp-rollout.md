@@ -87,7 +87,7 @@ a soft default.
 |---|---|---|---|
 | `SCITEX_TODO_AGENT` | **YES** | `proj-<your-peer-name>` | Stamps every write's `_log_meta.created_by` / `updated_by`. The board's "by agent" lens, throughput stats, and notify routing all key off this. |
 | `SCITEX_TODO_SCOPE` | recommended | `agent:proj-<your-peer-name>` | Default scope for `list_tasks` / `summarize_tasks` so the agent sees its own slice by default. Pass `scope=""` to opt out per-call. |
-| `SCITEX_TODO_TASKS` | only if non-default | Absolute path to `tasks.yaml` | Pins the store. Default resolution chain (explicit → env → project → user → bundled) usually picks the right one without this. |
+| `SCITEX_TODO_TASKS_YAML_SHARED` | only if non-default | Absolute path to `tasks.yaml` | Pins the store. Default resolution chain (explicit → env → project → user → bundled) usually picks the right one without this. |
 
 For agent-container's `to_home/_base/.mcp.json` rollout, the per-agent
 `SCITEX_TODO_AGENT` value is templated from the agent's name; see the
@@ -170,7 +170,7 @@ full stderr to your lead via a2a, then stop. Do NOT retry-loop.
 | Writes land but `_log_meta.created_by` is unset / wrong | `SCITEX_TODO_AGENT` missing or stale in the agent's env | Set it BEFORE the MCP server boots; restart the harness. |
 | `mcp doctor` → "tools: 0" | FastMCP version skew | Bump fastmcp to ≥ 3.0; rebuild the venv. |
 | `list_tasks` returns the whole store, not your slice | `SCITEX_TODO_SCOPE` unset | Export `SCITEX_TODO_SCOPE=agent:proj-<you>`. |
-| Your `SCITEX_TODO_TASKS` points at a stale file | precedence chain picked an earlier tier | `scitex-todo resolve-store` prints the resolved path + the chain. |
+| Your `SCITEX_TODO_TASKS_YAML_SHARED` points at a stale file | precedence chain picked an earlier tier | `scitex-todo resolve-store` prints the resolved path + the chain. |
 
 ## Cross-references
 

@@ -42,7 +42,7 @@ scitex-todo --help-recursive    # flattened help for every subcommand
 ## Store resolution
 
 Every command resolves the task store the same way: `--tasks` →
-`$SCITEX_TODO_TASKS` → `<git-root>/.scitex/todo/tasks.yaml` →
+`$SCITEX_TODO_TASKS_YAML_SHARED` → `<git-root>/.scitex/todo/tasks.yaml` →
 `~/.scitex/todo/tasks.yaml` → bundled example. See
 [20_env-vars.md](20_env-vars.md).
 
