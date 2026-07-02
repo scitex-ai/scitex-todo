@@ -79,56 +79,37 @@ uv pip install --python "$VENV/bin/python" --target="$TMPDIR/site" -e ".[all,dev
 
 export PYTHONPATH="$TMPDIR/site:$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
 
-# Parallelise with pytest-xdist (baked in [dev]/[all,dev] as pytest-xdist>=3).
-# scitex-todo's suite is ~2460 tests; single-process it overran the job's old
-# 30-min cap (2300 passed in ~28 min, cancelled at 96%). Each xdist worker is
-# a SEPARATE PROCESS, so matplotlib's global rcParams / pyplot state and the
-# scitex-todo style-stack are naturally isolated per worker — the safe way to
-# parallelise a matplotlib-heavy suite.
-#
-# Worker count: use ALL cores. Each matrix leg now runs on its own dedicated
-# self-hosted node (one runner per node: scitex-todo-01/02/03), so there is no
-# co-tenant to yield half the box to — the old nproc//2 cap left 2x the cores
-# idle. nice/ionice (below) handles the "yield to higher-priority work if the
-# node is ever shared" concern instead of statically reserving half the CPUs.
-# Floor 4. pyproject addopts carries `-v`; override to `-q` here — 2460 verbose
-# lines x workers bloats the CI log and adds measurable overhead.
-NPROC="$(nproc 2>/dev/null || echo 4)"
-WORKERS=$NPROC
-[ "$WORKERS" -lt 4 ] && WORKERS=4
-echo "xdist workers=$WORKERS (nproc=$NPROC)"
+# Run SINGLE-PROCESS — deliberately NO pytest-xdist here. This mirrors the
+# required `tests` (pytest-matrix) gate, which runs `pytest tests/` with the
+# pyproject addopts (`-x -q`, no `-n`) and is the proven-green path on every
+# tagged commit. Full `-n <all-cores>` xdist saturates the node and STARVES the
+# suite's concurrency tests that spawn their own subprocesses — e.g.
+# test_two_concurrent_writers_serialize_via_flock (30s subprocess timeout) and
+# the comment turn-URL timing test — which then time out non-deterministically
+# and blocked the v0.7.29 release even though the gate was green on the same
+# commit. Single-process removes that contention; the gate already parallelises
+# CI throughput across the 3 matrix legs, so the release re-test just needs to
+# be reliable, not fast.
 
-# Warm the matplotlib font cache ONCE, single-process, before xdist forks the
-# workers. This builds $MPLCONFIGDIR/fontlist-*.json a single time so every
-# worker reads a complete, consistent cache instead of racing to build it
-# concurrently (the source of the render1!=render2 reproducibility flakes).
-# Fail-loud: if matplotlib can't even build its font cache, CI must surface it.
-# matplotlib may not be a dependency of this package; only warm the
-# font cache when it's importable (no-op otherwise — never fail the run
-# on an optional warm-up).
+# Warm the matplotlib font cache ONCE before the run. This builds
+# $MPLCONFIGDIR/fontlist-*.json so tests read a complete, consistent cache
+# (the source of the render1!=render2 reproducibility flakes). Fail-loud: if
+# matplotlib can't even build its font cache, CI must surface it. matplotlib
+# may not be a dependency of this package; only warm the font cache when it's
+# importable (no-op otherwise — never fail the run on an optional warm-up).
 if python -c "import matplotlib" 2>/dev/null; then
   python -c "import matplotlib; matplotlib.use('Agg'); from matplotlib import font_manager; font_manager.fontManager; import matplotlib.pyplot as plt; f=plt.figure(); f.canvas.draw(); print('mpl font cache warmed at', matplotlib.get_cachedir())"
 else
   echo "matplotlib not importable — skipping font-cache warm-up (not a dep)"
 fi
 
-# Distribution: `--dist load` (per-TEST round-robin), NOT `--dist loadscope`.
-# loadscope pins an entire MODULE's tests to ONE worker — and scitex-todo's heavy
-# suites are big SINGLE modules (e.g. tests/integration/test_all_plotters_*.py
-# parametrize one test over all 47 plotters, ~28 s each). loadscope therefore
-# ran all ~50+ cases of such a module SERIALLY on one worker (~25 min) while the
-# rest idled. There are NO module/session/class-scoped fixtures in those heavy
-# modules and the root conftest's autouse `_close_figures` resets pyplot state
-# after EVERY test, so loadscope's "same worker per module" buys nothing here —
-# it only serialized. `load` spreads the parametrized cases across ALL workers.
-#
 # nice -n 19 ionice -c 3: run at the lowest CPU + idle I/O priority so that if
-# this node is ever shared with interactive/dev work, CI grabs otherwise-idle
-# cores but YIELDS the CPU and disk to any higher-priority process — "all
-# available CPUs, with priority handling". exec replaces the shell with nice,
+# this node is ever shared with interactive/dev work, CI yields the CPU and
+# disk to any higher-priority process. exec replaces the shell with nice,
 # which execs ionice, which execs python (still PID-traceable, signals/exit
-# code propagate to the runner step).
+# code propagate to the runner step). `-q` overrides pyproject's verbosity to
+# keep the CI log compact.
 exec nice -n 19 ionice -c 3 \
-    python -m pytest tests/ -n "$WORKERS" --dist load -q \
+    python -m pytest tests/ -q \
     --cov=src/scitex_todo --cov-report=xml --cov-report=term \
     -p no:cacheprovider
