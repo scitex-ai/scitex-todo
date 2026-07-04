@@ -71,8 +71,10 @@ def test_build_channel_params_all_meta_strings():
     params = build_channel_params(rec)
     assert params["content"] == rec["body"]
     meta = params["meta"]
-    # source drives the `<- scitex-todo` render.
-    assert meta["source"] == "scitex-todo"
+    # source drives the `<- scitex-todo-system` render (distinct from the
+    # scitex-todo agent id so the TUI doesn't confuse system pushes with the
+    # agent's own messages).
+    assert meta["source"] == "scitex-todo-system"
     # EVERY meta value MUST be a string (Claude's Zod validator).
     for key, value in meta.items():
         assert isinstance(value, str), f"meta[{key!r}] is {type(value)} not str"
@@ -136,7 +138,7 @@ def test_drain_once_pushes_each_unseen_and_acks(tmp_path):
     bodies = {c["content"] for c in recorder.calls}
     assert bodies == {"body one", "body two"}
     for call in recorder.calls:
-        assert call["meta"]["source"] == "scitex-todo"
+        assert call["meta"]["source"] == "scitex-todo-system"
         for value in call["meta"].values():
             assert isinstance(value, str)
 
