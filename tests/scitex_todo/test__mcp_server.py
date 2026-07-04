@@ -114,6 +114,12 @@ _CONVENTION_B_NAMES = {
     "todo_skills_list",
     "todo_skills_get",
 }
+# Cross-package standard names — a fixed tool name shared verbatim with the
+# sac/cct health tools (single token by that shared spec, so exempt from the
+# no-single-token guard below).
+_STANDARD_NAMES = {
+    "health",
+}
 
 
 def test_no_tool_uses_dropped_scitex_todo_prefix():
@@ -130,7 +136,11 @@ def test_no_tool_uses_dropped_scitex_todo_prefix():
     names = _tool_names(mcp)
     # Act
     bad_prefix = [n for n in names if n.startswith("scitex_todo_")]
-    single_token = [n for n in names if "_" not in n]
+    # `health` is a cross-package STANDARD single-token name (shared verbatim
+    # with sac/cct), so it is exempt from the no-single-token audit rule.
+    single_token = [
+        n for n in names if "_" not in n and n not in _STANDARD_NAMES
+    ]
     # Assert
     assert not bad_prefix and not single_token, (
         f"tools {bad_prefix + single_token!r} regress audit §6 / §2"
@@ -143,7 +153,7 @@ def test_tool_names_match_known_conventions():
     from scitex_todo._mcp_server import mcp
 
     names = set(_tool_names(mcp))
-    allowed = _CONVENTION_A_NAMES | _CONVENTION_B_NAMES
+    allowed = _CONVENTION_A_NAMES | _CONVENTION_B_NAMES | _STANDARD_NAMES
     # Act
     extras = names - allowed
     # Assert
