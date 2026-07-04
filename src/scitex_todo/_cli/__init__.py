@@ -21,9 +21,14 @@ focused module without a disruptive refactor of an unrelated oversized file.
 from __future__ import annotations
 
 from ._main import main
+from . import _health as _health_cli
 from . import _help_wait as _help_wait_cli
 
 _help_wait_cli.register(main)
+# `health` — the package-level health doctor (store / agent-id / notifyd /
+# channel). Wired here (like help-wait) to keep the over-budget _main.py
+# untouched.
+_health_cli.register(main)
 
 __all__ = ["main"]
 

@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.33] - 2026-07-05 — feat: package-level `health` doctor (MCP tool + CLI verb)
+
+A broad store / identity / delivery health check, exposed as BOTH the `health`
+MCP tool and the `scitex-todo health` CLI verb. Motivated by the 0.7.32
+handshake incident: the `channel_drain` check turns that class of "MCP not
+connected" failure into a one-command diagnosis.
+
+### Added
+
+- **`scitex_todo._health.health(...)`** — one pure, never-raising function that
+  returns the cross-package standard report shape
+  `{"package", "ok", "checks":[{name,ok,detail,hint}], "summary"}` (shared
+  verbatim with the sac/cct health tools). Every FAILING check carries an
+  actionable `hint`; a check that errors internally is reported as `ok=false`
+  with the error in its hint rather than raising. Checks: `store_canonical`
+  (resolved store is the canonical user/shared path — not a project shadow —
+  and is readable, writable, and parses with a top-level `tasks` key),
+  `agent_id` (`$SCITEX_TODO_AGENT_ID` resolves to a real value, not
+  blank/`unknown`/an unexpanded `$VAR`), `notifyd_alive` (real pidfile probe of
+  the delivery daemon), `channel_drain` (this agent's unseen vs seen inbox
+  backlog — flags a large unseen pile that was never drained), and
+  `channel_capable` (`scitex_todo._mcp_channel` imports and exposes
+  `_serve`/`_run`).
+- **`health` MCP tool** — registered on the shared FastMCP instance
+  (`scitex_todo._mcp_skills`); returns the JSON report. Distinct from the
+  narrow `mcp doctor` (which only checks the fastmcp install).
+- **`scitex-todo health [--json]` CLI verb** — human-readable report by default,
+  raw JSON with `--json`; exits `0` when all checks pass, else `1` (usable as a
+  shell/CI gate).
+
 ## [0.7.32] - 2026-07-04 — fix: channel poll loop no longer starves the MCP handshake
 
 Hotfix for a fleet-wide "scitex-todo MCP not connected" regression introduced

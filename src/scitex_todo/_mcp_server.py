@@ -492,6 +492,9 @@ TOOL_NAMES: tuple[str, ...] = (
     "help_clear",
     # Standalone pull-inbox read path (1:1 `_inbox.poll_inbox`; in _mcp_skills).
     "poll_notifications",
+    # Package-level health doctor (1:1 `_health.health`; in _mcp_skills). Broad
+    # store/notifyd/channel diagnosis — distinct from the narrow `mcp doctor`.
+    "health",
     "todo_skills_list",
     "todo_skills_get",
 )

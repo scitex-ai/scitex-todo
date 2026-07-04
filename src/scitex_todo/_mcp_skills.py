@@ -183,7 +183,28 @@ async def poll_notifications(
     )
 
 
+@mcp.tool()
+async def health(tasks_path: str | None = None) -> str:
+    """Package-level HEALTH check (the ``health`` doctor). Returns a JSON report.
+
+    Broad store / identity / delivery diagnosis — NOT the narrow ``mcp doctor``
+    (which only checks the fastmcp install). Runs the checks in
+    :func:`scitex_todo._health.health`: ``store_canonical`` (resolved store is
+    the canonical, readable+writable, parses with a ``tasks`` key — no
+    project shadow), ``agent_id`` ($SCITEX_TODO_AGENT_ID resolvable),
+    ``notifyd_alive`` (delivery-daemon pidfile probe), ``channel_drain`` (this
+    agent's unseen vs seen inbox backlog), and ``channel_capable``
+    (``_mcp_channel`` importable). Returns the cross-package standard shape
+    ``{"package", "ok", "checks":[{name,ok,detail,hint}], "summary"}`` — every
+    failing check carries an actionable ``hint``; the call never raises.
+    """
+    from ._health import health as _health_check
+
+    return json.dumps(_health_check(store=tasks_path))
+
+
 __all__ = [
+    "health",
     "help_clear",
     "help_wait",
     "poll_notifications",
