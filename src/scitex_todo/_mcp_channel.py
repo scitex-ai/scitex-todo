@@ -63,8 +63,11 @@ _ENV_INTERVAL = "SCITEX_TODO_CHANNEL_INTERVAL"
 #: Default poll interval (seconds) between inbox drains.
 _DEFAULT_INTERVAL = 5.0
 
-#: Default ``meta.source`` value — drives the ``<- scitex-todo`` render.
-_DEFAULT_SOURCE = "scitex-todo"
+#: Default ``meta.source`` value — drives the channel render name. It is
+#: intentionally DISTINCT from the agent's own id (``scitex-todo``) so that in
+#: the operator's TUI a system-pushed notification (``<- scitex-todo-system``)
+#: is not confused with a message authored by the scitex-todo agent itself.
+_DEFAULT_SOURCE = "scitex-todo-system"
 
 
 def _reject_deprecated_agent_env() -> None:
@@ -219,7 +222,7 @@ async def drain_once(
         Async callable that delivers one channel-params payload (the real
         server passes a closure over the MCP session's ``send_message``).
     source : str
-        ``meta.source`` value (default ``"scitex-todo"``).
+        ``meta.source`` value (default ``"scitex-todo-system"``).
     store : str | None
         Store path override (default: the resolved task store).
 
@@ -227,11 +230,30 @@ async def drain_once(
     -------
     int
         The number of records successfully pushed AND ack'd this drain.
+
+    Notes
+    -----
+    Every store touch (:func:`recipient_keys`, :func:`_inbox.poll_inbox`,
+    :func:`_inbox.ack`) is SYNCHRONOUS blocking IO — it locks and parses the
+    whole YAML store. Running it inline on the event loop starves the MCP
+    session: when the unified ``mcp start`` server starts its poll loop, the
+    very first drain would block the loop long enough that the initialize
+    handshake never gets a turn, and Claude Code marks the server
+    "not connected" (the failure mode that grew with inbox size). We therefore
+    off-load every blocking store call to a worker thread via
+    ``anyio.to_thread.run_sync`` so the loop stays free to service the
+    handshake and tool calls; only the ``await send(...)`` push itself runs on
+    the loop (it needs the live session).
     """
+    from functools import partial
+
+    import anyio
+
     pushed = 0
-    for key in recipient_keys(agent_id, store=store):
-        records = _inbox.poll_inbox(
-            key, unseen_only=True, mark_seen=False, store=store
+    keys = await anyio.to_thread.run_sync(partial(recipient_keys, agent_id, store=store))
+    for key in keys:
+        records = await anyio.to_thread.run_sync(
+            partial(_inbox.poll_inbox, key, unseen_only=True, mark_seen=False, store=store)
         )
         for rec in records:
             params = build_channel_params(rec, source=source)
@@ -250,7 +272,9 @@ async def drain_once(
             rec_id = rec.get("id")
             if rec_id:
                 try:
-                    _inbox.ack(key, [rec_id], store=store)
+                    await anyio.to_thread.run_sync(
+                        partial(_inbox.ack, key, [rec_id], store=store)
+                    )
                 except Exception as exc:  # noqa: BLE001 — ack failure shouldn't kill the loop
                     logger.warning(
                         "scitex-todo channel: ack of %s failed: %s", rec_id, exc

@@ -41,8 +41,8 @@ def attach_channel_verb(mcp_group: click.Group) -> None:
         "--name",
         default=None,
         help=(
-            "Sets meta.source (drives the `<- scitex-todo` render). "
-            "Default: $SCITEX_TODO_CHANNEL_SOURCE, then 'scitex-todo'."
+            "Sets meta.source (drives the `<- scitex-todo-system` render). "
+            "Default: $SCITEX_TODO_CHANNEL_SOURCE, then 'scitex-todo-system'."
         ),
     )
     @click.option(

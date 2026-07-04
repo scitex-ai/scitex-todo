@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.32] - 2026-07-04 — fix: channel poll loop no longer starves the MCP handshake
+
+Hotfix for a fleet-wide "scitex-todo MCP not connected" regression introduced
+by the unified server (0.7.31).
+
+### Fixed
+
+- **Unified `mcp start` failed the MCP `initialize` handshake once an agent had
+  an identity set** — every fleet agent showed the `scitex-todo` server as "not
+  connected". Root cause: the inbox poll loop's first drain ran SYNCHRONOUS
+  blocking store IO (`recipient_keys` + `_inbox.poll_inbox`, which lock and
+  parse the whole YAML store) **inline on the asyncio event loop**. That starved
+  the `ServerSession` so it never answered `initialize` before the client timed
+  out. The stall scaled with inbox size, so it surfaced once an inbox reached
+  ~600 entries. `drain_once` now off-loads every blocking store call to a worker
+  thread (`anyio.to_thread.run_sync`); only the push itself runs on the loop, so
+  the handshake (and tool calls) are never blocked. Both tools AND digest push
+  are preserved. Regression tests pin the invariant (drain yields before it
+  touches the store) and the end-to-end handshake with an active poll loop.
+
+### Changed
+
+- **Channel render name is now `scitex-todo-system`** (was `scitex-todo`). The
+  system-pushed notification source (`meta.source`, env
+  `SCITEX_TODO_CHANNEL_SOURCE`, default) is deliberately distinct from the
+  `scitex-todo` agent id so the operator's TUI does not confuse a system digest
+  with a message authored by the scitex-todo agent. Deployed `.mcp.json` entries
+  that pin `SCITEX_TODO_CHANNEL_SOURCE=scitex-todo` must update to
+  `scitex-todo-system` (or drop the key to take the new default).
+
 ## [0.7.31] - 2026-07-03 — one unified scitex-todo MCP server (tools + digest push)
 
 The turn-on release for fleet-wide notifications. Together with the 0.7.30
