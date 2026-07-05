@@ -22,9 +22,9 @@ uses (explicit arg > ``$SCITEX_TODO_*`` env > project ``.scitex/todo`` >
 user ``~/.scitex/todo``) via :func:`scitex_todo._inbox._resolved_store`.
 
 Policy lives HERE, never inside a channel: :func:`should_deliver_now` is the
-SEAM where quiet-hours / consent / rate-limit will hang off. Slice 1 returns
-True (no-op), but the loop MUST call it and a False result yields a
-``skipped`` outcome (re-evaluated next run, never terminal).
+SEAM where quiet-hours / consent / rate-limit hang off. The loop MUST call
+it and a False result yields a ``skipped`` outcome (re-evaluated next run,
+never terminal, pull-inbox unaffected).
 """
 
 from __future__ import annotations
@@ -117,13 +117,32 @@ def load_recipients(store: str | Path | None = None) -> list[Recipient]:
 def should_deliver_now(user: str, notification: dict) -> bool:
     """Policy gate: may we deliver ``notification`` to ``user`` right now?
 
-    THE seam for quiet-hours / consent / rate-limiting. Slice 1 is a no-op
-    that always returns True, but the loop ALWAYS calls it and a False
-    result produces a ``skipped`` outcome (the item is re-evaluated next
-    run, never marked terminal). Policy belongs HERE so channels stay dumb
-    transports — a channel must never decide whether to deliver.
+    THE seam for quiet-hours / consent / rate-limiting. The loop ALWAYS
+    calls this and a False result produces a ``skipped`` outcome (the item
+    is re-evaluated next run, never marked terminal, and the pull-inbox is
+    completely unaffected — this only gates the ACTIVE channel push).
+    Policy belongs HERE so channels stay dumb transports — a channel must
+    never decide whether to deliver.
+
+    Current policy (operator decision 2026-07-05): an event whose type is
+    in :func:`scitex_todo._config.resolve_quiet_event_types` never pushes —
+    by default that is just the per-owner reminder digest
+    (:data:`scitex_todo._reminders.EVENT_DIGEST`), which recurs on a flat
+    cadence while a card is stale and was the literal cause of a real
+    incident (dozens of unseen push attempts piling up). Everything else
+    (escalations, reassigned, commented, completed, …) pushes as before —
+    this is a narrow, evidence-scoped deny-list, NOT a default-deny
+    allow-list, so it does not silence one-off events nobody complained
+    about. ``notification`` with no/unknown ``event_type`` fails OPEN
+    (pushes) — this gate protects against noise, not against a missing
+    key, and unknown types are far more likely a forward-compat gap than
+    something that needs silencing.
     """
-    _ = (user, notification)  # reserved for real policy in a later slice.
+    from .._config import resolve_quiet_event_types
+
+    event_type = notification.get("event_type")
+    if event_type in resolve_quiet_event_types():
+        return False
     return True
 
 

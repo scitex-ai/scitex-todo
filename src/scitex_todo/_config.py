@@ -51,6 +51,21 @@ DEFAULT_INTERVAL_MINUTES = 5.0
 #: Per-card field that overrides the nudge interval for that card (minutes).
 CARD_INTERVAL_FIELD = "reminder_interval_minutes"
 
+#: The ``delivery:`` knobs (channel-push policy — see
+#: :mod:`scitex_todo._delivery._recipients`).
+DELIVERY_SECTION = "delivery"
+
+#: Event types that never push to an active channel by default — they still
+#: enqueue into the pull-inbox as normal (nothing is lost), this only gates
+#: whether :func:`scitex_todo._delivery._recipients.should_deliver_now` lets
+#: them interrupt a channel like Telegram. ``reminder`` (the per-owner digest,
+#: :data:`scitex_todo._reminders.EVENT_DIGEST`) recurs on a flat cadence while
+#: a card is stale and was the literal cause of a real incident (2026-07-05:
+#: dozens of unseen push attempts piled up) — operator decision 2026-07-05:
+#: routine digests stay pull-only; every other event type (escalations,
+#: reassigned, commented, completed, …) keeps pushing as before.
+DEFAULT_QUIET_EVENT_TYPES: frozenset[str] = frozenset({"reminder"})
+
 
 def config_paths() -> list[Path]:
     """The config files to layer, BASE first (user), OVERRIDE last (project).
@@ -114,6 +129,29 @@ def reminders_config() -> dict:
     return section if isinstance(section, dict) else {}
 
 
+def delivery_config() -> dict:
+    """The merged ``delivery:`` section (``{}`` when absent)."""
+    section = load_config().get(DELIVERY_SECTION)
+    return section if isinstance(section, dict) else {}
+
+
+def resolve_quiet_event_types(cfg: dict | None = None) -> frozenset[str]:
+    """Resolve the event types that should NOT push to an active channel.
+
+    ``delivery.quiet_event_types`` (a list of strings) overrides
+    :data:`DEFAULT_QUIET_EVENT_TYPES` wholesale when present and non-empty;
+    a missing/malformed/empty config value falls back to the default rather
+    than silently allowing everything through.
+    """
+    cfg = delivery_config() if cfg is None else cfg
+    raw = cfg.get("quiet_event_types")
+    if isinstance(raw, list) and raw:
+        cleaned = {str(v) for v in raw if isinstance(v, str) and v}
+        if cleaned:
+            return frozenset(cleaned)
+    return DEFAULT_QUIET_EVENT_TYPES
+
+
 def _positive_number(value: Any) -> float | None:
     """Coerce a config/card value to a positive float, else ``None``."""
     if isinstance(value, bool):  # bool is an int subclass — reject it explicitly
@@ -146,9 +184,13 @@ __all__ = [
     "REMINDERS_SECTION",
     "DEFAULT_INTERVAL_MINUTES",
     "CARD_INTERVAL_FIELD",
+    "DELIVERY_SECTION",
+    "DEFAULT_QUIET_EVENT_TYPES",
     "config_paths",
     "load_config",
     "reminders_config",
+    "delivery_config",
+    "resolve_quiet_event_types",
     "resolve_interval_minutes",
 ]
 
