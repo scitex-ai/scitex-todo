@@ -381,6 +381,16 @@ def add_task(
     # explicit `agent` extra (if any) is overwritten with the same owner.
     new["assignee"] = _owner_in
     extras["agent"] = _owner_in
+    # Subscriber invariant (operator 2026-07-06): seed the card's subscribers
+    # with the assignee (MANDATORY — always a subscriber) and the creator
+    # (DEFAULT — a subscriber by default, but the creator may unsubscribe
+    # later). Any subscribers the caller passed explicitly are unioned in.
+    # See :mod:`scitex_todo._subscribers` for the single-source rule.
+    from ._subscribers import seed_subscribers
+
+    new["subscribers"] = seed_subscribers(
+        owner=_owner_in, creator=_creator, existing=extras.pop("subscribers", None)
+    )
     if priority is not None:
         new["priority"] = priority
     if parent is not None:
@@ -1297,19 +1307,36 @@ def set_subscriber(
     who: str | None = None,
     action: str = "add",
 ) -> dict:
-    """Add or remove ``who`` on a card's ``subscribers`` — the notify list
-    (ADR-0009).
+    """Add or remove ``who`` on a card's ``subscribers`` — the notify list.
 
-    ``action`` in {"add", "remove"}. Anyone may unsubscribe — even a
-    collaborator (the ADR's "always unsubscribable" rule): a ``remove``
-    here drops them from the notify list without touching collaborators.
-    Returns the (post-mutation) task mapping.
+    ``action`` in {"add", "remove"}. Subscriber roles are ASYMMETRIC
+    (operator 2026-07-06): the ASSIGNEE (card owner) is a MANDATORY
+    subscriber and CANNOT be removed — a ``remove`` targeting the current
+    owner raises :class:`TaskValidationError` (fail-loud, no silent no-op).
+    Everyone else — the creator (a default subscriber), collaborators,
+    anyone added explicitly — is freely removable. Returns the (post-
+    mutation) task mapping.
     """
     if not task_id or not who:
         raise ValueError("set_subscriber: 'task_id' and 'who' are required")
     if action not in ("add", "remove"):
         raise ValueError("set_subscriber: action must be 'add' or 'remove'")
     tasks_path = _resolved_store(store)
+    if action == "remove":
+        # Guard the MANDATORY assignee subscription. Read the card under the
+        # lock-free snapshot to check ownership; the actual remove re-checks
+        # nothing (a concurrent reassign is a benign race — worst case the
+        # old owner is removed, and the next ensure_assignee_subscribed
+        # re-adds the current one).
+        from ._subscribers import is_mandatory_subscriber
+
+        card = get_task(store=tasks_path, task_id=task_id)
+        if is_mandatory_subscriber(card, who):
+            raise TaskValidationError(
+                f"cannot unsubscribe {who!r}: the assignee is a MANDATORY "
+                f"subscriber of its own card and cannot be removed. Reassign "
+                f"the card first if a different owner should be subscribed."
+            )
     return _set_list_member(tasks_path, task_id, "subscribers", who, action)
 
 
@@ -1492,6 +1519,13 @@ def reassign_task(
             target["agent"] = new_owner
             target["assignee"] = new_owner
             target["scope"] = f"agent:{new_owner}"
+            # Subscriber invariant: the NEW assignee is a mandatory subscriber.
+            # Add it (the old assignee's subscription stays — append-only; they
+            # are no longer mandatory but keep getting notices unless they
+            # unsubscribe). See :mod:`scitex_todo._subscribers`.
+            from ._subscribers import ensure_assignee_subscribed
+
+            ensure_assignee_subscribed(target)
             comments = target.setdefault("comments", [])
             comments.append(
                 {

@@ -570,23 +570,30 @@ class TestSetSubscriber:
     """Subscribe / unsubscribe on a card's notify list."""
 
     def test_add_inserts_subscriber(self, tmp_path):
-        # Arrange
+        # Arrange — add_task now SEEDS subscribers with the assignee
+        # (mandatory) + creator (default), per the 2026-07-06 invariant.
+        # Here assignee == resolved creator, so the seed is just the owner.
         store = tmp_path / "tasks.yaml"
         _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         # Act
         _store.set_subscriber(store, task_id="a", who="bob", action="add")
-        # Assert
-        assert _store.get_task(store, task_id="a")["subscribers"] == ["bob"]
+        # Assert — the seeded assignee stays; bob is appended.
+        assert _store.get_task(store, task_id="a")["subscribers"] == [
+            "agent:test-suite",
+            "bob",
+        ]
 
     def test_remove_strips_subscriber(self, tmp_path):
         # Arrange
         store = tmp_path / "tasks.yaml"
         _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
         _store.set_subscriber(store, task_id="a", who="bob", action="add")
-        # Act
+        # Act — remove bob (a plain subscriber; the assignee is un-removable).
         _store.set_subscriber(store, task_id="a", who="bob", action="remove")
-        # Assert
-        assert "subscribers" not in _store.get_task(store, task_id="a")
+        # Assert — bob gone, the mandatory assignee subscription remains.
+        assert _store.get_task(store, task_id="a")["subscribers"] == [
+            "agent:test-suite"
+        ]
 
     def test_collaborator_can_unsubscribe(self, tmp_path):
         # Arrange — collaborator is auto-subscribed; "always unsubscribable".
