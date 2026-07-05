@@ -162,14 +162,15 @@ class StaleCard:
     """One untouched card, with the bits a nudge line needs.
 
     Used for BOTH the stale-active and pending-backlog detectors — the
-    shape (id / title / status / age) is identical; only the status set
-    and threshold differ between the two.
+    shape (id / title / status / age / priority) is identical; only the
+    status set and threshold differ between the two.
     """
 
     id: str
     title: str
     status: str
     age_hours: float | None  # None when no parseable timestamp.
+    priority: int | None = None  # None when the card carries no priority.
 
 
 def _detect_owned_untouched(
@@ -183,8 +184,12 @@ def _detect_owned_untouched(
 
     Returns ``{owner: [StaleCard, ...]}`` — only owners with at least
     one matching card appear (no empty rows). Within each owner the
-    cards are sorted oldest-first (most-forgotten on top); cards with no
-    parseable timestamp (age ``None``) sort first as maximally stale.
+    cards are sorted PRIORITY-first (lower number = more urgent; cards
+    with no priority sort after any prioritized card), then oldest-first
+    within a priority tier; cards with no parseable timestamp (age
+    ``None``) sort first within their tier as maximally stale. When no
+    card in a bucket carries a priority this reduces to the original
+    oldest-first order.
 
     Both :func:`detect_stale_active` and :func:`detect_pending_backlog`
     are thin wrappers over this so owner-resolution, ordering, and the
@@ -201,17 +206,25 @@ def _detect_owned_untouched(
         if age is not None and age <= threshold_hours:
             continue  # fresh
         owner = _owner_of(t)
+        raw_priority = t.get("priority")
         out.setdefault(owner, []).append(
             StaleCard(
                 id=str(t.get("id") or ""),
                 title=str(t.get("title") or "(untitled)"),
                 status=str(t.get("status") or "?"),
                 age_hours=age,
+                priority=raw_priority if isinstance(raw_priority, int) else None,
             )
         )
     for cards in out.values():
-        # Oldest-first; None (no timestamp) sorts ahead of any finite age.
-        cards.sort(key=lambda c: (c.age_hours is not None, -(c.age_hours or 0.0)))
+        cards.sort(
+            key=lambda c: (
+                c.priority is None,
+                c.priority if c.priority is not None else 0,
+                c.age_hours is not None,
+                -(c.age_hours or 0.0),
+            )
+        )
     return out
 
 

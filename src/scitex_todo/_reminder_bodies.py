@@ -25,16 +25,32 @@ STALE_HINT_HOURS = 168.0
 #: clears :data:`STALE_HINT_HOURS`.
 _STALE_HINT_TAG = " [LONG-UNTOUCHED — check obsolete/superseded/drifted]"
 
+#: Digest occurrences (this one included) at/above which a card gets an
+#: IGNORED flag — it has now survived this many due-digests without being
+#: closed or touched. 3 gives an owner two clean passes before the harsher
+#: framing kicks in.
+IGNORED_REPEAT_THRESHOLD = 3
 
-def _card_line(sc) -> str:
+
+def _card_line(sc, seen_count: int | None = None) -> str:
     title = (sc.title or "").strip() or "(untitled)"
+    prio = "" if sc.priority is None else f"P{sc.priority} "
     age = "" if sc.age_hours is None else f", ~{sc.age_hours:.0f}h"
-    flag = (
+    stale_flag = (
         _STALE_HINT_TAG
         if sc.age_hours is None or sc.age_hours >= STALE_HINT_HOURS
         else ""
     )
-    return f"  - {sc.id} [{sc.status}{age}]{flag} \"{title}\""
+    ignored_flag = (
+        f" [IGNORED {seen_count}x — appeared in {seen_count} digests "
+        f"with no verdict]"
+        if seen_count is not None and seen_count >= IGNORED_REPEAT_THRESHOLD
+        else ""
+    )
+    return (
+        f"  - {prio}{sc.id} [{sc.status}{age}]{stale_flag}{ignored_flag} "
+        f"\"{title}\""
+    )
 
 
 #: The five verdicts a recipient must choose from for each digested card,
@@ -59,24 +75,48 @@ _VERDICT_LINES = (
 )
 
 
-def _digest_body(cards: list, attempt: int) -> str:
+#: One-line pointer to the exact write tools, so the recipient does not have
+#: to guess the API. ``pr_url`` / ``issue_url`` / ``job_id`` are named
+#: explicitly so evidence (the PR, the tracking issue, the CI run) is linked
+#: on the card itself, not left to live only in chat/channel history.
+_TOOLS_LINE = (
+    "Tools: update_task (status, assignee, pr_url, issue_url, job_id), "
+    "set_edge (depends_on), comment_task (blocker/question/verdict/reason), "
+    "set_collaborator (pull in help). Link the PR, tracking issue, and CI "
+    "run on the card as you go — evidence belongs on the card, not only in "
+    "chat."
+)
+
+
+def _digest_body(
+    cards: list, attempt: int, *, seen_counts: dict[str, int] | None = None
+) -> str:
     """One digest listing an owner's open stale cards; demands a real verdict.
 
-    Lists up to :data:`DIGEST_CARD_CAP` cards (oldest-first, as the detectors
-    order them) with a "+K more" tail. Every card in this list is already
-    UNBLOCKED — the caller (:mod:`_reminders`) excludes parked/blocked-on-
-    dependency cards before this body is built — so the framing is
-    deliberately direct: these are the recipient's move right now, and
-    repeating "nothing new" across digests is read as the card being
-    ignored, not as evidence it's fine. Cards untouched past
-    :data:`STALE_HINT_HOURS` carry a long-untouched flag (see
-    :func:`_card_line`), since staleness that extreme disproportionately
-    means the card is obsolete, superseded, or drifted rather than merely
-    delayed. Which card to work first is still the agent's call; giving
-    each card an explicit verdict (:data:`_VERDICT_LINES`) is not.
+    Lists up to :data:`DIGEST_CARD_CAP` cards (priority-then-oldest-first,
+    as the detectors order them) with a "+K more" tail. Every card in this
+    list is already UNBLOCKED — the caller (:mod:`_reminders`) excludes
+    parked/blocked-on-dependency cards before this body is built — so the
+    framing is deliberately direct: these are the recipient's move right
+    now, and repeating "nothing new" across digests is read as the card
+    being ignored, not as evidence it's fine. Cards untouched past
+    :data:`STALE_HINT_HOURS` carry a long-untouched flag; cards whose
+    ``seen_counts`` entry has reached :data:`IGNORED_REPEAT_THRESHOLD`
+    (see :func:`_card_line`) carry an IGNORED flag — the two are
+    independent signals (a card can be freshly created yet already
+    digested 3x, or ancient but seen for the first time). Which card to
+    work first is still the agent's call; giving each card an explicit
+    verdict (:data:`_VERDICT_LINES`) is not.
+
+    ``seen_counts`` maps ``card.id`` → how many due-digests (this one
+    included) the card has now appeared in unresolved; the caller
+    (:func:`scitex_todo._reminders.sweep_reminders`) tracks this in the
+    reminder sidecar and resets it whenever the card leaves the stale set
+    (closed or touched). ``None``/missing entries render with no flag.
     """
     shown = cards[:DIGEST_CARD_CAP]
-    lines = [_card_line(sc) for sc in shown]
+    counts = seen_counts or {}
+    lines = [_card_line(sc, counts.get(sc.id)) for sc in shown]
     if len(cards) > DIGEST_CARD_CAP:
         lines.append(f"  - (+{len(cards) - DIGEST_CARD_CAP} more)")
     return (
@@ -92,6 +132,7 @@ def _digest_body(cards: list, attempt: int) -> str:
         f"in parallel rather than one at a time.\n\n"
         f"For each card, record exactly one verdict:\n"
         + "\n".join(_VERDICT_LINES)
+        + f"\n\n{_TOOLS_LINE}"
         + "\n\nCards:\n" + "\n".join(lines)
     )
 
