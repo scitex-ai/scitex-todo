@@ -18,8 +18,11 @@ ecosystem convention.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 #: package short name (``scitex-todo`` with the ``scitex-`` prefix stripped).
 PKG_SHORT = "todo"
@@ -28,23 +31,39 @@ PKG_SHORT = "todo"
 #: encodes that it points at the SHARED yaml store.
 ENV_TASKS = "SCITEX_TODO_TASKS_YAML_SHARED"
 
-#: previous name of :data:`ENV_TASKS`. Renamed 2026-07-02. We fail LOUD (never
-#: silently honour it) if it is still set, so a stale export can't quietly pin
-#: the wrong store — the operator must migrate to the new name.
+#: previous name of :data:`ENV_TASKS`. Renamed 2026-07-02. The CURRENT var
+#: wins: when ``$SCITEX_TODO_TASKS_YAML_SHARED`` is set we IGNORE a stale export
+#: of this old name (loud warning, no raise). We fail LOUD only when the current
+#: var is NOT set AND this old name is still set — a genuine reliance on the
+#: renamed-away var the operator must migrate.
 ENV_TASKS_DEPRECATED = "SCITEX_TODO_TASKS"
 
 
 def _reject_deprecated_env() -> None:
-    """Fail loud if the old ``SCITEX_TODO_TASKS`` var is still set.
+    """Handle a leftover export of the old ``SCITEX_TODO_TASKS`` var.
 
-    No silent fallback: a leftover export of the old name is a configuration
-    error the operator must fix, not something we quietly translate.
+    The CURRENT var wins. If ``$SCITEX_TODO_TASKS_YAML_SHARED`` is set, the
+    stale old name is IGNORED with a loud warning (no raise) so a correctly
+    configured store is not disabled by a leftover export. We fail loud ONLY
+    when the current var is absent AND the old name is still set.
     """
-    if os.environ.get(ENV_TASKS_DEPRECATED) is not None:
-        raise RuntimeError(
-            f"{ENV_TASKS_DEPRECATED} was renamed to {ENV_TASKS}; "
-            f"unset the old var (it is no longer honoured)."
+    if os.environ.get(ENV_TASKS_DEPRECATED) is None:
+        return
+    if os.environ.get(ENV_TASKS) is not None:
+        logger.warning(
+            "%s is set but was renamed to %s; the stale value is IGNORED in "
+            "favor of the current %s. Unset %s to silence this warning.",
+            ENV_TASKS_DEPRECATED,
+            ENV_TASKS,
+            ENV_TASKS,
+            ENV_TASKS_DEPRECATED,
         )
+        return
+    raise RuntimeError(
+        f"{ENV_TASKS_DEPRECATED} was renamed to {ENV_TASKS}; "
+        f"unset the old var and set {ENV_TASKS} instead "
+        f"(the old name is no longer honoured)."
+    )
 
 
 def _user_root() -> Path:

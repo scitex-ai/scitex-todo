@@ -89,14 +89,33 @@ def test_falls_back_to_bundled_example(clean_tasks_env, isolated_cwd):
 
 
 def test_deprecated_env_var_fails_loud(monkeypatch, clean_tasks_env):
-    """The renamed-away $SCITEX_TODO_TASKS must never be silently honoured: if
-    it is still set, resolution fails LOUD pointing at the new name so a stale
-    export can't quietly pin the wrong store."""
-    # Arrange
+    """The renamed-away $SCITEX_TODO_TASKS must never be silently honoured when
+    the current var is absent: with ONLY the old name set, resolution fails LOUD
+    pointing at the new name so a stale export can't quietly pin the wrong
+    store."""
+    # Arrange: only the deprecated old name is set.
     monkeypatch.setenv(ENV_TASKS_DEPRECATED, "/some/legacy/tasks.yaml")
     # Act / Assert
     with pytest.raises(RuntimeError, match=ENV_TASKS):
         resolve_tasks_path(None)
+
+
+def test_current_tasks_var_wins_over_stale_deprecated(
+    monkeypatch, tmp_path, clean_tasks_env
+):
+    """The CURRENT $SCITEX_TODO_TASKS_YAML_SHARED wins: when it is set, a stale
+    leftover $SCITEX_TODO_TASKS is IGNORED (warn, no raise) so a correctly
+    configured store is not disabled by a leftover old-name export."""
+    # Arrange: the current var points at a real store AND the stale old name is
+    # also exported.
+    target = tmp_path / "current.yaml"
+    target.write_text("tasks: []\n", encoding="utf-8")
+    monkeypatch.setenv(ENV_TASKS, str(target))
+    monkeypatch.setenv(ENV_TASKS_DEPRECATED, "/some/legacy/tasks.yaml")
+    # Act
+    resolved = resolve_tasks_path(None)
+    # Assert: the current var wins, no raise.
+    assert resolved == target
 
 
 def test_bundled_example_file_exists_and_loads():

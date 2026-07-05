@@ -303,13 +303,24 @@ def test_resolve_agent_id_unexpanded_placeholder_from_env_raises(monkeypatch):
         resolve_agent_id()
 
 
-def test_resolve_agent_id_deprecated_env_var_fails_loud(monkeypatch):
-    """The renamed-away $SCITEX_TODO_AGENT must never be silently honoured: if
-    it is still exported, resolution fails LOUD pointing at the new name so a
-    stale export can't quietly drain the wrong agent's inbox."""
-    # Arrange: a valid NEW-name id is present AND the deprecated old name is
-    # set — the guard must still fire (it never silently prefers the new one).
+def test_resolve_agent_id_current_var_wins_over_stale_deprecated(monkeypatch):
+    """The CURRENT var wins: a valid $SCITEX_TODO_AGENT_ID must NOT be disabled
+    by a leftover stale $SCITEX_TODO_AGENT. This is the incident fix — fleet
+    agents carry a stale ambient old-name export baked in by an old injector;
+    a correctly configured AGENT_ID must still resolve (so the poll loop runs)."""
+    # Arrange: a valid NEW-name id AND the stale old name both set.
     monkeypatch.setenv("SCITEX_TODO_AGENT_ID", "env-agent")
+    monkeypatch.setenv("SCITEX_TODO_AGENT", "legacy-agent")
+    # Act / Assert: the current var wins, no raise.
+    assert resolve_agent_id() == "env-agent"
+
+
+def test_resolve_agent_id_only_deprecated_env_var_fails_loud(monkeypatch):
+    """With NO current $SCITEX_TODO_AGENT_ID but the renamed-away
+    $SCITEX_TODO_AGENT still exported, resolution fails LOUD pointing at the new
+    name — a genuine reliance on the old var the operator must migrate."""
+    # Arrange: only the deprecated old name is set.
+    monkeypatch.delenv("SCITEX_TODO_AGENT_ID", raising=False)
     monkeypatch.setenv("SCITEX_TODO_AGENT", "legacy-agent")
     # Act / Assert
     with pytest.raises(RuntimeError, match="SCITEX_TODO_AGENT_ID"):
@@ -333,12 +344,23 @@ def test_resolve_agent_id_optional_returns_none_when_unset(monkeypatch):
 
 
 def test_resolve_agent_id_optional_none_on_deprecated_env(monkeypatch):
-    """The deprecated $SCITEX_TODO_AGENT makes resolve fail loud; the optional
-    variant swallows it to None (tools-only) rather than crashing the server —
-    but the loud warning still surfaces the misconfiguration."""
+    """ONLY the deprecated $SCITEX_TODO_AGENT set (no current AGENT_ID) makes
+    resolve fail loud; the optional variant swallows it to None (tools-only)
+    rather than crashing the server — the loud warning still surfaces it."""
     monkeypatch.delenv("SCITEX_TODO_AGENT_ID", raising=False)
     monkeypatch.setenv("SCITEX_TODO_AGENT", "legacy-agent")
     assert resolve_agent_id_optional() is None
+
+
+def test_resolve_agent_id_optional_returns_id_when_both_vars_set(monkeypatch):
+    """THE key regression that re-enables the poll loop: a valid AGENT_ID plus a
+    stale deprecated $SCITEX_TODO_AGENT must return the id (NOT None). Before the
+    fix the mere presence of the old var made resolve fail loud → optional
+    returned None → the digest poll loop never started (server connected, tools
+    worked, but no channel notifications were ever pushed)."""
+    monkeypatch.setenv("SCITEX_TODO_AGENT_ID", "env-agent")
+    monkeypatch.setenv("SCITEX_TODO_AGENT", "legacy-agent")
+    assert resolve_agent_id_optional() == "env-agent"
 
 
 # === unified server: one scitex-todo serves tools AND declares the channel ====
