@@ -29,6 +29,21 @@ Wire format (exact)
 JSON-RPC notification, method ``notifications/claude/channel``, params
 ``{"content": <str>, "meta": {<all-string-values>}}``. EVERY meta value MUST
 be a string or Claude's Zod validator silently drops the pushed turn.
+
+Size / burst guards (see :mod:`scitex_todo._channel_guard`). The SDK reads these
+pushes through a stdio JSON reader with a hard 1 MB per-message buffer; on
+2026-07-02, 180 solver containers died on boot with ``JSON message exceeded
+maximum buffer size of 1048576 bytes`` when an oversized push overflowed it. Two
+guards prevent that: :func:`build_channel_params` caps the body at
+``MAX_CONTENT_BYTES`` (256 KiB) with a "see the card on the board" pointer, and
+:func:`drain_once` pushes at most ``MAX_PUSH_PER_DRAIN`` (50) records per tick so
+a backlog can never burst all at once on first connect.
+
+Headless / solver capsules (no push): with NO ``$SCITEX_TODO_AGENT_ID`` set the
+unified server (``scitex-todo mcp start``) runs TOOLS-ONLY — the poll loop is not
+started and the session receives ZERO channel pushes (see
+:func:`resolve_agent_id_optional`). Intended mode for solver / headless capsules
+that must not receive unsolicited pushes: just do not export the id for them.
 """
 
 from __future__ import annotations
@@ -39,6 +54,11 @@ import os
 from typing import Any, Awaitable, Callable
 
 from . import _inbox
+from ._channel_guard import (
+    MAX_PUSH_PER_DRAIN,
+    _bounded_content,
+    _bounded_meta_value,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -153,16 +173,23 @@ def build_channel_params(rec: dict[str, Any], *, source: str = _DEFAULT_SOURCE) 
     ``meta`` value as a string and a non-string trips its Zod validator,
     silently dropping the pushed turn. ``meta.source`` drives the
     ``<- scitex-todo`` render.
+
+    Size-guarded: the ``content`` body is capped at ``MAX_CONTENT_BYTES``
+    (256 KiB) via :func:`scitex_todo._channel_guard._bounded_content` so a huge
+    body can never overflow the SDK's 1 MB stdio reader; an oversized body is
+    truncated on a UTF-8 char boundary with a "see the card on the board"
+    pointer. Each ``meta`` value is additionally clamped (belt-and-suspenders).
     """
+    card_id = str(rec.get("card_id") or "")
     return {
-        "content": str(rec.get("body") or ""),
+        "content": _bounded_content(rec.get("body"), card_id),
         "meta": {
-            "source": str(source),
-            "ts": str(rec.get("ts") or ""),
-            "event_type": str(rec.get("event_type") or ""),
-            "card_id": str(rec.get("card_id") or ""),
-            "actor": str(rec.get("actor") or ""),
-            "msg_id": str(rec.get("id") or ""),
+            "source": _bounded_meta_value(source),
+            "ts": _bounded_meta_value(rec.get("ts") or ""),
+            "event_type": _bounded_meta_value(rec.get("event_type") or ""),
+            "card_id": _bounded_meta_value(card_id),
+            "actor": _bounded_meta_value(rec.get("actor") or ""),
+            "msg_id": _bounded_meta_value(rec.get("id") or ""),
         },
     }
 
@@ -214,6 +241,10 @@ async def drain_once(
     Fail-soft per record: one bad push (``send`` raises) leaves THAT record
     un-ack'd (retried next drain) and does not abort the rest of the batch.
 
+    Burst-guarded: at most ``MAX_PUSH_PER_DRAIN`` records are pushed per call,
+    across ALL recipient keys combined; the rest stay unseen and drain on the
+    next tick — a huge backlog can never flood the session on first connect.
+
     Parameters
     ----------
     agent_id : str
@@ -234,16 +265,12 @@ async def drain_once(
     Notes
     -----
     Every store touch (:func:`recipient_keys`, :func:`_inbox.poll_inbox`,
-    :func:`_inbox.ack`) is SYNCHRONOUS blocking IO — it locks and parses the
-    whole YAML store. Running it inline on the event loop starves the MCP
-    session: when the unified ``mcp start`` server starts its poll loop, the
-    very first drain would block the loop long enough that the initialize
-    handshake never gets a turn, and Claude Code marks the server
-    "not connected" (the failure mode that grew with inbox size). We therefore
-    off-load every blocking store call to a worker thread via
-    ``anyio.to_thread.run_sync`` so the loop stays free to service the
-    handshake and tool calls; only the ``await send(...)`` push itself runs on
-    the loop (it needs the live session).
+    :func:`_inbox.ack`) is SYNCHRONOUS blocking IO (it locks + parses the whole
+    YAML store). Running it inline on the event loop starves the MCP session —
+    the first drain would block the ``initialize`` handshake and Claude Code
+    marks the server "not connected" (grew with inbox size). So every blocking
+    store call is off-loaded to a worker thread via ``anyio.to_thread.run_sync``;
+    only the ``await send(...)`` push runs on the loop (it needs the session).
     """
     from functools import partial
 
@@ -252,10 +279,14 @@ async def drain_once(
     pushed = 0
     keys = await anyio.to_thread.run_sync(partial(recipient_keys, agent_id, store=store))
     for key in keys:
+        if pushed >= MAX_PUSH_PER_DRAIN:
+            break  # burst cap reached — remaining keys drain next tick
         records = await anyio.to_thread.run_sync(
             partial(_inbox.poll_inbox, key, unseen_only=True, mark_seen=False, store=store)
         )
         for rec in records:
+            if pushed >= MAX_PUSH_PER_DRAIN:
+                break  # burst cap reached — rest stay unseen for the next tick
             params = build_channel_params(rec, source=source)
             try:
                 await send(params)
