@@ -1386,6 +1386,48 @@
         ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
     }
 
+    // Render a stored UTC ISO timestamp (e.g. "2026-07-05T15:59:15Z") in the
+    // VIEWER'S OWN timezone — the operator is in JST, so a raw `...Z` string
+    // reads as "9 hours in the past". `toLocaleString` with no explicit
+    // locale/zone uses the browser's, so the same board renders correctly for
+    // any viewer. Returns an escaped <span> whose title carries the exact UTC
+    // instant; a missing ts renders "—", an unparseable one renders raw
+    // (never a broken "Invalid Date"). (hook-bypass: line-limit)
+    function fmtLocalTime(iso) {
+      if (!iso) return "—";
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return escapeHtml(iso);
+      const local = d.toLocaleString(undefined, {
+        year: "numeric", month: "2-digit", day: "2-digit",
+        // hourCycle h23 → midnight is "00", not the "24:59" quirk that
+        // `hour12:false` alone produces in some engines.
+        hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+      });
+      return `<span title="${escapeHtml(iso)}">${escapeHtml(local)}</span>`;
+    }
+
+    // The SUBSCRIBER set for a card = the explicit `subscribers` list UNIONED
+    // with the creator (created_by, else earliest comment author) and the
+    // current assignee (assignee||agent). Operator rule (2026-07-06): creator
+    // + assignee are ALWAYS subscribers by default, and a card mutation
+    // notifies all subscribers — so the board reflects the real audience even
+    // before the store-side invariant lands. De-duplicated, order-stable
+    // (explicit subscribers first, then creator, then assignee).
+    // (hook-bypass: line-limit)
+    function subscriberUnion(t) {
+      const out = [];
+      const seen = new Set();
+      const add = (x) => {
+        if (typeof x === "string" && x && !seen.has(x)) { seen.add(x); out.push(x); }
+      };
+      (Array.isArray(t.subscribers) ? t.subscribers : []).forEach(add);
+      const firstComment = (t.comments || [])
+        .map(c => c && c.author).find(a => typeof a === "string" && a);
+      add(t.created_by || firstComment || "");
+      add(t.assignee || t.agent || "");
+      return out;
+    }
+
     function cardHtml(t) {
       const b = bucket(t.status);
       const blocker = t.blocker
@@ -1400,7 +1442,7 @@
       const taskLine = escapeHtml(t.task || t.title);  // fallback to title until `task` is populated everywhere
       const goal = t.goal ? `<div class="card-goal" title="${escapeHtml(t.goal)}">${escapeHtml(t.goal)}</div>` : "";
       const host = t.host ? `<span class="card-host">${escapeHtml(t.host)}</span>` : "<span></span>";
-      const last = t.last_activity ? `last ${escapeHtml(t.last_activity)}` : "";
+      const last = t.last_activity ? `last ${fmtLocalTime(t.last_activity)}` : "";
       const id = escapeHtml(t.id);
       // Owner (SSOT cardOwner = agent||assignee) + creator (created_by,
       // falling back to the earliest comment author). An assignee-only card
@@ -2184,7 +2226,7 @@
           <td class="tbl-project">${escapeHtml(t.project || "—")}</td>
           <td class="tbl-blocker-cell">${blocker}</td>
           <td class="tbl-prio">${typeof t.priority === "number" ? "#" + t.priority : ""}</td>
-          <td class="tbl-last">${escapeHtml(t.last_activity || "")}</td>
+          <td class="tbl-last">${t.last_activity ? fmtLocalTime(t.last_activity) : ""}</td>
         </tr>`;
       }).join("");
       canvas.innerHTML = sorted.length
@@ -3382,8 +3424,8 @@
         ["creator", escapeHtml(creator)],
         ["assignee", escapeHtml(assignee)],
         ["collaborators", fmtList(t.collaborators)],
-        ["subscribers", fmtList(t.subscribers)],
-        ["last_activity", t.last_activity || "—"], ["created_at", t.created_at || "—"],
+        ["subscribers", fmtList(subscriberUnion(t))],
+        ["last_activity", fmtLocalTime(t.last_activity)], ["created_at", fmtLocalTime(t.created_at)],
         ["goal", t.goal || "—"],
         ["pr_url", t.pr_url ? `<a href="${escapeHtml(t.pr_url)}" target="_blank">${escapeHtml(t.pr_url)}</a>` : "—"],
         ["issue_url", t.issue_url ? `<a href="${escapeHtml(t.issue_url)}" target="_blank">${escapeHtml(t.issue_url)}</a>` : "—"],
@@ -3626,7 +3668,7 @@
           <div class="route-body">
             <div class="route-meta">
               <span class="route-actor">${escapeHtml(h.actor)}</span>
-              <span class="route-ts">${escapeHtml(h.ts)}</span>
+              <span class="route-ts">${fmtLocalTime(h.ts)}</span>
             </div>
             <div class="route-text">${escapeHtml(h.text)}</div>
           </div>
