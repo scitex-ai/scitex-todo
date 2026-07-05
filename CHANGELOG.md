@@ -4,6 +4,40 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.34] - 2026-07-05 — fix: harden the channel push path (size cap + first-connect burst cap)
+
+Hardens the `notifications/claude/channel` push surface against the crash class
+behind the 2026-07-02 incident, where 180 solver apptainer containers died on
+boot with `JSON message exceeded maximum buffer size of 1048576 bytes` — an
+oversized scitex-todo channel push overflowed the Claude Agent SDK's 1 MB stdio
+reader.
+
+### Fixed
+
+- **Oversized push body → SDK reader overflow.** `build_channel_params` now caps
+  the pushed `content` body at `MAX_CONTENT_BYTES` (256 KiB, a quarter of the
+  1 MB reader with generous headroom for `meta` + JSON framing). An oversized
+  body is truncated on a UTF-8 char boundary (multibyte-safe) and gets a
+  `[truncated — see card <id> on the board]` pointer so the full text stays
+  reachable. `meta` values are additionally clamped (belt-and-suspenders).
+- **First-connect burst.** `drain_once` now pushes at most `MAX_PUSH_PER_DRAIN`
+  (50) records per call, across all recipient keys combined. A large unseen
+  backlog can no longer flood the session in one tick — the remainder stays
+  unseen and drains on the next ~5 s poll tick, a few dozen at a time. Acks
+  still happen only for records actually pushed.
+
+### Added
+
+- New pure, unit-testable `scitex_todo._channel_guard` module holding the size
+  constants and `_bounded_content` / `_bounded_meta_value` helpers (keeps
+  `_mcp_channel.py` within the module size budget).
+
+### Docs
+
+- Documented the headless lever: with **no** `SCITEX_TODO_AGENT_ID` the unified
+  `scitex-todo mcp start` runs tools-only (no poll loop, zero pushes) — the
+  intended mode for solver / headless capsules that must not receive pushes.
+
 ## [0.7.33] - 2026-07-05 — feat: package-level `health` doctor (MCP tool + CLI verb)
 
 A broad store / identity / delivery health check, exposed as BOTH the `health`
