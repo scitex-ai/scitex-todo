@@ -136,10 +136,19 @@ def card_role_members(
         ROLE_COLLABORATORS: _card_field_names(card, "collaborators"),
         ROLE_SUBSCRIBERS: _card_field_names(card, "subscribers"),
     }
-    return {
+    resolved = {
         role: {_resolve_name_to_id(n, store=store) for n in names}
         for role, names in raw_by_role.items()
     }
+    # Subscriber invariant (operator 2026-07-06): the ASSIGNEE (owner) is
+    # ALWAYS a subscriber. _store.py seeds it on write, but enforce it here
+    # too so a legacy / not-yet-backfilled / hand-edited card whose persisted
+    # ``subscribers`` list is missing the owner STILL notifies the owner on
+    # any subscribers-role event. Idempotent union — a no-op once the store
+    # has seeded it. Mirrors :func:`scitex_todo._subscribers.ensure_assignee_subscribed`
+    # at resolution time.
+    resolved[ROLE_SUBSCRIBERS] |= resolved[ROLE_OWNER]
+    return resolved
 
 
 def _card_member_ids(role_members: Mapping[str, set[str]]) -> set[str]:

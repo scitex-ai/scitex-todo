@@ -58,8 +58,11 @@ VALID_ROLES: frozenset[str] = frozenset(
 #:   merge ping can opt in via its per-card ``notify`` override.
 #: * ``released``       → subscribers (release announcement)
 #: * ``deployed``       → subscribers (deploy announcement)
-#: * ``reassigned``     → owner (the new owner should learn they own it)
-#: * ``created``        → assignee (whoever it was filed against)
+#: * ``reassigned``     → owner + subscribers (the new owner learns they own
+#:   it; every subscriber learns the card changed hands — operator 2026-07-06:
+#:   EVERY card mutation notifies ALL subscribers)
+#: * ``created``        → assignee + subscribers (whoever it was filed
+#:   against, plus the seeded subscriber set — assignee/creator)
 #: * ``status_changed`` → subscribers (state transitions are subscriber-level)
 #: * ``committed``      → owner (low-ish signal; the owner tracks commits)
 #: * ``pushed``         → owner (same)
@@ -70,8 +73,13 @@ VALID_ROLES: frozenset[str] = frozenset(
 #: taxonomy (an event with no recipients maps to ``[]`` explicitly, not by
 #: omission) so a reader can see the full policy at a glance.
 DEFAULT_NOTIFY_RULES: dict[str, list[str]] = {
-    EventType.CREATED: [ROLE_ASSIGNEE],
-    EventType.REASSIGNED: [ROLE_OWNER],
+    # Operator 2026-07-06: EVERY card mutation notifies ALL subscribers. The
+    # card-mutation events (created / reassigned / status_changed / commented /
+    # completed) therefore all include ROLE_SUBSCRIBERS. (The assignee is
+    # ALWAYS in the resolved subscribers set — enforced both at write time in
+    # _store.py and defensively at resolve time in _resolver.card_role_members.)
+    EventType.CREATED: [ROLE_ASSIGNEE, ROLE_SUBSCRIBERS],
+    EventType.REASSIGNED: [ROLE_OWNER, ROLE_SUBSCRIBERS],
     EventType.STATUS_CHANGED: [ROLE_SUBSCRIBERS],
     EventType.COMMENTED: [ROLE_OWNER, ROLE_COLLABORATORS, ROLE_SUBSCRIBERS],
     EventType.COMPLETED: [ROLE_OWNER, ROLE_SUBSCRIBERS],

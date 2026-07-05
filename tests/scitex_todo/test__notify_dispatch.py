@@ -162,6 +162,13 @@ def test_commented_enqueues_to_owner_collaborators_subscribers(tmp_path):
         subscribers=["eve"],
         created_by="alice",
     )
+    # Drain the setup `created` notice: per the 2026-07-06 rule, `created` now
+    # notifies subscribers too, so the explicit subscriber eve gets a created
+    # note at add_task time. This test is about the COMMENTED dispatch, so
+    # clear setup noise first (mark_seen) — mirrors the created_by==owner
+    # self-exclusion idiom used by the owner-only tests.
+    for uid in (alice.id, carol.id, eve.id):
+        poll_inbox(uid, mark_seen=True, store=store)
     rec = _ExplodingDeliver()
 
     # bob (a card subscriber would be over-thinking — bob is just the actor)
@@ -213,6 +220,9 @@ def test_merged_enqueues_to_nobody_by_default(tmp_path):
     alice = register_user(kind="agent", names=["alice"], store=store)
     eve = register_user(kind="human", names=["eve"], store=store)
     add_task(store=store, id="c1", title="x", agent="alice", subscribers=["eve"], created_by="alice")
+    # Drain the setup `created` notice (created now notifies subscribers, so
+    # eve gets one at add_task) — this test asserts MERGED is quiet.
+    poll_inbox(eve.id, mark_seen=True, store=store)
     rec = _ExplodingDeliver()
 
     summary = dispatch_notifications(
@@ -234,6 +244,10 @@ def test_completed_enqueues_to_owner_and_subscribers(tmp_path):
     alice = register_user(kind="agent", names=["alice"], store=store)
     eve = register_user(kind="human", names=["eve"], store=store)
     add_task(store=store, id="c1", title="x", agent="alice", subscribers=["eve"], created_by="alice")
+    # Drain the setup `created` notice (created now notifies subscribers, so
+    # eve gets one at add_task) so we assert purely on the COMPLETED dispatch.
+    for uid in (alice.id, eve.id):
+        poll_inbox(uid, mark_seen=True, store=store)
     rec = _ExplodingDeliver()
 
     summary = dispatch_notifications(

@@ -130,7 +130,9 @@ def test_card_role_members_resolves_to_ids(tmp_path):
 
     assert members["owner"] == {owner.id}
     assert members["collaborators"] == {collab.id}
-    assert members["subscribers"] == set()
+    # Subscriber invariant (2026-07-06): the assignee (owner) is ALWAYS in the
+    # resolved subscribers set, even with no explicit `subscribers` field.
+    assert members["subscribers"] == {owner.id}
 
 
 def test_card_role_members_owner_falls_back_to_assignee(tmp_path):
@@ -280,12 +282,16 @@ def test_user_mute_beats_role_membership_but_card_add_can_reinclude(tmp_path):
 def test_per_card_events_override_changes_roles(tmp_path):
     store = _store(tmp_path)
     owner = register_user(kind="agent", names=["alice"], store=store)
+    collab = register_user(kind="agent", names=["bob"], store=store)
     sub = register_user(kind="human", names=["eve"], store=store)
-    # Default `commented` = owner+collab+subscribers; this card narrows it
-    # to subscribers only.
+    # Default `commented` = owner+collab+subscribers; this card narrows it to
+    # subscribers only — which drops the COLLABORATOR (bob), but NOT the
+    # owner: per the 2026-07-06 invariant the assignee is always a subscriber,
+    # so role-narrowing can never exclude the assignee.
     card = {
         "id": "c1",
         "agent": "alice",
+        "collaborators": ["bob"],
         "subscribers": ["eve"],
         "notify": {"events": {"commented": ["subscribers"]}},
     }
@@ -294,8 +300,10 @@ def test_per_card_events_override_changes_roles(tmp_path):
         Event(type=EventType.COMMENTED), card, store=store
     )
 
-    assert got == {sub.id}
-    assert owner.id not in got
+    # Narrowing to subscribers dropped the collaborator; owner stays (it is a
+    # subscriber by invariant), and the explicit subscriber is included.
+    assert got == {sub.id, owner.id}
+    assert collab.id not in got
 
 
 def test_merged_is_default_quiet(tmp_path):

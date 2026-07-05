@@ -88,21 +88,22 @@ def test_emit_event_pulled_no_card_is_quiet_noop(tmp_path, env):
 # --------------------------------------------------------------------------- #
 # emit-event — end-to-end: emit → bus → C4 → standalone inbox                  #
 # --------------------------------------------------------------------------- #
-def test_emit_event_released_reaches_subscriber_inbox(tmp_path, env):
-    # Arrange — a registered SUBSCRIBER on a card. The C3 default rule for
-    # `released` is `[subscribers]` (a release announcement), so the
-    # subscriber `eve` is the recipient; the owner `alice` is NOT notified
-    # for a release by default. Push rail dry-run so the optional
-    # accelerator never touches the network (the standalone inbox rail is
-    # the one under test).
+def test_emit_event_released_reaches_subscribers_inbox(tmp_path, env):
+    # Arrange — a card with an explicit SUBSCRIBER (eve) and an owner (alice).
+    # The C3 default rule for `released` is `[subscribers]`; per the 2026-07-06
+    # invariant the ASSIGNEE is ALWAYS a subscriber, so a release reaches BOTH
+    # the explicit subscriber eve AND the owner alice. Push rail dry-run so the
+    # optional accelerator never touches the network.
     runner = CliRunner()
     store = _store_path(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
     eve = register_user(kind="human", names=["eve"], store=store)
-    # created_by == owner so the setup `created` event self-excludes the actor
-    # (creator isn't notified of their own creation) — keeps alice's inbox empty
-    # so the `released`-to-subscriber assertion is not polluted.
     add_task(store=store, id="card-rel", title="x", agent="alice", subscribers=["eve"], created_by="alice")
+    # `created` now notifies subscribers (2026-07-06 rule), so eve gets a
+    # created note at setup — drain both inboxes so we assert purely on
+    # `released`.
+    for uid in (alice.id, eve.id):
+        poll_inbox(uid, mark_seen=True, store=store)
     env.set("SCITEX_TODO_PUSH_DRY_RUN", "1")
     # Act — a `released` card-event for the card, caused by `ci` (the actor
     # is never self-notified; here the actor is neither alice nor eve).
@@ -118,18 +119,17 @@ def test_emit_event_released_reaches_subscriber_inbox(tmp_path, env):
             "--tasks", store,
         ],
     )
-    # Assert — exit 0 and the printed summary reports the enqueue to the
-    # subscriber only.
+    # Assert — exit 0 and the printed summary reports the enqueue to both
+    # subscribers (the explicit eve + the mandatory-subscriber owner alice).
     assert result.exit_code == 0, result.output
     summary = _summary(result.output)
     assert summary["notify"]["event_type"] == "released"
-    assert summary["notify"]["enqueued"] == [eve.id]
-    # Assert end-to-end — the subscriber's standalone INBOX really received
-    # it; the owner (not a `released` recipient) stays empty.
-    eve_inbox = poll_inbox(eve.id, store=store)
-    assert [r["event_type"] for r in eve_inbox] == ["released"]
-    assert [r["card_id"] for r in eve_inbox] == ["card-rel"]
-    assert poll_inbox(alice.id, store=store) == []
+    assert set(summary["notify"]["enqueued"]) == {eve.id, alice.id}
+    # Assert end-to-end — both subscribers' standalone inboxes received it.
+    for uid in (eve.id, alice.id):
+        inbox = poll_inbox(uid, store=store)
+        assert [r["event_type"] for r in inbox] == ["released"]
+        assert [r["card_id"] for r in inbox] == ["card-rel"]
 
 
 def test_emit_event_released_actor_is_not_notified(tmp_path, env):
@@ -139,7 +139,12 @@ def test_emit_event_released_actor_is_not_notified(tmp_path, env):
     runner = CliRunner()
     store = _store_path(tmp_path)
     alice = register_user(kind="agent", names=["alice"], store=store)
-    add_task(store=store, id="card-rel", title="x", agent="bob", subscribers=["alice"])
+    # alice is the owner (→ mandatory subscriber) AND will be the release
+    # actor. She is the ONLY subscriber, so the actor-exclusion must leave the
+    # recipient set empty.
+    add_task(store=store, id="card-rel", title="x", agent="alice", subscribers=["alice"], created_by="alice")
+    # Drain any setup notice so this test asserts purely on the release.
+    poll_inbox(alice.id, mark_seen=True, store=store)
     env.set("SCITEX_TODO_PUSH_DRY_RUN", "1")
     # Act — alice causes the release.
     result = runner.invoke(
@@ -282,6 +287,9 @@ def test_resolve_card_then_emit_with_resolved_id(tmp_path, env):
         store=store, id="c-rel", title="x", agent="bob",
         subscribers=["alice"], repo="owner/repo",
     )
+    # `created` now notifies subscribers (2026-07-06 rule); drain alice's
+    # setup created note so we assert purely on the `released` event.
+    poll_inbox(alice.id, mark_seen=True, store=store)
     env.set("SCITEX_TODO_PUSH_DRY_RUN", "1")
     # Act 1 — resolve repo → card id.
     resolve = runner.invoke(
