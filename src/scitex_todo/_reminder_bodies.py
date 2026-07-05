@@ -37,6 +37,27 @@ def _card_line(sc) -> str:
     return f"  - {sc.id} [{sc.status}{age}]{flag} \"{title}\""
 
 
+#: The five verdicts a recipient must choose from for each digested card,
+#: rendered as ``"CODE — instruction"`` lines under the digest header.
+#: Order is deliberate: act on it, name the blocker, retire it, hand it
+#: off, or push back on it — roughly most- to least-common outcome.
+_VERDICT_LINES = (
+    "  - WORKING — you are advancing it now.",
+    "  - BLOCKED — state the blocker, link it correctly (set the "
+    "depends_on edge to the blocking card), and nudge that card's "
+    "assignee directly; remaining silent is not acceptable.",
+    "  - OBSOLETE — close it. Cards marked LONG-UNTOUCHED below are "
+    "especially likely to be obsolete, superseded, or drifted from "
+    "current reality.",
+    "  - REASSIGN — act on it now: update the assignee (update_task) or "
+    "add a collaborator (set_collaborator); do not merely name who "
+    "should take it.",
+    "  - QUESTION — if the task itself seems unreasonable or wrong, ask "
+    "the card's creator directly instead of silently complying or "
+    "silently skipping it.",
+)
+
+
 def _digest_body(cards: list, attempt: int) -> str:
     """One digest listing an owner's open stale cards; demands a real verdict.
 
@@ -44,37 +65,33 @@ def _digest_body(cards: list, attempt: int) -> str:
     order them) with a "+K more" tail. Every card in this list is already
     UNBLOCKED — the caller (:mod:`_reminders`) excludes parked/blocked-on-
     dependency cards before this body is built — so the framing is
-    deliberately blunt: these are the recipient's move RIGHT NOW, and a
-    repeated "nothing new" acknowledgement across digests is treated as the
-    card being ignored, not as evidence it's fine. Cards untouched past
+    deliberately direct: these are the recipient's move right now, and
+    repeating "nothing new" across digests is read as the card being
+    ignored, not as evidence it's fine. Cards untouched past
     :data:`STALE_HINT_HOURS` carry a long-untouched flag (see
-    :func:`_card_line`) since staleness that extreme is disproportionately
-    likely to mean the card is obsolete/superseded/drifted, not merely
-    delayed. The specific card SELECTED to work first is still left to the
-    agent; what's no longer optional is giving each card an explicit
-    verdict. When completing a card needs another agent's action, waiting
-    silently is not progress — the owner is expected to a2a-nudge that
-    agent directly, per the constitution's "ownership never dangles" rule.
+    :func:`_card_line`), since staleness that extreme disproportionately
+    means the card is obsolete, superseded, or drifted rather than merely
+    delayed. Which card to work first is still the agent's call; giving
+    each card an explicit verdict (:data:`_VERDICT_LINES`) is not.
     """
     shown = cards[:DIGEST_CARD_CAP]
     lines = [_card_line(sc) for sc in shown]
     if len(cards) > DIGEST_CARD_CAP:
         lines.append(f"  - (+{len(cards) - DIGEST_CARD_CAP} more)")
     return (
-        f"Assigned-card digest #{attempt}: {len(cards)} card(s) below are YOUR "
-        f"MOVE right now — all are unblocked (parked/blocked-on-dependency "
-        f"cards are already excluded from this list). Rule: tackle each one "
-        f"immediately unless it is genuinely blocked; \"nothing new, no "
-        f"action taken\" is NOT a valid response to a repeated digest. For "
-        f"EACH card give one verdict — WORKING (doing it now), BLOCKED (say "
-        f"on what — and a2a-nudge whichever agent needs to act, don't just "
-        f"wait silently), OBSOLETE (close it — especially likely for cards "
-        f"marked LONG-UNTOUCHED below, since drift/supersession is common "
-        f"over that long), or REASSIGN (don't just name who — actually "
-        f"update_task the assignee, or set_collaborator to pull in help, "
-        f"right now). Deferring ANY card (BLOCKED or otherwise leaving it "
-        f"pending) requires a stated reason, comment it — a bare status "
-        f"with no justification is not acceptable:\n" + "\n".join(lines)
+        f"Assigned-card digest #{attempt}: {len(cards)} card(s) require "
+        f"your action now. All are unblocked — cards genuinely blocked by "
+        f"a dependency are already excluded from this list.\n\n"
+        f"Policy: act on every card below immediately unless it is "
+        f"genuinely blocked. Repeating \"nothing new\" across digests is "
+        f"not acceptable — it reads as neglect, not confirmation that all "
+        f"is well. Any deferral requires a stated, commented reason; a "
+        f"bare status change with no justification does not count. When "
+        f"several cards are independent and resources allow, advance them "
+        f"in parallel rather than one at a time.\n\n"
+        f"For each card, record exactly one verdict:\n"
+        + "\n".join(_VERDICT_LINES)
+        + "\n\nCards:\n" + "\n".join(lines)
     )
 
 
