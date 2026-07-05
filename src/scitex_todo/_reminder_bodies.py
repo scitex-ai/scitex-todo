@@ -44,17 +44,18 @@ def _card_line(sc) -> str:
 _VERDICT_LINES = (
     "  - WORKING — you are advancing it now.",
     "  - BLOCKED — state the blocker, link it correctly (set the "
-    "depends_on edge to the blocking card), and nudge that card's "
-    "assignee directly; remaining silent is not acceptable.",
+    "depends_on edge to the blocking card), and comment on THAT card so "
+    "its assignee is notified through the card's own history; remaining "
+    "silent is not acceptable.",
     "  - OBSOLETE — close it. Cards marked LONG-UNTOUCHED below are "
     "especially likely to be obsolete, superseded, or drifted from "
     "current reality.",
     "  - REASSIGN — act on it now: update the assignee (update_task) or "
     "add a collaborator (set_collaborator); do not merely name who "
     "should take it.",
-    "  - QUESTION — if the task itself seems unreasonable or wrong, ask "
-    "the card's creator directly instead of silently complying or "
-    "silently skipping it.",
+    "  - QUESTION — if the task itself seems unreasonable or wrong, "
+    "comment on the card asking its creator directly instead of "
+    "silently complying or silently skipping it.",
 )
 
 
