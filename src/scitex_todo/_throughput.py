@@ -50,6 +50,22 @@ SHORT_ID_TRUNC = 24
 ENV_WIP_LIMIT = "SCITEX_TODO_WIP_LIMIT"
 DEFAULT_WIP_LIMIT = 20
 
+# Hard-refuse enforcement is OPT-IN (operator 2026-07-06: the 2x-limit hard
+# block interfered with real work — it must WARN, never refuse, by default).
+# Set SCITEX_TODO_WIP_ENFORCE to a truthy value ("1"/"true"/"yes"/"on") to
+# re-enable the hard refuse at 2x the limit; unset/falsey ⇒ warn-only.
+ENV_WIP_ENFORCE = "SCITEX_TODO_WIP_ENFORCE"
+
+
+def _wip_enforce_enabled() -> bool:
+    """True when the WIP hard-refuse is explicitly opted into via the env.
+
+    Default (unset / empty / falsey) is FALSE — the gate warns but never
+    refuses, so card creation is never blocked.
+    """
+    raw = os.environ.get(ENV_WIP_ENFORCE, "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
 ENV_STALE_HOURS = "SCITEX_TODO_STALE_HOURS"
 DEFAULT_STALE_HOURS = 24
 
@@ -214,6 +230,10 @@ class WipReport:
     agent: str
     open_count: int
     limit: int
+    #: Whether the hard-refuse is enforced (opt-in via SCITEX_TODO_WIP_ENFORCE).
+    #: Default False ⇒ warn-only, never refuse. Set at construction from the
+    #: env so the properties stay pure.
+    enforce: bool = False
 
     @property
     def is_warn(self) -> bool:
@@ -221,7 +241,9 @@ class WipReport:
 
     @property
     def is_refuse(self) -> bool:
-        return self.open_count >= (2 * self.limit)
+        # Hard refuse is OPT-IN (operator 2026-07-06). Warn-only by default:
+        # never block card creation unless SCITEX_TODO_WIP_ENFORCE is set.
+        return self.enforce and self.open_count >= (2 * self.limit)
 
 
 def count_open_for_agent(tasks: list[dict], agent: str) -> int:
@@ -249,6 +271,7 @@ def evaluate_wip(tasks: list[dict], agent: str | None) -> WipReport | None:
         agent=agent,
         open_count=count_open_for_agent(tasks, agent),
         limit=limit,
+        enforce=_wip_enforce_enabled(),
     )
 
 
@@ -440,6 +463,7 @@ __all__ = [
     "SHORT_ID_TRUNC",
     "ENV_WIP_LIMIT",
     "DEFAULT_WIP_LIMIT",
+    "ENV_WIP_ENFORCE",
     "ENV_STALE_HOURS",
     "DEFAULT_STALE_HOURS",
     "GroupStats",

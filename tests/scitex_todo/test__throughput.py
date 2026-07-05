@@ -25,6 +25,7 @@ from scitex_todo._throughput import (
     DEFAULT_STALE_HOURS,
     DEFAULT_WIP_LIMIT,
     ENV_STALE_HOURS,
+    ENV_WIP_ENFORCE,
     ENV_WIP_LIMIT,
     NOTIFY_OPEN_CAP,
     GateInfo,
@@ -251,14 +252,23 @@ class TestWipGate:
         # Assert
         assert rep.is_warn is True
 
-    def test_refuse_at_2x(self, env):
-        # Arrange
+    def test_refuse_at_2x_only_when_enforce_opted_in(self, env):
+        # Hard-refuse is OPT-IN (operator 2026-07-06). At 2x the limit it
+        # refuses ONLY when SCITEX_TODO_WIP_ENFORCE is set.
+        env.set(ENV_WIP_LIMIT, "3")
+        env.set(ENV_WIP_ENFORCE, "1")
+        tasks = [{"agent": "a", "status": "pending"} for _ in range(6)]
+        rep = evaluate_wip(tasks, agent="a")
+        assert rep.is_refuse is True
+
+    def test_no_refuse_at_2x_by_default_warn_only(self, env):
+        # Default (enforce unset): the gate WARNS but never refuses, so card
+        # creation is never blocked — the operator's 2026-07-06 requirement.
         env.set(ENV_WIP_LIMIT, "3")
         tasks = [{"agent": "a", "status": "pending"} for _ in range(6)]
-        # Act
         rep = evaluate_wip(tasks, agent="a")
-        # Assert
-        assert rep.is_refuse is True
+        assert rep.is_warn is True      # still warns at/over the limit
+        assert rep.is_refuse is False   # but does NOT hard-refuse
 
     def test_below_limit_no_warn(self, env):
         # Arrange
