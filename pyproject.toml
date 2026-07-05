@@ -41,6 +41,10 @@ dev = [
     "django>=4.2",
     "scitex_app",
     "scitex_ui",
+    # Listen-server deps too, so `pip install -e .[dev]` runs the listen tests
+    # rather than silently skipping them (same rationale as the web deps).
+    "starlette",
+    "uvicorn",
 ]
 docs = [
     "sphinx>=7.0",
@@ -61,8 +65,17 @@ mcp = [
     # this extra installed.
     "fastmcp>=2.0",
 ]
+listen = [
+    # scitex-todo's own persistent HTTP listen server (`scitex-todo listen`,
+    # in `scitex_todo._listen`) — a small Starlette + uvicorn daemon. Kept a
+    # separate lightweight extra so the package CORE stays minimal (pyyaml /
+    # click / ruamel.yaml); the `listen` CLI verb guards the import and fails
+    # loud with the install hint when the extra is absent.
+    "starlette",
+    "uvicorn",
+]
 all = [
-    "scitex-todo[dev,docs,mcp,web]",
+    "scitex-todo[dev,docs,listen,mcp,web]",
 ]
 
 [project.scripts]
