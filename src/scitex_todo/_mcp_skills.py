@@ -19,7 +19,10 @@ Clusters:
 
 from __future__ import annotations
 
+import functools
 import json
+
+import anyio
 
 from . import _help_wait, _inbox, _store
 from ._mcp_server import mcp
@@ -82,7 +85,10 @@ async def reassign_task(
       new_owner: the new owning agent.
       by: the actor ($SCITEX_TODO_AGENT_ID → $USER precedence).
     """
-    return json.dumps(_store.reassign_task(tasks_path, task_id, new_owner, by=by))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_store.reassign_task, tasks_path, task_id, new_owner, by=by)
+    )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -101,9 +107,12 @@ async def help_wait(
     placeholder). Idempotent: a re-run refreshes note + last_activity in
     place and never duplicates. Returns the upserted card as JSON.
     """
-    return json.dumps(
-        _help_wait.help_wait(tasks_path, agent, question=question, host=host)
+    result = await anyio.to_thread.run_sync(
+        functools.partial(
+            _help_wait.help_wait, tasks_path, agent, question=question, host=host
+        )
     )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -116,7 +125,10 @@ async def help_clear(
     No-op (no error) when the card does not exist. Returns a JSON object
     ``{"task_id": <id>, "cleared": bool, ...}``.
     """
-    return json.dumps(_help_wait.help_clear(tasks_path, agent))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_help_wait.help_clear, tasks_path, agent)
+    )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -153,7 +165,9 @@ async def poll_notifications(
     """
     from ._users import resolve_user, touch_user
 
-    user = resolve_user(agent, store=tasks_path)
+    user = await anyio.to_thread.run_sync(
+        functools.partial(resolve_user, agent, store=tasks_path)
+    )
     recipient_id = user.id if user is not None else agent
     # Liveness heartbeat (assignee-liveness feature): polling the inbox is an
     # agent touching the store → stamp its own registry ``last_seen`` so
@@ -161,18 +175,23 @@ async def poll_notifications(
     # (e.g. unregistered agent) must never break the poll. Reuses the SAME
     # identity seam (no second path); STANDALONE (local registry write only).
     try:
-        touch_user(agent, store=tasks_path)
+        await anyio.to_thread.run_sync(
+            functools.partial(touch_user, agent, store=tasks_path)
+        )
     except Exception:  # noqa: BLE001 — heartbeat must not break the poll
         import logging
 
         logging.getLogger(__name__).warning(
             "poll_notifications: heartbeat failed for %r", agent, exc_info=True
         )
-    notifications = _inbox.poll_inbox(
-        recipient_id,
-        unseen_only=unseen_only,
-        mark_seen=ack,
-        store=tasks_path,
+    notifications = await anyio.to_thread.run_sync(
+        functools.partial(
+            _inbox.poll_inbox,
+            recipient_id,
+            unseen_only=unseen_only,
+            mark_seen=ack,
+            store=tasks_path,
+        )
     )
     return json.dumps(
         {
@@ -200,7 +219,10 @@ async def health(tasks_path: str | None = None) -> str:
     """
     from ._health import health as _health_check
 
-    return json.dumps(_health_check(store=tasks_path))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_health_check, store=tasks_path)
+    )
+    return json.dumps(result)
 
 
 __all__ = [

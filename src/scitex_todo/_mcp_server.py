@@ -23,7 +23,10 @@ hint as a click error).
 
 from __future__ import annotations
 
+import functools
 import json
+
+import anyio
 
 try:
     from fastmcp import FastMCP
@@ -105,7 +108,8 @@ async def add_task(
     rejects ``deadline < scheduled``). See ``scitex_todo._model`` +
     ``next_deadline_for_task`` for parse rules.
     """
-    inserted = _store.add_task(
+    _call = functools.partial(
+        _store.add_task,
         tasks_path,
         id=id,
         title=title,
@@ -137,6 +141,7 @@ async def add_task(
         scheduled=scheduled,
         created_by=created_by,  # hook-bypass: line-limit
     )
+    inserted = await anyio.to_thread.run_sync(_call)
     return json.dumps(inserted)
 
 
@@ -228,7 +233,9 @@ async def update_task(
         fields["blocks"] = list(blocks) if blocks else None
     if deadlines is not None:
         fields["deadlines"] = list(deadlines) if deadlines else None
-    merged = _store.update_task(tasks_path, task_id, **fields)
+    merged = await anyio.to_thread.run_sync(
+        functools.partial(_store.update_task, tasks_path, task_id, **fields)
+    )
     return json.dumps(merged)
 
 
@@ -243,7 +250,9 @@ async def complete_task(
     Idempotent: re-completing a `done` task keeps the original stamp.
     `by` overrides the $SCITEX_TODO_AGENT_ID → $USER precedence.
     """
-    done = _store.complete_task(tasks_path, task_id, by=by)
+    done = await anyio.to_thread.run_sync(
+        functools.partial(_store.complete_task, tasks_path, task_id, by=by)
+    )
     return json.dumps(done)
 
 
@@ -275,7 +284,8 @@ async def list_tasks(
     the fleet payload's ``overdue_count``; see scitex_todo._model.is_overdue
     — todo-p6-overdue-ui, PR #125 / #126).
     """
-    rows = _store.list_tasks(
+    _call = functools.partial(
+        _store.list_tasks,
         tasks_path,
         scope=scope,
         assignee=assignee,
@@ -290,6 +300,7 @@ async def list_tasks(
         blocking_me=blocking_me,
         overdue=overdue,
     )
+    rows = await anyio.to_thread.run_sync(_call)
     return json.dumps(rows)
 
 
@@ -300,9 +311,12 @@ async def summarize_tasks(
     tasks_path: str | None = None,
 ) -> str:
     """Numeric progress: counts by status / scope / assignee."""
-    return json.dumps(
-        _store.summarize_tasks(tasks_path, scope=scope, assignee=assignee)
+    result = await anyio.to_thread.run_sync(
+        functools.partial(
+            _store.summarize_tasks, tasks_path, scope=scope, assignee=assignee
+        )
     )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -326,7 +340,10 @@ async def get_task(
     Mirrors the equivalent ``handle_get`` shape on the Django board, so
     MCP agents can use it without going through HTTP.
     """
-    return json.dumps(_store.get_task(tasks_path, task_id))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_store.get_task, tasks_path, task_id)
+    )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -340,7 +357,10 @@ async def delete_task(
     Returns ``{"removed": <task>, "refs": [<scrubbed-ref-ids>]}``.
     Wraps the board v3 Delete-with-Undo flow for MCP agents.
     """
-    return json.dumps(_store.delete_task(tasks_path, task_id))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_store.delete_task, tasks_path, task_id)
+    )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -352,7 +372,10 @@ async def restore_task(
     """Undo a ``delete_task`` — re-insert at the original id. ``task``
     must be the exact dict ``delete_task`` returned in ``"removed"``.
     """
-    return json.dumps(_store.restore_task(tasks_path, task=task, refs=refs))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_store.restore_task, tasks_path, task=task, refs=refs)
+    )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -366,7 +389,10 @@ async def comment_task(
     Gitea-compatible Issue-activity log). ``by`` overrides the default
     author resolution ($SCITEX_TODO_AGENT_ID → $USER).
     """
-    return json.dumps(_store.comment_task(tasks_path, task_id, text, by=by))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_store.comment_task, tasks_path, task_id, text, by=by)
+    )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -384,11 +410,17 @@ async def set_edge(
       kind: ``"depends_on"`` or ``"blocks"``.
       source / target: task ids on the edge.
     """
-    return json.dumps(
-        _store.set_edge(
-            tasks_path, action=action, kind=kind, source=source, target=target
+    result = await anyio.to_thread.run_sync(
+        functools.partial(
+            _store.set_edge,
+            tasks_path,
+            action=action,
+            kind=kind,
+            source=source,
+            target=target,
         )
     )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -403,7 +435,10 @@ async def resolve_task(
     This is the MCP equivalent of the board v3 "Resolve → notify agent"
     button (ADR-0006/0007).
     """
-    return json.dumps(_store.resolve_task(tasks_path, task_id, actor=actor))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_store.resolve_task, tasks_path, task_id, actor=actor)
+    )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -415,7 +450,10 @@ async def reopen_task(
     """Un-resolve: flip ``status=done`` back to ``blocked`` /
     ``blocker=operator-decision``. The Resolve→Undo partner.
     """
-    return json.dumps(_store.reopen_task(tasks_path, task_id, by=by))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_store.reopen_task, tasks_path, task_id, by=by)
+    )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -437,9 +475,12 @@ async def set_collaborator(
     collaborator leaves their subscription intact; use ``set_subscriber``
     with ``action="remove"`` to also stop their notices.
     """
-    return json.dumps(
-        _store.set_collaborator(tasks_path, task_id=task_id, who=who, action=action)
+    result = await anyio.to_thread.run_sync(
+        functools.partial(
+            _store.set_collaborator, tasks_path, task_id=task_id, who=who, action=action
+        )
     )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -460,9 +501,12 @@ async def set_subscriber(
     Anyone may unsubscribe — even a collaborator (the "always
     unsubscribable" rule).
     """
-    return json.dumps(
-        _store.set_subscriber(tasks_path, task_id=task_id, who=who, action=action)
+    result = await anyio.to_thread.run_sync(
+        functools.partial(
+            _store.set_subscriber, tasks_path, task_id=task_id, who=who, action=action
+        )
     )
+    return json.dumps(result)
 
 
 #: Canonical list of registered tool names — a constant so the `mcp doctor`
