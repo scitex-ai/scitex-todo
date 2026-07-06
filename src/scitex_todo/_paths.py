@@ -2,18 +2,32 @@
 # -*- coding: utf-8 -*-
 """Task-store path resolution following the SciTeX local-state convention.
 
+``tasks.yaml`` is a mutable **DATA store** (the canonical record), so it is
+USER-CANONICAL: it is NEVER shadowed by a project-scoped file. This is the
+ecosystem config-vs-data rule (scitex-config ``local_state``, confirmed by
+scitex-dev 2026-07-06): CONFIG may be project-overridden, but a mutable data
+store must resolve to the same user file regardless of the working directory.
+
 Resolution order (highest priority first):
 
     1. an explicit path argument (CLI ``--tasks`` / function arg)
     2. ``$SCITEX_TODO_TASKS_YAML_SHARED`` environment variable
-    3. project scope:  ``<git-root>/.scitex/todo/tasks.yaml``
-    4. user scope:     ``$SCITEX_DIR/todo/tasks.yaml`` (default ``~/.scitex/todo``)
-    5. bundled generic example:  ``scitex_todo/examples/tasks.yaml``
+    3. user scope:  ``$SCITEX_DIR/todo/tasks.yaml`` (default ``~/.scitex/todo``)
+    4. bundled generic example:  ``scitex_todo/examples/tasks.yaml``
 
-The personal data lives under scopes 3 and 4 — never in the package. The
-bundled example (scope 5) is generic and exists only so a fresh install can
-demo end-to-end. ``$SCITEX_DIR`` relocates the user-scope root per the
-ecosystem convention.
+There is DELIBERATELY no project-scope (``<git-root>/.scitex/todo/tasks.yaml``)
+layer for the data store: a process run with cwd inside ANY repo (notably
+scitex-todo's OWN deploy checkout) must reach the same canonical store, never a
+stale per-repo copy. (Incident 2026-07-06: the board, run from
+``~/proj/scitex-todo``, silently read a week-stale project ``tasks.yaml`` that
+shadowed the canonical user store.) The reminders ``config.yaml`` — a CONFIG,
+not data — DOES keep its project-override layer in :mod:`scitex_todo._config`.
+
+The personal data lives under scope 3 — never in the package. The bundled
+example (scope 4) is generic and exists only so a fresh install can demo
+end-to-end. ``$SCITEX_DIR`` relocates the user-scope root per the ecosystem
+convention. A future PR adopts ``scitex_config.local_state.user_path`` as the
+shared resolver (scitex-dev's carded standard).
 """
 
 from __future__ import annotations
@@ -102,12 +116,9 @@ def resolve_tasks_path(explicit: str | Path | None = None) -> Path:
     if env_val:
         return Path(env_val).expanduser()
 
-    git_root = _find_git_root(Path.cwd())
-    if git_root is not None:
-        project = git_root / ".scitex" / PKG_SHORT / "tasks.yaml"
-        if project.exists():
-            return project
-
+    # DATA store = USER-CANONICAL. NO project-scope layer here (see the module
+    # docstring / the 2026-07-06 stale-store incident): the store must resolve
+    # to the same user file from any working directory, never a per-repo copy.
     user = _user_root() / "tasks.yaml"
     if user.exists():
         return user

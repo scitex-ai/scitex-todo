@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from scitex_todo._paths import bundled_example, resolve_tasks_path
-from scitex_todo._paths import ENV_TASKS, ENV_TASKS_DEPRECATED
+from scitex_todo._paths import ENV_TASKS, ENV_TASKS_DEPRECATED, _find_git_root
 
 
 @pytest.fixture
@@ -134,9 +134,14 @@ def test_explicit_path_string_is_expanded(tmp_path, clean_tasks_env):
     assert resolved == target
 
 
-def test_project_scope_wins_over_user_scope(tmp_path, clean_tasks_env, env):
-    """Resolution precedence 3 — project (.git found) beats user scope."""
-    # Arrange — a fake project root with a real .git + tasks.yaml.
+def test_user_scope_wins_over_project_store(tmp_path, clean_tasks_env, env):
+    """DATA store = USER-CANONICAL. Regression guard for the 2026-07-06 stale-
+    store incident: even when cwd is inside a repo that HAS a
+    ``<git-root>/.scitex/todo/tasks.yaml``, resolution must reach the canonical
+    USER store — never the per-repo copy. The data store has DELIBERATELY no
+    project-scope layer (only the CONFIG in _config.py keeps its project
+    override)."""
+    # Arrange — a fake project root with a real .git + a would-be shadow store.
     project = tmp_path / "repo"
     project.mkdir()
     (project / ".git").mkdir()
@@ -144,7 +149,7 @@ def test_project_scope_wins_over_user_scope(tmp_path, clean_tasks_env, env):
     proj_store_dir.mkdir(parents=True)
     proj_store = proj_store_dir / "tasks.yaml"
     proj_store.write_text("tasks: []\n", encoding="utf-8")
-    # Also create a user-scope candidate so we know the project beats it.
+    # The canonical user-scope store the resolver MUST prefer.
     user_root = tmp_path / "user-scitex"
     user_dir = user_root / "todo"
     user_dir.mkdir(parents=True)
@@ -154,8 +159,9 @@ def test_project_scope_wins_over_user_scope(tmp_path, clean_tasks_env, env):
     env.chdir(project)
     # Act
     resolved = resolve_tasks_path(None)
-    # Assert
-    assert resolved == proj_store
+    # Assert — user store wins; the in-repo shadow is ignored.
+    assert resolved == user_store
+    assert resolved != proj_store
 
 
 def test_user_scope_used_when_no_project_store(tmp_path, clean_tasks_env, env):
@@ -176,22 +182,22 @@ def test_user_scope_used_when_no_project_store(tmp_path, clean_tasks_env, env):
     assert resolved == user_store
 
 
-def test_find_git_root_walks_up(tmp_path, clean_tasks_env, env):
-    """`_find_git_root` ascends parents; runs from a deep subdir of repo."""
+def test_find_git_root_walks_up(tmp_path):
+    """`_find_git_root` ascends parents from a deep subdir to the repo root.
+
+    The helper is retained (the CONFIG layer in _config.py still uses it for
+    the reminders config's project override) even though the DATA store no
+    longer consults it. Test it directly, not via resolve_tasks_path."""
     # Arrange — repo at tmp_path/repo, subdir at tmp_path/repo/a/b/c.
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
-    proj_store_dir = repo / ".scitex" / "todo"
-    proj_store_dir.mkdir(parents=True)
-    proj_store = proj_store_dir / "tasks.yaml"
-    proj_store.write_text("tasks: []\n", encoding="utf-8")
     deep = repo / "a" / "b" / "c"
     deep.mkdir(parents=True)
-    env.chdir(deep)
     # Act
-    resolved = resolve_tasks_path(None)
-    # Assert
-    assert resolved == proj_store
+    found = _find_git_root(deep)
+    # Assert — ascends to the repo root; a dir with no .git ancestor yields None.
+    assert found == repo.resolve()
+    assert _find_git_root(tmp_path.parent) != repo.resolve()
 
 
 # EOF
