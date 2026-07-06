@@ -1247,7 +1247,25 @@ def _git_autocommit_store(path: Path) -> None:
     POST-MORTEM recovery layer.
 
     Best-effort: never raises. Skips entirely if git isn't installed.
+
+    Opt-out: set ``SCITEX_TODO_STORE_GIT_AUTOCOMMIT`` to a falsy value
+    (``0``/``false``/``no``/``off``/empty) to skip the per-save commit
+    entirely. This is the POST-MORTEM recovery layer, NOT the live
+    crash-safety (that is the fcntl lock + atomic write in the caller), so
+    disabling it is safe. Two uses: (a) avoid the git-repo bloat that
+    per-save commits accumulate on a hot shared store, and (b) make the
+    write path deterministic + fast under test (no git subprocess). Default
+    is ON (unset ⇒ enabled).
     """
+    if os.environ.get("SCITEX_TODO_STORE_GIT_AUTOCOMMIT", "1").strip().lower() in (
+        "0",
+        "false",
+        "no",
+        "off",
+        "",
+    ):
+        return
+
     import subprocess
 
     store_dir = path.parent

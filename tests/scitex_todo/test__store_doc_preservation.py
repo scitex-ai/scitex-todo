@@ -19,8 +19,25 @@ Real fixtures, no mocks (STX-NM / PA-306).
 
 from __future__ import annotations
 
+import pytest
+
 from scitex_todo import _model, _store
 from scitex_todo._yaml import safe_dump
+
+
+@pytest.fixture(autouse=True)
+def _no_store_git_autocommit(env):
+    """Disable the per-store git autocommit for every test here.
+
+    These tests exercise the CRUD write path, which normally fires a git
+    ``init``/``add``/``commit`` per save. That subprocess is (a) irrelevant to
+    the section-preservation property under test and (b) a source of
+    non-determinism under heavy parallel/IO load (a git index-lock conflict can
+    surface as a transient partial read). Turning it off via the real opt-out
+    knob (not a mock — PA-306) makes these write-path tests deterministic and
+    fast. The knob defaults ON, so production behaviour is unchanged.
+    """
+    env.set("SCITEX_TODO_STORE_GIT_AUTOCOMMIT", "0")
 
 
 def _seed_store_with_users(path, tasks, users):
@@ -160,6 +177,30 @@ class TestDocPrimitives:
         assert reloaded["meta"] == {"seed": "v1"}
         assert {t["id"] for t in reloaded["tasks"]} == {"a", "c"}
 
+class TestGitAutocommitOptOut:
+    """The ``SCITEX_TODO_STORE_GIT_AUTOCOMMIT`` knob gates the per-save commit."""
+
+    def test_autocommit_skipped_when_disabled(self, tmp_path, env):
+        # Arrange — knob off (the autouse fixture already sets it, be explicit).
+        env.set("SCITEX_TODO_STORE_GIT_AUTOCOMMIT", "0")
+        store = tmp_path / "tasks.yaml"
+        # Act — a write that would normally lazy-init + commit a per-store .git.
+        _store.add_task(store, id="a", title="A", assignee="agent:test")
+        # Assert — no .git created; the write itself still landed.
+        assert not (tmp_path / ".git").exists()
+        assert any(t["id"] == "a" for t in _model.load_tasks(store))
+
+    def test_autocommit_runs_when_enabled(self, tmp_path, env):
+        # Arrange — opt BACK IN over the autouse-off default.
+        env.set("SCITEX_TODO_STORE_GIT_AUTOCOMMIT", "1")
+        store = tmp_path / "tasks.yaml"
+        # Act
+        _store.add_task(store, id="a", title="A", assignee="agent:test")
+        # Assert — the recovery-layer .git was lazily initialized.
+        assert (tmp_path / ".git").exists()
+
+
+class TestReadUnderLock:
     def test_on_disk_users_at_calltime_survives_locked_crud(self, tmp_path):
         # Read-under-lock semantics: the `users:` present on disk WHEN the
         # locked CRUD call begins is the version that survives — the write
