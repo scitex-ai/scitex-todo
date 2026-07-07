@@ -4,6 +4,38 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.45] - 2026-07-08 — fix: prevent the wake-watcher digest death-spiral
+
+`scitex-todo.wake-watcher` (`watch --push --interval 2`, systemd
+`Restart=on-failure`) death-spiraled on ywata-note-win 2026-07-08: the 2s
+interval re-parsed the ~9 MB / ~930-card store faster than a tick finished on a
+slow host, so the watch daemon ran at sustained high CPU while the separate
+10-min `print-stats --by agent --notify` cron piled up unfinished digests on the
+already-saturated box. Load hit 43 on 16 cores; sac-listen OOM-died and several
+agents/builds died before the host was recovered
+(incident-todo-wake-watcher-interval2-spiral-20260708).
+
+Four durable, structural fixes to `_wake_watcher.py` / `_jobs_provider.py` /
+`_cli/_loop.py`:
+
+- **Interval floor + bump.** The wake-watcher JobSpec now uses `--interval 30`
+  (was 2), the `watch` CLI default is 30s, and `clamp_interval()` enforces a
+  **hard 10s floor** — any sub-floor value is clamped up with a loud WARNING
+  naming the incident, so a stray `--interval 2` can never foot-gun the fleet
+  again.
+- **Single-instance lock.** `run_watcher_forever` takes a non-blocking `flock`
+  on a runtime-dir lockfile; a second `watch` process sees the lock held and
+  refuses to start, making two concurrent watchers (overlapping full-store
+  re-parses) structurally impossible. The loop is strictly sequential, so a
+  slow tick delays the next one — it can never launch an overlapping one.
+- **Change-gated push + single parse.** After seeding, a tick whose store mtime
+  is unchanged short-circuits before any parse (one `stat()`, no diff, no push)
+  — a quiet board does no work per interval. When work is needed the store is
+  parsed **once** per tick via `load_doc` (task list + `agents:` registry from
+  the same `safe_load`), replacing the old double full-parse.
+- **Self-throttle.** Push concurrency stays 1 and a slow tick degrades by
+  delaying, never by stacking a second digest.
+
 ## [0.7.43] - 2026-07-08 — fix: collapse the notifyd digest replay-storm (supersede-on-enqueue)
 
 A digest is a full point-in-time snapshot, but notifyd enqueued a fresh one

@@ -558,4 +558,151 @@ class TestSubscriberFanOut:
         assert sorted(w.agent for w in out) == ["owner-a", "sub-b"]
 
 
+def _write_store(path, tasks, *, agents=None) -> None:
+    """Write a minimal real tasks.yaml the watcher can load_doc()."""
+    import yaml
+
+    doc: dict = {"tasks": tasks}
+    if agents is not None:
+        doc["agents"] = agents
+    with open(path, "w", encoding="utf-8") as handle:
+        yaml.safe_dump(doc, handle, sort_keys=False)
+
+
+class TestIntervalFloor:
+    """Anti-spiral fix #1 — the hard floor on --interval."""
+
+    def test_sub_floor_interval_is_clamped_up(self):
+        # Arrange / Act
+        out = clamp_interval(2.0)
+        # Assert — the 2s value that spiraled the fleet is rejected.
+        assert out == MIN_INTERVAL_FLOOR_S
+
+    def test_at_floor_interval_is_kept(self):
+        # Arrange / Act / Assert
+        assert clamp_interval(MIN_INTERVAL_FLOOR_S) == MIN_INTERVAL_FLOOR_S
+
+    def test_above_floor_interval_is_unchanged(self):
+        # Arrange / Act / Assert
+        assert clamp_interval(30.0) == 30.0
+
+    def test_non_numeric_interval_falls_back_to_default(self):
+        # Arrange / Act / Assert
+        assert clamp_interval("not-a-number") == DEFAULT_INTERVAL_S
+
+    def test_default_interval_is_not_sub_floor(self):
+        # The shipped default must itself clear the floor.
+        # Arrange / Act / Assert
+        assert DEFAULT_INTERVAL_S >= MIN_INTERVAL_FLOOR_S
+
+
+class TestSingleInstanceLock:
+    """Anti-spiral fix #2a — the process-level single-instance flock."""
+
+    def test_first_acquire_succeeds(self, tmp_path):
+        # Arrange
+        lock = tmp_path / "wake.lock"
+        # Act
+        handle = acquire_single_instance_lock(lock)
+        # Assert
+        assert handle is not None
+        handle.close()
+
+    def test_second_acquire_is_refused_while_held(self, tmp_path):
+        # Arrange — hold the lock, then try to take it again.
+        lock = tmp_path / "wake.lock"
+        first = acquire_single_instance_lock(lock)
+        # Act
+        second = acquire_single_instance_lock(lock)
+        # Assert — a second watcher can NEVER start while the first holds
+        # the lock, so overlapping full-store re-parses are impossible.
+        assert second is None
+        first.close()
+
+    def test_lock_is_reusable_after_release(self, tmp_path):
+        # Arrange
+        lock = tmp_path / "wake.lock"
+        first = acquire_single_instance_lock(lock)
+        first.close()
+        # Act
+        second = acquire_single_instance_lock(lock)
+        # Assert
+        assert second is not None
+        second.close()
+
+
+class TestNoChangeTick:
+    """Anti-spiral fix #3/#4 — a quiet tick does no work / emits no push."""
+
+    def test_unchanged_store_second_tick_returns_no_wakes(self, tmp_path):
+        # Arrange — seed once, then re-tick with the file untouched.
+        store = tmp_path / "tasks.yaml"
+        _write_store(
+            store,
+            [{"id": "a", "title": "A", "status": "pending", "agent": "proj-x"}],
+        )
+        state = WatcherState()
+        run_watcher_once(store, state, post=False)  # seed
+        # Act — no change on disk.
+        out = run_watcher_once(store, state, post=False)
+        # Assert — no real change → no push.
+        assert out == []
+
+    def test_unchanged_mtime_short_circuits_before_parse(self, tmp_path):
+        # The mtime short-circuit must fire so a quiet board costs one
+        # stat(), not a full parse. Rewrite the store CONTENT (add task b)
+        # but reset the mtime back to the seeded value: if the tick parsed
+        # content it would wake on b; because it keys off mtime it must
+        # short-circuit and return [].
+        # Arrange
+        import os as _os
+
+        store = tmp_path / "tasks.yaml"
+        _write_store(
+            store,
+            [{"id": "a", "title": "A", "status": "pending", "agent": "proj-x"}],
+        )
+        state = WatcherState()
+        run_watcher_once(store, state, post=False)  # seed; records mtime
+        seeded_mtime = state.last_mtime
+        _write_store(
+            store,
+            [
+                {"id": "a", "title": "A", "status": "pending", "agent": "proj-x"},
+                {"id": "b", "title": "B", "status": "pending", "agent": "proj-x"},
+            ],
+        )
+        _os.utime(store, (seeded_mtime, seeded_mtime))  # pin mtime back
+        # Act
+        out = run_watcher_once(store, state, post=False, min_wake_interval_s=0.0)
+        # Assert — mtime unchanged → short-circuit → no re-parse, no wake.
+        assert out == []
+
+    def test_real_change_after_tick_fires_wake(self, tmp_path):
+        # Arrange — seed, then genuinely mutate the store (new task).
+        import os as _os
+
+        store = tmp_path / "tasks.yaml"
+        _write_store(
+            store,
+            [{"id": "a", "title": "A", "status": "pending", "agent": "proj-x"}],
+        )
+        state = WatcherState()
+        run_watcher_once(store, state, post=False)  # seed
+        # Bump mtime forward so the short-circuit does not swallow it.
+        future = time.time() + 10
+        _write_store(
+            store,
+            [
+                {"id": "a", "title": "A", "status": "pending", "agent": "proj-x"},
+                {"id": "b", "title": "B", "status": "pending", "agent": "proj-x"},
+            ],
+        )
+        _os.utime(store, (future, future))
+        # Act
+        out = run_watcher_once(store, state, post=False, min_wake_interval_s=0.0)
+        # Assert
+        assert [w.task_id for w in out] == ["b"]
+
+
 # EOF
