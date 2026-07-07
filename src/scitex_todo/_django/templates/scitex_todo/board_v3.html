@@ -3746,6 +3746,20 @@
         const r = await fetch("/rev");
         if (!r.ok) return;
         const rev = await r.json();
+        // GUI-code hot-reload: if the board template changed on disk (a
+        // merged PR / local edit under the editable install), the server is
+        // already serving new HTML/JS but THIS pane is still running the old
+        // bundle. Hard-reload so the operator picks up GUI updates without a
+        // manual restart / F5. First observation only records the baseline.
+        if (rev.asset_rev !== undefined) {
+          if (STATE.assetRev === undefined) {
+            STATE.assetRev = rev.asset_rev;
+          } else if (rev.asset_rev !== STATE.assetRev) {
+            STATE.assetRev = rev.asset_rev;
+            location.reload();
+            return;
+          }
+        }
         const key = `${rev.mtime}:${rev.count}`;
         if (STATE.lastMtime === null) { STATE.lastMtime = key; return; }
         if (key !== STATE.lastMtime) {
