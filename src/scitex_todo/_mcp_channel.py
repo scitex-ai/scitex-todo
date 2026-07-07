@@ -58,6 +58,7 @@ from ._channel_guard import (
     MAX_PUSH_PER_DRAIN,
     _bounded_content,
     _bounded_meta_value,
+    _dm_wire_meta,
 )
 
 logger = logging.getLogger(__name__)
@@ -169,28 +170,26 @@ def build_channel_params(rec: dict[str, Any], *, source: str = _DEFAULT_SOURCE) 
     """Project an inbox record onto the Claude channel notification shape.
 
     Returns ``{"content": <body str>, "meta": {<all-string-values>}}``. EVERY
-    meta value is stringified — the Claude Code client schema types every
-    ``meta`` value as a string and a non-string trips its Zod validator,
-    silently dropping the pushed turn. ``meta.source`` drives the
-    ``<- scitex-todo`` render.
+    meta value is stringified — a non-string trips the client's Zod validator,
+    silently dropping the pushed turn. ``meta.source`` drives the render label.
 
-    Size-guarded: the ``content`` body is capped at ``MAX_CONTENT_BYTES``
-    (256 KiB) via :func:`scitex_todo._channel_guard._bounded_content` so a huge
-    body can never overflow the SDK's 1 MB stdio reader; an oversized body is
-    truncated on a UTF-8 char boundary with a "see the card on the board"
-    pointer. Each ``meta`` value is additionally clamped (belt-and-suspenders).
+    Size-guarded: ``content`` capped at ``MAX_CONTENT_BYTES`` (256 KiB,
+    UTF-8-boundary truncation + "see the card" pointer) so a push can never
+    overflow the SDK's 1 MB stdio reader; each meta value is clamped too.
+    DM records are lifted onto the a2a wire shape by :func:`_dm_wire_meta`.
     """
     card_id = str(rec.get("card_id") or "")
+    meta = {
+        "source": _bounded_meta_value(source),
+        "ts": _bounded_meta_value(rec.get("ts") or ""),
+        "event_type": _bounded_meta_value(rec.get("event_type") or ""),
+        "card_id": _bounded_meta_value(card_id),
+        "actor": _bounded_meta_value(rec.get("actor") or ""),
+        "msg_id": _bounded_meta_value(rec.get("id") or ""),
+    }
     return {
         "content": _bounded_content(rec.get("body"), card_id),
-        "meta": {
-            "source": _bounded_meta_value(source),
-            "ts": _bounded_meta_value(rec.get("ts") or ""),
-            "event_type": _bounded_meta_value(rec.get("event_type") or ""),
-            "card_id": _bounded_meta_value(card_id),
-            "actor": _bounded_meta_value(rec.get("actor") or ""),
-            "msg_id": _bounded_meta_value(rec.get("id") or ""),
-        },
+        "meta": _dm_wire_meta(rec, meta),
     }
 
 
