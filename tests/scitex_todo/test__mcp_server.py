@@ -106,6 +106,11 @@ _CONVENTION_A_NAMES = {
     # Standalone pull-inbox read path — 1:1 with `_inbox.poll_inbox`
     # (registered in `_mcp_skills`). PULL card-message delivery, no sac.
     "poll_notifications",
+    # Operator↔agent direct messages — 1:1 with `_threads.append_message` /
+    # `_threads.get_thread` (registered in `_mcp_skills`; scitex-dev DM
+    # convention v1, threads.yaml sidecar).
+    "dm_send",
+    "dm_list",
 }
 # Convention B — `todo_<verb>_<noun>` for the audit §5 required skills
 # tools. These don't map 1:1 to a Python API; they introspect the bundled

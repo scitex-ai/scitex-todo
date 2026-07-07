@@ -168,4 +168,53 @@ def test_drain_under_cap_pushes_all(tmp_path):
     assert len(recorder.calls) == 3
 
 
+# --------------------------------------------------------------------------- #
+# DM wire shape — fleet convention (scitex-dev spec v1): a dm record must     #
+# render a2a-compatible: source=<sender>, conversation_id=<thread key>.       #
+# --------------------------------------------------------------------------- #
+def test_dm_record_renders_a2a_wire_shape():
+    rec = {
+        "id": "m_abc123def456",
+        "event_type": "dm",
+        "card_id": "dm:neurovista::operator",
+        "body": "please check the compute queue",
+        "actor": "operator",
+        "ts": "2026-07-07T12:00:00Z",
+    }
+    meta = build_channel_params(rec)["meta"]
+    assert meta["source"] == "operator", "DM must render the SENDER as source"
+    assert meta["conversation_id"] == "dm:neurovista::operator"
+    assert meta["msg_id"] == "m_abc123def456"
+    for value in meta.values():
+        assert isinstance(value, str)
+
+
+def test_non_dm_record_keeps_channel_source():
+    rec = {
+        "id": "n_1",
+        "event_type": "reminder",
+        "card_id": "some-card",
+        "body": "digest",
+        "actor": "notifyd",
+        "ts": "2026-07-07T12:00:00Z",
+    }
+    meta = build_channel_params(rec)["meta"]
+    assert meta["source"] == "stodo", "non-DM keeps the configured channel label"
+    assert "conversation_id" not in meta
+
+
+def test_dm_record_missing_actor_falls_back_to_channel_source():
+    rec = {
+        "id": "m_x",
+        "event_type": "dm",
+        "card_id": "dm:a::b",
+        "body": "b",
+        "actor": "",
+        "ts": "2026-07-07T12:00:00Z",
+    }
+    meta = build_channel_params(rec)["meta"]
+    assert meta["source"] == "stodo"
+    assert meta["conversation_id"] == "dm:a::b"
+
+
 # EOF

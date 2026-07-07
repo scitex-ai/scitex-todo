@@ -125,6 +125,30 @@ def board_v3_page(request):
         return HttpResponse(_static_graph_page(request))
 
 
+def chat_page(request):
+    """Serve the operator↔agent direct-message CHAT view (mobile-first).
+
+    Minimal slice of the DM board pane (card
+    ``fleet-agent-direct-message-board-pane-20260707``): agent list +
+    per-agent thread + compose + history. Server-rendered template
+    (``chat.html``, separate from the oversized ``board_v3.html``) whose JS
+    lives in ``static/scitex_todo/chat/chat.js`` and polls the ``/dm/*``
+    JSON endpoints (:mod:`.handlers.dm`) every ~5s.
+    """
+    from django.template.loader import render_to_string
+
+    try:
+        from scitex_todo import __version__ as _version
+    except Exception:  # noqa: BLE001
+        _version = "?"
+    html = render_to_string(
+        "scitex_todo/chat.html",
+        {"scitex_todo_version": _version},
+        request=request,
+    )
+    return HttpResponse(html)
+
+
 _TURN_URL_ANNOUNCED = False
 
 

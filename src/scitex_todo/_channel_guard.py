@@ -91,12 +91,35 @@ def _bounded_meta_value(value: str) -> str:
     return _truncate_utf8(str(value), MAX_META_VALUE_BYTES)
 
 
+def _dm_wire_meta(rec: dict, meta: dict) -> dict:
+    """Map a direct-message record onto the a2a-compatible wire shape.
+
+    Fleet DM convention (scitex-dev spec v1, card
+    fleet-agent-direct-message-board-pane-20260707): a pushed DM must render
+    agent-side exactly like an a2a channel message —
+    ``<channel source="<sender>" conversation_id="dm:<a>::<b>" ...>`` — so
+    agents parse it with ZERO change. For ``event_type == "dm"`` records the
+    dispatcher enqueues the sender in ``actor`` and the sorted thread key in
+    ``card_id``; here we lift them into the a2a field names: ``meta.source``
+    becomes the SENDER (not the channel's own label) and
+    ``meta.conversation_id`` carries the thread key. Non-DM records pass
+    through untouched (digests keep the configured channel source).
+    """
+    if rec.get("event_type") == "dm":
+        sender = rec.get("actor") or ""
+        if sender:
+            meta["source"] = _bounded_meta_value(sender)
+        meta["conversation_id"] = meta.get("card_id", "")
+    return meta
+
+
 __all__ = [
     "MAX_CONTENT_BYTES",
     "MAX_META_VALUE_BYTES",
     "MAX_PUSH_PER_DRAIN",
     "_bounded_content",
     "_bounded_meta_value",
+    "_dm_wire_meta",
 ]
 
 # EOF
