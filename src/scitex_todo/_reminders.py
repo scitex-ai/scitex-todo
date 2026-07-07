@@ -69,6 +69,7 @@ from ._reminder_bodies import (
     _digest_body,
     _escalation_body,
 )
+from ._reminder_enqueue import _iso, _safe_enqueue, _safe_resolve
 from ._reminder_liveness import _card_creator, _owner_liveness
 from ._stale_active import detect_pending_backlog, detect_stale_active
 from ._throughput import _now_utc, _parse_iso
@@ -237,10 +238,6 @@ def save_reminder_state(state: dict[str, dict], store: str | Path | None = None)
         logger.warning("reminders: cannot write %s: %s", path, exc)
 
 
-def _iso(now: _dt.datetime) -> str:
-    return now.astimezone(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def _is_parked(card: dict | None) -> bool:
     # A blocked card WITH a blocker waits on someone else — owner can't act, so
     # it's not actionable staleness (excluded from the nag). No blocker = ambiguous, kept.
@@ -404,8 +401,12 @@ def sweep_reminders(
 
         owner_key = _safe_resolve(resolve_key, owner)
         body = _digest_body(cards, count + 1)
+        # The digest is a CUMULATIVE snapshot — supersede any unseen predecessor
+        # so a channel-down owner never accumulates a replay-storm of stale
+        # digests. Per-card escalations below stay distinct (supersede=False).
         if _safe_enqueue(
-            enqueue, owner_key, EVENT_DIGEST, DIGEST_CARD_ID, body, cur, store
+            enqueue, owner_key, EVENT_DIGEST, DIGEST_CARD_ID, body, cur, store,
+            supersede=True,
         ):
             count += 1
             entry["count"] = count
@@ -449,47 +450,6 @@ def sweep_reminders(
         "creator_escalated": creator_escalated,
         "skipped": skipped,
     }
-
-
-def _safe_resolve(resolve_key: Callable[[str], str], name: str) -> str:
-    try:
-        return resolve_key(name) or name
-    except Exception as exc:  # noqa: BLE001 — resolution must not break the sweep
-        logger.warning("reminders: key resolution for %r failed: %s", name, exc)
-        return name
-
-
-def _safe_enqueue(
-    enqueue: Callable[..., Any],
-    recipient_key: str,
-    event_type: str,
-    card_id: str,
-    body: str,
-    now: _dt.datetime,
-    store: str | Path | None,
-) -> bool:
-    """Enqueue one notification; fail-soft. Returns True on a real enqueue.
-
-    ``ts`` is the sweep instant so each re-nag is a DISTINCT inbox record (the
-    inbox dedups on ``(event_type, card_id, ts, actor)``).
-    """
-    try:
-        rec = enqueue(
-            recipient_key,
-            event_type=event_type,
-            card_id=card_id,
-            body=body,
-            actor="notifyd",
-            ts=_iso(now),
-            store=store,
-        )
-        return rec is not None
-    except Exception as exc:  # noqa: BLE001 — one bad enqueue must not abort the sweep
-        logger.warning(
-            "reminders: enqueue %s for %s to %s failed: %s",
-            event_type, card_id, recipient_key, exc,
-        )
-        return False
 
 
 __all__ = [

@@ -236,6 +236,7 @@ def enqueue(
     body: str,
     actor: str | None,
     ts: str | None = None,
+    supersede: bool = False,
     store: str | Path | None = None,
 ) -> "dict | None":
     """Append a notification record to ``recipient_id``'s inbox (STANDALONE).
@@ -266,6 +267,20 @@ def enqueue(
         Who caused the event (a raw name), or ``None``.
     ts : str | None
         The notification timestamp; defaults to now (``Z``-suffixed ISO).
+    supersede : bool
+        For a CUMULATIVE snapshot record (a periodic *digest*: one
+        point-in-time list of an owner's open cards, re-sent every tick). When
+        ``True``, BEFORE appending, every EXISTING record that is still
+        UNSEEN and matches BOTH ``event_type`` AND ``card_id`` of the new
+        record is REMOVED — the new snapshot strictly replaces its unseen
+        predecessors, so at most ONE pending digest per recipient survives.
+        A recipient whose channel is down therefore never accumulates a
+        replay-storm of stale digests. SEEN records are left untouched
+        (history preserved; archival is a separate concern). Only meaningful
+        for cumulative/snapshot events; per-card events (created / commented /
+        reassigned / completed / escalation) are each DISTINCT and must NOT
+        supersede. The default (``False``) keeps the plain
+        ``(type,card,ts,actor)`` dedup path unchanged.
     store : str | pathlib.Path | None
         Store path override (default: the resolved task store).
 
@@ -283,6 +298,19 @@ def enqueue(
     with _store_lock(path):
         inboxes = _load_inboxes_section(path)
         records = inboxes.setdefault(recipient_id, [])
+        if supersede:
+            # Cumulative snapshot: drop every UNSEEN predecessor with the same
+            # (event_type, card_id) so only the latest digest stays pending.
+            # SEEN records are kept (history). Done BEFORE the dedup/append.
+            records[:] = [
+                r
+                for r in records
+                if r.get("seen")
+                or not (
+                    r.get("event_type") == event_type
+                    and r.get("card_id") == card_id
+                )
+            ]
         if _is_duplicate(
             records,
             event_type=event_type,

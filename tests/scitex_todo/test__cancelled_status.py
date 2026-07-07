@@ -193,7 +193,8 @@ class _EnqueueRecorder:
         self.calls: list[dict] = []
 
     def __call__(
-        self, recipient_key, *, event_type, card_id, body, actor, ts, store
+        self, recipient_key, *, event_type, card_id, body, actor, ts, store,
+        supersede=False,
     ):
         rec = {
             "recipient": recipient_key,
