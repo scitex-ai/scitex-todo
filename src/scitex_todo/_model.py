@@ -27,6 +27,7 @@ import os
 from pathlib import Path
 
 from ._yaml import safe_dump, safe_load  # hook-bypass: line-limit
+from ._store_verify import _verify_dumped_tmp  # hook-bypass: line-limit
 
 # Valid task statuses. ``goal`` marks a north-star objective (rendered gold);
 # the rest are ordinary execution states.
@@ -1176,8 +1177,12 @@ def _save_doc_unlocked(
     # Never a half-written file like the one we recovered from today.
     tmp_path = path.parent / f".{path.name}.tmp"
     try:
+        # Serialize to a STRING first so the post-dump byte-length check can
+        # compare on-disk bytes to what we intended to write (and so we never
+        # dump twice). Then write that exact string to the tmp, flush + fsync.
+        dumped = safe_dump(doc)  # returns the YAML string (stream=None)
         with tmp_path.open("w", encoding="utf-8") as handle:
-            safe_dump(doc, handle)  # hook-bypass: line-limit
+            handle.write(dumped)
             handle.flush()
             try:
                 os.fsync(handle.fileno())
@@ -1185,36 +1190,27 @@ def _save_doc_unlocked(
                 # fsync can fail on some FS (overlay / fuse). Best-effort —
                 # the os.replace below is what gives the atomic guarantee.
                 pass
-        # POST-DUMP ROUND-TRIP VALIDATE (lead a2a `d5809cd3`, 2026-06-13 —
-        # the recovered-by-hand corruption episode where the canonical file
-        # ended mid-string at line ~2784). Before we promote the tmp file
-        # into the canonical slot, REPARSE it from disk to confirm the dump
-        # itself produced a syntactically valid + structurally validated
-        # YAML document. The pre-write `_validate_tasks` proves the
-        # in-memory structure is sound; this catches any failure mode
-        # introduced by the dump itself (unterminated scalar, partial
-        # flush, disk-full leaving a truncated file even if fsync didn't
-        # error). If reparse fails OR the reparsed task count doesn't
-        # match the in-memory count, ABORT — never promote suspect bytes
-        # into the canonical SSoT.
-        try:
-            with tmp_path.open(encoding="utf-8") as verify_handle:
-                verify_doc = safe_load(verify_handle)  # hook-bypass: line-limit
-        except Exception as verify_exc:  # noqa: BLE001 — any parse fail = abort
-            raise RuntimeError(
-                f"refusing to replace {path}: tmp file at {tmp_path} did "
-                f"not reparse cleanly after dump ({type(verify_exc).__name__}: "
-                f"{verify_exc}). Canonical file left untouched."
-            ) from verify_exc
-        verify_tasks = verify_doc.get("tasks") if isinstance(verify_doc, dict) else None
-        in_memory_count = len(doc.get("tasks") or [])
-        if not isinstance(verify_tasks, list) or len(verify_tasks) != in_memory_count:
-            raise RuntimeError(
-                f"refusing to replace {path}: tmp file at {tmp_path} "
-                f"reparsed with {len(verify_tasks) if isinstance(verify_tasks, list) else '<not-a-list>'} "
-                f"tasks vs in-memory {in_memory_count}. Canonical file "
-                f"left untouched."
-            )
+        # POST-DUMP INTEGRITY CHECK (lead a2a `d5809cd3`, 2026-06-13 — the
+        # recovered-by-hand corruption episode where the canonical file ended
+        # mid-string at line ~2784). Before we promote the tmp into the
+        # canonical slot, prove the written bytes are FULLY REPARSEABLE. The
+        # pre-write `_validate_tasks` proves the in-memory structure is sound;
+        # this catches any failure mode introduced by the dump itself
+        # (unterminated scalar, partial flush, disk-full leaving a truncated
+        # file even if fsync didn't error).
+        #
+        # CHEAPENED (Fix B2): the old check ran a FULL `safe_load` construct-
+        # reparse (~2.3 s / ~159k objects on the live 9.2 MB store) purely to
+        # prove parseability, then compared the reparsed task COUNT to the
+        # in-memory count. We now do the equivalent two cheap checks in
+        # `_verify_dumped_tmp` — a byte-length check + a libyaml EVENT-SCAN
+        # reparse to StreamEnd — which proves the same "fully reparseable"
+        # property WITHOUT building the objects. The task-count match is
+        # DROPPED deliberately: reaching StreamEnd proves the whole stream
+        # parsed, so a truncation that silently drops tasks can't reach
+        # promotion (it aborts the parse first). Flagged for scitex-dev
+        # review; see docs/ CHANGELOG + `_store_verify._verify_dumped_tmp`.
+        _verify_dumped_tmp(tmp_path, dumped)
         # All checks passed — atomic POSIX rename promotes tmp → canonical.
         os.replace(tmp_path, path)
     except Exception:
