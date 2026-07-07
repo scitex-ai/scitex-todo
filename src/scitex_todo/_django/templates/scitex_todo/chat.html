@@ -6,11 +6,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Chat — scitex-todo v{{ scitex_todo_version }}</title>
 <link rel="icon" type="image/svg+xml" href="{% static 'scitex_todo/favicon.svg' %}">
-{# Operator↔agent DM view — minimal slice (card
-   fleet-agent-direct-message-board-pane-20260707). Mobile-first: the agent
-   list is a slide-in drawer on narrow screens, a fixed left column on wide
-   ones. All behavior lives in static/scitex_todo/chat/chat.js (line-limit
-   discipline: template <1024 lines, js <512); this file is layout + CSS. #}
+{% comment %}
+Operator↔agent DM view — minimal slice (card
+fleet-agent-direct-message-board-pane-20260707). Mobile-first: the agent
+list is a slide-in drawer on narrow screens, a fixed left column on wide
+ones. All behavior lives in static/scitex_todo/chat/chat.js (line-limit
+discipline: template <1024 lines, js <512); this file is layout + CSS.
+{% endcomment %}
 <style>
   :root {
     --bg: #1e1e2e; --panel: #27273a; --panel-2: #313145; --line: #3d3d55;
