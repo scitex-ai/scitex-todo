@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""CLI ``update`` verb: mutate fields of an existing task by id.
+
+Extracted from ``_write.py`` (pure move; the one-verb-per-file precedent
+of ``_comment.py`` / ``_close.py`` / ``_reassign.py``) to bring that
+module back under the file-size cap. Shares the option plumbing
+(``_TASKS_OPTION`` / closed-enum choices / ``_emit``) with its siblings
+via ``._write``.
+"""
+
+from __future__ import annotations
+
+import click
+
+from .. import _store
+from ._write import (
+    _BLOCKER_OR_CLEAR,
+    _KIND_CHOICE,
+    _STATUS_CHOICE,
+    _TASKS_OPTION,
+    _emit,
+)
+
+
+@click.command(
+    "update",
+    help=(
+        "Mutate fields of an existing task by id.\n\n"
+        "Pass an empty string (e.g. --scope '') to CLEAR a field.\n"
+        "--depends-on / --blocks REPLACE the list (repeat the flag per id; "
+        "pass once with '' to clear; +/- delta semantics are a follow-up PR).\n\n"
+        "Example:\n"
+        "  scitex-todo update my-task --status in_progress --priority 1 "
+        "--agent proj-scitex-todo"
+    ),
+)
+@click.argument("task_id")
+@click.option("--title", default=None)
+@click.option("--status", type=_STATUS_CHOICE, default=None)
+# Operator-co-designed surface (TG 9667).
+@click.option("--task", default=None, help="The BIG board-card text.")
+@click.option("--project", default=None)
+@click.option("--host", default=None)
+@click.option("--agent", default=None, help="Owning agent (forward-compat alias for --assignee).")
+@click.option(
+    "--group", default=None,
+    help="TRACK-1 dispatch cluster. Use '' to CLEAR.",
+)
+@click.option("--goal", default=None)
+@click.option("--last-activity", "last_activity", default=None)
+@click.option(
+    "--blocker",
+    type=_BLOCKER_OR_CLEAR,
+    default=None,
+    help=(
+        "Closed enum (when status=blocked), OR '' / 'none' to CLEAR an "
+        "existing blocker on the card. Dev-flagged gap fix: previously "
+        "the strict closed-enum rejected '' / 'none' so there was no "
+        "CLI form for clearing the field."
+    ),
+)
+@click.option("--pr-url", "pr_url", default=None)
+@click.option("--issue-url", "issue_url", default=None)
+@click.option("--kind", type=_KIND_CHOICE, default=None)
+# Compute-kind metadata.
+@click.option("--job-id", "job_id", default=None)
+@click.option("--command", default=None)
+@click.option("--started-at", "started_at", default=None)
+@click.option("--finished-at", "finished_at", default=None)
+# Graph wiring (now supported on update, not just add).
+@click.option(
+    "--depends-on",
+    "depends_on",
+    multiple=True,
+    help="REPLACE depends_on list. Repeat the flag per id; pass once with '' to clear.",
+)
+@click.option(
+    "--blocks",
+    "blocks",
+    multiple=True,
+    help="REPLACE blocks list. Repeat the flag per id; pass once with '' to clear.",
+)
+# Legacy fields.
+@click.option("--scope", default=None, help="New scope (use '' to clear).")
+@click.option("--assignee", default=None, help="New assignee (use '' to clear).")
+@click.option("--priority", type=int, default=None)
+@click.option("--parent", default=None)
+@click.option("--note", default=None)
+@click.option("--repo", default=None)
+@click.option("--json", "as_json", is_flag=True)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Print which fields would change and exit 0 without mutating the store.",
+)
+@click.option(
+    "-y",
+    "--yes",
+    is_flag=True,
+    help="Skip confirmation (no-op today — update is non-interactive; reserved for §2).",
+)
+@_TASKS_OPTION
+def update_cmd(
+    task_id,
+    title,
+    status,
+    task,
+    project,
+    host,
+    agent,
+    group,
+    goal,
+    last_activity,
+    blocker,
+    pr_url,
+    issue_url,
+    kind,
+    job_id,
+    command,
+    started_at,
+    finished_at,
+    depends_on,
+    blocks,
+    scope,
+    assignee,
+    priority,
+    parent,
+    note,
+    repo,
+    as_json,
+    dry_run,
+    yes,
+    tasks_path,
+) -> None:
+    """Apply each provided field to the matching task."""
+    _ = yes  # accepted for §2 compliance
+    fields: dict = {}
+    # Pass through only the fields the user actually provided (click's
+    # `None` default = "not passed"). Empty string is the explicit
+    # "clear this field" signal — translate to None for `update_task` so
+    # the key is popped rather than stored as `""`.
+    for key, value in (
+        ("title", title),
+        ("status", status),
+        ("task", task),
+        ("project", project),
+        ("host", host),
+        ("agent", agent),
+        ("goal", goal),
+        ("last_activity", last_activity),
+        ("blocker", blocker),
+        ("pr_url", pr_url),
+        ("issue_url", issue_url),
+        ("kind", kind),
+        ("job_id", job_id),
+        ("command", command),
+        ("started_at", started_at),
+        ("finished_at", finished_at),
+        ("scope", scope),
+        ("assignee", assignee),
+        ("group", group),
+        ("priority", priority),
+        ("parent", parent),
+        ("note", note),
+        ("repo", repo),
+    ):
+        if value is None:
+            continue
+        fields[key] = None if value == "" else value
+
+    # --depends-on / --blocks: click's `multiple=True` returns a tuple.
+    # Empty tuple = flag not passed → don't touch. Tuple of one empty
+    # string = explicit "clear list". Otherwise REPLACE the list.
+    for key, multi in (("depends_on", depends_on), ("blocks", blocks)):
+        if not multi:
+            continue
+        if len(multi) == 1 and multi[0] == "":
+            fields[key] = None
+        else:
+            fields[key] = [v for v in multi if v != ""]
+
+    if not fields:
+        raise click.ClickException(
+            "no fields to update; pass at least one field flag (see --help)"
+        )
+
+    if dry_run:
+        click.echo(
+            f"# dry-run: would update task_id={task_id!r} fields={fields!r}"
+        )
+        return
+    try:
+        merged = _store.update_task(tasks_path, task_id, **fields)
+    except _store.TaskNotFoundError as exc:
+        raise click.ClickException(str(exc)) from None
+    except _store.TaskValidationError as exc:
+        raise click.ClickException(str(exc)) from None
+    _emit(
+        merged,
+        as_json=as_json,
+        human=f"updated {merged['id']}  ({merged['status']}) {merged['title']}",
+    )
+
+
+def register(main: click.Group) -> None:
+    """Attach the `update` verb to the top-level CLI group."""
+    main.add_command(update_cmd, name="update")
+
+
+# EOF

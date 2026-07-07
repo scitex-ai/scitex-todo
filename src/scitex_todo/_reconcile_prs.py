@@ -22,7 +22,7 @@ Design (mirrors the rest of the package)
   field. Unparseable → ``None`` (treated as "unknown → skip").
 * **Merge-state seam.** The network call is factored behind a callable
   (``merge_state_fn``) exactly like the package's other entry-point seams
-  (``entry_points=`` on the hook dispatch, the ci-watch fault injection).
+  (``entry_points=`` on the hook dispatch, the watch-ci fault injection).
   The default implementation prefers ``gh pr view`` (the dashboard HOST has
   ``gh``) and falls back to a ``curl`` GitHub REST call. Tests inject a
   fake callable returning ``"merged"`` / ``"open"`` / ``"unknown"`` with

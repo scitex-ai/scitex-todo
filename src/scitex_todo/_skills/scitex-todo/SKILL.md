@@ -301,7 +301,7 @@ monitors. Read 32 before wiring up a new agent's harness.
   their LEAF / root blocker; Phase 2 escalate every RUNNABLE task to
   its owning agent), lead-centric funnel routing, and registration as
   a `scitex-dev cron` JobSpec (the ecosystem plugin pattern, same
-  shape as `ci-watch` / `quota-keepalive`). Keeps consumption rate >
+  shape as `watch-ci` / `quota-keepalive`). Keeps consumption rate >
   arrival rate so the board doesn't drift out of sync with the
   codebase. Name locked by operator TG 332 + 335: must carry "task";
   no "branch" / "graph" metaphors.

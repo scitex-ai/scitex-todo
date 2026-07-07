@@ -835,7 +835,7 @@ def list_tasks(
       ``status``: ``None`` = no filter; any string = exact match.
       (Generic Req 8 — no fuzzy / glob; callers compose.) ``repo`` matches
       the card's ``repo`` field (``owner/repo``) — the reusable seam a
-      producer uses to resolve repo->card at emit time (resolve-card verb).
+      producer uses to resolve repo->card at emit time (find-card verb).
       (hook-bypass: line-limit)
     - ``statuses`` (list) AND ``status`` (single) are OR-combined.
     - ``blocker="__none"`` matches rows with no blocker field; any other

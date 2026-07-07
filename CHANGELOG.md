@@ -4,6 +4,43 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.40] - 2026-07-07 — feat: CLI verb-rename pilot (slice 6b) — `list-stale` / `find-card` / `watch-ci`
+
+Pilot migration for the ecosystem CLI-standardization plan (doctrine:
+scitex-dev `general/03_interface/02_cli`).
+
+### Changed
+
+- **`stale-list` → `list-stale`**, **`ci-watch` → `watch-ci`** (§1d grammar:
+  compounds are kebab-case and VERB-FIRST), and **`resolve-card` →
+  `find-card`** (it is a READ — prints ids of cards whose `repo` matches a
+  filter — which is the doctrine `find` verb; `resolve` is also a banned
+  synonym). The old names remain as HIDDEN warn-phase deprecated aliases:
+  they forward all args/options to the canonical command, exit as it does,
+  and print `'<old>' is deprecated — use '<new>' (removed in v0.9)` to
+  stderr once per shell session. They disappear in v0.9 (three-phase
+  ladder, §5).
+- **Root `--help` is now categorized** under the fixed §4a headers (Core /
+  Data & Sync / Service / Diagnostics / Introspection / Shell; the `Other`
+  catch-all is empty), with spec-built help (`CliHelp`) on the root group
+  and on `list-tasks` / `add` / `done` / `close` plus the renamed leaves.
+- The `scitex-todo.ci-watch` JobSpec keeps its registry NAME (systemd/dedupe
+  identity) but its command now invokes the canonical
+  `scitex-todo watch-ci --once`.
+
+### Added
+
+- `src/scitex_todo/_cli/_compat.py` — guarded imports of scitex-dev's
+  `deprecated_alias` + `help_spec` helpers (present on scitex-dev develop,
+  absent from the released 0.21.0; scitex-python#352 precedent) with
+  doctrine-contract fallbacks so warn+forward behavior is identical on
+  every installed scitex-dev release.
+
+### Refactored
+
+- `_cli/_write.py` (pre-existing over the 512-line cap): the `update` verb
+  moved to `_cli/_update.py` — pure move, one-verb-per-file precedent.
+
 ## [0.7.39] - 2026-07-07 — chore: channel-notification source label is now `stodo`
 
 ### Changed

@@ -266,7 +266,7 @@ All escalation flows through the lead:
 The harvest is a **recurring** cycle, not a one-shot. Operator's
 directive (TG msg 325): **don't roll a custom scheduler — register
 with the ecosystem-wide `scitex-dev cron` plugin pattern** so the
-fleet has ONE source of scheduled-job truth (alongside `ci-watch`,
+fleet has ONE source of scheduled-job truth (alongside `watch-ci`,
 `quota-keepalive`, etc.).
 
 ### Where the cron mechanism lives
@@ -331,7 +331,7 @@ To add the task-harvest as a registered cron job:
 
 ### Existing scitex-dev cron jobs to pattern-match against
 
-- **`ci-watch`** — polls each sac agent's repo for CI failures and
+- **`watch-ci`** — polls each sac agent's repo for CI failures and
   dispatches A2A fix-forward turns. (`*/10 * * * *`.)
 - **`quota-keepalive`** — fires every 30 min at the cron level, self-
   gates to ~2.5h actual fires, pre-starts Claude's rolling quota
