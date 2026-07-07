@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Tests for the `emit-event` + `resolve-card` producer CLI verbs (no mocks).
+"""Tests for the `emit-event` + `find-card` producer CLI verbs (no mocks).
 
 The generic no-import shell-out seam fleet producers (scitex-dev's C7
 ``released`` / C8 ``pulled`` + future) use to emit canonical card-events
@@ -16,7 +16,7 @@ mocks (STX-NM / PA-306). Covers:
   that subscriber (end-to-end: emit → bus → C4 → inbox; asserted via
   ``poll_inbox`` AND the printed ``notify.enqueued``).
 * ``emit-event --type bogus`` → fails loud (non-zero, names valid types).
-* ``resolve-card --repo R`` → prints the ids of cards with repo=R; empty
+* ``find-card --repo R`` → prints the ids of cards with repo=R; empty
   output when none; honors ``--kind`` / ``--status`` filters.
 """
 
@@ -215,9 +215,9 @@ def test_emit_event_bogus_type_fails_loud(tmp_path, env):
 
 
 # --------------------------------------------------------------------------- #
-# resolve-card — repo → card id(s)                                            #
+# find-card — repo → card id(s)                                            #
 # --------------------------------------------------------------------------- #
-def test_resolve_card_prints_matching_ids(tmp_path, env):
+def test_find_card_prints_matching_ids(tmp_path, env):
     # Arrange — two cards on the same repo, one on another.
     runner = CliRunner()
     store = _store_path(tmp_path)
@@ -226,7 +226,7 @@ def test_resolve_card_prints_matching_ids(tmp_path, env):
     add_task(store=store, id="c-c", title="C", assignee="agent:t", repo="owner/other")
     # Act
     result = runner.invoke(
-        main, ["resolve-card", "--repo", "owner/repo", "--tasks", store]
+        main, ["find-card", "--repo", "owner/repo", "--tasks", store]
     )
     # Assert — exactly the two matching ids, one per line.
     assert result.exit_code == 0, result.output
@@ -234,21 +234,21 @@ def test_resolve_card_prints_matching_ids(tmp_path, env):
     assert ids == {"c-a", "c-b"}
 
 
-def test_resolve_card_empty_when_none_match(tmp_path, env):
+def test_find_card_empty_when_none_match(tmp_path, env):
     # Arrange — no card carries the queried repo.
     runner = CliRunner()
     store = _store_path(tmp_path)
     add_task(store=store, id="c-a", title="A", assignee="agent:t", repo="owner/other")
     # Act
     result = runner.invoke(
-        main, ["resolve-card", "--repo", "owner/repo", "--tasks", store]
+        main, ["find-card", "--repo", "owner/repo", "--tasks", store]
     )
     # Assert — exit 0, empty output.
     assert result.exit_code == 0, result.output
     assert result.output.strip() == ""
 
 
-def test_resolve_card_status_filter(tmp_path, env):
+def test_find_card_status_filter(tmp_path, env):
     # Arrange — same repo, different statuses.
     runner = CliRunner()
     store = _store_path(tmp_path)
@@ -263,15 +263,15 @@ def test_resolve_card_status_filter(tmp_path, env):
     # Act — only the pending card should match.
     result = runner.invoke(
         main,
-        ["resolve-card", "--repo", "owner/repo", "--status", "pending", "--tasks", store],
+        ["find-card", "--repo", "owner/repo", "--status", "pending", "--tasks", store],
     )
     # Assert
     assert result.exit_code == 0, result.output
     assert result.output.split() == ["c-pending"]
 
 
-def test_resolve_card_then_emit_with_resolved_id(tmp_path, env):
-    # Arrange — the documented producer flow: resolve-card to find the card,
+def test_find_card_then_emit_with_resolved_id(tmp_path, env):
+    # Arrange — the documented producer flow: find-card to find the card,
     # then emit-event --card-id <that id>. End-to-end proof the two verbs
     # compose. `released` notifies subscribers (C3 default), so the recipient
     # alice is a SUBSCRIBER on the card.
@@ -285,7 +285,7 @@ def test_resolve_card_then_emit_with_resolved_id(tmp_path, env):
     env.set("SCITEX_TODO_PUSH_DRY_RUN", "1")
     # Act 1 — resolve repo → card id.
     resolve = runner.invoke(
-        main, ["resolve-card", "--repo", "owner/repo", "--tasks", store]
+        main, ["find-card", "--repo", "owner/repo", "--tasks", store]
     )
     card_id = resolve.output.strip()
     # Act 2 — emit a released event for that card, caused by `ci` (not alice).

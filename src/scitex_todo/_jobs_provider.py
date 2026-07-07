@@ -148,6 +148,10 @@ def provide_jobs() -> list[JobSpec]:
         # different cadences, each STANDALONE: todo down → sac still
         # delivers; sac down → todo still records.
         JobSpec(
+            # NOTE: the JobSpec NAME is a registry identity (systemd
+            # unit / dedupe key), so it keeps its historical spelling;
+            # the COMMAND uses the canonical verb (`watch-ci`, renamed
+            # from `ci-watch` in the slice-6b verb-rename pilot).
             name="scitex-todo.ci-watch",
             kind="cron",
             # 5-field cron: every 5 min. Matches the cadence dev
@@ -155,9 +159,9 @@ def provide_jobs() -> list[JobSpec]:
             # run slower (10 / 15 / 30) without breaking parity since
             # the dedupe key (head_sha, overall) is content-keyed.
             schedule="*/5 * * * *",
-            command="scitex-todo ci-watch --once",
+            command="scitex-todo watch-ci --once",
             description=(
-                "scitex-todo ci-watch — record-only CI poller. Polls "
+                "scitex-todo watch-ci — record-only CI poller. Polls "
                 "the configured fleet repos every 5 min, diffs vs "
                 "~/.scitex/todo/ci-state.json, logs per-repo "
                 "transitions (newly-green / newly-red / still-pending). "

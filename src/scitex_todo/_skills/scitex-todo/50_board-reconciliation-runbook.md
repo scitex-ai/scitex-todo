@@ -148,7 +148,7 @@ Regenerate the list:
 # (a2a "regen stale list" to proj-scitex-todo) — there's no scheduled cron yet.
 ```
 
-A future PR will wrap the generator in a `scitex-todo stale-list [--days 14]` CLI verb. Tracked as an in-board card.
+A future PR will wrap the generator in a `scitex-todo list-stale [--days 14]` CLI verb. Tracked as an in-board card.
 
 ---
 
