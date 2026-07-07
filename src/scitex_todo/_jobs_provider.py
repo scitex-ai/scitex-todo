@@ -93,7 +93,12 @@ def provide_jobs() -> list[JobSpec]:
             name="scitex-todo.wake-watcher",
             kind="service",
             schedule="",
-            command="scitex-todo watch --push --interval 2",
+            # --interval 30 (was 2): a 2s interval re-parsed the ~9 MB store
+            # faster than the tick finished on a slow host and death-spiraled
+            # the fleet on 2026-07-08 (incident-todo-wake-watcher-interval2-
+            # spiral). The `watch` command additionally CLAMPS anything below
+            # a 10s hard floor, so this value can never foot-gun again.
+            command="scitex-todo watch --push --interval 30",
             description=(
                 "scitex-todo wake-watcher — push side of the "
                 "self-consuming board loop. POSTs /v1/turn to the "

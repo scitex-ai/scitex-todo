@@ -19,10 +19,15 @@ from threading import Thread
 import pytest
 
 from scitex_todo._wake_watcher import (
+    DEFAULT_INTERVAL_S,
+    MIN_INTERVAL_FLOOR_S,
     WatcherState,
     _recipients,
+    acquire_single_instance_lock,
+    clamp_interval,
     detect_changes,
     post_wake,
+    run_watcher_once,
 )
 
 
