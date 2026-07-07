@@ -305,6 +305,17 @@ def test_rev_endpoint_includes_positive_mtime(store):
     assert isinstance(payload["mtime"], (int, float)) and payload["mtime"] > 0
 
 
+def test_rev_endpoint_includes_asset_rev(store):
+    # Arrange
+    request = RequestFactory().get(f"/rev?store={store}")
+    # Act
+    payload = json.loads(views.api_dispatch(request, "rev").content)
+    # Assert — asset_rev is a positive float (max template mtime) so the
+    # frontend can hard-reload the pane when the board GUI code changes.
+    assert isinstance(payload["asset_rev"], (int, float))
+    assert payload["asset_rev"] > 0
+
+
 # --- board_v3 first-paint status-color CSS vars (SSOT, kill 4-bucket) ------
 
 _ALL_STATUSES = (
