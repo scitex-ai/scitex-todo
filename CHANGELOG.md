@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.42] - 2026-07-08 — fix: tolerate a STALE deprecated env var when the current one is valid
+
+Fleet agents still carry a stale ambient `SCITEX_TODO_AGENT` (the pre-0.7.30
+name) baked in by an old sac injector. Until now scitex-todo fail-louded on the
+mere PRESENCE of that old var — even when the current `SCITEX_TODO_AGENT_ID` was
+set and correct. In the unified MCP server that fail-loud was swallowed by
+`resolve_agent_id_optional` → returned `None` → the digest poll loop never
+started, so agents on 0.7.32 with a correct `AGENT_ID` connected (tools worked)
+but never received channel notifications.
+
+### Changed
+
+- `resolve_agent_id` (`_mcp_channel.py`) now makes the CURRENT var WIN: when
+  `arg` / `$SCITEX_TODO_AGENT_ID` yields a valid id it is returned even if the
+  stale `$SCITEX_TODO_AGENT` is also exported — a loud warning is logged and the
+  stale var is ignored (no raise). The fail-loud on the old name fires ONLY when
+  the current var is absent/invalid (a genuine reliance on the renamed-away
+  var). Placeholder / unresolved errors are unchanged. `resolve_agent_id_optional`
+  therefore returns the id (not `None`) when both vars are set, re-enabling the
+  poll loop.
+- Same tolerance applied to the store var in `_paths.py`: a stale
+  `SCITEX_TODO_TASKS` is warn-and-ignored when `SCITEX_TODO_TASKS_YAML_SHARED`
+  is set, and fails loud only when the current var is absent.
+
 ## [0.7.41] - 2026-07-07 — feat: operator↔agent direct-message chat view (/chat)
 
 Minimal slice of the DM board pane (card
