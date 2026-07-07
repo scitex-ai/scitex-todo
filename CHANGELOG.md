@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.43] - 2026-07-08 — fix: collapse the notifyd digest replay-storm (supersede-on-enqueue)
+
+A digest is a full point-in-time snapshot, but notifyd enqueued a fresh one
+every tick without superseding prior unseen digests. A recipient whose channel
+was down piled up dozens of stale digests that all replayed on reconnect (seen
+live: one agent had 53 unseen `reminder` digests spanning 3 days).
+
+- `_inbox.enqueue` gains a `supersede: bool = False` keyword. When `True`, every
+  EXISTING unseen record matching both `event_type` AND `card_id` is removed
+  before the new record is appended — at most ONE pending digest per recipient
+  survives. Seen records (history) and the plain `(type,card,ts,actor)` dedup
+  path are untouched.
+- The reminder engine wires `supersede=True` ONLY at the cumulative owner-digest
+  enqueue (`EVENT_DIGEST` / `(digest)`). Per-card events (escalation,
+  creator_escalation) stay distinct and do NOT supersede.
+- New maintenance verb `scitex-todo notifyd collapse-digests [--json]`
+  (`_inbox_maint.collapse_digests`): one safe locked pass that collapses each
+  recipient's unseen digest backlog to the single newest digest (older ones
+  marked seen, nothing deleted) — clears the already-accumulated fleet backlog.
+- Refactor: extracted the fail-soft dispatch helpers `_safe_resolve` /
+  `_safe_enqueue` into `_reminder_enqueue.py` to keep `_reminders.py` within
+  budget. Public API unchanged.
+
 ## [0.7.42] - 2026-07-08 — fix: tolerate a STALE deprecated env var when the current one is valid
 
 Fleet agents still carry a stale ambient `SCITEX_TODO_AGENT` (the pre-0.7.30

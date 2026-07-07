@@ -42,11 +42,13 @@ def register(main: click.Group) -> None:
         "--interval seconds, holding a single-instance lock so two daemons "
         "never run at once, until SIGTERM/SIGINT.\n\n"
         "Verbs:\n"
-        "  install-unit   Write the systemd user-unit template (operator-gated)\n\n"
+        "  install-unit      Write the systemd user-unit template (operator-gated)\n"
+        "  collapse-digests  Collapse each recipient's unseen digest backlog\n\n"
         "Examples:\n"
         "  scitex-todo notifyd --interval 120\n"
         "  scitex-todo notifyd --once          # single pass then exit\n"
-        "  scitex-todo notifyd install-unit"
+        "  scitex-todo notifyd install-unit\n"
+        "  scitex-todo notifyd collapse-digests"
     ),
 )
 @click.option(
@@ -167,6 +169,44 @@ def install_unit_cmd(force: bool) -> None:
     click.echo("#")
     click.echo("# To enable + start it, the OPERATOR runs (this tool does NOT):")
     click.echo(f"#   {result['enable_commands']}")
+
+
+@notifyd_group.command(
+    "collapse-digests",
+    help=(
+        "One-time maintenance: collapse each recipient's UNSEEN digest backlog "
+        "to the single newest digest (mark the older stale ones seen; delete "
+        "nothing). Clears a fleet-wide digest replay-storm in one safe locked "
+        "pass. The durable fix (supersede-on-enqueue) already prevents new "
+        "backlog; this cleans up what accumulated before it landed.\n\n"
+        "Example:\n"
+        "  scitex-todo notifyd collapse-digests\n"
+        "  scitex-todo notifyd collapse-digests --json"
+    ),
+)
+@click.option(
+    "--tasks",
+    "tasks_path",
+    default=None,
+    help="Path to tasks.yaml (default: project -> user -> bundled example, "
+    "or $SCITEX_TODO_TASKS_YAML_SHARED).",
+)
+@click.option("--json", "as_json", is_flag=True, help="Emit the summary as JSON.")
+def collapse_digests_cmd(tasks_path: str | None, as_json: bool) -> None:
+    """Collapse the unseen digest backlog per recipient (maintenance verb)."""
+    from .._inbox_maint import collapse_digests
+
+    summary = collapse_digests(store=tasks_path)
+    if as_json:
+        import json
+
+        click.echo(json.dumps(summary))
+        return
+    click.echo(
+        f"# notifyd collapse-digests: "
+        f"recipients_collapsed={summary['recipients_collapsed']} "
+        f"digests_marked_seen={summary['digests_marked_seen']}"
+    )
 
 
 # EOF

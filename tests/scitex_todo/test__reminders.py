@@ -55,7 +55,10 @@ class _EnqueueRecorder:
     def __init__(self):
         self.calls: list[dict] = []
 
-    def __call__(self, recipient_key, *, event_type, card_id, body, actor, ts, store):
+    def __call__(
+        self, recipient_key, *, event_type, card_id, body, actor, ts, store,
+        supersede=False,
+    ):
         rec = {
             "recipient": recipient_key,
             "event_type": event_type,
@@ -63,6 +66,7 @@ class _EnqueueRecorder:
             "body": body,
             "actor": actor,
             "ts": ts,
+            "supersede": supersede,
         }
         self.calls.append(rec)
         return rec
@@ -136,6 +140,8 @@ def test_sweep_enqueues_one_digest_for_owner(tmp_path):
     assert call["card_id"] == DIGEST_CARD_ID
     assert call["actor"] == "notifyd"
     assert "c1" in call["body"]
+    # The cumulative digest supersedes any unseen predecessor (replay-storm fix).
+    assert call["supersede"] is True
 
 
 def test_digest_collapses_many_cards_into_one_note(tmp_path):
@@ -506,6 +512,9 @@ def test_creator_escalation_fires_when_owner_is_stale(tmp_path):
     assert esc[0]["card_id"] == "c1"
     assert esc[0]["actor"] == "notifyd"
     assert "alice" in esc[0]["body"]            # names the dead owner
+    # A per-card creator escalation is a DISTINCT event — it must NOT supersede
+    # (only the cumulative digest collapses).
+    assert esc[0]["supersede"] is False
 
 
 def test_creator_escalation_fires_when_owner_is_unknown(tmp_path):
