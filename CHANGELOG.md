@@ -36,6 +36,41 @@ Four durable, structural fixes to `_wake_watcher.py` / `_jobs_provider.py` /
 - **Self-throttle.** Push concurrency stays 1 and a slow tick degrades by
   delaying, never by stacking a second digest.
 
+## [0.7.44] - 2026-07-08 — perf: cheapen the post-dump store-write verify without weakening the corruption guard (Fix B2)
+
+The crash-safe store write (`_save_doc_unlocked`) reparsed the just-dumped tmp
+with a FULL `safe_load` construct-reparse before promoting it — the 2026-06-13
+corruption guard (lead a2a `d5809cd3`, the incident where the canonical file
+ended mid-string). That full construct built ~159k Python objects on the live
+9.2 MB / ~930-card store just to prove the bytes were parseable, and every
+write paid it; bursts convoyed on the flock.
+
+- New `src/scitex_todo/_store_verify.py` `_verify_dumped_tmp(tmp_path, dumped)`
+  keeps the SAME guarantee (the promoted bytes must be FULLY reparseable) but
+  drops the object construction. It does two cheap checks:
+  1. **Byte-length check** — `os.stat(tmp).st_size == len(dumped.encode())`,
+     catching a short / partial / disk-full write.
+  2. **Event-scan reparse** — streams the tmp through the libyaml C parser
+     (`yaml.parse(..., Loader=CSafeLoader)`) consuming events until a
+     `StreamEndEvent` is observed. The C parser raises `yaml.YAMLError` on
+     truncation / unterminated-scalar / malformed docs WITHOUT constructing the
+     document objects; reaching StreamEnd proves the whole byte stream is
+     well-formed end-to-end.
+- `_save_doc_unlocked` now dumps to a STRING once (so the length check has the
+  intended bytes and we never dump twice), writes it, fsyncs, then calls
+  `_verify_dumped_tmp` before `os.replace`. Same crash-safe
+  dump→tmp→fsync→verify→replace flow.
+- The old reparsed-task-COUNT match is DROPPED: reaching `StreamEndEvent` proves
+  the entire stream parsed, so a truncation that silently drops tasks aborts the
+  parse before promotion — the event-scan supersedes the count check. Flagged
+  in-code + here for scitex-dev review.
+- Measured on a synthetic realistic-shape store: the event-scan verify is
+  ~2.4x faster than the full `safe_load` construct-reparse it replaces
+  (e.g. ~3.1 s → ~1.3 s on a ~900-card 1 MB doc; the saving scales with store
+  size). New `tests/scitex_todo/test__store_verify.py` (10 tests) pins the
+  corruption-safety non-negotiables; `test__store_doc_preservation.py` +
+  `test__model.py` regression-green.
+
 ## [0.7.43] - 2026-07-08 — fix: collapse the notifyd digest replay-storm (supersede-on-enqueue)
 
 A digest is a full point-in-time snapshot, but notifyd enqueued a fresh one
