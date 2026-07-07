@@ -6,6 +6,7 @@ from django.urls import path
 
 from . import views
 from .handlers.chat import chat_view
+from .handlers.dm import dm_thread_view, dm_threads_view
 from .handlers.fleet import (
     fleet_ci_status_view,
     fleet_timing_view,
@@ -62,6 +63,16 @@ urlpatterns = [
     # path is matched cleanly instead of getting routed to
     # ``api_dispatch`` (which would 404 — no handler named "chat/<id>").
     path("chat/<str:card_id>", chat_view, name="chat"),
+    # Operator↔agent DIRECT-MESSAGE surface (scitex-dev DM convention v1;
+    # card fleet-agent-direct-message-board-pane-20260707). `/chat` (no
+    # trailing segment — distinct from the per-card `/chat/<card_id>`
+    # comment thread above) serves the mobile-first DM page; the two
+    # `/dm/*` JSON endpoints back its agent list + thread pane + compose.
+    # Registered BEFORE the catch-all `<path:endpoint>` route so the
+    # slashed paths are matched cleanly instead of 404ing in api_dispatch.
+    path("chat", views.chat_page, name="chat_page"),
+    path("dm/threads", dm_threads_view, name="dm_threads"),
+    path("dm/thread/<str:peer>", dm_thread_view, name="dm_thread"),
     # Hook-consumer endpoints (lead a2a `6fff33d6` + `fbffb879`,
     # 2026-06-14, operator-mandated). Loose-coupling contract for
     # SAC's push-hook + dev's merge-Action to record progress / DONE

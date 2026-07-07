@@ -4,6 +4,48 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.40] - 2026-07-07 — feat: operator↔agent direct-message chat view (/chat)
+
+Minimal slice of the DM board pane (card
+fleet-agent-direct-message-board-pane-20260707; scitex-dev DM convention
+spec v1): the operator can message a specific agent from the phone via the
+board, and agents reply through an MCP verb.
+
+### Added
+
+- **`scitex_todo._threads`** — pure DM thread store. Canonical record
+  `{id, thread, from, to, body, ts, read}`; thread id `dm:<a>::<b>` with the
+  peers sorted lexicographically (one thread per pair, both directions;
+  reserved operator name `operator`). Threads live in a SIDECAR
+  `<store_dir>/threads.yaml` next to the resolved `tasks.yaml` with its OWN
+  flock, so chat writes never convoy with card writes; the write mirrors the
+  crash-safe dump→tmp→fsync→reparse-verify→`os.replace` pattern of
+  `_model._save_doc_unlocked`. API: `append_message` / `get_thread` /
+  `list_threads` / `mark_read`.
+- **dm-dispatch** — `append_message` also enqueues an `event_type="dm"`
+  notification into the recipient's EXISTING pull-inbox
+  (`_inbox.enqueue`, keyed via `_users.resolve_user` exactly like
+  `poll_notifications`), so the ≥0.7.32 unified channel server pushes the
+  message into the agent's live session. The `operator` recipient is
+  enqueued too (symmetry; the board reads unread state from the sidecar).
+  Fail-soft: an enqueue failure never loses the persisted thread record.
+- **MCP verbs `dm_send(to, body)` / `dm_list(peer=None, ack=False)`** —
+  agent-side reply + read surface (in `_mcp_skills`; `from` resolves via
+  `resolve_agent_id_optional` with an actionable error when unset; store IO
+  wrapped in `anyio.to_thread.run_sync`).
+- **Board `/chat` view** — mobile-first page (new `chat.html` template +
+  `static/scitex_todo/chat/chat.js`): collapsible agent list (users registry
+  ∪ existing thread peers, unread badges), chronological bubble thread
+  (operator right-aligned), compose box; polls `/dm/thread/<peer>` every 5s
+  and `/dm/threads` every 10s. JSON endpoints `GET /dm/threads`,
+  `GET/POST /dm/thread/<peer>` in `_django/handlers/dm.py` (distinct from
+  the per-card `/chat/<card_id>` comment endpoint).
+
+### Deferred (polish later)
+
+- WebSocket push, markdown rendering, group threads, message search,
+  CLI `dm` verbs, operator-side inbox drain.
+
 ## [0.7.39] - 2026-07-07 — chore: channel-notification source label is now `stodo`
 
 ### Changed

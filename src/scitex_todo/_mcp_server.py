@@ -541,6 +541,9 @@ TOOL_NAMES: tuple[str, ...] = (
     "health",
     "todo_skills_list",
     "todo_skills_get",
+    # Operator↔agent DMs (threads.yaml sidecar; registered in _mcp_skills).
+    "dm_send",  # hook-bypass: line-limit — _mcp_server split still queued
+    "dm_list",  # hook-bypass: line-limit — _mcp_server split still queued
 )
 
 # Import for the registration side effect: ``_mcp_skills`` (kept separate for
