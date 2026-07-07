@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.39] - 2026-07-07 — chore: channel-notification source label is now `stodo`
+
+### Changed
+
+- **Default `meta.source` label: `scitex-todo-system` → `stodo`.** Per the
+  fleet naming agreement (operator 2026-07-07, card
+  fleet-channel-source-sender-identity-naming-20260707), channel-notification
+  source labels are standardized to SHORT sender-identity names — sac / cct /
+  stodo (`daemon` is reserved for daemon-origin messages). This supersedes the
+  short-lived `scitex-todo-system` default introduced in 0.7.32. Label-only
+  change: `meta.source` is a free attribution label decoupled from routing
+  (replies route via the MCP tool + ids).
+- **Deployed config note:** `.mcp.json` entries that pin the old values
+  (`--name scitex-todo` / `--name scitex-todo-system`, or
+  `SCITEX_TODO_CHANNEL_SOURCE` set to either) should update to `stodo` or
+  simply drop the override and inherit the new default.
+
 ## [0.7.34] - 2026-07-05 — fix: harden the channel push path (size cap + first-connect burst cap)
 
 Hardens the `notifications/claude/channel` push surface against the crash class
