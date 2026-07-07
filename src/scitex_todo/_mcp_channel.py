@@ -72,7 +72,7 @@ _ENV_AGENT = "SCITEX_TODO_AGENT_ID"
 #: quietly drain the wrong agent's inbox — the operator must migrate.
 _ENV_AGENT_DEPRECATED = "SCITEX_TODO_AGENT"
 
-#: Env var overriding ``meta.source`` (the ``<- scitex-todo`` render name)
+#: Env var overriding ``meta.source`` (the ``<- stodo`` render name)
 #: when ``--name`` is not passed explicitly. Precedence: CLI > env > default.
 _ENV_SOURCE = "SCITEX_TODO_CHANNEL_SOURCE"
 
@@ -83,11 +83,11 @@ _ENV_INTERVAL = "SCITEX_TODO_CHANNEL_INTERVAL"
 #: Default poll interval (seconds) between inbox drains.
 _DEFAULT_INTERVAL = 5.0
 
-#: Default ``meta.source`` value — drives the channel render name. It is
-#: intentionally DISTINCT from the agent's own id (``scitex-todo``) so that in
-#: the operator's TUI a system-pushed notification (``<- scitex-todo-system``)
-#: is not confused with a message authored by the scitex-todo agent itself.
-_DEFAULT_SOURCE = "scitex-todo-system"
+#: Default ``meta.source`` — drives the channel render name. Per the fleet
+#: naming agreement (2026-07-07) source labels are SHORT sender-identity names
+#: (sac / cct / stodo). Kept DISTINCT from the ``scitex-todo`` agent id — a
+#: system push renders ``<- stodo`` (carries sender- AND task-identity).
+_DEFAULT_SOURCE = "stodo"
 
 
 def _reject_deprecated_agent_env() -> None:
@@ -253,7 +253,7 @@ async def drain_once(
         Async callable that delivers one channel-params payload (the real
         server passes a closure over the MCP session's ``send_message``).
     source : str
-        ``meta.source`` value (default ``"scitex-todo-system"``).
+        ``meta.source`` value (default ``"stodo"``).
     store : str | None
         Store path override (default: the resolved task store).
 

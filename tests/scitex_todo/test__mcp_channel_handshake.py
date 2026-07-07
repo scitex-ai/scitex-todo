@@ -122,7 +122,7 @@ def test_initialize_completes_with_active_poll_loop(tmp_path, monkeypatch):
                         s_read,
                         s_write,
                         agent_id=agent,
-                        source="scitex-todo-system",
+                        source="stodo",
                         interval=0.05,  # hammer the poll loop to maximise contention
                         server=None,  # bare low-level server: exercises the handshake
                     )

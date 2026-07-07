@@ -27,22 +27,22 @@ def attach_channel_verb(mcp_group: click.Group) -> None:
         "channel",
         help=(
             "Run the standalone channel-notification server (stdio).\n\n"
-            "Pushes `notifications/claude/channel` (rendered `<- scitex-todo`)\n"
+            "Pushes `notifications/claude/channel` (rendered `<- stodo`)\n"
             "into the Claude session, draining this agent's inbox. ZERO sac\n"
             "dependency. Agent id resolves from $SCITEX_TODO_AGENT_ID (or\n"
             "--agent). --name/--interval fall back to $SCITEX_TODO_CHANNEL_SOURCE\n"
             "/$SCITEX_TODO_CHANNEL_INTERVAL then the defaults, so the .mcp.json\n"
             "entry can carry zero config args.\n\n"
             "Example:\n"
-            "  scitex-todo mcp channel --name scitex-todo --interval 5"
+            "  scitex-todo mcp channel --name stodo --interval 5"
         ),
     )
     @click.option(
         "--name",
         default=None,
         help=(
-            "Sets meta.source (drives the `<- scitex-todo-system` render). "
-            "Default: $SCITEX_TODO_CHANNEL_SOURCE, then 'scitex-todo-system'."
+            "Sets meta.source (drives the `<- stodo` render). "
+            "Default: $SCITEX_TODO_CHANNEL_SOURCE, then 'stodo'."
         ),
     )
     @click.option(
