@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CLI `stale-list` verb — terminal counterpart to the board's
+"""CLI `list-stale` verb — terminal counterpart to the board's
 `/stale` endpoint (PR #153) + the 🧹 Stale Review panel (PR #154).
+
+Renamed from `stale-list` in the slice-6b verb-rename pilot (doctrine
+§1d: compounds are kebab-case and VERB-FIRST); the old name stays as a
+hidden warn-phase deprecated alias until v0.9.
 
 The board UI surfaces the same data graphically. This verb is for
 operators / agents working from a shell who want a one-line answer to
@@ -30,6 +34,7 @@ import click
 
 from .._paths import resolve_tasks_path
 from .._store import load_tasks
+from ._compat import deprecated_alias, spec_command_kwargs
 from ._write import _TASKS_OPTION, _emit
 
 
@@ -84,16 +89,19 @@ def _age_days(task: dict, now):
 
 
 @click.command(
-    "stale-list",
-    help=(
-        "List PENDING cards that match the stale-review criteria.\n\n"
-        "Mirrors the board's `/stale` endpoint (PR #153) + the\n"
-        "🧹 Stale Review panel (PR #154) so the operator can sweep\n"
-        "from a shell. Default cutoff: 14 days.\n\n"
-        "Example:\n"
-        "  scitex-todo stale-list\n"
-        "  scitex-todo stale-list --days 30 --exclude-no-timestamp\n"
-        "  scitex-todo stale-list --project scitex-dev --json"
+    "list-stale",
+    **spec_command_kwargs(
+        summary="List PENDING cards that match the stale-review criteria.",
+        description=(
+            "Mirrors the board's `/stale` endpoint (PR #153) + the "
+            "🧹 Stale Review panel (PR #154) so the operator can sweep "
+            "from a shell. Default cutoff: 14 days."
+        ),
+        examples=(
+            ("{prog} list-stale", ""),
+            ("{prog} list-stale --days 30 --exclude-no-timestamp", ""),
+            ("{prog} list-stale --project scitex-dev --json", ""),
+        ),
     ),
 )
 @click.option(
@@ -131,7 +139,7 @@ def _age_days(task: dict, now):
     help="Emit the result as a JSON array (machine-readable).",
 )
 @_TASKS_OPTION
-def stale_list_cmd(
+def list_stale_cmd(
     days, include_no_timestamp, project, assignee, as_json, tasks_path
 ) -> None:
     if days < 0:
@@ -196,8 +204,15 @@ def stale_list_cmd(
 
 
 def register(main: click.Group) -> None:
-    """Attach the `stale-list` verb to the top-level CLI group."""
-    main.add_command(stale_list_cmd, name="stale-list")
+    """Attach the `list-stale` verb (+ hidden warn-phase `stale-list` alias).
+
+    Renamed in the slice-6b verb-rename pilot: `stale-list` was a
+    noun-first compound; doctrine §1d grammar requires kebab-case
+    VERB-FIRST compounds (`list-stale`, like `list-tasks`). The old
+    name forwards with a once-per-shell stderr warning until v0.9.
+    """
+    main.add_command(list_stale_cmd, name="list-stale")
+    deprecated_alias(main, "stale-list", target="list-stale", remove_in="0.9")
 
 
 # EOF
