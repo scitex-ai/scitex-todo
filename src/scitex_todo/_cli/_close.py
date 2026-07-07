@@ -30,18 +30,27 @@ from __future__ import annotations
 import click
 
 from .. import _store
+from ._compat import spec_command_kwargs
 from ._write import _TASKS_OPTION, _emit
 
 
 @click.command(
     "close",
-    help=(
-        "Close a task WITH a reason (preserves context in comments[]).\n\n"
-        "Composes `comment_task` + `update_task(status=deferred)` and stamps\n"
-        "_log_meta.closed_{at,by}. Reason is REQUIRED.\n\n"
-        "Example:\n"
-        "  scitex-todo close stale-card --reason 'superseded by PR #142' "
-        "--by agent:proj-scitex-todo"
+    **spec_command_kwargs(
+        summary="Close a task WITH a reason (preserves context in comments[]).",
+        description=(
+            "The NON-SUCCESS terminal-state verb (doctrine §1d: exactly "
+            "`done` for success and `close --reason` for everything else). "
+            "Composes `comment_task` + `update_task(status=deferred)` and "
+            "stamps _log_meta.closed_{at,by}. Reason is REQUIRED."
+        ),
+        examples=(
+            (
+                "{prog} close stale-card --reason 'superseded by PR #142' "
+                "--by agent:proj-scitex-todo",
+                "",
+            ),
+        ),
     ),
 )
 @click.argument("task_id")

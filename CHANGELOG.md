@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [0.7.35] - 2026-07-05 — fix: tolerate a STALE deprecated env var when the current one is valid
+## [0.7.42] - 2026-07-08 — fix: tolerate a STALE deprecated env var when the current one is valid
 
 Fleet agents still carry a stale ambient `SCITEX_TODO_AGENT` (the pre-0.7.30
 name) baked in by an old sac injector. Until now scitex-todo fail-louded on the
@@ -27,6 +27,135 @@ but never received channel notifications.
 - Same tolerance applied to the store var in `_paths.py`: a stale
   `SCITEX_TODO_TASKS` is warn-and-ignored when `SCITEX_TODO_TASKS_YAML_SHARED`
   is set, and fails loud only when the current var is absent.
+
+## [0.7.41] - 2026-07-07 — feat: operator↔agent direct-message chat view (/chat)
+
+Minimal slice of the DM board pane (card
+fleet-agent-direct-message-board-pane-20260707; scitex-dev DM convention
+spec v1): the operator can message a specific agent from the phone via the
+board, and agents reply through an MCP verb.
+
+### Added
+
+- **`scitex_todo._threads`** — pure DM thread store. Canonical record
+  `{id, thread, from, to, body, ts, read}`; thread id `dm:<a>::<b>` with the
+  peers sorted lexicographically (one thread per pair, both directions;
+  reserved operator name `operator`). Threads live in a SIDECAR
+  `<store_dir>/threads.yaml` next to the resolved `tasks.yaml` with its OWN
+  flock, so chat writes never convoy with card writes; the write mirrors the
+  crash-safe dump→tmp→fsync→reparse-verify→`os.replace` pattern of
+  `_model._save_doc_unlocked`. API: `append_message` / `get_thread` /
+  `list_threads` / `mark_read`.
+- **dm-dispatch** — `append_message` also enqueues an `event_type="dm"`
+  notification into the recipient's EXISTING pull-inbox
+  (`_inbox.enqueue`, keyed via `_users.resolve_user` exactly like
+  `poll_notifications`), so the ≥0.7.32 unified channel server pushes the
+  message into the agent's live session. The `operator` recipient is
+  enqueued too (symmetry; the board reads unread state from the sidecar).
+  Fail-soft: an enqueue failure never loses the persisted thread record.
+- **MCP verbs `dm_send(to, body)` / `dm_list(peer=None, ack=False)`** —
+  agent-side reply + read surface (in `_mcp_skills`; `from` resolves via
+  `resolve_agent_id_optional` with an actionable error when unset; store IO
+  wrapped in `anyio.to_thread.run_sync`).
+- **Board `/chat` view** — mobile-first page (new `chat.html` template +
+  `static/scitex_todo/chat/chat.js`): collapsible agent list (users registry
+  ∪ existing thread peers, unread badges), chronological bubble thread
+  (operator right-aligned), compose box; polls `/dm/thread/<peer>` every 5s
+  and `/dm/threads` every 10s. JSON endpoints `GET /dm/threads`,
+  `GET/POST /dm/thread/<peer>` in `_django/handlers/dm.py` (distinct from
+  the per-card `/chat/<card_id>` comment endpoint).
+
+### Deferred (polish later)
+
+- WebSocket push, markdown rendering, group threads, message search,
+  CLI `dm` verbs, operator-side inbox drain.
+## [0.7.40] - 2026-07-07 — feat: CLI verb-rename pilot (slice 6b) — `list-stale` / `find-card` / `watch-ci`
+
+Pilot migration for the ecosystem CLI-standardization plan (doctrine:
+scitex-dev `general/03_interface/02_cli`).
+
+### Changed
+
+- **`stale-list` → `list-stale`**, **`ci-watch` → `watch-ci`** (§1d grammar:
+  compounds are kebab-case and VERB-FIRST), and **`resolve-card` →
+  `find-card`** (it is a READ — prints ids of cards whose `repo` matches a
+  filter — which is the doctrine `find` verb; `resolve` is also a banned
+  synonym). The old names remain as HIDDEN warn-phase deprecated aliases:
+  they forward all args/options to the canonical command, exit as it does,
+  and print `'<old>' is deprecated — use '<new>' (removed in v0.9)` to
+  stderr once per shell session. They disappear in v0.9 (three-phase
+  ladder, §5).
+- **Root `--help` is now categorized** under the fixed §4a headers (Core /
+  Data & Sync / Service / Diagnostics / Introspection / Shell; the `Other`
+  catch-all is empty), with spec-built help (`CliHelp`) on the root group
+  and on `list-tasks` / `add` / `done` / `close` plus the renamed leaves.
+- The `scitex-todo.ci-watch` JobSpec keeps its registry NAME (systemd/dedupe
+  identity) but its command now invokes the canonical
+  `scitex-todo watch-ci --once`.
+
+### Added
+
+- `src/scitex_todo/_cli/_compat.py` — guarded imports of scitex-dev's
+  `deprecated_alias` + `help_spec` helpers (present on scitex-dev develop,
+  absent from the released 0.21.0; scitex-python#352 precedent) with
+  doctrine-contract fallbacks so warn+forward behavior is identical on
+  every installed scitex-dev release.
+
+### Refactored
+
+- `_cli/_write.py` (pre-existing over the 512-line cap): the `update` verb
+  moved to `_cli/_update.py` — pure move, one-verb-per-file precedent.
+
+## [0.7.39] - 2026-07-07 — chore: channel-notification source label is now `stodo`
+
+### Changed
+
+- **Default `meta.source` label: `scitex-todo-system` → `stodo`.** Per the
+  fleet naming agreement (operator 2026-07-07, card
+  fleet-channel-source-sender-identity-naming-20260707), channel-notification
+  source labels are standardized to SHORT sender-identity names — sac / cct /
+  stodo (`daemon` is reserved for daemon-origin messages). This supersedes the
+  short-lived `scitex-todo-system` default introduced in 0.7.32. Label-only
+  change: `meta.source` is a free attribution label decoupled from routing
+  (replies route via the MCP tool + ids).
+- **Deployed config note:** `.mcp.json` entries that pin the old values
+  (`--name scitex-todo` / `--name scitex-todo-system`, or
+  `SCITEX_TODO_CHANNEL_SOURCE` set to either) should update to `stodo` or
+  simply drop the override and inherit the new default.
+
+## [0.7.34] - 2026-07-05 — fix: harden the channel push path (size cap + first-connect burst cap)
+
+Hardens the `notifications/claude/channel` push surface against the crash class
+behind the 2026-07-02 incident, where 180 solver apptainer containers died on
+boot with `JSON message exceeded maximum buffer size of 1048576 bytes` — an
+oversized scitex-todo channel push overflowed the Claude Agent SDK's 1 MB stdio
+reader.
+
+### Fixed
+
+- **Oversized push body → SDK reader overflow.** `build_channel_params` now caps
+  the pushed `content` body at `MAX_CONTENT_BYTES` (256 KiB, a quarter of the
+  1 MB reader with generous headroom for `meta` + JSON framing). An oversized
+  body is truncated on a UTF-8 char boundary (multibyte-safe) and gets a
+  `[truncated — see card <id> on the board]` pointer so the full text stays
+  reachable. `meta` values are additionally clamped (belt-and-suspenders).
+- **First-connect burst.** `drain_once` now pushes at most `MAX_PUSH_PER_DRAIN`
+  (50) records per call, across all recipient keys combined. A large unseen
+  backlog can no longer flood the session in one tick — the remainder stays
+  unseen and drains on the next ~5 s poll tick, a few dozen at a time. Acks
+  still happen only for records actually pushed.
+
+### Added
+
+- New pure, unit-testable `scitex_todo._channel_guard` module holding the size
+  constants and `_bounded_content` / `_bounded_meta_value` helpers (keeps
+  `_mcp_channel.py` within the module size budget).
+
+### Docs
+
+- Documented the headless lever: with **no** `SCITEX_TODO_AGENT_ID` the unified
+  `scitex-todo mcp start` runs tools-only (no poll loop, zero pushes) — the
+  intended mode for solver / headless capsules that must not receive pushes.
 
 ## [0.7.33] - 2026-07-05 — feat: package-level `health` doctor (MCP tool + CLI verb)
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Tests for the `stale-list` CLI verb (CliRunner; no mocks).
+"""Tests for the `list-stale` CLI verb (CliRunner; no mocks).
 
 Mirrors the criteria of the board's `/stale` endpoint (PR #153) +
 the 🧹 Stale Review panel (PR #154). AAA pattern + one assertion
@@ -70,7 +70,7 @@ def test_stale_list_exits_zero(tmp_path):
     runner = CliRunner()
     store = _store(tmp_path)
     # Act
-    result = runner.invoke(main, ["stale-list", "--tasks", store])
+    result = runner.invoke(main, ["list-stale", "--tasks", store])
     # Assert
     assert result.exit_code == 0, result.output
 
@@ -80,7 +80,7 @@ def test_stale_list_includes_old_pending(tmp_path):
     runner = CliRunner()
     store = _store(tmp_path)
     # Act
-    result = runner.invoke(main, ["stale-list", "--tasks", store])
+    result = runner.invoke(main, ["list-stale", "--tasks", store])
     # Assert
     assert "old-pending-card" in result.output
 
@@ -90,7 +90,7 @@ def test_stale_list_excludes_recent_pending(tmp_path):
     runner = CliRunner()
     store = _store(tmp_path)
     # Act
-    result = runner.invoke(main, ["stale-list", "--tasks", store])
+    result = runner.invoke(main, ["list-stale", "--tasks", store])
     # Assert
     assert "recent-pending-card" not in result.output
 
@@ -100,7 +100,7 @@ def test_stale_list_excludes_done(tmp_path):
     runner = CliRunner()
     store = _store(tmp_path)
     # Act
-    result = runner.invoke(main, ["stale-list", "--tasks", store])
+    result = runner.invoke(main, ["list-stale", "--tasks", store])
     # Assert
     assert "done-card" not in result.output
 
@@ -110,7 +110,7 @@ def test_stale_list_includes_no_timestamp_by_default(tmp_path):
     runner = CliRunner()
     store = _store(tmp_path)
     # Act
-    result = runner.invoke(main, ["stale-list", "--tasks", store])
+    result = runner.invoke(main, ["list-stale", "--tasks", store])
     # Assert
     assert "no-timestamp-card" in result.output
 
@@ -122,7 +122,7 @@ def test_stale_list_exclude_no_timestamp_filter(tmp_path):
     # Act
     result = runner.invoke(
         main,
-        ["stale-list", "--tasks", store, "--exclude-no-timestamp"],
+        ["list-stale", "--tasks", store, "--exclude-no-timestamp"],
     )
     # Assert — no-timestamp-card was flagged ONLY for missing timestamps; the
     # filter must drop it (vague-card stays — it has a second reason).
@@ -135,7 +135,7 @@ def test_stale_list_project_filter(tmp_path):
     store = _store(tmp_path)
     # Act
     result = runner.invoke(
-        main, ["stale-list", "--tasks", store, "--project", "scitex-dev"]
+        main, ["list-stale", "--tasks", store, "--project", "scitex-dev"]
     )
     # Assert
     assert "no-timestamp-card" not in result.output
@@ -146,7 +146,7 @@ def test_stale_list_json_emits_array(tmp_path):
     runner = CliRunner()
     store = _store(tmp_path)
     # Act
-    result = runner.invoke(main, ["stale-list", "--tasks", store, "--json"])
+    result = runner.invoke(main, ["list-stale", "--tasks", store, "--json"])
     # Assert
     data = json.loads(result.output)
     assert isinstance(data, list)
@@ -158,7 +158,7 @@ def test_stale_list_rejects_negative_days(tmp_path):
     store = _store(tmp_path)
     # Act
     result = runner.invoke(
-        main, ["stale-list", "--tasks", store, "--days", "-1"]
+        main, ["list-stale", "--tasks", store, "--days", "-1"]
     )
     # Assert
     assert result.exit_code != 0
@@ -171,7 +171,7 @@ def test_stale_list_empty_when_days_huge(tmp_path):
     # Act
     result = runner.invoke(
         main,
-        ["stale-list", "--tasks", store, "--days", "10000", "--exclude-no-timestamp"],
+        ["list-stale", "--tasks", store, "--days", "10000", "--exclude-no-timestamp"],
     )
     # Assert — vague-card stays (flagged for vagueness, not age); we just
     # check that the runner returns a sane non-error result.

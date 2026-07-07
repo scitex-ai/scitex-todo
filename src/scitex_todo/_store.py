@@ -72,8 +72,10 @@ from pathlib import Path
 from ._model import (
     VALID_STATUSES,
     TaskValidationError,
+    _save_doc_unlocked,
     _save_tasks_unlocked,
     _store_lock,
+    load_doc,
     load_tasks,
     save_tasks,
 )
@@ -294,6 +296,40 @@ def _match(
 
 
 # --------------------------------------------------------------------------- #
+# Read-modify-write helper                                                     #
+# --------------------------------------------------------------------------- #
+def _read_write_doc(
+    path: str | Path, *, missing_ok: bool = False
+) -> tuple[dict, list]:
+    """Load the FULL store doc ONCE for a locked read-modify-write cycle.
+
+    Returns ``(doc, tasks)`` where ``tasks is doc["tasks"]`` (always a list).
+    Callers mutate ``tasks`` (or rebind it) then persist via
+    ``_save_doc_unlocked(doc, path, tasks=tasks)`` — so the ONE parse done
+    here serves BOTH the mutated ``tasks`` payload AND the non-``tasks``
+    sections (``users:`` etc.) that must survive the rewrite, eliminating the
+    second ``safe_load`` the old ``_save_tasks_unlocked`` re-read performed.
+
+    Mirrors the two historical read shapes:
+    - ``missing_ok=False`` (default) → ``load_tasks(p)`` semantics: raises
+      ``FileNotFoundError`` if the store is absent; also re-validates on read.
+    - ``missing_ok=True`` → ``load_tasks(p) if p.exists() else []`` semantics:
+      an absent store yields an empty doc instead of raising.
+    """
+    p = Path(path)
+    if missing_ok and not p.exists():
+        return {"tasks": []}, []
+    doc = load_doc(p, validate=True)  # raises FileNotFoundError if absent
+    if not isinstance(doc, dict):
+        doc = {"tasks": []}
+    tasks = doc.get("tasks")
+    if not isinstance(tasks, list):
+        tasks = []
+        doc["tasks"] = tasks
+    return doc, tasks
+
+
+# --------------------------------------------------------------------------- #
 # Public API                                                                  #
 # --------------------------------------------------------------------------- #
 def add_task(
@@ -407,7 +443,7 @@ def add_task(
     # silently clobbers the first writer's insert. See
     # tests/scitex_todo/test__store.py::test_two_concurrent_writers...
     with _store_lock(resolved):
-        tasks = load_tasks(resolved) if resolved.exists() else []
+        doc, tasks = _read_write_doc(resolved, missing_ok=True)
         # WIP-validation gate (operator standing direction via lead a2a
         # `d99b8de6839d46e586e4ee692f43c1d9` + ``5acfbb5d0db44db8a7fa4f70c399d539``,
         # 2026-06-12). Count the new task's agent's open tasks (status NOT
@@ -440,7 +476,7 @@ def add_task(
                     file=sys.stderr,
                 )
         tasks.append(new)
-        _save_tasks_unlocked(tasks, resolved)
+        _save_doc_unlocked(doc, resolved, tasks=tasks)
     # C5: emit a canonical `created` card-event AFTER the card is durably
     # persisted + the lock released. Fail-soft (the mutation already
     # succeeded). Actor = the resolved creating user (same chain that
@@ -506,7 +542,7 @@ def update_task(
     # (hook-bypass: line-limit)
     status_change: tuple[str | None, str | None] | None = None
     with _store_lock(resolved):
-        tasks = load_tasks(resolved)
+        doc, tasks = _read_write_doc(resolved)
         for task in tasks:
             if task.get("id") == task_id:
                 prior_status = task.get("status")
@@ -522,7 +558,7 @@ def update_task(
                 # value wins over the auto-stamp.
                 if "last_activity" not in fields:
                     task["last_activity"] = _utc_now_iso()
-                _save_tasks_unlocked(tasks, resolved)
+                _save_doc_unlocked(doc, resolved, tasks=tasks)
                 result = dict(task)
                 transitioned_to_done = (
                     fields.get("status") == "done" and prior_status != "done"
@@ -609,7 +645,7 @@ def complete_task(
     result: dict | None = None
     transitioned = False
     with _store_lock(resolved):
-        tasks = load_tasks(resolved)
+        doc, tasks = _read_write_doc(resolved)
         for task in tasks:
             if task.get("id") == task_id:
                 if task.get("status") == "done":
@@ -623,7 +659,7 @@ def complete_task(
                     task["_log_meta"] = log_meta
                 log_meta["completed_at"] = _utc_now_iso()
                 log_meta["completed_by"] = _default_agent(by)
-                _save_tasks_unlocked(tasks, resolved)
+                _save_doc_unlocked(doc, resolved, tasks=tasks)
                 result = dict(task)
                 transitioned = True
                 break
@@ -799,7 +835,7 @@ def list_tasks(
       ``status``: ``None`` = no filter; any string = exact match.
       (Generic Req 8 — no fuzzy / glob; callers compose.) ``repo`` matches
       the card's ``repo`` field (``owner/repo``) — the reusable seam a
-      producer uses to resolve repo->card at emit time (resolve-card verb).
+      producer uses to resolve repo->card at emit time (find-card verb).
       (hook-bypass: line-limit)
     - ``statuses`` (list) AND ``status`` (single) are OR-combined.
     - ``blocker="__none"`` matches rows with no blocker field; any other
@@ -981,7 +1017,7 @@ def delete_task(
     if not task_id:
         raise ValueError("delete_task: 'task_id' is required")
     with _model._store_lock(tasks_path):
-        tasks = _model.load_tasks(tasks_path)
+        doc, tasks = _read_write_doc(tasks_path)
         target = None
         keep: list = []
         for t in tasks:
@@ -1009,7 +1045,7 @@ def delete_task(
                 mutated = True
             if mutated:
                 refs.append(t.get("id"))
-        _model._save_tasks_unlocked(keep, tasks_path)
+        _model._save_doc_unlocked(doc, tasks_path, tasks=keep)
     return {"removed": target, "refs": refs}
 
 
@@ -1031,11 +1067,11 @@ def restore_task(
         raise ValueError("restore_task: 'task' must be a dict with 'id'")
     tid = task["id"]
     with _model._store_lock(tasks_path):
-        tasks = _model.load_tasks(tasks_path)
+        doc, tasks = _read_write_doc(tasks_path)
         if any(t.get("id") == tid for t in tasks):
             raise ValueError(f"restore_task: id {tid!r} already present")
         tasks.append(dict(task))
-        _model._save_tasks_unlocked(tasks, tasks_path)
+        _model._save_doc_unlocked(doc, tasks_path, tasks=tasks)
     # refs are descriptive (the client passes them through so callers can
     # see which tasks had been mutated; we don't reverse-apply them since
     # the depends_on / blocks values were just stripped, not stored).
@@ -1085,7 +1121,7 @@ def comment_task(
     if kind:
         entry["kind"] = str(kind)
     with _model._store_lock(tasks_path):
-        tasks = _model.load_tasks(tasks_path)
+        doc, tasks = _read_write_doc(tasks_path)
         target = None
         for t in tasks:
             if t.get("id") == task_id:
@@ -1102,7 +1138,7 @@ def comment_task(
             if isinstance(c, dict) and isinstance(c.get("author"), str)
         ]
         comments.append(entry)
-        _model._save_tasks_unlocked(tasks, tasks_path)
+        _model._save_doc_unlocked(doc, tasks_path, tasks=tasks)
         owner = target.get("agent") or target.get("assignee")
         # Persistent role lists (ADR-0009) — captured under the lock so
         # the bus emit below works off a consistent snapshot.
@@ -1214,7 +1250,7 @@ def set_edge(
         raise ValueError("set_edge: self-edge is forbidden")
     tasks_path = _resolved_store(store)
     with _model._store_lock(tasks_path):
-        tasks = _model.load_tasks(tasks_path)
+        doc, tasks = _read_write_doc(tasks_path)
         src_task = next((t for t in tasks if t.get("id") == source), None)
         tgt_task = next((t for t in tasks if t.get("id") == target), None)
         if src_task is None:
@@ -1230,7 +1266,7 @@ def set_edge(
             src_task[kind] = edges
         else:
             src_task.pop(kind, None)
-        _model._save_tasks_unlocked(tasks, tasks_path)
+        _model._save_doc_unlocked(doc, tasks_path, tasks=tasks)
     return {"action": action, "kind": kind, "source": source, "target": target}
 
 
@@ -1248,7 +1284,7 @@ def _set_list_member(
     the YAML stays sparse). Stamps ``last_activity``. Returns the task.
     """
     with _store_lock(tasks_path):
-        tasks = load_tasks(tasks_path)
+        doc, tasks = _read_write_doc(tasks_path)
         for task in tasks:
             if task.get("id") == task_id:
                 members = [m for m in (task.get(field) or []) if m != who]
@@ -1259,7 +1295,7 @@ def _set_list_member(
                 else:
                     task.pop(field, None)
                 task["last_activity"] = _utc_now_iso()
-                _save_tasks_unlocked(tasks, tasks_path)
+                _save_doc_unlocked(doc, tasks_path, tasks=tasks)
                 return dict(task)
     raise TaskNotFoundError(f"task id {task_id!r} not found in {tasks_path}")
 
@@ -1334,7 +1370,7 @@ def resolve_task(
     who = _default_agent(actor)
     tasks_path = _resolved_store(store)
     with _model._store_lock(tasks_path):
-        tasks = _model.load_tasks(tasks_path)
+        doc, tasks = _read_write_doc(tasks_path)
         target = next((t for t in tasks if t.get("id") == task_id), None)
         if target is None:
             raise TaskNotFoundError(f"resolve_task: unknown id {task_id!r}")
@@ -1354,7 +1390,7 @@ def resolve_task(
                 ),
             }
         )
-        _model._save_tasks_unlocked(tasks, tasks_path)
+        _model._save_doc_unlocked(doc, tasks_path, tasks=tasks)
     # Active-unblock DRIVE (ADR-0009) — resolving a blocker card to done
     # can free its dependents too. Outside the lock; skip the noop
     # (already-done) path. Handler token-dedupe keeps it idempotent.
@@ -1392,7 +1428,7 @@ def reopen_task(
     who = _default_agent(by)
     tasks_path = _resolved_store(store)
     with _model._store_lock(tasks_path):
-        tasks = _model.load_tasks(tasks_path)
+        doc, tasks = _read_write_doc(tasks_path)
         target = next((t for t in tasks if t.get("id") == task_id), None)
         if target is None:
             raise TaskNotFoundError(f"reopen_task: unknown id {task_id!r}")
@@ -1406,7 +1442,7 @@ def reopen_task(
                 "text": "[REOPENED via mcp.reopen_task] flipped status='done'->blocked, blocker=operator-decision restored.",
             }
         )
-        _model._save_tasks_unlocked(tasks, tasks_path)
+        _model._save_doc_unlocked(doc, tasks_path, tasks=tasks)
     return {"task_id": task_id, "by": who, "task": dict(target)}
 
 
@@ -1478,7 +1514,7 @@ def reassign_task(
     old_owner: str | None = None
     result_task: dict | None = None
     with _model._store_lock(tasks_path):
-        tasks = _model.load_tasks(tasks_path)
+        doc, tasks = _read_write_doc(tasks_path)
         target = next((t for t in tasks if t.get("id") == task_id), None)
         if target is None:
             raise TaskNotFoundError(f"reassign_task: unknown id {task_id!r}")
@@ -1504,7 +1540,7 @@ def reassign_task(
                 }
             )
             target["last_activity"] = _utc_now_iso()
-            _model._save_tasks_unlocked(tasks, tasks_path)
+            _model._save_doc_unlocked(doc, tasks_path, tasks=tasks)
             result_task = dict(target)
             changed = True
     # C5: emit `reassigned` ONLY on a real owner change, AFTER the write is

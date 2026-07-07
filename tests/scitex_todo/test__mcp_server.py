@@ -106,6 +106,11 @@ _CONVENTION_A_NAMES = {
     # Standalone pull-inbox read path — 1:1 with `_inbox.poll_inbox`
     # (registered in `_mcp_skills`). PULL card-message delivery, no sac.
     "poll_notifications",
+    # Operator↔agent direct messages — 1:1 with `_threads.append_message` /
+    # `_threads.get_thread` (registered in `_mcp_skills`; scitex-dev DM
+    # convention v1, threads.yaml sidecar).
+    "dm_send",
+    "dm_list",
 }
 # Convention B — `todo_<verb>_<noun>` for the audit §5 required skills
 # tools. These don't map 1:1 to a Python API; they introspect the bundled
@@ -740,3 +745,106 @@ async def _call_tool(tool_callable, **kwargs):
     ):
         kwargs["assignee"] = "agent:test-suite"
     return await fn(**kwargs)
+
+
+# --------------------------------------------------------------------------- #
+# Fix A — async handlers offload blocking store calls to a worker thread.     #
+#                                                                             #
+# The synchronous store functions take a process-wide flock and load the      #
+# whole (multi-MB) store from disk under it — seconds of blocking IO. Run on   #
+# the event-loop thread they FREEZE the loop (the MCP `initialize` handshake   #
+# starves, pushes stall). Fix A wraps each blocking store/inbox/help call in   #
+# `await anyio.to_thread.run_sync(functools.partial(fn, ...))`, mirroring      #
+# `_mcp_channel.drain_once`. These tests pin (a) correctness still holds       #
+# through the to_thread hop and (b) the loop is NOT blocked during the call.   #
+# --------------------------------------------------------------------------- #
+def test_get_task_roundtrip_through_to_thread(tmp_path):
+    # Arrange
+    from scitex_todo._mcp_server import add_task, get_task
+
+    store = str(tmp_path / "tasks.yaml")
+    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
+    # Act
+    out = json.loads(asyncio.run(_call_tool(get_task, task_id="a", tasks_path=store)))
+    # Assert
+    assert out["id"] == "a"
+
+
+def test_reassign_task_roundtrip_through_to_thread(tmp_path):
+    # Covers the _mcp_skills offload path (reassign_task → _store.reassign_task).
+    # Arrange
+    from scitex_todo._mcp_server import add_task
+    from scitex_todo._mcp_skills import reassign_task
+
+    store = str(tmp_path / "tasks.yaml")
+    asyncio.run(
+        _call_tool(add_task, id="a", title="A", agent="proj-x", tasks_path=store)
+    )
+    # Act
+    out = json.loads(
+        asyncio.run(
+            _call_tool(
+                reassign_task,
+                task_id="a",
+                new_owner="proj-y",
+                by="agent:test",
+                tasks_path=store,
+            )
+        )
+    )
+    # Assert — reassign returns {task_id, from_owner, to_owner, actor,
+    # changed, task}; the offloaded call still mutated the owner.
+    assert out["to_owner"] == "proj-y"
+    assert out["changed"] is True
+    assert out["task"]["agent"] == "proj-y"
+
+
+def test_handler_does_not_block_event_loop(tmp_path, monkeypatch):
+    """A slow SYNC store call inside a handler must NOT freeze the loop.
+
+    Regression for Fix A. We monkeypatch `_store.get_task` with a variant
+    that sleeps 0.3 s (standing in for the flock-guarded multi-MB load),
+    then run the `get_task` handler concurrently with a 10 ms-cadence
+    ticker coroutine. If the blocking call ran ON the loop thread the
+    ticker would be frozen (≈0 ticks); because Fix A offloads it to a
+    worker thread, the ticker keeps advancing while the store op is
+    in-flight.
+    """
+    # Arrange
+    import time
+
+    from scitex_todo import _store
+    from scitex_todo._mcp_server import get_task
+
+    store = str(tmp_path / "tasks.yaml")
+    _store.add_task(store, id="a", title="A", assignee="agent:test")
+
+    real_get_task = _store.get_task
+
+    def _slow_get_task(*args, **kwargs):
+        time.sleep(0.3)
+        return real_get_task(*args, **kwargs)
+
+    monkeypatch.setattr(_store, "get_task", _slow_get_task)
+
+    async def _drive():
+        ticks = 0
+
+        async def _ticker():
+            nonlocal ticks
+            for _ in range(100):
+                await asyncio.sleep(0.01)
+                ticks += 1
+
+        fn = getattr(get_task, "fn", None) or get_task
+        handler = asyncio.ensure_future(fn(task_id="a", tasks_path=store))
+        ticker = asyncio.ensure_future(_ticker())
+        result = await handler
+        ticker.cancel()
+        return result, ticks
+
+    # Act
+    result, ticks = asyncio.run(_drive())
+    # Assert — correct result AND the loop stayed live during the 0.3 s call.
+    assert json.loads(result)["id"] == "a"
+    assert ticks >= 5, f"event loop appeared blocked (only {ticks} ticks)"

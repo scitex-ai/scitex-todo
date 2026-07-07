@@ -8,7 +8,34 @@ and ``load_tasks``), the mermaid source comes from ``build_mermaid``, and node
 colors come from ``STATUS_STYLE``.
 """
 
+from pathlib import Path
+
 from django.http import JsonResponse
+
+#: The board's HTML templates live here (board_v3.html + any partials). Their
+#: max mtime is a cheap fingerprint for "the GUI code changed" — see
+#: :func:`_board_asset_rev`.
+_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "scitex_todo"
+
+
+def _board_asset_rev() -> float:
+    """Max mtime across the board's HTML templates — a cheap GUI-version stamp.
+
+    The ``/rev`` poll already tells the browser when the store DATA changed;
+    this adds a second signal for when the board's own GUI CODE changed (a
+    template/JS/CSS edit, or a merged PR that updated ``board_v3.html`` under
+    the editable install). In DEBUG Django already serves the new template on
+    the next full page load — the open pane just doesn't know to fetch it. The
+    frontend compares this stamp across polls and hard-reloads (``location.
+    reload()``) when it moves, so the operator's board pane picks up GUI
+    updates WITHOUT a manual restart / F5. Falls back to ``0.0`` if the
+    template dir can't be stat'd (never raises into the poll response).
+    """
+    try:
+        mtimes = [p.stat().st_mtime for p in _TEMPLATE_DIR.glob("*.html")]
+    except OSError:
+        return 0.0
+    return max(mtimes, default=0.0)
 
 
 def _status_colors() -> dict:
@@ -455,6 +482,9 @@ def handle_rev(request, board):
             "mtime": board.mtime,
             "count": len(board.tasks),
             "store_path": str(board.store_path),
+            # GUI-code version stamp: lets the open pane hard-reload itself
+            # when the board template changes (no manual restart/F5).
+            "asset_rev": _board_asset_rev(),
         }
     )
 

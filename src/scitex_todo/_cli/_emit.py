@@ -33,6 +33,7 @@ import json
 import click
 
 from .. import _events, _store
+from ._compat import deprecated_alias, spec_command_kwargs
 from ._write import _TASKS_OPTION
 
 
@@ -148,24 +149,27 @@ def emit_event_cmd(
 
 
 @click.command(
-    "resolve-card",
-    help=(
-        "Print the card id(s) whose `repo` matches <R> (one per line; empty "
-        "when none).\n\n"
-        "The producer-side repo->card lookup: a producer calls this FIRST to "
-        "find a card for its repo, then passes --card-id to emit-event when "
-        "one exists, falling back to --repo-only when none. Optionally "
-        "filtered by --kind / --status (closed enums on the card).\n\n"
-        "Examples:\n"
-        "  scitex-todo resolve-card --repo owner/repo\n"
-        "  scitex-todo resolve-card --repo owner/repo --status pending"
+    "find-card",
+    **spec_command_kwargs(
+        summary="Print the card id(s) whose `repo` matches <R> (one per line).",
+        description=(
+            "The producer-side repo->card lookup: a producer calls this FIRST "
+            "to find a card for its repo, then passes --card-id to emit-event "
+            "when one exists, falling back to --repo-only when none. Empty "
+            "output when no card matches. Optionally filtered by --kind / "
+            "--status (closed enums on the card)."
+        ),
+        examples=(
+            ("{prog} find-card --repo owner/repo", ""),
+            ("{prog} find-card --repo owner/repo --status pending", ""),
+        ),
     ),
 )
 @click.option("--repo", required=True, help="owner/repo to match the card's `repo` field.")
 @click.option("--kind", default=None, help="Optional card-kind filter (closed enum).")
 @click.option("--status", default=None, help="Optional card-status filter (closed enum).")
 @_TASKS_OPTION
-def resolve_card_cmd(repo, kind, status, tasks_path) -> None:
+def find_card_cmd(repo, kind, status, tasks_path) -> None:
     """Print ids of cards with ``repo == <R>`` (one per line; empty when none)."""
     # `scope=""` opts out of the $SCITEX_TODO_SCOPE env default — a producer
     # resolving repo->card must see EVERY matching card, not just its own
@@ -184,9 +188,18 @@ def resolve_card_cmd(repo, kind, status, tasks_path) -> None:
 
 
 def register(main: click.Group) -> None:
-    """Attach the `emit-event` + `resolve-card` verbs to the top-level group."""
+    """Attach the `emit-event` + `find-card` verbs (+ `resolve-card` alias).
+
+    Renamed in the slice-6b verb-rename pilot: `resolve-card` is a READ
+    command (prints ids of cards whose `repo` field matches — exact
+    filter lookup, not ranked), which is doctrine §1d's `find` verb
+    ("locate objects by name/glob/filter; returns paths or ids").
+    `resolve` is also a banned synonym in the terminal-verb table. The
+    old name forwards with a once-per-shell stderr warning until v0.9.
+    """
     main.add_command(emit_event_cmd, name="emit-event")
-    main.add_command(resolve_card_cmd, name="resolve-card")
+    main.add_command(find_card_cmd, name="find-card")
+    deprecated_alias(main, "resolve-card", target="find-card", remove_in="0.9")
 
 
 # EOF

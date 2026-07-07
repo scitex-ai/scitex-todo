@@ -17,13 +17,35 @@ from .. import __version__
 from .._diagram import build_mermaid, render
 from .._model import load_tasks
 from .._paths import resolve_tasks_path
+from ._compat import spec_command_kwargs, spec_group_kwargs
 
-_ROOT_EPILOG = (
-    "Task store resolution (first existing wins): an explicit --tasks path, "
-    "then $SCITEX_TODO_TASKS_YAML_SHARED, then the project store "
-    "<git-root>/.scitex/todo/tasks.yaml, then the user store "
-    "~/.scitex/todo/tasks.yaml (relocatable via $SCITEX_DIR), then the bundled "
-    "generic example. See the README 'Where your task data lives' section."
+_STORE_RESOLUTION = (
+    "Task store resolution (first existing wins): an explicit --tasks path,",
+    "then $SCITEX_TODO_TASKS_YAML_SHARED, then the project store",
+    "<git-root>/.scitex/todo/tasks.yaml, then the user store",
+    "~/.scitex/todo/tasks.yaml (relocatable via $SCITEX_DIR), then the",
+    "bundled generic example. See the README 'Where your task data lives'.",
+)
+
+# Doctrine §4a (10a_command-categories.md): fixed, ordered category headers.
+# Every visible top-level command MUST be assigned — the auto `Other`
+# catch-all is an audit finding and never renders at audit-clean.
+_COMMAND_CATEGORIES = (
+    (
+        "Core",
+        (
+            "add", "update", "done", "close", "comment", "reassign",
+            "list-tasks", "list-stale", "find-card", "next", "runnable",
+            "summary", "render-graph", "emit-event", "help-wait",
+            "help-clear", "hook", "migration", "index", "init-store",
+            "reconcile-merged-prs",
+        ),
+    ),
+    ("Data & Sync", ("sync-github", "sync-store", "deliver")),
+    ("Service", ("board", "mcp", "notifyd", "watch", "watch-ci")),
+    ("Diagnostics", ("blocked", "print-stats", "health", "resolve-store")),
+    ("Introspection", ("list-python-apis", "skills")),
+    ("Shell", ("install-shell-completion", "print-shell-completion")),
 )
 
 
@@ -67,9 +89,13 @@ def _emit_help_recursive(ctx, as_json):
 
 @click.group(
     invoke_without_command=True,
-    help=f"scitex-todo (v{__version__}) — canonical YAML task store + adapters.",
-    epilog=_ROOT_EPILOG,
     context_settings={"help_option_names": ["-h", "--help"]},
+    **spec_group_kwargs(
+        summary="Canonical YAML task store + adapters for the agent fleet.",
+        config_resolution=_STORE_RESOLUTION,
+        version_of="scitex-todo",
+        command_categories=_COMMAND_CATEGORIES,
+    ),
 )
 @click.option(
     "--help-recursive",
@@ -144,17 +170,24 @@ def render_graph_cmd(tasks_path: str | None, output: str, print_mermaid: bool) -
 # --------------------------------------------------------------------------- #
 @main.command(
     "list-tasks",
-    help=(
-        "List tasks with optional filters.\n\n"
-        "Without any filter, prints the same plain-text table / JSON array\n"
-        "as before (backward-compatible). With one or more filters,\n"
-        "matches are AND-composed.\n\n"
-        "Examples:\n"
-        "  scitex-todo list-tasks --assignee proj-scitex-todo --json\n"
-        "  scitex-todo list-tasks --project scitex-todo --status pending --status in_progress\n"
-        "  scitex-todo list-tasks --blocking-me\n"
-        "  scitex-todo list-tasks --id-prefix proj-scitex-\n"
-        "  scitex-todo list-tasks --blocker __none  # rows with no blocker"
+    **spec_command_kwargs(
+        summary="List tasks with optional filters.",
+        description=(
+            "Without any filter, prints the same plain-text table / JSON "
+            "array as before (backward-compatible). With one or more "
+            "filters, matches are AND-composed."
+        ),
+        examples=(
+            ("{prog} list-tasks --assignee proj-scitex-todo --json", ""),
+            (
+                "{prog} list-tasks --project scitex-todo --status pending "
+                "--status in_progress",
+                "",
+            ),
+            ("{prog} list-tasks --blocking-me", ""),
+            ("{prog} list-tasks --id-prefix proj-scitex-", ""),
+            ("{prog} list-tasks --blocker __none", "rows with no blocker"),
+        ),
     ),
 )
 @click.option(
@@ -376,7 +409,7 @@ _runnable.register(main)
 # CLI twins of POST /hooks/push and POST /hooks/done — same canonical
 # event-payload shape, same idempotency. See _hooks.py for the spec.
 _hooks.register(main)
-# ci-watch (record-only, decoupled-pollers lane per operator override
+# watch-ci (record-only, decoupled-pollers lane per operator override
 # via dev msg `96afacc7`, 2026-06-15). Server-side cron-style poller;
 # logs per-repo CI transitions + updates the local state cache. NO
 # bus emission for ci-result (SAC has its own independent poller for

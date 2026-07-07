@@ -19,9 +19,12 @@ Clusters:
 
 from __future__ import annotations
 
+import functools
 import json
 
-from . import _help_wait, _inbox, _store
+import anyio
+
+from . import _help_wait, _inbox, _store, _threads
 from ._mcp_server import mcp
 
 
@@ -82,7 +85,10 @@ async def reassign_task(
       new_owner: the new owning agent.
       by: the actor ($SCITEX_TODO_AGENT_ID → $USER precedence).
     """
-    return json.dumps(_store.reassign_task(tasks_path, task_id, new_owner, by=by))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_store.reassign_task, tasks_path, task_id, new_owner, by=by)
+    )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -101,9 +107,12 @@ async def help_wait(
     placeholder). Idempotent: a re-run refreshes note + last_activity in
     place and never duplicates. Returns the upserted card as JSON.
     """
-    return json.dumps(
-        _help_wait.help_wait(tasks_path, agent, question=question, host=host)
+    result = await anyio.to_thread.run_sync(
+        functools.partial(
+            _help_wait.help_wait, tasks_path, agent, question=question, host=host
+        )
     )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -116,7 +125,10 @@ async def help_clear(
     No-op (no error) when the card does not exist. Returns a JSON object
     ``{"task_id": <id>, "cleared": bool, ...}``.
     """
-    return json.dumps(_help_wait.help_clear(tasks_path, agent))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_help_wait.help_clear, tasks_path, agent)
+    )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -153,7 +165,9 @@ async def poll_notifications(
     """
     from ._users import resolve_user, touch_user
 
-    user = resolve_user(agent, store=tasks_path)
+    user = await anyio.to_thread.run_sync(
+        functools.partial(resolve_user, agent, store=tasks_path)
+    )
     recipient_id = user.id if user is not None else agent
     # Liveness heartbeat (assignee-liveness feature): polling the inbox is an
     # agent touching the store → stamp its own registry ``last_seen`` so
@@ -161,18 +175,23 @@ async def poll_notifications(
     # (e.g. unregistered agent) must never break the poll. Reuses the SAME
     # identity seam (no second path); STANDALONE (local registry write only).
     try:
-        touch_user(agent, store=tasks_path)
+        await anyio.to_thread.run_sync(
+            functools.partial(touch_user, agent, store=tasks_path)
+        )
     except Exception:  # noqa: BLE001 — heartbeat must not break the poll
         import logging
 
         logging.getLogger(__name__).warning(
             "poll_notifications: heartbeat failed for %r", agent, exc_info=True
         )
-    notifications = _inbox.poll_inbox(
-        recipient_id,
-        unseen_only=unseen_only,
-        mark_seen=ack,
-        store=tasks_path,
+    notifications = await anyio.to_thread.run_sync(
+        functools.partial(
+            _inbox.poll_inbox,
+            recipient_id,
+            unseen_only=unseen_only,
+            mark_seen=ack,
+            store=tasks_path,
+        )
     )
     return json.dumps(
         {
@@ -200,10 +219,94 @@ async def health(tasks_path: str | None = None) -> str:
     """
     from ._health import health as _health_check
 
-    return json.dumps(_health_check(store=tasks_path))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_health_check, store=tasks_path)
+    )
+    return json.dumps(result)
+
+
+def _dm_sender_or_error() -> "tuple[str | None, str | None]":
+    """Resolve the calling agent's identity for the dm_* tools.
+
+    Returns ``(sender, None)`` on success or ``(None, <json error>)`` with an
+    actionable hint when no identity is configured — the DM record's ``from``
+    field must be a REAL agent name, never a blank/'unknown' fallback.
+    """
+    from ._mcp_channel import resolve_agent_id_optional
+
+    sender = resolve_agent_id_optional()
+    if sender is None:
+        return None, json.dumps(
+            {
+                "error": "dm: no agent identity configured. Set "
+                "SCITEX_TODO_AGENT_ID=<your-agent> in the MCP server env "
+                "(.mcp.json: \"SCITEX_TODO_AGENT_ID\": "
+                "\"${SCITEX_TODO_AGENT_ID}\") so the DM 'from' field names a "
+                "real agent."
+            }
+        )
+    return sender, None
+
+
+@mcp.tool()
+async def dm_send(
+    to: str,
+    body: str,
+    tasks_path: str | None = None,
+) -> str:
+    """Send a DIRECT MESSAGE to a peer (operator or another agent).
+
+    Appends the canonical DM record ``{id, thread, from, to, body, ts, read}``
+    to the pair's thread in the ``threads.yaml`` sidecar (thread id
+    ``dm:<a>::<b>``, peers sorted) and enqueues a ``dm`` notification into the
+    recipient's pull-inbox so the unified channel server delivers it into
+    their live session. ``from`` is THIS agent's resolved identity
+    ($SCITEX_TODO_AGENT_ID). The operator's reserved peer name is
+    ``"operator"`` — the operator reads the thread on the board's /chat view.
+    Returns the stored record as JSON.
+    """
+    sender, err = _dm_sender_or_error()
+    if err is not None:
+        return err
+    record = await anyio.to_thread.run_sync(
+        functools.partial(
+            _threads.append_message, sender, to, body, store=tasks_path
+        )
+    )
+    return json.dumps(record)
+
+
+@mcp.tool()
+async def dm_list(
+    peer: str | None = None,
+    ack: bool = False,
+    tasks_path: str | None = None,
+) -> str:
+    """Read THIS agent's DM thread with ``peer`` (default: the operator).
+
+    Returns ``{"thread": <id>, "peer": <peer>, "messages": [...]}`` in
+    chronological order. ``ack=true`` additionally marks the messages
+    addressed to this agent as read (advances the unread cursor the board's
+    /chat view displays).
+    """
+    sender, err = _dm_sender_or_error()
+    if err is not None:
+        return err
+    other = peer or _threads.OPERATOR_NAME
+    key = _threads.thread_key(sender, other)
+    if ack:
+        await anyio.to_thread.run_sync(
+            functools.partial(_threads.mark_read, key, sender, store=tasks_path)
+        )
+    messages = await anyio.to_thread.run_sync(
+        functools.partial(_threads.get_thread, sender, other, store=tasks_path)
+    )
+    return json.dumps({"thread": key, "peer": other, "messages": messages})
 
 
 __all__ = [
+    "dm_list",
+    "dm_send",
     "health",
     "help_clear",
     "help_wait",
