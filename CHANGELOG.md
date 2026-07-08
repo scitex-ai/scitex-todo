@@ -4,6 +4,33 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.47] - 2026-07-08 — fix: single-instance flock on `print-stats --notify` (third store-size daemon)
+
+The managed notify cron runs `scitex-todo print-stats --by agent --notify
+--nudge-quiet` every 10 minutes. `print-stats --by agent` re-derives per-agent
+rollups from all ~930 cards in the ~9 MB `tasks.yaml`; when a single run exceeds
+the 10-min period it OVERLAPS the next cron tick, so runs STACK (observed: 2
+concurrent at ~63% CPU each, heading toward the same saturation as the
+wake-watcher spiral). This is the cron/one-shot analogue of the wake-watcher
+death-spiral PR #344 fixed and the MCP inbox-drain spin #345 fixed — same
+store-size root. The durable cure is archival (separate card); this is the
+stacking guard.
+
+- **Single-instance flock (`_singleflight.py`).** A new small, reusable module
+  mirrors the wake-watcher's process-level lock (#344): a NON-BLOCKING
+  `flock(LOCK_EX | LOCK_NB)` on `<store>/runtime/print-stats-notify.lock`
+  (resolved via `_paths.runtime_dir`, the same resolver the delivery ledger /
+  pidfiles use). Exposed as a `single_instance(...)` context manager +
+  `notify_lock_path(...)` helper so it is unit-testable.
+- **Guard the notify path only.** `print-stats` takes the lock ONLY when
+  `--notify` / `--nudge-quiet` is set (the cron/side-effect path). When the
+  lock is already HELD (a prior run still going) the run LOGS a clear line and
+  EXITS 0 — a skipped nudge tick is fine; the next tick runs. The lock releases
+  on exit and automatically on process death, so a crashed run never wedges it.
+- **Plain reads stay unguarded.** An interactive `print-stats` (no `--notify`)
+  neither takes nor is blocked by the lock — it prints the table read-only and
+  runs freely.
+
 ## [0.7.46] - 2026-07-08 — fix: mtime-gate the channel inbox drain (read-side twin of #344)
 
 Each agent's `scitex-todo mcp start` runs a channel poll loop that called

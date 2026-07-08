@@ -173,26 +173,45 @@ def stats_cmd(
     out = _format_json(rows) if fmt == "json" else _format_text(rows)
     click.echo(out)
     if (notify or nudge_quiet) and by == "agent":
-        click.echo("")
-        click.echo(f"# Notify push → {len(rows)} agents")
-        for r in rows:
-            if r.name == "(unassigned)":
-                continue
-            if notify:
-                body = build_notify_body(r.name, tasks, since=since)
-                wire = _push_notify(r.name, body)
-                click.echo(f"  {wire:>6}  {r.name}  ({len(body)} chars)")
-        if nudge_quiet:
+        # Single-instance guard for the SIDE-EFFECTING notify/nudge path only
+        # (the */10 cron entry). A plain read above already printed the table
+        # and is NOT guarded — an interactive `print-stats` runs freely,
+        # read-only. Re-deriving per-agent rollups over the ~9 MB / ~930-card
+        # store can exceed the 10-min cron period; without this NON-BLOCKING
+        # flock, an overrun run OVERLAPS the next tick and runs STACK — the
+        # cron/one-shot analogue of the wake-watcher spiral (#344) and the MCP
+        # drain spin (#345). See incident-todo-wake-watcher-interval2-spiral-
+        # 20260708.
+        from .._singleflight import notify_lock_path, single_instance
+
+        with single_instance(notify_lock_path(tasks_path)) as acquired:
+            if not acquired:
+                click.echo(
+                    "print-stats --notify: a prior run still holds the lock, "
+                    "skipping this tick to avoid stacking (store-size incident "
+                    "guard)."
+                )
+                return
             click.echo("")
-            click.echo(f"# Quiet-nudge sweep (SCITEX_TODO_NUDGE_QUIET_MIN)")
-            _emit_quiet_nudges(tasks, rows)
-            click.echo("")
-            click.echo(
-                "# Stale-active + pending-backlog sweep "
-                "(SCITEX_TODO_STALE_ACTIVE_HOURS / "
-                "SCITEX_TODO_PENDING_NUDGE_HOURS)"
-            )
-            _emit_stale_active_nudges(tasks)
+            click.echo(f"# Notify push → {len(rows)} agents")
+            for r in rows:
+                if r.name == "(unassigned)":
+                    continue
+                if notify:
+                    body = build_notify_body(r.name, tasks, since=since)
+                    wire = _push_notify(r.name, body)
+                    click.echo(f"  {wire:>6}  {r.name}  ({len(body)} chars)")
+            if nudge_quiet:
+                click.echo("")
+                click.echo(f"# Quiet-nudge sweep (SCITEX_TODO_NUDGE_QUIET_MIN)")
+                _emit_quiet_nudges(tasks, rows)
+                click.echo("")
+                click.echo(
+                    "# Stale-active + pending-backlog sweep "
+                    "(SCITEX_TODO_STALE_ACTIVE_HOURS / "
+                    "SCITEX_TODO_PENDING_NUDGE_HOURS)"
+                )
+                _emit_stale_active_nudges(tasks)
     elif notify or nudge_quiet:
         click.echo(
             "WARN: --notify / --nudge-quiet ignored when --by != agent "
