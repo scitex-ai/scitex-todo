@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "scitex-todo"
-version = "0.7.48"
+version = "0.7.49"
 description = "Canonical YAML task store with pluggable adapters (mermaid dependency graphs)"
 readme = "README.md"
 license = "AGPL-3.0-only"
@@ -25,7 +25,11 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-dependencies = ["pyyaml", "click", "ruamel.yaml"]
+# `scitex_config` is a FOUNDATIONAL ecosystem lib (not a leaf peer): it
+# supplies `local_state.user_path`, the user-canonical path resolver the
+# shadow-SQLite adapter (`_db.resolve_db_path`) delegates to instead of
+# re-rolling a project/user precedence (RFC #348 S0).
+dependencies = ["pyyaml", "click", "ruamel.yaml", "scitex_config"]
 
 [project.optional-dependencies]
 dev = [

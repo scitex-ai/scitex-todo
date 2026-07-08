@@ -4,6 +4,35 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.49] - 2026-07-08 — feat: S0 shadow SQLite DB + YAML bootstrap (YAML still canonical)
+
+STAGE S0 of the YAML→SQLite migration (design-confirmed by scitex-dev,
+RFC #348). Purely ADDITIVE: an authority-local SHADOW SQLite database is
+created and bootstrapped FROM the current YAML store. The YAML (`tasks.yaml` +
+the `threads.yaml` sidecar) STAYS the CANONICAL source of truth — no CRUD verb,
+MCP tool, or `load_doc`/`_save_doc_unlocked` path reads or writes the DB in S0.
+The shadow DB is incapable of harming the YAML by construction (a separate
+file, never linked into any write path). S1 (dual-write) comes next.
+
+- New `_db.py` adapter — stdlib `sqlite3` only (no scitex-db). `resolve_db_path`
+  follows explicit arg → `$SCITEX_TODO_DB` → `local_state.user_path("todo",
+  "todo.db")`, DELEGATING the user tier to the ecosystem resolver (never a
+  re-rolled project/user precedence — the class of bug behind the 2026-07-06
+  stale-store incident). On connect: WAL, `synchronous=NORMAL`,
+  `busy_timeout=300000`, `foreign_keys=ON`; schema stamped `user_version=1`.
+- Schema: `tasks` (scalar Task fields as columns; `deadlines`/`_log_meta` as
+  JSON TEXT; `group`→`grp`), `task_comments`, `task_edges`, `task_roles`,
+  `users` + `user_names`, `notifications` (index `(recipient_id, seen)`),
+  `messages` (folds the threads sidecar), `schema_meta`, plus the RFC's indexes.
+- New `_db_bootstrap.py` — `import_from_yaml` reads the current YAML via the
+  existing load path and rebuilds every table in one transaction. Idempotent
+  (re-run = same state); opens the YAML READ-ONLY and never writes it back.
+- New `db` CLI noun group: `db path`, `db verify`, `db import --from-yaml`.
+- `repo` promoted to a first-class optional `Task` field + `tasks.repo` column
+  (confirmed latent bug — used by add_task/list_tasks but absent from the
+  dataclass; the ONE additive existing-code change allowed in S0).
+- Adds `scitex_config` (foundational ecosystem lib) as a runtime dependency.
+
 ## [0.7.48] - 2026-07-08 — fix: guard the `print-stats` rollup, not just the push
 
 The 0.7.47 single-instance guard (#346) did NOT stop the CPU stacking it was

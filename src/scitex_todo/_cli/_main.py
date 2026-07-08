@@ -41,7 +41,7 @@ _COMMAND_CATEGORIES = (
             "reconcile-merged-prs",
         ),
     ),
-    ("Data & Sync", ("sync-github", "sync-store", "deliver")),
+    ("Data & Sync", ("db", "sync-github", "sync-store", "deliver")),
     ("Service", ("board", "mcp", "notifyd", "watch", "watch-ci")),
     ("Diagnostics", ("blocked", "print-stats", "health", "resolve-store")),
     ("Introspection", ("list-python-apis", "skills")),
