@@ -54,6 +54,7 @@ import os
 from typing import Any, Awaitable, Callable
 
 from . import _inbox
+from ._channel_drain_state import _DrainState, gated_drain_once
 from ._channel_guard import (
     MAX_PUSH_PER_DRAIN,
     _bounded_content,
@@ -61,19 +62,12 @@ from ._channel_guard import (
     _dm_wire_meta,
 )
 
+# Agent-identity resolution lives in a sibling module (keeps THIS orchestrator
+# under its line budget); re-exported below so
+# ``from scitex_todo._mcp_channel import resolve_agent_id`` keeps working.
+from ._channel_identity import resolve_agent_id, resolve_agent_id_optional
+
 logger = logging.getLogger(__name__)
-
-#: Env var carrying the agent identity — same key the rest of the package
-#: uses (``scitex_todo._store.ENV_AGENT``). Imported lazily in
-#: :func:`resolve_agent_id` to avoid a heavy import at module load.
-_ENV_AGENT = "SCITEX_TODO_AGENT_ID"
-
-#: previous name of :data:`_ENV_AGENT`. Renamed 2026-07-02. The CURRENT var
-#: wins: when it resolves to a valid id we IGNORE a stale export of this old
-#: name (loud warning, no raise). We only fail loud when the current var is
-#: absent/invalid AND this old name is still set — a genuine reliance on the
-#: renamed-away var the operator must migrate.
-_ENV_AGENT_DEPRECATED = "SCITEX_TODO_AGENT"
 
 #: Env var overriding ``meta.source`` (the ``<- stodo`` render name)
 #: when ``--name`` is not passed explicitly. Precedence: CLI > env > default.
@@ -96,93 +90,6 @@ _DEFAULT_SOURCE = "stodo"
 # --------------------------------------------------------------------------- #
 # Pure logic (tested directly — no live MCP session needed)                   #
 # --------------------------------------------------------------------------- #
-def resolve_agent_id(arg: str | None = None) -> str:
-    """Resolve the agent id; FAIL LOUD when unresolved.
-
-    Precedence: explicit ``arg`` → ``$SCITEX_TODO_AGENT_ID``. Deliberately does
-    NOT fall back to ``getpass.getuser()`` / ``"unknown"`` — a channel server
-    that drains "unknown"'s inbox would silently deliver the wrong agent's
-    notifications. The operator mandate (constitution rule 2 "fail fast and
-    fail loud, NO silent fallbacks") requires a real identity here.
-
-    Deprecated-var tolerance: the CURRENT var WINS. When ``arg`` /
-    ``$SCITEX_TODO_AGENT_ID`` yields a valid id we return it even if the stale
-    ``$SCITEX_TODO_AGENT`` is also exported — we only log a loud warning that
-    the old name is ignored. We fail loud on the old name ONLY when the current
-    var is absent/invalid (a genuine reliance on the renamed-away var).
-
-    Raises
-    ------
-    RuntimeError
-        When the id resolves to empty / the ``"unknown"`` sentinel (and the
-        deprecated ``$SCITEX_TODO_AGENT`` is set → migrate hint; otherwise the
-        generic unresolved hint), or to an unexpanded ``$``-placeholder.
-    """
-    deprecated_set = os.environ.get(_ENV_AGENT_DEPRECATED) is not None
-    resolved = (arg or os.environ.get(_ENV_AGENT) or "").strip()
-    # An id that still looks like an env placeholder (e.g. "$SCITEX_TODO_AGENT_ID"
-    # or "${SCITEX_TODO_AGENT_ID}") means the launcher passed the literal text
-    # instead of expanding it — Claude Code's .mcp.json only expands the
-    # ``${VAR}`` (braces) form, never bare ``$VAR``. Draining an inbox keyed by
-    # that literal silently delivers nothing; fail loud instead of polling a
-    # dead key.
-    if resolved.startswith("$"):
-        raise RuntimeError(
-            f"scitex-todo mcp channel: agent id is an unexpanded placeholder "
-            f"({resolved!r}) — the launcher passed the literal text instead of "
-            "the value. In .mcp.json use the brace form "
-            '"SCITEX_TODO_AGENT_ID": "${SCITEX_TODO_AGENT_ID}" (Claude Code does '
-            'not expand bare "$VAR"), or pass a literal --agent <id>.'
-        )
-    if resolved and resolved != "unknown":
-        # The current var yields a VALID id → it WINS. If the deprecated name is
-        # ALSO exported (the stale-injector incident) warn LOUD but do NOT raise:
-        # a correctly-configured agent must not have its digest push disabled by
-        # a leftover old-name export.
-        if deprecated_set:
-            logger.warning(
-                "%s is set but was renamed to %s; the stale value is IGNORED "
-                "in favor of the current %s. Unset %s to silence this warning.",
-                _ENV_AGENT_DEPRECATED,
-                _ENV_AGENT,
-                _ENV_AGENT,
-                _ENV_AGENT_DEPRECATED,
-            )
-        return resolved
-    # The current var did NOT yield a valid id. If the deprecated name is still
-    # set the operator is genuinely relying on the renamed-away var → fail loud
-    # pointing at the new name (no silent honouring of the old one).
-    if deprecated_set:
-        raise RuntimeError(
-            f"{_ENV_AGENT_DEPRECATED} was renamed to {_ENV_AGENT}; "
-            f"unset the old var and set {_ENV_AGENT}=<your-agent> instead "
-            f"(the old name is no longer honoured)."
-        )
-    raise RuntimeError(
-        "scitex-todo mcp channel: agent id unresolved — set "
-        "SCITEX_TODO_AGENT_ID=<your-agent> or pass --agent <id>. The channel "
-        "server must drain a REAL agent's inbox; no silent fallback to a "
-        "blank/'unknown' id."
-    )
-
-
-def resolve_agent_id_optional(arg: str | None = None) -> str | None:
-    """Like :func:`resolve_agent_id` but returns ``None`` instead of raising.
-
-    For the UNIFIED server (``scitex-todo mcp start``): when no identity is
-    configured we still serve the card tools — only the digest push is disabled.
-    A resolvable id enables the push; an unresolved one logs a loud warning and
-    returns ``None`` so the caller runs tools-only rather than dying.
-    """
-    try:
-        return resolve_agent_id(arg)
-    except Exception as exc:  # noqa: BLE001 — absence ⇒ tools-only, not fatal
-        logger.warning(
-            "scitex-todo mcp: %s — serving tools only, digest push disabled.", exc
-        )
-        return None
-
-
 def build_channel_params(rec: dict[str, Any], *, source: str = _DEFAULT_SOURCE) -> dict[str, Any]:
     """Project an inbox record onto the Claude channel notification shape.
 
@@ -342,12 +249,23 @@ async def _poll_loop(
 ) -> None:
     """Background task: drain the inbox every ``interval`` seconds, forever.
 
+    mtime-GATED (see :mod:`scitex_todo._channel_drain_state`): each tick first
+    ``stat``s the shared store and drains ONLY when its mtime advanced since the
+    last drained tick. A quiescent inbox therefore costs one ``stat()`` per
+    ``interval`` — NOT a full ~9 MB YAML re-parse — which was the per-agent
+    ~50% CPU drain (× ~7 servers ≈ ~350% fleet load) this fixes. The gate is
+    the read-side twin of PR #344's wake-watcher short-circuit. The first tick
+    always drains (seeds the mtime); an unresolvable store path fails SAFE
+    (drains) so correctness never regresses. ``_DrainState`` is per-loop (not a
+    module global) so multiple loops / tests never share mtime bookkeeping.
+
     Fail-soft: a drain that raises is logged and retried next tick — the loop
     is long-lived and must survive transient store/IO errors.
     """
+    state = _DrainState()
     while True:
         try:
-            await drain_once(agent_id, send, source=source)
+            await gated_drain_once(agent_id, send, state, source=source)
         except Exception as exc:  # noqa: BLE001 — keep the long-lived loop alive
             logger.warning("scitex-todo channel: drain tick failed: %s", exc)
         await asyncio.sleep(interval)

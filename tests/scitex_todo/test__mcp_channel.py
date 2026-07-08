@@ -13,10 +13,16 @@ with real objects so the receive→push path is covered end to end.
 from __future__ import annotations
 
 import asyncio
+import os
 
 import pytest
 
 from scitex_todo import _inbox
+from scitex_todo._channel_drain_state import (
+    _DrainState,
+    gated_drain_once,
+    should_drain,
+)
 from scitex_todo._mcp_channel import (
     build_channel_params,
     drain_once,
@@ -248,6 +254,152 @@ def test_drain_once_delivers_records_enqueued_under_resolved_user_id(tmp_path):
     assert recorder.calls[0]["content"] == "assigned to you"
     # Ack'd on the user-id key → a second drain pushes nothing.
     assert asyncio.run(drain_once("alice", _SendRecorder(), store=store)) == 0
+
+
+# --------------------------------------------------------------------------- #
+# mtime-gate — the drain short-circuit that stops the per-agent 9MB re-parse   #
+# (real store tmp files, spy counters — NO mocks of the store)                 #
+# --------------------------------------------------------------------------- #
+def test_should_drain_seeds_first_tick_then_skips_unchanged(tmp_path):
+    # The FIRST tick always drains (seeds last_mtime); a following tick on an
+    # UNCHANGED store skips — one stat(), no parse.
+    store = _store(tmp_path)
+    store.write_text("tasks: []\n", encoding="utf-8")
+    state = _DrainState()
+    assert should_drain(state, store=store) is True  # first tick → drain (seed)
+    assert should_drain(state, store=store) is False  # unchanged → skip
+
+
+def test_should_drain_true_after_mtime_advances(tmp_path):
+    store = _store(tmp_path)
+    store.write_text("tasks: []\n", encoding="utf-8")
+    state = _DrainState()
+    assert should_drain(state, store=store) is True
+    assert should_drain(state, store=store) is False
+    # Force a strictly-later mtime (deterministic — no sleep / no FS-granularity
+    # race): an advanced store mtime must re-open the drain.
+    bumped = os.stat(store).st_mtime + 10.0
+    os.utime(store, (bumped, bumped))
+    assert should_drain(state, store=store) is True  # advanced → drain
+    assert should_drain(state, store=store) is False  # settled again → skip
+
+
+def test_should_drain_fail_safe_when_store_unstatable(tmp_path):
+    # An explicit-but-missing store path can't be stat'd → fail SAFE = drain
+    # EVERY tick, so an unresolvable path never silently drops a notification.
+    missing = tmp_path / "does-not-exist.yaml"
+    state = _DrainState()
+    assert should_drain(state, store=missing) is True
+    assert should_drain(state, store=missing) is True
+
+
+def test_gated_drain_skips_all_parsing_when_mtime_unchanged(tmp_path, monkeypatch):
+    # The core CPU fix: on an unchanged store the gated tick must NOT touch the
+    # full-store parsers (recipient_keys / poll_inbox) and must push nothing.
+    store = _store(tmp_path)
+    agent = "agent-gate"
+    _inbox.enqueue(
+        agent,
+        event_type="reassigned",
+        card_id="c1",
+        body="hi",
+        actor="bob",
+        ts="2026-06-28T10:00:00Z",
+        store=store,
+    )
+    # Seed the gate so its last_mtime matches the store's CURRENT mtime; no
+    # drain runs (so no ack-write bumps the mtime).
+    state = _DrainState()
+    assert should_drain(state, store=store) is True
+
+    # Spy counters that delegate to the REAL functions (not mocks).
+    import scitex_todo._mcp_channel as chan
+
+    calls = {"recipient_keys": 0, "poll_inbox": 0}
+    real_rk = chan.recipient_keys
+    real_pi = _inbox.poll_inbox
+
+    def spy_rk(*a, **k):
+        calls["recipient_keys"] += 1
+        return real_rk(*a, **k)
+
+    def spy_pi(*a, **k):
+        calls["poll_inbox"] += 1
+        return real_pi(*a, **k)
+
+    monkeypatch.setattr(chan, "recipient_keys", spy_rk)
+    monkeypatch.setattr(_inbox, "poll_inbox", spy_pi)
+
+    recorder = _SendRecorder()
+    pushed = asyncio.run(
+        gated_drain_once(agent, recorder, state, source="stodo", store=store)
+    )
+    assert pushed == 0
+    assert recorder.calls == []
+    # Nothing parsed — the whole point of the gate.
+    assert calls == {"recipient_keys": 0, "poll_inbox": 0}
+
+
+def test_gated_drain_first_tick_delivers_pending(tmp_path):
+    # A fresh loop's first tick always drains — a pending record is delivered.
+    store = _store(tmp_path)
+    agent = "agent-first"
+    _inbox.enqueue(
+        agent,
+        event_type="completed",
+        card_id="c1",
+        body="seed me",
+        actor="bob",
+        ts="2026-06-28T10:00:00Z",
+        store=store,
+    )
+    recorder = _SendRecorder()
+    pushed = asyncio.run(
+        gated_drain_once(agent, recorder, _DrainState(), source="stodo", store=store)
+    )
+    assert pushed == 1
+    assert recorder.calls[0]["content"] == "seed me"
+
+
+def test_gated_drain_pushes_when_store_changed(tmp_path):
+    # After the first tick drains+acks, a NEW enqueue changes the store → the
+    # next gated tick sees the advanced mtime and delivers the new record.
+    store = _store(tmp_path)
+    agent = "agent-chg"
+    _inbox.enqueue(
+        agent,
+        event_type="completed",
+        card_id="c1",
+        body="first",
+        actor="bob",
+        ts="2026-06-28T10:00:00Z",
+        store=store,
+    )
+    state = _DrainState()
+    assert (
+        asyncio.run(
+            gated_drain_once(agent, _SendRecorder(), state, source="stodo", store=store)
+        )
+        == 1
+    )
+    _inbox.enqueue(
+        agent,
+        event_type="reassigned",
+        card_id="c2",
+        body="second",
+        actor="alice",
+        ts="2026-06-28T10:01:00Z",
+        store=store,
+    )
+    # Guarantee a strictly-later mtime regardless of FS granularity.
+    bumped = os.stat(store).st_mtime + 10.0
+    os.utime(store, (bumped, bumped))
+    recorder = _SendRecorder()
+    pushed = asyncio.run(
+        gated_drain_once(agent, recorder, state, source="stodo", store=store)
+    )
+    assert pushed == 1
+    assert recorder.calls[0]["content"] == "second"
 
 
 # --------------------------------------------------------------------------- #
