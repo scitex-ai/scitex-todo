@@ -216,6 +216,14 @@ class Task:
     # it.
     task: str | None = None
     project: str | None = None  # directory / repo basename
+    # `repo` = the git repository slug the card's work lands in (e.g.
+    # ``scitex-todo``). Used by add_task / list_tasks and historically rode
+    # ``**extras`` without a dataclass field — a confirmed latent bug: a row
+    # carrying ``repo`` survived on disk but never round-tripped through the
+    # Task dataclass (from_dict dropped it as an unknown key). Promoted to a
+    # first-class OPTIONAL field in the SQLite-migration S0 (RFC #348 Q4);
+    # pure-additive, defaults None so to_dict omits it when unset.
+    repo: str | None = None
     host: str | None = None  # where the work happens (operator co-design TG 9667)
     created_at: str | None = None  # ISO-8601 UTC; emit at insert
     goal: str | None = None  # WHY (parent-goal text); rendered as 🎯 line on card
