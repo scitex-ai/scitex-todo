@@ -4,6 +4,46 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.46] - 2026-07-08 — fix: mtime-gate the channel inbox drain (read-side twin of #344)
+
+Each agent's `scitex-todo mcp start` runs a channel poll loop that called
+`drain_once` every 5s **unconditionally**. Every drain calls `recipient_keys` +
+`_inbox.poll_inbox`, both of which `safe_load` the ENTIRE shared store — the
+inbox lives in an `inboxes:` section of the SAME ~9 MB / ~930-card `tasks.yaml`
+as the cards. A ~9 MB parse every 5s per agent × ~7 channel servers on a host =
+~350% sustained CPU (a major contributor to the load-25 baseline and the
+conditions behind the recent wake-watcher saturation incident). This is the
+READ/poll analogue of the every-tick reload spiral PR #344 fixed on the WRITE
+side.
+
+The cure mirrors #344's `WatcherState.mtime` short-circuit:
+
+- **mtime gate (`_channel_drain_state.py`).** The inbox is only ever mutated
+  through a store WRITE, so a new notification cannot appear without the store
+  file's mtime advancing. Before any parse, a drain tick `os.stat`s the store
+  and compares its mtime to the last drained tick; when UNCHANGED it SKIPS the
+  whole drain (no `recipient_keys`, no `poll_inbox`, no parse) — an idle inbox
+  now costs one `stat()` per 5s instead of a full re-parse. The store path is
+  resolved the same way `_inbox.poll_inbox` resolves it
+  (`resolve_tasks_path(store)` for `None`, else the explicit path) so the gate
+  stats the EXACT file that would be parsed.
+- **Fail-safe + first-tick.** The first tick always drains (seeds the mtime);
+  an unresolvable / unstatable store path fails SAFE = drain, so correctness
+  never regresses.
+- **ack-write interaction.** A drain that pushes+acks WRITES the store (flipping
+  records `seen`), bumping the mtime — the next tick drains once more, finds
+  nothing new, records the post-ack mtime, and the tick after that skips. Net:
+  exactly one extra parse after real activity, then a truly quiescent inbox
+  idles at one `stat()` per tick.
+- **Behavior preserved.** When the mtime DID change the drain is unchanged —
+  recipient-key fan-out, unseen read, ack-after-push, `MAX_PUSH_PER_DRAIN` burst
+  cap, and fail-soft all intact.
+
+`_mcp_channel.py` was already over the 512-line file cap; the agent-identity
+resolution (`resolve_agent_id` / `resolve_agent_id_optional`) was extracted to a
+new `_channel_identity.py` (re-exported from `_mcp_channel` — no import breaks)
+to land the change under budget.
+
 ## [0.7.45] - 2026-07-08 — fix: prevent the wake-watcher digest death-spiral
 
 `scitex-todo.wake-watcher` (`watch --push --interval 2`, systemd
