@@ -4,6 +4,47 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.48] - 2026-07-08 — fix: guard the `print-stats` rollup, not just the push
+
+The 0.7.47 single-instance guard (#346) did NOT stop the CPU stacking it was
+meant to prevent. Verified live: two `*/10` notify runs still ran concurrently
+at ~46% and ~30% CPU, and NO "prior run still holds the lock, skipping" log
+fired. Root cause was **call-site placement**: in `_cli/_stats.py` the EXPENSIVE
+work — the per-agent rollup that parses the ~9 MB `tasks.yaml` and aggregates
+all ~930 cards — was computed ABOVE the flock guard (it was shared with the
+plain-read `click.echo(out)` path). The `single_instance(...)` lock wrapped only
+the push at the END. So two overlapping `--notify` ticks BOTH ran the costly
+rollup concurrently (the observed CPU); the lock merely serialized the cheap
+final push, giving zero CPU relief, and since neither tick blocked on the
+other's rollup the "skipping" line never printed.
+
+- **Lock BEFORE the rollup, in notify mode only.** In side-effecting/cron mode
+  (`(notify or nudge_quiet) and by == "agent"`) `print-stats` now acquires the
+  single-instance flock FIRST; if the lock is already held it logs the skip line
+  and returns (exit 0) WITHOUT parsing the store at all. Only when the lock is
+  confirmed acquired does the ENTIRE expensive path (store parse + rollup +
+  notify/push) run — inside the lock. The plain read-only path (no `--notify`)
+  computes its OWN rollup UNGUARDED and echoes the table, exactly as before, so
+  interactive reads are never blocked or skipped. The rollup is factored into a
+  `_rollup(...)` helper called from both branches; nothing expensive runs before
+  the lock is confirmed in notify mode.
+- **`_singleflight.single_instance` / `notify_lock_path` unchanged.** They were
+  correct — only the CALL SITE was wrong. The lockfile still resolves to the
+  same `<store>/runtime/print-stats-notify.lock` across invocations via
+  `_paths.runtime_dir`, so two cron runs contend on one lock.
+- **Regression test asserts ZERO store-loads when the lock is held.** The 0.7.47
+  test only checked the push was skipped — which is why it missed the bug (the
+  push is skipped either way). `test__print_stats_single_instance.py` now spies
+  the real `_stats.load_tasks` (a call-counter wrapping the real parse, no mock)
+  and asserts it is called ZERO times while the lock is held, that it DOES run
+  when the lock is free, and that the unguarded plain-read parses even while the
+  lock is held.
+- **File split.** To keep both under the size budget, the `sync-github` verb
+  moved to `_cli/_sync_github.py`; `_cli/_stats.py` keeps `print-stats` and still
+  registers both. No behavior change to `sync-github`.
+
+Incident: incident-todo-wake-watcher-interval2-spiral-20260708.
+
 ## [0.7.47] - 2026-07-08 — fix: single-instance flock on `print-stats --notify` (third store-size daemon)
 
 The managed notify cron runs `scitex-todo print-stats --by agent --notify

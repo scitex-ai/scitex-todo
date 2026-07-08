@@ -22,6 +22,7 @@ from __future__ import annotations
 import yaml
 from click.testing import CliRunner
 
+import scitex_todo._cli._stats as _stats
 import scitex_todo._push as _push
 from scitex_todo._cli._main import main
 from scitex_todo._singleflight import notify_lock_path, single_instance
@@ -62,8 +63,31 @@ def _deliver_spy(monkeypatch):
     return calls
 
 
+def _load_tasks_spy(monkeypatch):
+    """Install a call-counter that WRAPS the real store parse (``load_tasks``).
+
+    This is the assertion the 0.7.47 test was MISSING. The bug was that the
+    expensive per-agent rollup — which begins by parsing the ~9 MB store via
+    ``load_tasks`` — ran ABOVE the flock guard, so two overlapping ``--notify``
+    ticks BOTH parsed the store concurrently even though the push at the end
+    was serialized. A spy on the PUSH cannot catch that (the push is skipped
+    either way once the lock is held); only a spy on the STORE PARSE proves the
+    expensive work did not run. Wraps the real ``_stats.load_tasks`` (the name
+    ``_rollup`` calls) — no mock, real parse still happens when it is invoked.
+    """
+    loads: list = []
+    real = _stats.load_tasks
+
+    def spy(path):
+        loads.append(str(path))
+        return real(path)
+
+    monkeypatch.setattr(_stats, "load_tasks", spy)
+    return loads
+
+
 # --------------------------------------------------------------------------- #
-# lock HELD -> --notify skips cleanly, does no notify work                     #
+# lock HELD -> --notify skips cleanly, does NO store parse / rollup / push      #
 # --------------------------------------------------------------------------- #
 
 
@@ -72,6 +96,7 @@ def test_notify_skips_when_lock_is_held(tmp_path, monkeypatch):
     store = tmp_path / "tasks.yaml"
     _write_store(store)
     calls = _deliver_spy(monkeypatch)
+    loads = _load_tasks_spy(monkeypatch)
     with single_instance(notify_lock_path(str(store))) as acquired:
         assert acquired  # the test itself holds the lock
         # Act — the cron path runs while a prior run still holds the lock.
@@ -84,6 +109,10 @@ def test_notify_skips_when_lock_is_held(tmp_path, monkeypatch):
     assert "a prior run still holds the lock" in result.output
     assert "# Notify push" not in result.output
     assert calls == []  # spy proves deliver() was never called
+    # CRITICAL regression (0.7.48): the EXPENSIVE store parse / rollup must NOT
+    # run when the lock is held. The 0.7.47 bug computed the rollup ABOVE the
+    # guard, so this would have been >= 1. Guard now wraps the parse → ZERO.
+    assert loads == []  # spy proves load_tasks() / the rollup never ran
 
 
 # --------------------------------------------------------------------------- #
@@ -96,16 +125,18 @@ def test_notify_runs_when_lock_is_free(tmp_path, monkeypatch):
     store = tmp_path / "tasks.yaml"
     _write_store(store)
     calls = _deliver_spy(monkeypatch)
+    loads = _load_tasks_spy(monkeypatch)
 
     # Act
     result = CliRunner().invoke(
         main, ["print-stats", "--by", "agent", "--notify", "--tasks", str(store)]
     )
 
-    # Assert — the notify path ran and pushed for the owned card's agent.
+    # Assert — the notify path ran, parsed the store, and pushed for the agent.
     assert result.exit_code == 0, result.output
     assert "# Notify push" in result.output
     assert "proj-x" in calls
+    assert loads != []  # the rollup DID parse the store (lock was free)
 
 
 # --------------------------------------------------------------------------- #
@@ -118,6 +149,7 @@ def test_plain_read_is_not_guarded_by_the_lock(tmp_path, monkeypatch):
     store = tmp_path / "tasks.yaml"
     _write_store(store)
     calls = _deliver_spy(monkeypatch)
+    loads = _load_tasks_spy(monkeypatch)
 
     with single_instance(notify_lock_path(str(store))) as acquired:
         assert acquired
@@ -132,6 +164,9 @@ def test_plain_read_is_not_guarded_by_the_lock(tmp_path, monkeypatch):
     assert "# Notify push" not in result.output
     assert "a prior run still holds the lock" not in result.output
     assert calls == []
+    # The plain read is UNGUARDED: it parses the store even while the notify
+    # lock is held (interactive reads must never be blocked/skipped).
+    assert loads != []
 
 
 # --------------------------------------------------------------------------- #
