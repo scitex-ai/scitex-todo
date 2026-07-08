@@ -174,8 +174,12 @@ def _auto_claim(path, task_id: str, *, assignee: str) -> None:
     help="Path to tasks.yaml (default: resolver chain).",
 )
 @click.option(
-    "--interval", "interval_s", type=float, default=2.0, show_default=True,
-    help="Polling interval in seconds.",
+    "--interval", "interval_s", type=float, default=30.0, show_default=True,
+    help=(
+        "Polling interval in seconds. Clamped up to a 10s hard floor — a "
+        "sub-floor value (e.g. --interval 2) death-spiraled the fleet on "
+        "2026-07-08 and is now rejected with a loud warning."
+    ),
 )
 @click.option(
     "--min-wake-interval", "min_wake_interval_s",
@@ -197,9 +201,14 @@ def watch_cmd(
     from .._paths import resolve_tasks_path
     from .._wake_watcher import (
         WatcherState,
+        clamp_interval,
         run_watcher_forever,
         run_watcher_once,
     )
+
+    # Enforce the anti-spiral floor at the CLI boundary too, so the loud
+    # warning fires for an interactive operator, not only inside the loop.
+    interval_s = clamp_interval(interval_s)
 
     path = resolve_tasks_path(tasks_path)
     if once:
