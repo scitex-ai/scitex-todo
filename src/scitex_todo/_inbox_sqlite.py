@@ -59,6 +59,11 @@ _DB_FILENAME = "todo.db"
 #: Schema version. Bump when the column set / indexes change.
 SCHEMA_VERSION = 1
 
+#: ``meta`` key set ONCE after the YAML ``inboxes:`` records have been copied
+#: into this DB (the lazy auto-migration guard). Its presence is the cheap,
+#: indexed PK read that lets the steady-state hot poll path skip YAML entirely.
+_MIGRATED_FLAG = "migrated_from_yaml"
+
 
 def inbox_db_path(store: str | Path | None = None) -> Path:
     """Resolved on-disk path for the inbox SQLite DB.
@@ -155,6 +160,44 @@ def _row_to_record(row: sqlite3.Row) -> dict:
     }
 
 
+def _is_migrated(conn: sqlite3.Connection) -> bool:
+    """True once the YAML ``inboxes:`` records have been copied into this DB.
+
+    A single indexed PRIMARY-KEY probe of the ``meta`` table — the cheap check
+    that lets the steady-state hot poll path skip the YAML read entirely.
+    """
+    row = conn.execute(
+        "SELECT 1 FROM meta WHERE key = ? LIMIT 1", (_MIGRATED_FLAG,)
+    ).fetchone()
+    return row is not None
+
+
+def _ensure_ready(conn: sqlite3.Connection, store: str | Path | None) -> None:
+    """Per-connection readiness: ensure the schema, then lazily migrate the
+    YAML ``inboxes:`` section into SQLite EXACTLY ONCE.
+
+    Guarded by the ``migrated_from_yaml`` meta flag: the first access on a
+    fresh DB performs the one-time copy + sets the flag; every later access is
+    a cheap flag probe with NO YAML read and NO write. Concurrency-safe across
+    the ~21 agents sharing one ``todo.db`` — the copy is idempotent
+    (``INSERT OR IGNORE`` on the ``id`` PK) and the flag write is
+    ``INSERT OR IGNORE``, so a double-migrate race is harmless. The flag is set
+    even when the YAML has nothing to copy, so an empty store still converges
+    to the no-YAML steady state.
+    """
+    init_schema(conn)
+    if _is_migrated(conn):
+        return
+    from ._inbox import _utc_now_iso
+
+    _migrate_into_conn(conn, store)
+    conn.execute(
+        "INSERT OR IGNORE INTO meta(key, value) VALUES(?, ?)",
+        (_MIGRATED_FLAG, _utc_now_iso()),
+    )
+    conn.commit()
+
+
 # --------------------------------------------------------------------------- #
 # Public inbox API (identical signatures + return shapes to _inbox.py)         #
 # --------------------------------------------------------------------------- #
@@ -188,7 +231,7 @@ def enqueue(
 
     timestamp = ts if ts is not None else _utc_now_iso()
     with open_connection(inbox_db_path(store)) as conn:
-        init_schema(conn)
+        _ensure_ready(conn, store)
         if supersede:
             conn.execute(
                 "DELETE FROM inbox WHERE recipient = ? AND seen = 0 "
@@ -242,11 +285,10 @@ def poll_inbox(
     db = inbox_db_path(store)
     if not mark_seen:
         # Read-only fast path. This is the hot poll — an indexed
-        # (recipient, seen) scan, NOT a whole-store parse.
-        if not db.exists():
-            return []
+        # (recipient, seen) scan, NOT a whole-store parse. _ensure_ready is a
+        # cheap indexed meta-flag probe once migrated (no YAML, no writes).
         with open_connection(db) as conn:
-            init_schema(conn)
+            _ensure_ready(conn, store)
             if unseen_only:
                 rows = conn.execute(
                     "SELECT * FROM inbox WHERE recipient = ? AND seen = 0 "
@@ -261,7 +303,7 @@ def poll_inbox(
             return [_row_to_record(r) for r in rows]
     # mark_seen -> read-modify-write.
     with open_connection(db) as conn:
-        init_schema(conn)
+        _ensure_ready(conn, store)
         if unseen_only:
             rows = conn.execute(
                 "SELECT * FROM inbox WHERE recipient = ? AND seen = 0 "
@@ -309,11 +351,9 @@ def ack(
     if not wanted:
         return []
     db = inbox_db_path(store)
-    if not db.exists():
-        return []
     placeholders = ",".join("?" for _ in wanted)
     with open_connection(db) as conn:
-        init_schema(conn)
+        _ensure_ready(conn, store)
         # The ids that are currently UNSEEN among the wanted set — those are
         # the ones this call flips. Preserve append order (rowid).
         rows = conn.execute(
@@ -336,6 +376,64 @@ def ack(
 # --------------------------------------------------------------------------- #
 # Migration: YAML inboxes: section -> SQLite                                  #
 # --------------------------------------------------------------------------- #
+def _migrate_into_conn(
+    conn: sqlite3.Connection, store: str | Path | None
+) -> dict:
+    """Copy the YAML ``inboxes:`` records into ``conn``'s ``inbox`` table.
+
+    The shared body of :func:`migrate_to_sqlite` (explicit CLI verb) and the
+    lazy :func:`_ensure_ready` guard. Dedups on the notification ``id`` PRIMARY
+    KEY (``INSERT OR IGNORE``) so it is idempotent, copies BOTH seen + unseen
+    for fidelity, and NEVER touches the YAML file (reversible). Assumes the
+    schema already exists (caller ran :func:`init_schema`); does NOT commit —
+    the caller owns the transaction. Returns
+    ``{recipients, records, inserted, skipped}``.
+    """
+    from ._inbox import _load_inboxes_section, _resolved_store
+
+    path = _resolved_store(store)
+    inboxes = _load_inboxes_section(path)
+    stats = {"recipients": 0, "records": 0, "inserted": 0, "skipped": 0}
+    for recipient_id, records in inboxes.items():
+        if not recipient_id or not isinstance(records, list):
+            continue
+        stats["recipients"] += 1
+        for rec in records:
+            if not isinstance(rec, dict):
+                continue
+            nid = rec.get("id")
+            if not nid:
+                # A record with no stable id cannot be deduped on re-run;
+                # skip it rather than risk a duplicate on the next pass.
+                logger.warning(
+                    "[scitex-todo._inbox_sqlite] skipping id-less inbox "
+                    "record for %r during migration", recipient_id,
+                )
+                stats["skipped"] += 1
+                continue
+            stats["records"] += 1
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO inbox(id, recipient, event_type, "
+                "card_id, body, actor, ts, seen) "
+                "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    nid,
+                    recipient_id,
+                    rec.get("event_type"),
+                    rec.get("card_id"),
+                    rec.get("body"),
+                    rec.get("actor"),
+                    rec.get("ts"),
+                    1 if rec.get("seen") else 0,
+                ),
+            )
+            if cur.rowcount:
+                stats["inserted"] += 1
+            else:
+                stats["skipped"] += 1
+    return stats
+
+
 def migrate_to_sqlite(store: str | Path | None = None) -> dict:
     """Copy the YAML ``inboxes:`` records into the SQLite inbox DB.
 
@@ -344,52 +442,19 @@ def migrate_to_sqlite(store: str | Path | None = None) -> dict:
     and NEVER deletes the YAML ``inboxes:`` section (a rollback keeps working
     on the untouched YAML). All records are copied (seen + unseen) for fidelity.
 
-    Returns a stats dict ``{recipients, records, inserted, skipped}``.
+    Returns a stats dict ``{recipients, records, inserted, skipped}``. Also
+    sets the ``migrated_from_yaml`` flag so a later lazy access treats the DB
+    as already migrated (this verb and the lazy guard share the same flag).
     """
-    from ._inbox import _load_inboxes_section, _resolved_store
+    from ._inbox import _utc_now_iso
 
-    path = _resolved_store(store)
-    inboxes = _load_inboxes_section(path)
-    stats = {"recipients": 0, "records": 0, "inserted": 0, "skipped": 0}
     with open_connection(inbox_db_path(store)) as conn:
         init_schema(conn)
-        for recipient_id, records in inboxes.items():
-            if not recipient_id or not isinstance(records, list):
-                continue
-            stats["recipients"] += 1
-            for rec in records:
-                if not isinstance(rec, dict):
-                    continue
-                nid = rec.get("id")
-                if not nid:
-                    # A record with no stable id cannot be deduped on re-run;
-                    # skip it rather than risk a duplicate on the next pass.
-                    logger.warning(
-                        "[scitex-todo._inbox_sqlite] skipping id-less inbox "
-                        "record for %r during migration", recipient_id,
-                    )
-                    stats["skipped"] += 1
-                    continue
-                stats["records"] += 1
-                cur = conn.execute(
-                    "INSERT OR IGNORE INTO inbox(id, recipient, event_type, "
-                    "card_id, body, actor, ts, seen) "
-                    "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        nid,
-                        recipient_id,
-                        rec.get("event_type"),
-                        rec.get("card_id"),
-                        rec.get("body"),
-                        rec.get("actor"),
-                        rec.get("ts"),
-                        1 if rec.get("seen") else 0,
-                    ),
-                )
-                if cur.rowcount:
-                    stats["inserted"] += 1
-                else:
-                    stats["skipped"] += 1
+        stats = _migrate_into_conn(conn, store)
+        conn.execute(
+            "INSERT OR IGNORE INTO meta(key, value) VALUES(?, ?)",
+            (_MIGRATED_FLAG, _utc_now_iso()),
+        )
         conn.commit()
     return stats
 

@@ -287,21 +287,64 @@ def test_backend_switch_routes_to_sqlite(tmp_path, env):
     assert sq.inbox_db_path(store).exists()
 
 
-def test_default_backend_is_yaml(tmp_path, env):
+def test_default_backend_is_sqlite(tmp_path, env):
+    from scitex_todo import _inbox
+
+    store = _store(tmp_path)
+    env.delete("SCITEX_TODO_INBOX_BACKEND")  # unset -> the default
+    _inbox.enqueue(
+        "u_abc", event_type="completed", card_id="c1", body="x",
+        actor="bob", ts="2026-06-26T00:00:00Z", store=store,
+    )
+    # Default now routes to SQLite: the DB file is created and holds the row,
+    # read back through the public API.
+    assert sq.inbox_db_path(store).exists()
+    got = _inbox.poll_inbox("u_abc", store=store)
+    assert [r["card_id"] for r in got] == ["c1"]
+
+
+def test_break_glass_yaml_backend(tmp_path, env):
     import yaml as _yaml
 
     from scitex_todo import _inbox
 
     store = _store(tmp_path)
-    env.delete("SCITEX_TODO_INBOX_BACKEND")
+    env.set("SCITEX_TODO_INBOX_BACKEND", "yaml")  # explicit break-glass
     _inbox.enqueue(
         "u_abc", event_type="completed", card_id="c1", body="x",
         actor="bob", ts="2026-06-26T00:00:00Z", store=store,
     )
-    # Default path writes the YAML inboxes: section; no sqlite DB created.
+    # Explicit yaml writes the YAML inboxes: section; no sqlite DB created.
     doc = _yaml.safe_load(store.read_text(encoding="utf-8"))
     assert doc["inboxes"]["u_abc"][0]["card_id"] == "c1"
     assert not sq.inbox_db_path(store).exists()
+
+
+def test_lazy_auto_migration_on_first_sqlite_access(tmp_path, env):
+    """Incident-critical: switching to the default (sqlite) backend must carry
+    pre-existing YAML inbox records over automatically on first access, with no
+    explicit migrate step and no duplication on re-access."""
+    from scitex_todo import _inbox
+
+    store = _store(tmp_path)
+    # Seed a YAML inboxes: record via the break-glass yaml backend.
+    env.set("SCITEX_TODO_INBOX_BACKEND", "yaml")
+    _inbox.enqueue(
+        "u_abc", event_type="completed", card_id="c1", body="x",
+        actor="bob", ts="2026-06-26T00:00:00Z", store=store,
+    )
+    assert not sq.inbox_db_path(store).exists()
+
+    # Switch to the default (sqlite): first access lazily migrates the record.
+    env.delete("SCITEX_TODO_INBOX_BACKEND")
+    got = _inbox.poll_inbox("u_abc", store=store)
+    assert [r["card_id"] for r in got] == ["c1"]
+    assert sq.inbox_db_path(store).exists()
+
+    # The migrated_from_yaml flag is set → a second access does NOT re-migrate
+    # (still exactly one row despite the YAML record remaining on disk).
+    again = _inbox.poll_inbox("u_abc", unseen_only=False, store=store)
+    assert len(again) == 1
 
 
 # --------------------------------------------------------------------------- #

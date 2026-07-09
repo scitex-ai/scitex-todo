@@ -197,4 +197,30 @@ def _reject_deprecated_agent_env():
     finally:
         helper.restore()
 
+
+# === Suite-wide: pin the YAML inbox backend by default ======================
+#
+# The inbox storage backend DEFAULT flipped to SQLite (operator decision
+# 2026-07-09: SQLite is ON, YAML is explicit break-glass). But the bulk of the
+# suite asserts the YAML on-disk inbox format / semantics (the ``inboxes:``
+# section shape, tasks:/users: coexistence, the digest-collapse maintenance
+# path, etc.). Pin the (still-supported) YAML break-glass backend for every
+# test by default so those assertions keep exercising the path they were
+# written for. The dedicated SQLite-backend tests opt BACK OUT via
+# ``env.delete("SCITEX_TODO_INBOX_BACKEND")`` (to prove the real default) or
+# set it explicitly; this fixture restores the pre-test value on teardown, so
+# the two stack safely. Production agents set NEITHER var and therefore get the
+# real SQLite default.
+
+
+@pytest.fixture(autouse=True)
+def _default_inbox_backend_yaml():
+    """Pin ``SCITEX_TODO_INBOX_BACKEND=yaml`` for every test by default."""
+    helper = _EnvHelper()
+    helper.set("SCITEX_TODO_INBOX_BACKEND", "yaml")
+    try:
+        yield
+    finally:
+        helper.restore()
+
 # EOF

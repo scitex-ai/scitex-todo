@@ -60,19 +60,31 @@ logger = logging.getLogger(__name__)
 #: Top-level store key holding the per-recipient inboxes mapping.
 _INBOXES_KEY = "inboxes"
 
-#: Env var selecting the inbox storage backend. ``yaml`` (the DEFAULT — the
-#: monolithic ``inboxes:`` section in tasks.yaml, 100% unchanged) or ``sqlite``
-#: (the Phase-1 migration backend in :mod:`scitex_todo._inbox_sqlite`, opt-in).
-#: The public :func:`enqueue` / :func:`poll_inbox` / :func:`ack` transparently
-#: delegate to the SQLite implementation when set to ``sqlite`` so a 5 s poll
-#: no longer parses all ~1000 cards. See the incident card
-#: ``store-sqlite-migration-o1-writes-future-20260701``.
+#: Env var selecting the inbox storage backend. The DEFAULT is now ``sqlite``
+#: (the Phase-1 backend in :mod:`scitex_todo._inbox_sqlite`): a 5 s digest poll
+#: is then an indexed ``(recipient, seen)`` lookup on
+#: ``<store_dir>/runtime/todo.db`` instead of a ``safe_load`` of the whole
+#: ~9 MB task store. ``yaml`` (the legacy monolithic ``inboxes:`` section in
+#: tasks.yaml) is now an explicit BREAK-GLASS value only — selected ONLY by
+#: ``SCITEX_TODO_INBOX_BACKEND=yaml``; unset (or any other value) uses SQLite.
+#: There is NO silent fallback: when the SQLite backend raises, the error
+#: PROPAGATES (constitution: fail fast, fail loud — never silently degrade to
+#: YAML). The SQLite path lazily auto-migrates the YAML ``inboxes:`` records on
+#: first access, so flipping the default never loses unseen notifications. See
+#: the incident card ``store-sqlite-migration-o1-writes-future-20260701``.
 _ENV_INBOX_BACKEND = "SCITEX_TODO_INBOX_BACKEND"
 
 
 def _use_sqlite() -> bool:
-    """True when the SQLite inbox backend is selected via the env switch."""
-    return (os.environ.get(_ENV_INBOX_BACKEND) or "yaml").strip().lower() == "sqlite"
+    """True unless the caller EXPLICITLY selected the YAML break-glass backend.
+
+    Default-ON: an unset ``SCITEX_TODO_INBOX_BACKEND`` (or any value other than
+    the literal ``yaml``) routes the inbox onto SQLite. ONLY
+    ``SCITEX_TODO_INBOX_BACKEND=yaml`` selects the legacy YAML path. This
+    resolver never suppresses a SQLite error — the public functions delegate
+    directly so any backend failure propagates (no silent YAML fallback).
+    """
+    return (os.environ.get(_ENV_INBOX_BACKEND) or "sqlite").strip().lower() != "yaml"
 
 #: Stable notification-id prefix (``n_`` + 12 hex chars, 48 bits entropy) —
 #: mirrors the ``u_`` user-id shape so ids are visually distinguishable.
