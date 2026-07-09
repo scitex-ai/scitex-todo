@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.50] - 2026-07-09 — feat: inbox reads/writes default to SQLite (retires the per-poll whole-store parse)
+
+Fleet load incident: every agent's `scitex-todo mcp start` digest-poll (every
+5 s) `safe_load`ed the entire ~9 MB task store just to read ONE recipient's
+inbox — across ~21 agents the fleet's biggest CPU sink (host load ~27). This
+moves the inbox read/write path onto SQLite so a poll is an indexed
+`(recipient, seen)` lookup, never a whole-store parse.
+
+- New `_inbox_sqlite` backend (stdlib `sqlite3`, WAL) at the constitution's
+  runtime-DB path `<store_dir>/runtime/todo.db`. `enqueue` / `poll_inbox` /
+  `ack` mirror the YAML contract exactly (dedup on `(event_type, card_id, ts,
+  actor)`, `supersede`, `unseen_only`, `mark_seen`).
+- SQLite is now the DEFAULT. `SCITEX_TODO_INBOX_BACKEND=yaml` is an explicit
+  break-glass only; an unknown/unset value uses SQLite. No silent fallback — a
+  SQLite error fails loud.
+- Lazy one-time auto-migration: first access copies the YAML `inboxes:` records
+  into the DB (guarded by a `migrated_from_yaml` meta flag), so no unseen
+  notification is lost regardless of restart timing; steady state never reads
+  YAML. Idempotent + reversible (the YAML section is never deleted).
+- CLI: `scitex-todo inbox migrate-to-sqlite` / `inbox info`.
+
+Phase 1 of the YAML→SQLite migration (inboxes only; cards/users/ledger stay on
+YAML for now — Phase 2 covers cards). Complements the S0 shadow store (#349).
+
 ## [0.7.49] - 2026-07-08 — feat: S0 shadow SQLite DB + YAML bootstrap (YAML still canonical)
 
 STAGE S0 of the YAML→SQLite migration (design-confirmed by scitex-dev,
