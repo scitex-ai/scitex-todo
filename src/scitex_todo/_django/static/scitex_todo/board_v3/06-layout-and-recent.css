@@ -374,12 +374,15 @@
 }
 
 /* === Multi-select board toolbar (PR(h) Stage 1) ===========================
-   Board card todo-multiselect-batch-ops, lead a2a 1ebc792c. Always
-   rendered; quiet at zero selection (the Status dropdown stays disabled
-   until N>=1). When --active, the toolbar gains a soft accent border so
-   the operator sees "you have a selection" at a glance. */
+   Board card todo-multiselect-batch-ops, lead a2a 1ebc792c. HIDDEN at zero
+   selection (operator 2026-07-09: an always-visible "selected: 0" bar is
+   clutter). `renderBoardToolbar()` toggles --active whenever MULTISELECT.size
+   changes, so the bar appears the moment a card is picked and disappears when
+   the selection is cleared. Selection is started from the per-card
+   `.card-select` checkbox, NOT from this bar, so hiding it at N=0 never traps
+   the user. When --active it also gains a soft accent border. */
 .board-toolbar {
-  display: flex;
+  display: none;
   align-items: center;
   align-self: flex-start; /* don't stretch to the kanban row's full height */
   flex: 0 0 auto; /* content-height; no grow/shrink */
@@ -397,6 +400,7 @@
     border-color 120ms ease;
 }
 .board-toolbar--active {
+  display: flex;
   background: var(--accent-soft, #fff7e6);
   border-color: var(--accent, #d99700);
   color: var(--accent-strong, #b97400);
