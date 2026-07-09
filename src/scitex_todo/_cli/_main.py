@@ -37,8 +37,8 @@ _COMMAND_CATEGORIES = (
             "add", "update", "done", "close", "comment", "reassign",
             "list-tasks", "list-stale", "find-card", "next", "runnable",
             "summary", "render-graph", "emit-event", "help-wait",
-            "help-clear", "hook", "migration", "index", "init-store",
-            "reconcile-merged-prs",
+            "help-clear", "hook", "migration", "index", "inbox",
+            "init-store", "reconcile-merged-prs",
         ),
     ),
     ("Data & Sync", ("db", "sync-github", "sync-store", "deliver")),
@@ -357,6 +357,7 @@ from . import (  # hook-bypass: line-limit (_main.py pre-existing over-cap; mini
     _completion,
     _deliver,
     _hooks,
+    _inbox,
     _index,
     _introspect,
     _loop,
@@ -377,6 +378,10 @@ _board.register(main)
 # index <verb> — SQLite derived-index lifecycle (rebuild / info). Extracted
 # to _index.py alongside the board split (same pure-move refactor).
 _index.register(main)
+# inbox <verb> — inbox storage-backend lifecycle (migrate-to-sqlite / info).
+# Phase 1 of the store SQLite migration: moves the per-recipient inbox off the
+# monolithic tasks.yaml so a 5 s digest-poll no longer re-parses all cards.
+_inbox.register(main)
 # migration <verb> — directory-card enforcement migration (plan / apply).
 # Extracted to _migration_cli.py alongside the board split.
 _migration_cli.register(main)

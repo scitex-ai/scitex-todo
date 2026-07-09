@@ -47,6 +47,7 @@ delivery sink and works with no external runtime present.
 from __future__ import annotations
 
 import logging
+import os
 import secrets
 from pathlib import Path
 from typing import Any
@@ -58,6 +59,32 @@ logger = logging.getLogger(__name__)
 
 #: Top-level store key holding the per-recipient inboxes mapping.
 _INBOXES_KEY = "inboxes"
+
+#: Env var selecting the inbox storage backend. The DEFAULT is now ``sqlite``
+#: (the Phase-1 backend in :mod:`scitex_todo._inbox_sqlite`): a 5 s digest poll
+#: is then an indexed ``(recipient, seen)`` lookup on
+#: ``<store_dir>/runtime/todo.db`` instead of a ``safe_load`` of the whole
+#: ~9 MB task store. ``yaml`` (the legacy monolithic ``inboxes:`` section in
+#: tasks.yaml) is now an explicit BREAK-GLASS value only — selected ONLY by
+#: ``SCITEX_TODO_INBOX_BACKEND=yaml``; unset (or any other value) uses SQLite.
+#: There is NO silent fallback: when the SQLite backend raises, the error
+#: PROPAGATES (constitution: fail fast, fail loud — never silently degrade to
+#: YAML). The SQLite path lazily auto-migrates the YAML ``inboxes:`` records on
+#: first access, so flipping the default never loses unseen notifications. See
+#: the incident card ``store-sqlite-migration-o1-writes-future-20260701``.
+_ENV_INBOX_BACKEND = "SCITEX_TODO_INBOX_BACKEND"
+
+
+def _use_sqlite() -> bool:
+    """True unless the caller EXPLICITLY selected the YAML break-glass backend.
+
+    Default-ON: an unset ``SCITEX_TODO_INBOX_BACKEND`` (or any value other than
+    the literal ``yaml``) routes the inbox onto SQLite. ONLY
+    ``SCITEX_TODO_INBOX_BACKEND=yaml`` selects the legacy YAML path. This
+    resolver never suppresses a SQLite error — the public functions delegate
+    directly so any backend failure propagates (no silent YAML fallback).
+    """
+    return (os.environ.get(_ENV_INBOX_BACKEND) or "sqlite").strip().lower() != "yaml"
 
 #: Stable notification-id prefix (``n_`` + 12 hex chars, 48 bits entropy) —
 #: mirrors the ``u_`` user-id shape so ids are visually distinguishable.
@@ -290,6 +317,19 @@ def enqueue(
         The enqueued record, or ``None`` when nothing was written (a falsy
         ``recipient_id`` or a deduped re-emit).
     """
+    if _use_sqlite():
+        from . import _inbox_sqlite
+
+        return _inbox_sqlite.enqueue(
+            recipient_id,
+            event_type=event_type,
+            card_id=card_id,
+            body=body,
+            actor=actor,
+            ts=ts,
+            supersede=supersede,
+            store=store,
+        )
     if not recipient_id:
         return None
     timestamp = ts if ts is not None else _utc_now_iso()
@@ -369,6 +409,15 @@ def poll_inbox(
         The matching records (a copy each — mutating them does not touch the
         store). Order is append (oldest first).
     """
+    if _use_sqlite():
+        from . import _inbox_sqlite
+
+        return _inbox_sqlite.poll_inbox(
+            recipient_id,
+            unseen_only=unseen_only,
+            mark_seen=mark_seen,
+            store=store,
+        )
     if not recipient_id:
         return []
     path = _resolved_store(store)
@@ -414,6 +463,10 @@ def ack(
     store : str | pathlib.Path | None
         Store path override (default: the resolved task store).
     """
+    if _use_sqlite():
+        from . import _inbox_sqlite
+
+        return _inbox_sqlite.ack(recipient_id, notification_ids, store=store)
     if not recipient_id:
         return []
     if isinstance(notification_ids, str):
