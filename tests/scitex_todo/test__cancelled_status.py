@@ -76,14 +76,20 @@ def test_load_tasks_accepts_cancelled_status(tmp_path):
     assert tasks[0]["status"] == "cancelled"
 
 
-def test_load_tasks_still_rejects_unknown_status(tmp_path):
-    # Guard: adding cancelled did not loosen the closed validated set.
+def test_load_tasks_warns_on_unknown_status(tmp_path):
+    # Guard, updated for the tolerant reader (2026-07-10 outage fix): an
+    # unknown status VALUE no longer takes the whole store down — it may have
+    # been written by a newer agent, and raising here is exactly how adding
+    # `cancelled` bricked every older reader. It still warns loudly, naming
+    # the card, and the closed enum stays enforced at the SOURCES (the CLI
+    # --status Choice, the board handlers' 400).
     store = tmp_path / "tasks.yaml"
     store.write_text(
         "tasks:\n  - {id: x, title: X, status: wibble}\n", encoding="utf-8"
     )
-    with pytest.raises(TaskValidationError):
-        load_tasks(store)
+    with pytest.warns(UserWarning, match="wibble"):
+        tasks = load_tasks(store)
+    assert tasks[0]["status"] == "wibble"
 
 
 # --------------------------------------------------------------------------- #
