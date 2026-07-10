@@ -37,7 +37,9 @@
   color: var(--text-muted);
   font: inherit;
   font-size: 0.82rem;
-  padding: 5px 12px;
+  /* 5px 12px → 4px 8px (operator 2026-07-10 filterbar-overflow batch):
+   * 4 segment buttons × 8px saved keeps the seg ~32px narrower. */
+  padding: 4px 8px;
   cursor: pointer;
   transition:
     background 100ms ease,

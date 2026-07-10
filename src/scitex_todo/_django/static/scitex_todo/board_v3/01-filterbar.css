@@ -86,7 +86,12 @@ a {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-shrink: 0;
+  /* Operator 2026-07-10 (すげえはみ出してる): flex-shrink:0 let this band
+   * compute wider than the viewport (1760px measured) and hang off-screen
+   * instead of wrapping. Let it shrink + wrap; min-width:0 permits
+   * shrinking below intrinsic content width so flex-wrap actually fires. */
+  flex-shrink: 1;
+  min-width: 0;
   flex-wrap: wrap; /* graceful internal wrap on narrow viewports */
   justify-content: flex-end;
 }
