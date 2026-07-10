@@ -329,7 +329,11 @@ class TestWipIsNotBacklog:
         assert rep.wip_count == 2
 
     def test_recording_an_incident_is_never_refused(self, tmp_path, env, monkeypatch):
-        # Arrange — agent is far past 2x its WIP limit.
+        # Arrange — agent is at 2x its WIP limit (the gate itself refuses
+        # seeding past that, which is the sibling test's job to pin).
+        import contextlib
+
+        from scitex_todo._model import TaskValidationError
         from scitex_todo._paths import ENV_TASKS
         from scitex_todo._store import add_task
 
@@ -340,14 +344,15 @@ class TestWipIsNotBacklog:
         # store, not the one passed in — so without this the suite reads and
         # writes the operator's live ~/.scitex/todo/tasks.yaml.
         monkeypatch.setenv(ENV_TASKS, str(store))
-        for i in range(10):
-            add_task(
-                id=f"wip-{i}",
-                title=f"in flight {i}",
-                status="in_progress",
-                agent="a",
-                store=store,
-            )
+        for i in range(4):
+            with contextlib.suppress(TaskValidationError):
+                add_task(
+                    id=f"wip-{i}",
+                    title=f"in flight {i}",
+                    status="in_progress",
+                    agent="a",
+                    store=store,
+                )
 
         # Act — filing (not starting) a card must still succeed.
         rec = add_task(

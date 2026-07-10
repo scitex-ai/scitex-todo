@@ -34,7 +34,7 @@ def _stale(cid, agent, status="in_progress"):
 
 def _pending(cid, agent):
     return {
-        "id": cid, "status": "pending", "title": cid, "agent": agent,
+        "id": cid, "status": "deferred", "title": cid, "agent": agent,
         "last_activity": _iso_hours_ago(48),
     }
 
@@ -110,7 +110,7 @@ class TestSweepBothKinds:
         monkeypatch.setenv(ENV_PENDING_NUDGE_HOURS, "24")
         # 0.1h-old pending is fresh under the 24h threshold.
         fresh_pending = {
-            "id": "p1", "status": "pending", "title": "p1", "agent": "alpha",
+            "id": "p1", "status": "deferred", "title": "p1", "agent": "alpha",
             "last_activity": _iso_hours_ago(0.1),
         }
         lines = sweep_and_nudge([fresh_pending])

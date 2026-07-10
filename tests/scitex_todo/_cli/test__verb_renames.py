@@ -47,9 +47,9 @@ def store(tmp_path):
     path = tmp_path / "tasks.yaml"
     path.write_text(
         "tasks:\n"
-        "  - {id: design, title: Design the thing, status: pending, "
+        "  - {id: design, title: Design the thing, status: deferred, "
         "repo: owner/repo}\n"
-        "  - {id: build, title: Build the thing, status: pending}\n",
+        "  - {id: build, title: Build the thing, status: deferred}\n",
         encoding="utf-8",
     )
     return str(path)
@@ -92,11 +92,11 @@ def test_list_stale_canonical_exits_zero(list_stale_result):
     assert result.exit_code == 0
 
 
-def test_list_stale_canonical_reports_stale_pending_card(list_stale_result):
+def test_list_stale_canonical_reports_stale_deferred_card(list_stale_result):
     # Arrange
     # Act
     result = list_stale_result
-    # Assert — the pending card has no timestamps -> flagged stale.
+    # Assert — the deferred card has no timestamps -> flagged stale.
     assert "design" in result.output
 
 

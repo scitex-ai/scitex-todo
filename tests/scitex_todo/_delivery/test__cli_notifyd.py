@@ -82,7 +82,7 @@ def test_run_reminder_sweep_resolves_none_store_and_enqueues(tmp_path, monkeypat
 
     store = tmp_path / "tasks.yaml"
     store.write_text(
-        "tasks:\n  - id: c1\n    title: x\n    status: pending\n"
+        "tasks:\n  - id: c1\n    title: x\n    status: deferred\n"
         "    agent: alice\n    last_activity: '2026-01-01T00:00:00Z'\n",
         encoding="utf-8",
     )

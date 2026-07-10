@@ -83,8 +83,10 @@ class TestIsOverdueTerminalStatuses:
         # Assert
         assert result is False
 
-    def test_deferred_with_past_deadline_is_not_overdue(self):
-        # Arrange
+    def test_deferred_with_past_deadline_is_overdue(self):
+        # Arrange — deferred is NOT terminal (operator ruling 2026-07-10:
+        # deferred は終了ではない). A parked card with a missed deadline is
+        # exactly what overdue exists to surface; exempting it hid the rot.
         task = {
             "id": "a", "title": "A", "status": "deferred",
             "deadline": "2026-06-01",
@@ -92,7 +94,7 @@ class TestIsOverdueTerminalStatuses:
         # Act
         result = is_overdue(task, now=_utc(2026, 6, 12, 12, 0, 0))
         # Assert
-        assert result is False
+        assert result is True
 
     def test_failed_with_past_deadline_is_not_overdue(self):
         # Arrange

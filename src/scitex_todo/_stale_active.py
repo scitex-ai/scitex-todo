@@ -334,7 +334,7 @@ def pending_backlog_nudge_line(
 
     Shape (single line; caller wraps / delivers):
 
-        PENDING-BACKLOG: N untouched pending card(s) (>Nh) — start or
+        BACKLOG: N untouched deferred card(s) (>Nh) — start or
         triage (begin, re-prioritise, or close): <id>, <id>, …
 
     Ids are capped at :data:`NUDGE_ID_CAP` with a "+K more" tail so a
@@ -348,8 +348,11 @@ def pending_backlog_nudge_line(
     if len(ids) > NUDGE_ID_CAP:
         tail = f", +{len(ids) - NUDGE_ID_CAP} more"
     id_str = ", ".join(shown) + tail if shown else "(no ids)"
+    # Wording names `deferred` — the backlog status since the pending
+    # abolition. A nudge telling an agent about "pending cards" it cannot
+    # find (or write) is an instruction it cannot follow.
     return (
-        f"PENDING-BACKLOG: {len(cards)} untouched pending card(s) "
+        f"BACKLOG: {len(cards)} untouched deferred card(s) "
         f"(>{thr}h) — start or triage "
         f"(begin, re-prioritise, or close): {id_str}"
     )

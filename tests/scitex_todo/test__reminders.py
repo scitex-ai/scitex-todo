@@ -151,7 +151,7 @@ def test_digest_collapses_many_cards_into_one_note(tmp_path):
     tasks = [
         _t(id="c1", owner="alice", hours_ago=10.0),
         _t(id="c2", owner="alice", hours_ago=20.0),
-        _t(id="c3", owner="alice", status="pending", hours_ago=99.0),
+        _t(id="c3", owner="alice", status="deferred", hours_ago=99.0),
     ]
 
     out = sweep_reminders(

@@ -161,14 +161,18 @@ def test_add_task_rejects_duplicate_id(tmp_path):
         _store.add_task(store, id="a", title="A2", assignee="agent:test-suite")
 
 
-def test_add_task_rejects_invalid_status(tmp_path):
-    # Arrange
+def test_add_task_tolerates_invalid_status_with_warning(tmp_path):
+    # Arrange — operator ruling 2026-07-10: a status value must never cost
+    # someone their card. Save-side validation WARNS and persists; the
+    # fail-loud rejection lives at the sources (the CLI --status Choice).
     store = tmp_path / "tasks.yaml"
     # Act
-    ctx = pytest.raises(_model.TaskValidationError)
-    # Assert
-    with ctx:
-        _store.add_task(store, id="a", title="A", status="not-a-status", assignee="agent:test-suite")
+    with pytest.warns(UserWarning, match="not-a-status"):
+        _store.add_task(
+            store, id="a", title="A", status="not-a-status", assignee="agent:test-suite"
+        )
+    # Assert — the card exists; nothing was destroyed over a bad value.
+    assert _model.load_tasks(store)[0]["status"] == "not-a-status"
 
 
 # --------------------------------------------------------------------------- #
@@ -793,13 +797,13 @@ def test_summary_by_status_has_all_valid_statuses(populated_store):
         assert status in info["by_status"]
 
 
-def test_summary_by_status_pending_count(populated_store):
-    # Arrange
+def test_summary_by_status_deferred_count(populated_store):
+    # Arrange — add_task's default status is `deferred` since the abolition.
     store = populated_store
     # Act
     info = _store.summarize_tasks(store, scope="")
     # Assert
-    assert info["by_status"]["pending"] == 2
+    assert info["by_status"]["deferred"] == 2
 
 
 def test_summary_by_status_done_count(populated_store):
@@ -878,13 +882,13 @@ def test_summary_respects_scope_filter_total(populated_store):
     assert info["total"] == 2
 
 
-def test_summary_respects_scope_filter_pending(populated_store):
+def test_summary_respects_scope_filter_deferred(populated_store):
     # Arrange
     store = populated_store
     # Act
     info = _store.summarize_tasks(store, scope="agent:proj-scitex-todo")
     # Assert
-    assert info["by_status"]["pending"] == 1
+    assert info["by_status"]["deferred"] == 1
 
 
 def test_summary_respects_scope_filter_in_progress(populated_store):

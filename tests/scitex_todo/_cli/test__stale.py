@@ -35,24 +35,24 @@ def _store(tmp_path):
             tasks:
               - id: old-pending-card
                 title: '[P2] long stale pending card'
-                status: pending
+                status: deferred
                 created_at: '{old}'
                 project: scitex-dev
                 assignee: proj-scitex-dev
               - id: recent-pending-card
                 title: '[P2] recently created pending card'
-                status: pending
+                status: deferred
                 created_at: '{recent}'
                 project: scitex-dev
                 assignee: proj-scitex-dev
               - id: no-timestamp-card
                 title: 'undated pending card'
-                status: pending
+                status: deferred
                 project: business
                 assignee: proj-scitex-lead
               - id: vague-card
                 title: 'tbd'
-                status: pending
+                status: deferred
               - id: done-card
                 title: 'completed card should never be flagged'
                 status: done

@@ -36,6 +36,7 @@ _COMMAND_CATEGORIES = (
         (
             "add", "update", "done", "close", "comment", "reassign",
             "list-tasks", "list-stale", "find-card", "next", "runnable",
+            "triage",
             "summary", "render-graph", "emit-event", "help-wait",
             "help-clear", "hook", "migration", "index", "inbox",
             "init-store", "reconcile-merged-prs",
@@ -368,6 +369,7 @@ from . import (  # hook-bypass: line-limit (_main.py pre-existing over-cap; mini
     _runnable,
     _skills,
     _stats,
+    _triage,
     _write,
 )  # noqa: E402
 
@@ -409,6 +411,10 @@ _loop.register(main)
 # batch runnable view. Sister to `next` (single pick); respects
 # depends_on closure. See _runnable.py for the predicate.
 _runnable.register(main)
+# Backlog-consumption payload (operator design 2026-07-10: deferred is debt;
+# recency-weighted draw + age-based expiry). Read-only; the twin/owner
+# decides and mutates via the existing verbs. See _backlog_triage.py.
+_triage.register(main)
 # Hook-consumer wire (lead a2a `6fff33d6` + `fbffb879`, 2026-06-14,
 # operator-mandated). `scitex-todo hook push|done` verbs are the
 # CLI twins of POST /hooks/push and POST /hooks/done — same canonical

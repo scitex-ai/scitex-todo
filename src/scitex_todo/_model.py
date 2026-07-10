@@ -160,6 +160,18 @@ class TaskValidationError(ValueError):
     """Raised when a task store fails structural validation."""
 
 
+class StaleStoreError(RuntimeError):
+    """The store changed between your read and your write — reload and retry.
+
+    Raised by :func:`save_tasks` when the caller passed
+    ``expected_generation`` and the on-disk store no longer matches it.
+    Writing anyway would silently discard every mutation the other writer
+    made since your read (the 2026-07-10 bulk-migration incident: raw
+    ``load_tasks → mutate → save_tasks`` scripts ate two concurrent sac
+    writes because nothing tied the write to the read it was based on).
+    """
+
+
 # ---------------------------------------------------------------------------
 # Task dataclass — SINGLE schema source (ADR-0007, quality-hygiene PR)
 # ---------------------------------------------------------------------------
@@ -1180,7 +1192,12 @@ def _store_lock(path: Path):
             fd.close()
 
 
-def save_tasks(tasks: list[dict], path: str | Path) -> None:
+def save_tasks(
+    tasks: list[dict],
+    path: str | Path,
+    *,
+    expected_generation: str | None = None,
+) -> None:
     """Validate then write a task list back to a YAML store, preserving comments.
 
     Re-runs the same validation gate as :func:`load_tasks` *before* touching
@@ -1209,13 +1226,71 @@ def save_tasks(tasks: list[dict], path: str | Path) -> None:
     >>> save_tasks(tasks, "tasks.yaml")            # doctest: +SKIP
     """
     path = Path(path).expanduser()
-    # Hold the cross-process advisory lock for the FULL read-modify-write
-    # cycle, not just the write — otherwise two writers could each load
-    # the file, mutate independently, and the second `dump` would silently
-    # clobber the first's mutation. The lock IS the at-most-once gate.
+    # The lock covers only THIS write. It cannot cover the caller's earlier
+    # `load_tasks`, so plain load → mutate → save still loses a concurrent
+    # writer's rows (2026-07-10 bulk-migration incident). Callers doing a
+    # read-modify-write must either use :func:`edit_tasks` (one lock across
+    # the whole cycle) or pass ``expected_generation`` from
+    # :func:`store_generation` so a stale write is refused, never applied.
     path.parent.mkdir(parents=True, exist_ok=True)
     with _store_lock(path):
+        if expected_generation is not None:
+            current = store_generation(path)
+            if current != expected_generation:
+                raise StaleStoreError(
+                    f"{path}: store changed since your read (generation "
+                    f"{current[:12]} != expected {expected_generation[:12]}). "
+                    f"Another writer committed in between; writing now would "
+                    f"erase their rows. Reload, re-apply your change, retry — "
+                    f"or use edit_tasks() to hold the lock across the cycle."
+                )
         _save_tasks_unlocked(tasks, path)
+
+
+def store_generation(path: str | Path) -> str:
+    """Content hash of the store file — the optimistic-concurrency token.
+
+    Take it BEFORE :func:`load_tasks`, hand it to
+    ``save_tasks(..., expected_generation=...)``. Content-based (sha256), not
+    mtime-based: mtime has coarse granularity on some filesystems and lies
+    across clock skew, and this store is shared over network mounts.
+    """
+    p = Path(path).expanduser()
+    if not p.exists():
+        return "absent"
+    import hashlib
+
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+@contextlib.contextmanager
+def edit_tasks(path: str | Path):
+    """One locked read-modify-write cycle — the sanctioned bulk-edit primitive.
+
+    Yields the mutable ``tasks`` list with the store lock HELD; on clean exit
+    the (possibly mutated) list is validated and written back, preserving the
+    non-``tasks`` sections and comments. On an exception nothing is written.
+
+    This exists because every raw ``load_tasks → mutate → save_tasks`` script
+    has a lost-update window as wide as its own runtime, and on 2026-07-10 a
+    bulk migration used exactly that shape and ate two concurrent writes.
+
+    Examples
+    --------
+    >>> with edit_tasks("tasks.yaml") as tasks:     # doctest: +SKIP
+    ...     for t in tasks:
+    ...         if t.get("status") == "pending":
+    ...             t["status"] = "deferred"
+    """
+    path = Path(path).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _store_lock(path):
+        doc = load_doc(path, validate=True) if path.exists() else {}
+        if not isinstance(doc, dict):
+            raise TaskValidationError(f"{path}: top level is not a mapping")
+        tasks = doc.get("tasks") or []
+        yield tasks
+        _save_doc_unlocked(doc, path, tasks=tasks)
 
 
 def _save_tasks_unlocked(tasks: list[dict], path: Path) -> None:
