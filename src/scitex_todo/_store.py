@@ -1138,6 +1138,11 @@ def comment_task(
             if isinstance(c, dict) and isinstance(c.get("author"), str)
         ]
         comments.append(entry)
+        # A comment IS activity. Without this stamp, an actively-discussed
+        # card reads as "untouched" to every staleness signal (idle_guard,
+        # list-stale, digests) — found 2026-07-10 when the idle guard kept
+        # flagging a card that had received progress comments minutes earlier.
+        target["last_activity"] = entry["ts"]
         _model._save_doc_unlocked(doc, tasks_path, tasks=tasks)
         owner = target.get("agent") or target.get("assignee")
         # Persistent role lists (ADR-0009) — captured under the lock so
