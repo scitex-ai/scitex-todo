@@ -630,7 +630,7 @@ def test_list_filter_multi_status_unions(tmp_path):
     runner = CliRunner()
     store = _store_path(tmp_path)
     _seed_for_pr66(runner, store)
-    # Act — pending (px1, py1, py2) + in_progress (px2) = all 4
+    # Act — deferred (px1, py1, py2) + in_progress (px2) = all 4
     result = runner.invoke(
         main,
         [
@@ -709,8 +709,8 @@ def test_summary_emits_done_count(tmp_path):
     assert info["by_status"]["done"] == 1
 
 
-def test_summary_emits_pending_count(tmp_path):
-    # Arrange
+def test_summary_emits_deferred_count(tmp_path):
+    # Arrange — add's default status is `deferred` since pending was abolished.
     runner = CliRunner()
     store = _store_path(tmp_path)
     runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store])
@@ -719,7 +719,7 @@ def test_summary_emits_pending_count(tmp_path):
     # Act
     info = json.loads(result.output.strip())
     # Assert
-    assert info["by_status"]["pending"] == 1
+    assert info["by_status"]["deferred"] == 1
 
 
 # --------------------------------------------------------------------------- #
