@@ -131,8 +131,8 @@ def test_add_json_emits_status(tmp_path):
     result = runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store, "--json"])
     # Act
     payload = json.loads(result.output.strip())
-    # Assert
-    assert payload["status"] == "pending"
+    # Assert — add's default status is `deferred` since pending was abolished.
+    assert payload["status"] == "deferred"
 
 
 def test_add_duplicate_id_exits_nonzero(tmp_path):
