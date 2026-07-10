@@ -577,7 +577,7 @@ def test_list_env_scope_default(tmp_path, env):
     runner.invoke(main, ["add", "--assignee", "agent:test-suite", "b", "B", "--tasks", store, "--scope", "agent:other"])
     env.set("SCITEX_TODO_SCOPE", "agent:lead")
     # Act — no --scope here so $SCITEX_TODO_SCOPE='agent:lead' applies via the filter path.
-    result = runner.invoke(main, ["list-tasks", "--tasks", store, "--json", "--status", "pending"])
+    result = runner.invoke(main, ["list-tasks", "--tasks", store, "--json", "--status", "deferred"])
     rows = json.loads(result.output.strip())
     # Assert
     assert {r["id"] for r in rows} == {"a"}
@@ -635,7 +635,7 @@ def test_list_filter_multi_status_unions(tmp_path):
         main,
         [
             "list-tasks", "--tasks", store, "--json",
-            "--status", "pending", "--status", "in_progress",
+            "--status", "deferred", "--status", "in_progress",
         ],
     )
     rows = json.loads(result.output.strip())
