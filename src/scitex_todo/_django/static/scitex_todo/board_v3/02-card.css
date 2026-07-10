@@ -208,16 +208,19 @@
  * sibling span to advertise the affordance even when the input is
  * empty. Global "/" focuses it; Esc blurs. Pinned by the regression
  * test ``tests/scitex_todo/test__board_v3_signatures.py``. */
+/* Operator 2026-07-10 (でかすぎ, todo-board-search-box-oversized-20260710):
+ * the search input dwarfed the sibling .filt controls (44.5px tall, 16px
+ * font, permanent purple glow). Sized to the filterbar baseline; the glow
+ * now appears on :focus only (see :focus rule below). */
 .filt-search {
-  min-width: 320px;
-  flex: 1 1 320px;
-  padding: 10px 14px !important;
-  font-size: 1rem;
+  min-width: 220px;
+  flex: 1 1 220px;
+  padding: 5px 10px !important;
+  font-size: 0.85rem;
   font-weight: 500;
-  border: 2px solid var(--purple) !important;
-  border-radius: 10px !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
   background: rgba(109, 76, 173, 0.04);
-  box-shadow: 0 0 0 3px rgba(109, 76, 173, 0.1);
   transition:
     box-shadow 120ms ease,
     background 120ms ease,
@@ -229,13 +232,12 @@
 }
 .filt-search:hover {
   background: rgba(109, 76, 173, 0.08);
-  box-shadow: 0 0 0 4px rgba(109, 76, 173, 0.18);
 }
 .filt-search:focus {
   outline: none;
   border-color: var(--purple);
   background: rgba(109, 76, 173, 0.12);
-  box-shadow: 0 0 0 4px rgba(109, 76, 173, 0.35);
+  box-shadow: 0 0 0 2px rgba(109, 76, 173, 0.3);
 }
 .filt-search-kbd {
   display: inline-flex;

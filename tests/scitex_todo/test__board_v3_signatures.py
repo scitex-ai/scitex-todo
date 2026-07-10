@@ -120,14 +120,18 @@ class TestP1SearchAsLauncher:
             "Esc to blur" in board_text
         ), "search input must hint at 'Esc to blur' in its placeholder"
 
-    def test_search_input_min_width_bumped(self, css_text):
-        # The P1 CSS bump to 320px is what makes the search the PRIMARY
-        # go-to. A regression to 180px (the pre-P1 narrow form) reverts
-        # the affordance. (CSS pin — extracted to 02-card.css 2026-06-12.)
+    def test_search_input_min_width_filterbar_scale(self, css_text):
+        # Operator 2026-07-10 (でかすぎ,
+        # todo-board-search-box-oversized-20260710): the P1-era 320px /
+        # 1rem / permanent-glow search input dwarfed the sibling .filt
+        # controls; resized to the filterbar baseline (220px min-width,
+        # 0.85rem, glow on :focus only). Still wider than the pre-P1
+        # 180px narrow form so the primary-affordance intent survives.
+        # (CSS pin — 02-card.css.)
         # Arrange
         # Act
         # Assert
-        assert "min-width: 320px" in css_text
+        assert "min-width: 220px" in css_text
 
 
 # -----------------------------------------------------------------------------
