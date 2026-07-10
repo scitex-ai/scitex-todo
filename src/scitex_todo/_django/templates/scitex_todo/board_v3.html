@@ -48,6 +48,7 @@
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/07-toolbar-groups.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/08-time-grouping.css' %}">{# 08-time-grouping.css: bucket headers TODAY/WEEK/MONTH/OLDER for Group-by-time (a2a `ff1441d7`) #}
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/09-timeline.css' %}">{# 09-timeline.css: Timeline layout — raster + per-task simple cards (operator TODO 2026-06-17) #}
+<link rel="stylesheet" href="{% static 'scitex_todo/board_v3/11-sticky-wall.css' %}">{# 11-sticky-wall.css: Wall layout (notes + islands) + the shared .stx-flash status-transition glow #}
 {# combobox.css (loaded below the page-CSS so its specificity sits ON TOP if needed) #}
 <link rel="stylesheet" href="{% static 'scitex_ui/css/app/combobox.css' %}">
 <script defer src="{% static 'scitex_ui/js/app/combobox.js' %}"></script>
@@ -93,6 +94,16 @@
   when absent. Operator 2026-07-10 (todo-board-agent-icons-status-rings).
 {% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/10-agent-avatar.js' %}"></script>
+{% comment %}
+  11-sticky-wall.js — the "sticky note wall" layout: notes readable without
+  hover, clustered by assignee/project/status, and each agent's NEXT-UP stack
+  derived here from nodes+depends_on edges (no agent cooperation required).
+  Loads AFTER 10-agent-avatar.js (it reuses window.STX.agentAvatar for the
+  note avatar) and publishes window.STX.stickyWall; render() falls back to the
+  column layout when absent. Operator design, card
+  todo-board-sticky-wall-view-20260710.
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/11-sticky-wall.js' %}"></script>
 {% comment %}
   timelineGate.js — anti-flash change-detection gate for the Timeline raster.
   MUST load BEFORE timeline.js: publishes window.STX.timelineGate (rasterSig +
@@ -315,6 +326,10 @@
                 data-layout="timeline" onclick="onLayoutChange('timeline')"
                 role="radio" aria-checked="false"
                 title="Timeline — time raster by agent/project, or a per-task simple list (day/week/month windows)">⏱ Timeline</button>
+        <button type="button" class="filt-layout-btn" id="f-layout-wall"
+                data-layout="wall" onclick="onLayoutChange('wall')"
+                role="radio" aria-checked="false"
+                title="Wall — sticky notes clustered by assignee; the selected agent's next-up stack rises to the top">🗒 Wall</button>
         <button type="button" class="filt-layout-btn" id="f-layout-graph"
                 data-layout="graph" onclick="onLayoutChange('graph')"
                 role="radio" aria-checked="false"
@@ -2021,9 +2036,20 @@
         // pull /timeline; the per-task "simple" list projects STATE.graph
         // by time. Ignores the kanban `visible` filter set by design.
         _renderTimelineView(canvas);
+      } else if (layout === "wall" && window.STX && window.STX.stickyWall) {
+        // Wall layout — sticky notes clustered by assignee (11-sticky-wall.js).
+        // Uses the SAME filtered `visible` set as column/table. The next-up
+        // stack is derived from nodes + STATE.graph.edges inside the module,
+        // so no agent has to maintain it. Falls through to column when the
+        // module hasn't loaded (deferred script not yet executed).
+        _renderWallView(canvas, visible);
       } else {
         _renderColumnView(canvas, visible);
       }
+      // One-shot glow on any card whose status changed since the last render
+      // (operator msg 933). No-op on first paint — the map starts empty, so
+      // nothing "transitions" into existence.
+      _flashStatusTransitions(canvas);
       renderGroupStrip();
       _renderRecentCountPill(visible);
       // Update the "show hidden (N)" counter in the filter bar so the
@@ -2173,6 +2199,59 @@
     // sortable table. Each row click opens the existing detail
     // drawer (openDetail). NEW badge applies here too when sort
     // mode is "recent". (hook-bypass: line-limit.)
+    // Wall layout state. `groupBy` = assignee|project|status (operator's
+    // "切り口"), `selected` = the expanded island. Sticky across reloads so
+    // picking your own lane once is remembered. (hook-bypass: line-limit.)
+    const WALL = {
+      groupBy: (() => { try { return localStorage.getItem("scitex-todo:wall-group") || "assignee"; } catch { return "assignee"; } })(),
+      selected: (() => { try { return localStorage.getItem("scitex-todo:wall-selected") || null; } catch { return null; } })(),
+    };
+    function _renderWallView(canvas, visible) {
+      const edges = (STATE.graph && STATE.graph.edges) || [];
+      canvas.innerHTML = window.STX.stickyWall.wallHtml(visible, edges, {
+        groupBy: WALL.groupBy,
+        selected: WALL.selected,
+        nowMs: Date.now(),
+      });
+    }
+    // Delegated: island title toggles selection; a note opens the existing
+    // detail drawer. One listener for the whole wall, survives re-renders.
+    document.addEventListener("click", (ev) => {
+      const head = ev.target.closest && ev.target.closest(".sw-island-title");
+      if (head) {
+        const k = head.getAttribute("data-key");
+        WALL.selected = WALL.selected === k ? null : k;
+        try { localStorage.setItem("scitex-todo:wall-selected", WALL.selected || ""); } catch {}
+        render();
+        return;
+      }
+      const note = ev.target.closest && ev.target.closest(".sw-note");
+      if (note) openDetail(note.getAttribute("data-id"));
+    });
+
+    // Status-transition glow (operator msg 933). Cheap by construction: a
+    // prev-status map diffed on each render; the CSS does the rest and the
+    // class is removed on animationend so it never accumulates. Applies to
+    // any element carrying data-id + data-status — wall notes today, and any
+    // future view that adopts the same two attributes.
+    const _PREV_STATUS = new Map();
+    function _flashStatusTransitions(root) {
+      if (!root) return;
+      root.querySelectorAll("[data-id][data-status]").forEach((el) => {
+        const id = el.getAttribute("data-id");
+        const st = el.getAttribute("data-status");
+        const prev = _PREV_STATUS.get(id);
+        _PREV_STATUS.set(id, st);
+        if (prev === undefined || prev === st) return;
+        el.classList.add("stx-flash", `stx-flash--${st}`);
+        el.addEventListener(
+          "animationend",
+          () => el.classList.remove("stx-flash", `stx-flash--${st}`),
+          { once: true },
+        );
+      });
+    }
+
     function _renderTableView(canvas, visible) {
       const sorted = visible.slice().sort(_sortComparator(STATE.sort || "default"));
       const recentMode = (STATE.sort || "default") === "recent";
@@ -3047,7 +3126,7 @@
       // "stale" removed 2026-07-10 (operator, card todo-board-remove-stale-
       // view-timeline-first-20260710) — the render path stays but the
       // layout is unreachable (button gone, whitelist + boot both coerce).
-      const VALID_LAYOUTS = ["graph", "table", "column", "timeline"];
+      const VALID_LAYOUTS = ["graph", "table", "column", "timeline", "wall"];
       const m = VALID_LAYOUTS.includes(mode) ? mode : "column";
       STATE.layout = m;
       try { localStorage.setItem("scitex-todo:layout", m); } catch {}

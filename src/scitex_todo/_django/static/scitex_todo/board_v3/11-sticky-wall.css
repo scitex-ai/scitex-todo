@@ -1,0 +1,202 @@
+/* 11-sticky-wall.css — sticky-note wall layout + the shared status-transition
+ * glow utility (todo-board-sticky-wall-view-20260710).
+ *
+ * Product surface (operator: 一応製品になる予定). Dark-first, status tokens
+ * only (--status-fill-*, emitted server-side from STATUS_STYLE), no one-off
+ * colours. Notes are readable WITHOUT hover — that is the whole point.
+ */
+
+/* === WALL / ISLANDS ==================================================== */
+#columns[data-layout="wall"] {
+  overflow: auto;
+}
+.sw-wall {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 14px 12px 40px;
+}
+.sw-empty {
+  color: var(--text-muted);
+  padding: 24px;
+}
+
+/* An island's width grows with its card count — the cheap spatial cue that
+ * makes clusters read as "big" or "small" at a glance. Clamped so a 200-card
+ * agent cannot push everything else off-screen. */
+.sw-island {
+  --sw-w: calc(240px + (var(--sw-count, 1) * 6px));
+  flex: 0 1 min(var(--sw-w), 560px);
+  min-width: 240px;
+  background: rgba(255, 255, 255, 0.018);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 10px 12px;
+}
+.sw-island--selected {
+  border-color: var(--purple);
+  background: rgba(109, 76, 173, 0.06);
+  flex-basis: 100%;
+}
+.sw-island-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.sw-island-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 0;
+  padding: 2px 4px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.sw-island-title:hover {
+  text-decoration: underline;
+}
+.sw-island-count {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+.sw-island-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sw-more {
+  align-self: center;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  padding: 0 4px;
+}
+
+/* === NOTE ============================================================== */
+/* Status lives on the LEFT EDGE (a sticky-note's torn strip), so status is
+ * legible even when the note is small — no hover, no legend lookup. */
+.sw-note {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 152px;
+  min-height: 82px;
+  padding: 8px 9px 8px 12px;
+  text-align: left;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    transform 90ms ease,
+    box-shadow 90ms ease,
+    border-color 90ms ease;
+}
+.sw-note:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.sw-note:focus-visible {
+  outline: 2px solid var(--purple);
+  outline-offset: 2px;
+}
+.sw-note-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.sw-note-av {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+.sw-note-chips {
+  display: inline-flex;
+  gap: 4px;
+}
+.sw-note-title {
+  /* 2-line clamp: readable at a glance, uniform note height. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  color: var(--text);
+}
+.sw-chip {
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.sw-chip--age {
+  background: transparent;
+}
+.sw-chip--next {
+  background: var(--purple);
+  color: #fff;
+  letter-spacing: 0.04em;
+}
+
+/* Status edge, from the server-emitted SSOT tokens. */
+.sw-note--goal { border-left-color: var(--status-fill-goal); }
+.sw-note--done { border-left-color: var(--status-fill-done); }
+.sw-note--in_progress { border-left-color: var(--status-fill-in_progress); }
+.sw-note--blocked { border-left-color: var(--status-fill-blocked); }
+.sw-note--deferred { border-left-color: var(--status-fill-deferred); }
+.sw-note--failed { border-left-color: var(--status-fill-failed); }
+.sw-note--cancelled { border-left-color: var(--border); }
+
+/* === STATUS-TRANSITION GLOW (shared utility, every view) ================
+ * Operator (msg 933): "状態遷移時に一瞬エフェクト光らせる" — but only if it
+ * stays cheap. Compositor-only properties (box-shadow/opacity); no layout,
+ * no timers, no rAF loop, no animation library. One-shot, removed on
+ * animationend by the caller. Honours prefers-reduced-motion. */
+@keyframes stx-flash-pulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--stx-flash-color, var(--purple));
+  }
+  35% {
+    box-shadow: 0 0 0 5px var(--stx-flash-color, var(--purple));
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+  }
+}
+.stx-flash {
+  animation: stx-flash-pulse 600ms ease-out 1;
+}
+.stx-flash--goal { --stx-flash-color: var(--status-fill-goal); }
+.stx-flash--done { --stx-flash-color: var(--status-fill-done); }
+.stx-flash--in_progress { --stx-flash-color: var(--status-fill-in_progress); }
+.stx-flash--blocked { --stx-flash-color: var(--status-fill-blocked); }
+.stx-flash--deferred { --stx-flash-color: var(--status-fill-deferred); }
+.stx-flash--failed { --stx-flash-color: var(--status-fill-failed); }
+
+@media (prefers-reduced-motion: reduce) {
+  .stx-flash {
+    animation: none;
+  }
+  .sw-note {
+    transition: none;
+  }
+  .sw-note:hover {
+    transform: none;
+  }
+}
