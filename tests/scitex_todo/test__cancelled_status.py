@@ -174,15 +174,16 @@ def test_cancelled_excluded_from_stale_active_detection():
     assert surfaced == {"live"}
 
 
-def test_cancelled_excluded_from_pending_backlog():
-    # Arrange — one old pending (backlog) + one old cancelled.
+def test_cancelled_excluded_from_backlog():
+    # Arrange — one old deferred (the backlog status since the pending
+    # abolition) + one old cancelled.
     tasks = [
-        _card("waiting", "pending", hours_ago=99),
+        _card("waiting", "deferred", hours_ago=99),
         _card("cxl", "cancelled", hours_ago=99),
     ]
     # Act
     groups = detect_pending_backlog(tasks, now=NOW, pending_hours=24.0)
-    # Assert — only the pending card is backlog; cancelled is closed.
+    # Assert — only the deferred card is backlog; cancelled is closed.
     surfaced = {sc.id for cards in groups.values() for sc in cards}
     assert surfaced == {"waiting"}
 
