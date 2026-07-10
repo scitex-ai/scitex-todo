@@ -213,7 +213,8 @@ def handle_update(request, board):
     """POST update -> patch an existing task. Body: ``{id, <fields...>}``.
 
     Only the provided editable fields change; ``id`` is immutable. Returns the
-    updated task. Unknown id -> 404.
+    updated task. Unknown id -> 404. P1 identity guard: see
+    ``scitex_todo._owner_guard.payload_identity_error``.
     """
     if request.method != "POST":
         return JsonResponse({"error": "update endpoint requires POST"}, status=405)
@@ -229,6 +230,11 @@ def handle_update(request, board):
     task = next((t for t in tasks if t["id"] == task_id), None)
     if task is None:
         return JsonResponse({"error": f"no task with id {task_id!r}"}, status=404)
+
+    from scitex_todo._owner_guard import payload_identity_error
+    id_err = payload_identity_error(payload, store=board.store_path)
+    if id_err:
+        return JsonResponse({"error": id_err}, status=400)
 
     _apply_fields(task, payload)
 

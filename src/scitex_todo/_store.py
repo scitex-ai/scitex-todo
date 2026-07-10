@@ -347,6 +347,7 @@ def add_task(
     blocks: list[str] | None = None,
     repo: str | None = None,
     created_by: str | None = None,  # hook-bypass: line-limit
+    allow_unknown_owner: bool = False,  # hook-bypass: line-limit
     entry_points=None,
     **extras,
 ) -> dict:
@@ -390,6 +391,19 @@ def add_task(
             "creator+assignee are mandatory and an owner-less card is "
             "rejected (no silent fallback; see constitution)."
         )
+    # P1 fleet-identity enforcement (todo-failloud-rollout-fleet-identity-
+    # createform-20260626): reject an owner that resolves to no registered
+    # identity, and reject a forged `created_by`. Both are gated behind
+    # SCITEX_TODO_STRICT_IDENTITY (default OFF) — see `_owner_guard` module
+    # docstring for why. (hook-bypass: line-limit)
+    from ._owner_guard import check_created_by_not_forged, check_owner_known
+
+    check_owner_known(
+        _owner_in, store=resolved, allow_unknown_owner=allow_unknown_owner
+    )
+    check_created_by_not_forged(
+        created_by, allow_unknown_owner=allow_unknown_owner
+    )
     # RESOLVE the creator STRICTLY — raises a clear, actionable error when
     # it can't be resolved (blank / "unknown"). Done BEFORE any write so a
     # creatorless card never touches disk. (hook-bypass: line-limit)
@@ -515,6 +529,7 @@ def update_task(
     store: str | Path | None = None,
     task_id: str | None = None,
     *,
+    allow_unknown_owner: bool = False,  # hook-bypass: line-limit
     entry_points=None,  # hook-bypass: line-limit
     **fields,
 ) -> dict:
@@ -524,6 +539,13 @@ def update_task(
     a field DELETES it (matches the operator's mental model: "clear the
     scope" = `update_task(..., scope=None)`). To leave a field untouched,
     just omit it.
+
+    P1 fleet-identity enforcement: when this update SETS ``assignee`` /
+    ``agent`` / ``created_by`` to a non-``None`` value, the same
+    owner-known / no-forged-authorship checks as :func:`add_task` run
+    first (gated behind ``SCITEX_TODO_STRICT_IDENTITY`` — see
+    ``_owner_guard``). ``allow_unknown_owner`` is the same narrow
+    migration/repair escape hatch.
 
     Raises
     ------
@@ -535,6 +557,19 @@ def update_task(
     if not task_id:
         raise TypeError("update_task() requires a non-empty task_id")
     resolved = _resolved_store(store)
+    from ._owner_guard import check_created_by_not_forged, check_owner_known
+
+    for _owner_field in ("assignee", "agent"):
+        if fields.get(_owner_field) is not None:
+            check_owner_known(
+                fields[_owner_field],
+                store=resolved,
+                allow_unknown_owner=allow_unknown_owner,
+            )
+    if fields.get("created_by") is not None:
+        check_created_by_not_forged(
+            fields["created_by"], allow_unknown_owner=allow_unknown_owner
+        )
     result: dict | None = None
     transitioned_to_done = False
     # C5: capture the (from, to) status pair when `status` actually flips
@@ -1452,6 +1487,7 @@ def reassign_task(
     new_owner: str | None = None,
     *,
     by: str | None = None,
+    allow_unknown_owner: bool = False,  # hook-bypass: line-limit
     entry_points=None,  # hook-bypass: line-limit
 ) -> dict:
     """Atomically change a card's owner — the primitive the board lacked.
@@ -1508,8 +1544,18 @@ def reassign_task(
     if not new_owner or not str(new_owner).strip():
         raise ValueError("reassign_task: 'new_owner' is required")
     new_owner = str(new_owner)
-    actor = _default_agent(by)
     tasks_path = _resolved_store(store)
+    # P1 fleet-identity enforcement — same owner-known check as add_task /
+    # update_task, gated behind SCITEX_TODO_STRICT_IDENTITY (see
+    # `_owner_guard`). This is THE reassignment path, so a KNOWN owner must
+    # keep working unconditionally; only an UNKNOWN new_owner is rejected
+    # (when enforcement is on). (hook-bypass: line-limit)
+    from ._owner_guard import check_owner_known
+
+    check_owner_known(
+        new_owner, store=tasks_path, allow_unknown_owner=allow_unknown_owner
+    )
+    actor = _default_agent(by)
     changed = False
     old_owner: str | None = None
     result_task: dict | None = None
