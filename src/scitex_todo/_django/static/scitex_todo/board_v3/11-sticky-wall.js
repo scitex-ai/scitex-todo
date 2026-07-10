@@ -128,7 +128,10 @@
       _esc(node.id) +
       '" data-status="' +
       _esc(st) +
-      '" title="' +
+      // data-tip, not title= — the native tooltip renders UNDER the cursor
+      // and hides the note you are pointing at (operator msg 944).
+      // 12-hover-tip.js draws an offset one instead.
+      '" data-tip="' +
       _esc(node.title || node.id) +
       '">' +
       '<span class="sw-note-head">' +

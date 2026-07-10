@@ -105,6 +105,14 @@
 {% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/11-sticky-wall.js' %}"></script>
 {% comment %}
+  12-hover-tip.js — cursor-OFFSET hover tooltip for any [data-tip] element.
+  Replaces the browser's native tooltip (SVG <title> / title=""), which
+  renders under the cursor and covers the dot or note being pointed at
+  (operator msg 944). Self-attaches on DOMContentLoaded; one delegated
+  listener, so every current and future view inherits it.
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/12-hover-tip.js' %}"></script>
+{% comment %}
   timelineGate.js — anti-flash change-detection gate for the Timeline raster.
   MUST load BEFORE timeline.js: publishes window.STX.timelineGate (rasterSig +
   a stateful gate that skips identical 4s rebuilds and preserves .tl-scroll
@@ -540,7 +548,7 @@
               disabled
               onchange="bulkSetStatus(this.value); this.value='';">
         <option value="">— change to… —</option>
-        <option value="pending">pending</option>
+        {# `pending` abolished 2026-07-10; writing it now fails validation. #}
         <option value="in_progress">in_progress</option>
         <option value="blocked">blocked</option>
         <option value="done">done</option>
@@ -618,7 +626,7 @@
           <div style="flex: 1;">
             <label for="d-edit-status">Status</label>
             <select class="d-edit-select" id="d-edit-status">
-              <option value="pending">pending</option>
+              {# `pending` abolished 2026-07-10; writing it now fails validation. #}
               <option value="in_progress">in_progress</option>
               <option value="blocked">blocked</option>
               <option value="done">done</option>
@@ -705,7 +713,9 @@
         <div style="flex: 1;">
           <label for="at-status">Status</label>
           <select class="at-select" id="at-status">
-            <option value="pending">pending</option>
+            {# `pending` abolished 2026-07-10 — a new card must carry a real
+               decision. `deferred` (open, not started) is the honest default. #}
+            <option value="deferred">deferred</option>
             <option value="in_progress">in_progress</option>
             <option value="blocked">blocked</option>
             <option value="goal">goal</option>
@@ -1390,7 +1400,7 @@
       // (hook-bypass: line-limit.)
       document.getElementById("f-status").innerHTML =
         `<option value="">All statuses</option>` +
-        ["goal", "done", "in_progress", "blocked", "pending", "deferred", "failed"]
+        ["goal", "done", "in_progress", "blocked", "deferred", "failed", "cancelled"]
           .map(s => `<option value="${s}">${s}</option>`).join("");
       document.getElementById("f-blocker").innerHTML =
         `<option value="">All blockers</option>` +
@@ -1533,7 +1543,18 @@
       const projects = STATE.graph
         ? [...new Set(STATE.graph.nodes.map(n => n.project).filter(Boolean))].sort()
         : [];
-      const statuses = ["pending", "in_progress", "blocked", "done", "deferred", "failed", "goal"];
+      // Statuses come from the server's STATUS_STYLE SSOT (payload
+      // `status_colors`), never a hardcoded list. The old literal still
+      // offered `pending` — abolished 2026-07-10, and writing it now fails
+      // validation — while omitting `cancelled`. Deriving keeps this menu
+      // correct through any future enum change. The fallback only fires for
+      // a payload predating status_colors. (hook-bypass: line-limit.)
+      const statuses = Object.keys(
+        (STATE.graph && STATE.graph.status_colors) || {},
+      ).filter((s) => s !== "pending");
+      if (!statuses.length) {
+        statuses.push("in_progress", "blocked", "done", "deferred", "failed", "goal");
+      }
       const isHidden = hiddenSet().has(cardId);
       const menu = document.createElement("div");
       menu.className = "card-ctx-menu";
@@ -2229,6 +2250,25 @@
       if (note) openDetail(note.getAttribute("data-id"));
     });
 
+    // Uniform right-click across EVERY view (operator msg 943: "right click
+    // should work on tasks — scatters/cards on all views in the same
+    // manner"). One delegated listener instead of an inline handler per
+    // view: resolve the card id from `data-card-id` (timeline dots) or
+    // `data-id` (wall notes) and open the same menu.
+    //
+    // Column cards and table rows already carry an inline `oncontextmenu`.
+    // openCardCtx() calls preventDefault() but NOT stopPropagation(), so the
+    // event still bubbles here — skip those to avoid opening the menu twice.
+    document.addEventListener("contextmenu", (ev) => {
+      if (!ev.target.closest) return;
+      const el = ev.target.closest("[data-card-id],[data-id]");
+      if (!el) return;
+      if (el.closest("[oncontextmenu]")) return; // inline handler owns it
+      const id =
+        el.getAttribute("data-card-id") || el.getAttribute("data-id");
+      if (id) openCardCtx(ev, id);
+    });
+
     // Status-transition glow (operator msg 933). Cheap by construction: a
     // prev-status map diffed on each render; the CSS does the rest and the
     // class is removed on animationend so it never accumulates. Applies to
@@ -2237,8 +2277,13 @@
     const _PREV_STATUS = new Map();
     function _flashStatusTransitions(root) {
       if (!root) return;
-      root.querySelectorAll("[data-id][data-status]").forEach((el) => {
-        const id = el.getAttribute("data-id");
+      // Wall notes carry data-id; timeline dots carry data-card-id. Both
+      // carry data-status, so both get the glow from this one pass.
+      root
+        .querySelectorAll("[data-id][data-status],[data-card-id][data-status]")
+        .forEach((el) => {
+        const id =
+          el.getAttribute("data-card-id") || el.getAttribute("data-id");
         const st = el.getAttribute("data-status");
         const prev = _PREV_STATUS.get(id);
         _PREV_STATUS.set(id, st);
@@ -2531,7 +2576,7 @@
       // Each node maps to its RAW status class (st-<status>) so the in-board mermaid matches python build_mermaid() artifacts, not the 4-bucket collapse. (hook-bypass: line-limit.)
       const nodeLines = connected.map(t => {
         const label = `${(t.project || "—").slice(0, 18)}<br>${_safe(t.task || t.title)}`;
-        return `  ${_esc(t.id)}["${label}"]:::st-${(t.status || "pending").replace(/[^a-z_]/gi, "")}`;
+        return `  ${_esc(t.id)}["${label}"]:::st-${(t.status || "deferred").replace(/[^a-z_]/gi, "")}`;
       });
       const edgeLines = allEdges.map(e => {
         if (e.kind === "parent") {
@@ -3940,7 +3985,7 @@
       // column without retyping the name.
       const projInput = document.getElementById("at-project");
       projInput.value = presetProject && presetProject !== "—" ? presetProject : "";
-      document.getElementById("at-status").value = "pending";
+      document.getElementById("at-status").value = "deferred";
       document.getElementById("at-task").value = "";
       document.getElementById("add-task-backdrop").classList.add("show");
       setTimeout(() => document.getElementById("at-title").focus(), 50);
@@ -4002,7 +4047,7 @@
       const t = (STATE.graph?.nodes || []).find(x => x.id === STATE.openId);
       if (!t) return;
       document.getElementById("d-edit-title").value = t.title || "";
-      document.getElementById("d-edit-status").value = t.status || "pending";
+      document.getElementById("d-edit-status").value = t.status || "deferred";
       document.getElementById("d-edit-blocker").value = t.blocker || "";
       document.getElementById("d-edit-project").value = t.project || "";
       document.getElementById("d-edit-agent").value = t.agent || "";

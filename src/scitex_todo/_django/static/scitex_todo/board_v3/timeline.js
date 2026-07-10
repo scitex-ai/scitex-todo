@@ -316,8 +316,9 @@
     });
     svg += "</g>";
     // dots — ONE per task (the scatter). Click → detail drawer; hover →
-    // the <title> tooltip. Completed dots fade; live (still-running) ones
-    // keep a bright ring so you can spot what's being processed.
+    // the cursor-OFFSET tip from 12-hover-tip.js (data-tip), because the
+    // native SVG tooltip sat UNDER the cursor (operator msg 944). Completed
+    // dots fade; live ones keep a bright ring.
     svg += '<g class="tl-dots">';
     dots.forEach(function (d) {
       var done = d.ev.ended_at != null;
@@ -338,11 +339,11 @@
         d.cx +
         '" cy="' +
         d.cy +
-        '" r="7" onclick="openDetail(\'' +
-        escapeHtml(String(d.ev.id)) +
-        "')\"><title>" +
+        '" r="7" data-tip="' +
         escapeHtml(title) +
-        "</title></circle>";
+        '" onclick="openDetail(\'' +
+        escapeHtml(String(d.ev.id)) +
+        "')\"></circle>";
     });
     svg += "</g>";
 

@@ -163,6 +163,33 @@
 .sw-note--failed { border-left-color: var(--status-fill-failed); }
 .sw-note--cancelled { border-left-color: var(--border); }
 
+/* === HOVER TIP (12-hover-tip.js) =======================================
+ * Replaces the browser's native tooltip, which renders UNDER the cursor and
+ * covers the dot/note being pointed at (operator msg 944: "UX として最悪").
+ * Positioned by JS with a fixed cursor offset + viewport-edge flipping. */
+.stx-tip {
+  position: fixed;
+  z-index: 9999;
+  max-width: 380px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--card-bg, #1b2130);
+  color: var(--text);
+  font-size: 0.74rem;
+  line-height: 1.45;
+  white-space: pre-line; /* dot tips carry \n started/completed lines */
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  pointer-events: none; /* never steal the hover it describes */
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 90ms ease;
+}
+.stx-tip--on {
+  opacity: 1;
+  visibility: visible;
+}
+
 /* === STATUS-TRANSITION GLOW (shared utility, every view) ================
  * Operator (msg 933): "状態遷移時に一瞬エフェクト光らせる" — but only if it
  * stays cheap. Compositor-only properties (box-shadow/opacity); no layout,
@@ -182,6 +209,26 @@
 .stx-flash {
   animation: stx-flash-pulse 600ms ease-out 1;
 }
+
+/* SVG elements (timeline dots) ignore box-shadow entirely — the HTML pulse
+ * above would be a silent no-op there. Use a drop-shadow filter, which is
+ * also compositor-friendly and works on both trees. */
+@keyframes stx-flash-glow {
+  0% {
+    filter: drop-shadow(0 0 0 var(--stx-flash-color, var(--purple)));
+  }
+  35% {
+    filter: drop-shadow(0 0 5px var(--stx-flash-color, var(--purple)));
+  }
+  100% {
+    filter: drop-shadow(0 0 0 rgba(0, 0, 0, 0));
+  }
+}
+circle.stx-flash,
+rect.stx-flash,
+g.stx-flash {
+  animation: stx-flash-glow 600ms ease-out 1;
+}
 .stx-flash--goal { --stx-flash-color: var(--status-fill-goal); }
 .stx-flash--done { --stx-flash-color: var(--status-fill-done); }
 .stx-flash--in_progress { --stx-flash-color: var(--status-fill-in_progress); }
@@ -190,7 +237,10 @@
 .stx-flash--failed { --stx-flash-color: var(--status-fill-failed); }
 
 @media (prefers-reduced-motion: reduce) {
-  .stx-flash {
+  .stx-flash,
+  circle.stx-flash,
+  rect.stx-flash,
+  g.stx-flash {
     animation: none;
   }
   .sw-note {

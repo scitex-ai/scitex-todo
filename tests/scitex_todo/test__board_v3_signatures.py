@@ -525,7 +525,6 @@ class TestMultiselectBatchOpsStage1:
         # Act
         # Assert
         for status in (
-            "pending",
             "in_progress",
             "blocked",
             "done",
@@ -534,6 +533,13 @@ class TestMultiselectBatchOpsStage1:
             "goal",
         ):
             assert f'value="{status}"' in board_text
+
+        # `pending` was ABOLISHED 2026-07-10 (operator: "存在してはならない状態
+        # である"); it is out of VALID_STATUSES and any write of it now fails
+        # validation. A status <option> offering it would hand the operator a
+        # guaranteed error, so no picker may expose it. This pin is the guard
+        # against it creeping back in.
+        assert '<option value="pending">' not in board_text
 
     def test_toolbar_followup_ops_left_as_commented_hooks(self, board_text):
         # The card asks for 5 bulk ops. Stage 1 ships ONE; the other 4
