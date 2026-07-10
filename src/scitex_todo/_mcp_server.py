@@ -58,7 +58,7 @@ mcp = FastMCP(
 async def add_task(
     id: str,
     title: str,
-    status: str = "pending",
+    status: str = "deferred",
     scope: str | None = None,
     assignee: str | None = None,
     priority: int | None = None,

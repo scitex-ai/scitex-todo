@@ -12,7 +12,8 @@ operators / agents working from a shell who want a one-line answer to
 "what's stale on my board?" without opening the browser.
 
 Criteria mirror the server-side derivation (kept in sync):
-    - ``status == "pending"`` AND
+    - ``status == "deferred"`` (the backlog status; ``pending`` was abolished
+      2026-07-10) AND
         - ``created_at > N days`` (default 14), OR
         - no ``created_at`` and no ``last_activity``, OR
         - title is empty/very-short AND there's no assignee / repo /
@@ -32,6 +33,7 @@ import json
 
 import click
 
+from .._backlog_triage import BACKLOG_STATUS
 from .._paths import resolve_tasks_path
 from .._store import load_tasks
 from ._compat import deprecated_alias, spec_command_kwargs
@@ -153,7 +155,9 @@ def list_stale_cmd(
 
     rows: list[dict] = []
     for t in tasks:
-        if t.get("status") != "pending":
+        # ``deferred`` is the backlog status since ``pending`` was abolished
+        # (2026-07-10). Matching on the dead value made this command a no-op.
+        if t.get("status") != BACKLOG_STATUS:
             continue
         if project is not None and (t.get("project") or "") != project:
             continue

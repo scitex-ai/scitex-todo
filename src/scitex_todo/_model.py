@@ -789,8 +789,8 @@ def _validate_tasks(tasks: object, source: str, strict: bool = True) -> None:
     :func:`save_tasks` (write side) so a bad mutation can never round-trip
     through the writer.
 
-    ``strict`` splits the two sides, and it is not a nicety — it is the fix
-    for a fleet-wide outage on 2026-07-10.
+    The split between STRUCTURE and VALUES is the fix for a fleet-wide outage
+    on 2026-07-10.
 
     The store is SHARED and read by agents running DIFFERENT installed
     versions. When a newer writer stored ``status: cancelled`` (a value its
@@ -799,18 +799,26 @@ def _validate_tasks(tasks: object, source: str, strict: bool = True) -> None:
     fleet's board down. A shared, multi-version store can never grow an enum
     value under that design.
 
-    So:
-      * WRITE side (``save_tasks``, ``strict=True``) stays fail-loud. A bad
-        mutation must never round-trip. Garbage in is rejected at the source.
-      * READ side (``load_tasks``, ``strict=False``) tolerates a *value* it
-        does not recognise — an unknown status or an unresolved invariant —
-        and warns loudly, naming the card and the likely cause. It still
-        raises on STRUCTURAL corruption (not a list, missing id/title,
-        duplicate id, non-integer priority), because that is a broken store,
-        not a newer one.
+    So, on BOTH sides:
+      * STRUCTURAL corruption raises — not a list, missing id/title, duplicate
+        id, non-integer priority. That is a broken store, not a newer one, and
+        no amount of tolerance makes it readable.
+      * A bad VALUE warns, loudly, naming the card and the likely cause. An
+        unknown status, a blocked card with no blocker: shouted about, never
+        fatal.
 
-    This is not a silent fallback: the reader shouts. It simply refuses to
-    take the entire fleet offline because one row came from the future.
+    The write side warns rather than raises by operator ruling (2026-07-10:
+    "カードが書けないということはなしで大丈夫です、warning で十分です"). Raising
+    there was the writer-side twin of the same outage: ``save_tasks``
+    validates the WHOLE task list, so a single legacy row written by an older
+    agent made every *other* agent's write fail — and the live store grew two
+    such rows within hours of the sweep that removed them. The enum is kept
+    honest at the SOURCES instead (the CLI's ``--status`` Choice, the MCP and
+    board defaults), which reject a bad value before it is ever a card.
+
+    This is not a silent fallback: both sides shout. They simply refuse to
+    take the fleet offline, or to cost someone their card, because one row
+    came from the future.
 
     Parameters
     ----------
@@ -819,9 +827,8 @@ def _validate_tasks(tasks: object, source: str, strict: bool = True) -> None:
     source : str
         A label for error messages (the store path or ``"<save_tasks>"``).
     strict : bool
-        ``True`` on the write path (raise on any fault). ``False`` on the
-        read path (raise only on structural corruption; warn on unknown or
-        unsatisfied *values*).
+        Accepted for backwards compatibility; no longer changes behaviour.
+        Value faults warn on both paths, structural faults raise on both.
 
     Raises
     ------
@@ -864,8 +871,22 @@ def _validate_tasks(tasks: object, source: str, strict: bool = True) -> None:
                     f"rather than rewriting the card."
                 )
             )
-            if strict:
-                raise TaskValidationError(msg)
+            # WARN, never raise — on BOTH the read and the write side.
+            #
+            # Operator ruling 2026-07-10: "カードが書けないということはなしで
+            # 大丈夫です、warning で十分です." A status value must never cost
+            # someone their card. Strictness here is a trap on a SHARED store:
+            # save_tasks validates the whole task list, so one legacy row
+            # written by an older agent makes every *other* agent's write
+            # fail — the writer-side twin of the reader-side outage this
+            # branch was created to fix (incident-cancelled-enum-version-skew,
+            # 2026-07-10). The store held 2 such rows within hours of the
+            # pending sweep, minted by agents still on the old default.
+            #
+            # The enum is kept honest at the SOURCES instead — the CLI, MCP
+            # and board no longer offer abolished values — and this warning
+            # names the row so it gets migrated. Nothing is silently accepted;
+            # nothing is destructively refused.
             _warn_tolerated(msg)
         # A `blocked` card MUST name its gate. "Blocked with no blocker" is
         # stuck-and-silent: nobody can clear a gate nobody stated. Found
@@ -880,8 +901,9 @@ def _validate_tasks(tasks: object, source: str, strict: bool = True) -> None:
                     f"that reflects reality: 'in_progress' if you are working it, "
                     f"'deferred' if it can wait."
                 )
-                if strict:
-                    raise TaskValidationError(msg)
+                # WARN, never raise — same ruling as the status enum above. A
+                # missing blocker is a quality problem worth shouting about;
+                # it is not worth destroying the caller's card over.
                 _warn_tolerated(msg)
         priority = task.get("priority")
         # bool is an int subclass — reject it explicitly so `priority: true`

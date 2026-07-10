@@ -61,15 +61,28 @@ STALE_ACTIVE_STATUSES = frozenset({"in_progress", "blocked"})
 ENV_STALE_ACTIVE_HOURS = "SCITEX_TODO_STALE_ACTIVE_HOURS"
 DEFAULT_STALE_ACTIVE_HOURS = 2.0
 
-#: Statuses that count as PENDING backlog — accepted but not yet started.
-PENDING_STATUSES = frozenset({"pending"})
+#: Statuses that count as BACKLOG — accepted but not yet started.
+#:
+#: ``deferred`` is the backlog state since ``pending`` was abolished
+#: (2026-07-10). Until this was repointed the set was ``{"pending"}``, which
+#: matches no card in the store — so the backlog nudge below fired for nobody
+#: and 400+ deferred cards aged in total silence. "Someday" with no reminder
+#: is just "never", written down.
+BACKLOG_STATUSES = frozenset({"deferred"})
 
-#: Env override + default for the PENDING-backlog threshold (hours). 24 h
-#: is deliberately MUCH more lenient than the 2 h stale-active clock:
-#: a pending card is work the owner has not yet begun, so a forgotten one
-#: only becomes worth a nudge after a full day of no triage / no start.
+#: Deprecated alias, kept for out-of-tree importers.
+PENDING_STATUSES = BACKLOG_STATUSES
+
+#: Env override + default for the BACKLOG threshold (hours). 24 h is
+#: deliberately MUCH more lenient than the 2 h stale-active clock: a deferred
+#: card is work the owner consciously has not begun, so a forgotten one only
+#: becomes worth a nudge after a full day of no triage / no start.
+ENV_BACKLOG_NUDGE_HOURS = "SCITEX_TODO_BACKLOG_NUDGE_HOURS"
+#: Deprecated alias for the env knob. Both names are honoured (see
+#: ``_backlog_nudge_hours``) so existing crontabs keep working.
 ENV_PENDING_NUDGE_HOURS = "SCITEX_TODO_PENDING_NUDGE_HOURS"
 DEFAULT_PENDING_NUDGE_HOURS = 24.0
+DEFAULT_BACKLOG_NUDGE_HOURS = DEFAULT_PENDING_NUDGE_HOURS
 
 #: Cap on ids rendered per owner line so a runaway lane doesn't produce
 #: a multi-kilobyte nudge body.
@@ -104,10 +117,17 @@ def _stale_active_hours(stale_hours: float | None) -> float:
 
 
 def _pending_nudge_hours(pending_hours: float | None) -> float:
-    """Resolve the pending-backlog threshold, honoring the env override."""
-    return _resolve_hours(
-        pending_hours, ENV_PENDING_NUDGE_HOURS, DEFAULT_PENDING_NUDGE_HOURS
-    )
+    """Resolve the backlog threshold, honoring either env override.
+
+    ``SCITEX_TODO_BACKLOG_NUDGE_HOURS`` is the current name;
+    ``SCITEX_TODO_PENDING_NUDGE_HOURS`` still works so live crontabs written
+    against the old name do not silently revert to the 24 h default.
+    """
+    if pending_hours is not None:
+        return pending_hours
+    if os.environ.get(ENV_BACKLOG_NUDGE_HOURS) is not None:
+        return _resolve_hours(None, ENV_BACKLOG_NUDGE_HOURS, DEFAULT_BACKLOG_NUDGE_HOURS)
+    return _resolve_hours(None, ENV_PENDING_NUDGE_HOURS, DEFAULT_BACKLOG_NUDGE_HOURS)
 
 
 def _owner_of(task: dict) -> str:
@@ -245,13 +265,19 @@ def detect_pending_backlog(
     now: _dt.datetime | None = None,
     pending_hours: float | None = None,
 ) -> dict[str, list[StaleCard]]:
-    """Group untouched PENDING-backlog cards by OWNER.
+    """Group untouched BACKLOG cards by OWNER.
 
-    Mirrors :func:`detect_stale_active` but targets ``status=pending``
+    Mirrors :func:`detect_stale_active` but targets ``status=deferred``
     cards — work the owner accepted but never started — against the more
-    lenient :data:`DEFAULT_PENDING_NUDGE_HOURS` threshold (env-overridable
-    via :data:`ENV_PENDING_NUDGE_HOURS`). Same owner-resolution,
+    lenient :data:`DEFAULT_BACKLOG_NUDGE_HOURS` threshold (env-overridable
+    via :data:`ENV_BACKLOG_NUDGE_HOURS`). Same owner-resolution,
     oldest-first ordering, and missing-timestamp-is-stale semantics.
+
+    This is the "you have untouched backlog" reminder, and it deliberately
+    keeps its oldest-first ordering: it reports a fact. It is NOT the
+    pick-for-action draw — that lives in :mod:`scitex_todo._backlog_triage`
+    and weights toward RECENT cards, because handing an agent its oldest
+    cards to work is handing it its least valuable ones.
 
     Pure: no env reads beyond the threshold resolution, no network.
     """
@@ -332,6 +358,9 @@ def pending_backlog_nudge_line(
 __all__ = [
     "STALE_ACTIVE_STATUSES",
     "PENDING_STATUSES",
+    "BACKLOG_STATUSES",
+    "ENV_BACKLOG_NUDGE_HOURS",
+    "DEFAULT_BACKLOG_NUDGE_HOURS",
     "ENV_STALE_ACTIVE_HOURS",
     "DEFAULT_STALE_ACTIVE_HOURS",
     "ENV_PENDING_NUDGE_HOURS",

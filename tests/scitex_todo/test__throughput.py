@@ -211,17 +211,21 @@ class TestClassify:
 
 
 class TestWipGate:
-    """Open-task count + warn/refuse thresholds."""
+    """Open-task count + warn/refuse thresholds.
+
+    Thresholds fire on WIP (``in_progress``), not on backlog. See
+    :class:`TestWipIsNotBacklog` for the incident this distinction closes.
+    """
 
     def test_count_open_excludes_done(self):
         # Arrange
         tasks = [
             {"agent": "a", "status": "done"},
-            {"agent": "a", "status": "pending"},
+            {"agent": "a", "status": "deferred"},
         ]
         # Act
         n = count_open_for_agent(tasks, "a")
-        # Assert
+        # Assert — deferred is open ("not now" is not "never").
         assert n == 1
 
     def test_count_open_excludes_goal(self):
@@ -245,7 +249,7 @@ class TestWipGate:
     def test_warn_at_limit(self, env):
         # Arrange
         env.set(ENV_WIP_LIMIT, "3")
-        tasks = [{"agent": "a", "status": "pending"} for _ in range(3)]
+        tasks = [{"agent": "a", "status": "in_progress"} for _ in range(3)]
         # Act
         rep = evaluate_wip(tasks, agent="a")
         # Assert
@@ -254,7 +258,7 @@ class TestWipGate:
     def test_refuse_at_2x(self, env):
         # Arrange
         env.set(ENV_WIP_LIMIT, "3")
-        tasks = [{"agent": "a", "status": "pending"} for _ in range(6)]
+        tasks = [{"agent": "a", "status": "in_progress"} for _ in range(6)]
         # Act
         rep = evaluate_wip(tasks, agent="a")
         # Assert
@@ -263,11 +267,129 @@ class TestWipGate:
     def test_below_limit_no_warn(self, env):
         # Arrange
         env.set(ENV_WIP_LIMIT, "10")
-        tasks = [{"agent": "a", "status": "pending"} for _ in range(3)]
+        tasks = [{"agent": "a", "status": "in_progress"} for _ in range(3)]
         # Act
         rep = evaluate_wip(tasks, agent="a")
         # Assert
         assert rep.is_warn is False
+
+
+class TestWipIsNotBacklog:
+    """Regression: the gate must bound work STARTED, never work RECORDED.
+
+    Incident 2026-07-10 — the gate counted every card that was not
+    ``done``/``goal``, so ``deferred``, ``failed`` and ``cancelled`` cards all
+    consumed budget forever. After the pending→deferred migration agents hit
+    "88 open tasks (>= 2x limit 20)" and could no longer file *anything* —
+    including the incident card describing the jam — while their own board
+    digest showed 2 open. Two predicates, one name.
+    """
+
+    def test_backlog_does_not_consume_wip(self, env):
+        # Arrange — a huge parked backlog, nothing actually in flight.
+        env.set(ENV_WIP_LIMIT, "3")
+        tasks = (
+            [{"agent": "a", "status": "deferred"} for _ in range(50)]
+            + [{"agent": "a", "status": "blocked"} for _ in range(50)]
+            + [{"agent": "a", "status": "cancelled"} for _ in range(50)]
+            + [{"agent": "a", "status": "failed"} for _ in range(50)]
+        )
+        # Act
+        rep = evaluate_wip(tasks, agent="a")
+        # Assert — 200 cards, zero of them in flight.
+        assert rep.wip_count == 0
+        assert rep.is_warn is False
+        assert rep.is_refuse is False
+
+    def test_terminal_cards_drop_out_of_open_count(self):
+        # Arrange — the docstring at the top of _throughput.py always claimed
+        # this; the code did not do it until 2026-07-10.
+        tasks = [
+            {"agent": "a", "status": "cancelled"},
+            {"agent": "a", "status": "failed"},
+            {"agent": "a", "status": "done"},
+            {"agent": "a", "status": "goal"},
+            {"agent": "a", "status": "blocked"},
+        ]
+        # Act
+        n = count_open_for_agent(tasks, "a")
+        # Assert — only the blocked card is still open.
+        assert n == 1
+
+    def test_gate_and_digest_agree_on_open(self):
+        # Arrange — the exact shape that made sac say 88 and its digest say 2.
+        tasks = [{"agent": "a", "status": "deferred"} for _ in range(86)] + [
+            {"agent": "a", "status": "in_progress"} for _ in range(2)
+        ]
+        # Act
+        rep = evaluate_wip(tasks, agent="a")
+        # Assert — one number for backlog, a different one for in-flight,
+        # and neither is silently doing the other's job.
+        assert rep.open_count == 88
+        assert rep.wip_count == 2
+
+    def test_recording_an_incident_is_never_refused(self, tmp_path, env, monkeypatch):
+        # Arrange — agent is far past 2x its WIP limit.
+        from scitex_todo._paths import ENV_TASKS
+        from scitex_todo._store import add_task
+
+        env.set(ENV_WIP_LIMIT, "1")
+        store = tmp_path / "tasks.yaml"
+        store.write_text("tasks: []\n")
+        # add_task's post-write card-event dispatcher resolves the DEFAULT
+        # store, not the one passed in — so without this the suite reads and
+        # writes the operator's live ~/.scitex/todo/tasks.yaml.
+        monkeypatch.setenv(ENV_TASKS, str(store))
+        for i in range(10):
+            add_task(
+                id=f"wip-{i}",
+                title=f"in flight {i}",
+                status="in_progress",
+                agent="a",
+                store=store,
+            )
+
+        # Act — filing (not starting) a card must still succeed.
+        rec = add_task(
+            id="incident-the-gate-is-jammed",
+            title="[INCIDENT] cannot file anything",
+            status="blocked",
+            blocker="operator-decision",
+            agent="a",
+            store=store,
+        )
+
+        # Assert
+        assert rec["id"] == "incident-the-gate-is-jammed"
+
+    def test_starting_more_work_past_2x_is_still_refused(self, tmp_path, env, monkeypatch):
+        # Arrange — the gate must not become a no-op.
+        from scitex_todo._model import TaskValidationError
+        from scitex_todo._paths import ENV_TASKS
+        from scitex_todo._store import add_task
+
+        env.set(ENV_WIP_LIMIT, "1")
+        store = tmp_path / "tasks.yaml"
+        store.write_text("tasks: []\n")
+        monkeypatch.setenv(ENV_TASKS, str(store))
+        for i in range(2):
+            add_task(
+                id=f"wip-{i}",
+                title=f"in flight {i}",
+                status="in_progress",
+                agent="a",
+                store=store,
+            )
+
+        # Act / Assert
+        with pytest.raises(TaskValidationError, match="in_progress"):
+            add_task(
+                id="one-too-many",
+                title="starting a third",
+                status="in_progress",
+                agent="a",
+                store=store,
+            )
 
 
 # --------------------------------------------------------------------------- #
