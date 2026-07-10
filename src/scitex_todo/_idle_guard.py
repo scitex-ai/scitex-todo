@@ -116,7 +116,7 @@ def _reason(agent: str, cards: list) -> str:
         "  3. Genuinely can't proceed → set it blocked with a reason: "
         "scitex-todo update <id> --status blocked --blocker <operator-decision|dependency> "
         "and comment WHY.\n"
-        "Reverting to pending (not currently working it) is also fine. "
+        "  4. Not actually working it → scitex-todo update <id> --status deferred.\n"
         "Once none of your in-progress cards are stale, you may stop."
     )
 

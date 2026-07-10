@@ -32,10 +32,18 @@ from dataclasses import dataclass, field
 
 DONE_STATUSES = frozenset({"done"})
 # Closed/terminal states — a card here is NOT open and does NOT count as
-# backlog. ``cancelled`` (GitHub "closed as not planned") joins done/
-# deferred/failed so a cancelled card drops out of ``open_count`` exactly
-# like ``done`` (see the open-count gate in ``aggregate``).
-TERMINAL_STATUSES = frozenset({"done", "deferred", "failed", "cancelled"})
+# backlog. ``cancelled`` (GitHub "closed as not planned") joins done/failed
+# so a cancelled card drops out of ``open_count`` exactly like ``done``
+# (see the open-count gate in ``aggregate``).
+#
+# ``deferred`` is NOT terminal (operator ruling, 2026-07-10: "deferred は終了
+# ではない"). A deferred card is OPEN — consciously not being worked right now,
+# but still carried. It was wrongly listed here because ``deferred`` had been
+# overloaded as the close status (``scitex-todo close`` and the board's close
+# button both wrote status=deferred, since no ``closed`` value existed). That
+# overload made 354 open cards silently vanish from every active view.
+# Closing now writes ``cancelled``; ``deferred`` means "not now", and shows.
+TERMINAL_STATUSES = frozenset({"done", "failed", "cancelled"})
 WIP_EXCLUDED_STATUSES = frozenset({"done", "goal"})  # goal-tier umbrellas don't consume WIP.
 
 # ``--notify`` truncation constants. The first 10 RUNNABLE-first tasks

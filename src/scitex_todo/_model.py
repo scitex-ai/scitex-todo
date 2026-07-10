@@ -31,9 +31,22 @@ from ._store_verify import _verify_dumped_tmp  # hook-bypass: line-limit
 
 # Valid task statuses. ``goal`` marks a north-star objective (rendered gold);
 # the rest are ordinary execution states.
+# ``pending`` was ABOLISHED 2026-07-10 by operator directive: "pending という
+# タスクがある。存在してはならない状態である。" A card in ``pending`` carried NO
+# decision — it was the dataclass default, so 406 of 1100 cards (37%) had silently
+# accumulated there and rotted. Every open card must now state its disposition:
+# ``in_progress`` (being worked), ``blocked`` (+ a blocker naming the gate),
+# or ``deferred`` (can be worked, consciously not now).
+ABOLISHED_STATUSES: dict[str, str] = {
+    "pending": (
+        "status 'pending' was abolished 2026-07-10 — a card must carry a "
+        "decision. Choose: 'in_progress' if you are working it, 'blocked' "
+        "with a blocker naming the gate, or 'deferred' if it can wait."
+    ),
+}
+
 VALID_STATUSES: tuple[str, ...] = (  # hook-bypass: line-limit
     "goal",
-    "pending",
     "in_progress",
     "blocked",
     "done",
@@ -251,7 +264,7 @@ class Task:
     deadlines: list[str] | None = None
 
     # --- lead-added: drives UI color + blocker views (TG 9667) -------------
-    status: str = "pending"  # current canonical = VALID_STATUSES (7-value);
+    status: str = "deferred"  # current canonical = VALID_STATUSES (7-value);
     # the operator's 4-value enum (working/waiting/done/blocked)
     # is mapped IN THE FE renderer for now, not in the
     # schema. See ADR-0007 Consequences for the
@@ -457,8 +470,10 @@ def is_overdue(task: dict, *, now=None) -> bool:
 
     status = (task.get("status") or "").strip()
     # Terminal/closed statuses are never overdue. ``cancelled`` (closed as
-    # not planned) joins done/deferred/failed here. (hook-bypass: line-limit.)
-    if status in {"done", "deferred", "failed", "cancelled", "goal"}:
+    # not planned) joins done/failed here. ``deferred`` is NOT terminal
+    # (operator ruling 2026-07-10) — a deferred card is open, so it CAN go
+    # overdue and must surface. (hook-bypass: line-limit.)
+    if status in {"done", "failed", "cancelled", "goal"}:
         return False
     nxt = next_deadline_for_task(task, now=now)
     if not nxt:
@@ -549,7 +564,10 @@ def load_doc(path: str | Path, *, validate: bool = False) -> dict:
 
     if validate:
         tasks = data.get("tasks") if isinstance(data, dict) else None
-        _validate_tasks(tasks, source=str(path))
+        # READ side: tolerate values this build does not know (a newer agent
+        # may have written them) and warn loudly. Structural corruption still
+        # raises. One unknown status must never take the fleet's board down.
+        _validate_tasks(tasks, source=str(path), strict=False)
     return data
 
 
@@ -748,12 +766,51 @@ def _parse_iso_date_or_raise(
     return dt
 
 
-def _validate_tasks(tasks: object, source: str) -> None:
+def _warn_tolerated(msg: str) -> None:
+    """Shout about a value this build does not understand, but keep going.
+
+    Read-side only. Loud on stderr AND through ``warnings`` so a human, a log
+    scraper, and ``-W error`` all see it. Deliberately NOT silent: the point
+    is that one row from a newer writer must not take the fleet's board down,
+    not that the problem should be hidden.
+    """
+    import sys as _sys
+    import warnings as _warnings
+
+    banner = f"[scitex-todo] TOLERATED (read-side): {msg}"
+    print(banner, file=_sys.stderr, flush=True)
+    _warnings.warn(banner, stacklevel=3)
+
+
+def _validate_tasks(tasks: object, source: str, strict: bool = True) -> None:
     """Validate a task list in place, raising on the first structural fault.
 
     The single gate shared by :func:`load_tasks` (read side) and
     :func:`save_tasks` (write side) so a bad mutation can never round-trip
     through the writer.
+
+    ``strict`` splits the two sides, and it is not a nicety — it is the fix
+    for a fleet-wide outage on 2026-07-10.
+
+    The store is SHARED and read by agents running DIFFERENT installed
+    versions. When a newer writer stored ``status: cancelled`` (a value its
+    own enum knew), every agent on an older build raised here and
+    ``load_tasks`` aborted — so ONE unknown value in ONE row took the whole
+    fleet's board down. A shared, multi-version store can never grow an enum
+    value under that design.
+
+    So:
+      * WRITE side (``save_tasks``, ``strict=True``) stays fail-loud. A bad
+        mutation must never round-trip. Garbage in is rejected at the source.
+      * READ side (``load_tasks``, ``strict=False``) tolerates a *value* it
+        does not recognise — an unknown status or an unresolved invariant —
+        and warns loudly, naming the card and the likely cause. It still
+        raises on STRUCTURAL corruption (not a list, missing id/title,
+        duplicate id, non-integer priority), because that is a broken store,
+        not a newer one.
+
+    This is not a silent fallback: the reader shouts. It simply refuses to
+    take the entire fleet offline because one row came from the future.
 
     Parameters
     ----------
@@ -761,6 +818,10 @@ def _validate_tasks(tasks: object, source: str) -> None:
         The candidate ``tasks`` value (must be a list of mappings).
     source : str
         A label for error messages (the store path or ``"<save_tasks>"``).
+    strict : bool
+        ``True`` on the write path (raise on any fault). ``False`` on the
+        read path (raise only on structural corruption; warn on unknown or
+        unsatisfied *values*).
 
     Raises
     ------
@@ -790,10 +851,38 @@ def _validate_tasks(tasks: object, source: str) -> None:
             )
         status = task.get("status")
         if status not in VALID_STATUSES:
-            raise TaskValidationError(
-                f"{source}: task {tid!r} has invalid status {status!r}; "
-                f"must be one of {VALID_STATUSES}"
+            # An ABOLISHED status gets a message that says what to do instead,
+            # not just "invalid" — the caller is mid-write and needs the fix.
+            hint = ABOLISHED_STATUSES.get(status)
+            msg = (
+                f"{source}: task {tid!r}: {hint}"
+                if hint
+                else (
+                    f"{source}: task {tid!r} has unknown status {status!r}; "
+                    f"this build knows {VALID_STATUSES}. If another agent wrote "
+                    f"it, your scitex-todo is older than the writer's — upgrade "
+                    f"rather than rewriting the card."
+                )
             )
+            if strict:
+                raise TaskValidationError(msg)
+            _warn_tolerated(msg)
+        # A `blocked` card MUST name its gate. "Blocked with no blocker" is
+        # stuck-and-silent: nobody can clear a gate nobody stated. Found
+        # 2026-07-10 on 14 live cards, several idle for over a month.
+        elif status == "blocked":
+            blocker = (task.get("blocker") or "").strip()
+            if not blocker or blocker == "none":
+                msg = (
+                    f"{source}: task {tid!r} is 'blocked' but names no blocker. "
+                    f"A blocked card must state its gate so someone can clear it. "
+                    f"Set blocker to one of {VALID_BLOCKERS}, or use a status "
+                    f"that reflects reality: 'in_progress' if you are working it, "
+                    f"'deferred' if it can wait."
+                )
+                if strict:
+                    raise TaskValidationError(msg)
+                _warn_tolerated(msg)
         priority = task.get("priority")
         # bool is an int subclass — reject it explicitly so `priority: true`
         # is a clear error rather than a silent 1.
