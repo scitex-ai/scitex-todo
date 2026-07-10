@@ -124,6 +124,12 @@
       globalThis.STX &&
       globalThis.STX.timelineControls) ||
     null;
+  // Per-agent lane avatar (10-agent-avatar.js); null until wired in.
+  var _avatar =
+    (typeof globalThis !== "undefined" &&
+      globalThis.STX &&
+      globalThis.STX.agentAvatar) ||
+    null;
   function controlsHtml(countLabel) {
     if (_ctl && _ctl.controlsHtml)
       return _ctl.controlsHtml(TL, countLabel, escapeHtml);
@@ -230,6 +236,12 @@
     });
     var total = cursor + 6;
     var ticks = makeTicks(ws, we, width, TICKS);
+    // "By Agent" rows get the avatar (10-agent-avatar.js) once wired in.
+    var isAgentLane = TL.view !== "project";
+    var laneStatus =
+      _avatar && _avatar.laneStatusMap
+        ? _avatar.laneStatusMap(lanes, byLane, ms)
+        : {};
 
     // axis
     var svg = "";
@@ -255,11 +267,11 @@
         "</text>";
     });
     svg += "</g>";
-    // lane stripes + labels
     svg += '<g class="tl-lanes">';
     lanes.forEach(function (lane, i) {
       var yTop = laneTops[i];
       var laneH = laneHeights[i];
+      var cy = yTop + laneH / 2;
       svg +=
         '<rect class="tl-lane-bg' +
         (i % 2 === 0 ? " tl-lane-bg--even" : "") +
@@ -269,12 +281,14 @@
         (LABEL_W + width) +
         '" height="' +
         laneH +
-        '"></rect>' +
-        '<text class="tl-lane-label" x="8" y="' +
-        (yTop + laneH / 2 + 4) +
-        '">' +
-        escapeHtml(_truncate(lane, 22)) +
-        "</text>";
+        '"></rect>';
+      svg += _avatar
+        ? _avatar.laneLabelSvg(cy, lane, laneStatus[lane], isAgentLane)
+        : '<text class="tl-lane-label" x="8" y="' +
+          (cy + 4) +
+          '">' +
+          escapeHtml(lane) +
+          "</text>";
     });
     svg += "</g>";
     // dependency lines (drawn before the dots) — connect dot centres
@@ -302,8 +316,9 @@
     });
     svg += "</g>";
     // dots — ONE per task (the scatter). Click → detail drawer; hover →
-    // the <title> tooltip. Completed dots fade; live (still-running) ones
-    // keep a bright ring so you can spot what's being processed.
+    // the cursor-OFFSET tip from 12-hover-tip.js (data-tip), because the
+    // native SVG tooltip sat UNDER the cursor (operator msg 944). Completed
+    // dots fade; live ones keep a bright ring.
     svg += '<g class="tl-dots">';
     dots.forEach(function (d) {
       var done = d.ev.ended_at != null;
@@ -324,11 +339,11 @@
         d.cx +
         '" cy="' +
         d.cy +
-        '" r="7" onclick="openDetail(\'' +
-        escapeHtml(String(d.ev.id)) +
-        "')\"><title>" +
+        '" r="7" data-tip="' +
         escapeHtml(title) +
-        "</title></circle>";
+        '" onclick="openDetail(\'' +
+        escapeHtml(String(d.ev.id)) +
+        "')\"></circle>";
     });
     svg += "</g>";
 

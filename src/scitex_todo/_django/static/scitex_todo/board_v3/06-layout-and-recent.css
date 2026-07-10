@@ -37,7 +37,9 @@
   color: var(--text-muted);
   font: inherit;
   font-size: 0.82rem;
-  padding: 5px 12px;
+  /* 5px 12px → 4px 8px (operator 2026-07-10 filterbar-overflow batch):
+   * 4 segment buttons × 8px saved keeps the seg ~32px narrower. */
+  padding: 4px 8px;
   cursor: pointer;
   transition:
     background 100ms ease,
@@ -61,31 +63,31 @@
   color: #fff;
 }
 
-/* === Recent-count pill (always visible when N > 0) ===================== */
+/* === Recent-count pill (always visible when N > 0) =====================
+ * Operator 2026-07-10 (だせえ): the gold-bordered glowing pill read as
+ * tacky chrome. Muted to quiet text — no border/background, muted color,
+ * smaller — with the click affordance kept via underline-on-hover. The
+ * --on (sort=recent active) state stays visible but calm: gold TEXT only,
+ * no fill/glow. */
 .filt-recent-count {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--gold);
-  background: rgba(255, 193, 7, 0.1);
-  color: var(--gold);
-  font-size: 0.78rem;
-  font-weight: 700;
+  padding: 2px 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
   cursor: pointer;
-  transition:
-    background 100ms ease,
-    transform 100ms ease;
+  transition: color 100ms ease;
 }
 .filt-recent-count:hover {
-  background: rgba(255, 193, 7, 0.2);
-  transform: scale(1.03);
+  color: var(--text);
+  text-decoration: underline;
 }
 .filt-recent-count--on {
-  background: var(--gold);
-  color: #000;
-  box-shadow: 0 0 8px 1px rgba(255, 193, 7, 0.45);
+  color: var(--gold);
 }
 
 /* === NEW badge on cards (sort=recent + <24h) =========================== */

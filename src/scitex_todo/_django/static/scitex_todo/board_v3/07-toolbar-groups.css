@@ -36,13 +36,13 @@
   flex-wrap: wrap;
 }
 
-/* ── Between-group gap on .fb-right (24-32 px) ────────────────────────── */
+/* ── Between-group gap on .fb-right ───────────────────────────────────── */
 .fb-right {
-  /* Bump the inter-child gap so groups + dividers sit with breathing
-   * room. The legacy gap:6px in 01-filterbar.css is too tight once
-   * the children are no longer the raw controls but logical group
-   * wrappers. */
-  gap: 20px;
+  /* Was 20px; operator 2026-07-10 (すげえはみ出してる): the wide gap +
+   * flex-shrink:0 pushed the band to 1760px and off-viewport. 10px keeps
+   * group separation (the dividers carry most of it) without inflating
+   * the row width. */
+  gap: 10px;
 }
 
 /* ── Inside-group gap for the .fb-center SEARCH/FILTER group ──────────── */
