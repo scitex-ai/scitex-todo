@@ -46,6 +46,31 @@
     return Math.abs(h) % 360;
   }
 
+  // Fleet brand map — SAME identity system as the Telegram bot avatars the
+  // operator already recognises (claude-code-telegrammer
+  // docs/icons/generate_bot_icons.py: solid brand colour + short white
+  // label; exact hexes for cct/writer/figrecipe/dsp come from that file,
+  // the rest are matched to the live avatars: Hub=blue, TODO=teal,
+  // SAC=green, NV=purple, Grant=orange, DEV=slate, pClew=teal-green).
+  // Agents NOT in this map fall back to hash-hue + initials, so a new
+  // agent still gets a stable, distinct icon with zero config.
+  var BRAND = {
+    "scitex-todo": { label: "TODO", color: "#1f8a70" },
+    "scitex-hub": { label: "Hub", color: "#2f6fd0" },
+    "scitex-dev": { label: "DEV", color: "#5a6472" },
+    "scitex-agent-container": { label: "SAC", color: "#2fae5f" },
+    "grant": { label: "Grant", color: "#e8963e" },
+    "scitex-writer": { label: "Writer", color: "#5865c9" },
+    "neurovista": { label: "NV", color: "#7d4fd3" },
+    "paper-scitex-clew": { label: "pClew", color: "#22a08a" },
+    "claude-code-telegrammer": { label: "CCT", color: "#1a2a40" },
+    "figrecipe": { label: "Fig", color: "#d97742" },
+    "scitex-dsp": { label: "DSP", color: "#6c8ba0" },
+  };
+  function brandFor(id) {
+    return BRAND[String(id == null ? "" : id)] || null;
+  }
+
   // "worker-telegrammer-orochi" -> "WO", "ywata-note-win" -> "YW",
   // single-token ids (e.g. "orochi") -> first two chars "OR".
   function initialsFor(id) {
@@ -62,6 +87,14 @@
   // the window) — renders the muted "--none" ring in that case.
   function avatarSvg(cx, cy, r, id, status) {
     var ringCls = "tl-avatar-ring--" + (status ? String(status) : "none");
+    // Brand-mapped agents render with their fleet colour + short label (the
+    // identity the operator already knows from the Telegram avatars);
+    // unknown agents keep the deterministic hash-hue + initials fallback.
+    var brand = brandFor(id);
+    var fill = brand ? brand.color : "hsl(" + hueFor(id) + ",55%,42%)";
+    var label = brand ? brand.label : initialsFor(id);
+    var textCls =
+      "tl-avatar-text" + (label.length > 3 ? " tl-avatar-text--sm" : "");
     return (
       '<g class="tl-avatar">' +
       '<circle class="tl-avatar-ring ' +
@@ -79,15 +112,17 @@
       cy +
       '" r="' +
       r +
-      '" style="fill:hsl(' +
-      hueFor(id) +
-      ',55%,42%)"></circle>' +
-      '<text class="tl-avatar-text" x="' +
+      '" style="fill:' +
+      fill +
+      '"></circle>' +
+      '<text class="' +
+      textCls +
+      '" x="' +
       cx +
       '" y="' +
       (cy + 3) +
       '" text-anchor="middle">' +
-      _esc(initialsFor(id)) +
+      _esc(label) +
       "</text>" +
       "</g>"
     );

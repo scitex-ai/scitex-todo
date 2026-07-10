@@ -86,6 +86,14 @@
 {% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/timelineGeo.js' %}"></script>
 {% comment %}
+  10-agent-avatar.js — per-agent lane avatar (fleet brand colour/label, or
+  deterministic hash-hue + initials fallback) + status ring for the Timeline
+  raster. MUST load BEFORE timeline.js: publishes window.STX.agentAvatar,
+  captured like _pack/_geo; timeline.js falls back to plain-text lane labels
+  when absent. Operator 2026-07-10 (todo-board-agent-icons-status-rings).
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/10-agent-avatar.js' %}"></script>
+{% comment %}
   timelineGate.js — anti-flash change-detection gate for the Timeline raster.
   MUST load BEFORE timeline.js: publishes window.STX.timelineGate (rasterSig +
   a stateful gate that skips identical 4s rebuilds and preserves .tl-scroll

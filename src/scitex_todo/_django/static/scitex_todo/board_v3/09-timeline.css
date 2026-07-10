@@ -132,6 +132,12 @@
   font-family: ui-monospace, monospace;
   pointer-events: none;
 }
+/* Brand labels longer than 3 chars (TODO / Grant / Writer / pClew) shrink to
+ * stay inside the r=9 circle; 2-3 char labels keep the full 9px. */
+.tl-avatar-text--sm {
+  font-size: 6px;
+  letter-spacing: -0.02em;
+}
 .tl-avatar-ring {
   fill: none;
   stroke-width: 2.5;
