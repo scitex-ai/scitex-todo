@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import click
 
+from ._compat import spec_command_kwargs, spec_group_kwargs
+
 
 def register(main: click.Group) -> None:
     """Attach the ``migration`` noun group to the root group."""
@@ -27,11 +29,14 @@ def register(main: click.Group) -> None:
 
 @click.group(
     "migration",
-    help=(
-        "Directory-card migration verbs (operator directive 2026-06-13).\n\n"
-        "`migration plan` is the read-side dry-run scanner emitted to the "
-        "operator for review. `migration apply` (gated, operator-blessed) "
-        "performs the actual flat-to-directory conversion."
+    **spec_group_kwargs(
+        summary="Directory-card migration verbs (operator directive 2026-06-13).",
+        description=(
+            "`migration plan` is the read-side dry-run scanner emitted "
+            "for operator review. `migration apply` (gated, operator-"
+            "blessed) performs the actual flat-to-directory conversion."
+        ),
+        command_categories=(("Core", ("plan", "apply")),),
     ),
 )
 def migration_group() -> None:
@@ -40,14 +45,18 @@ def migration_group() -> None:
 
 @migration_group.command(
     "plan",
-    help=(
-        "Scan every discovered lane + the global store; emit a plan "
-        "classifying each row as CANONICAL or NEEDS_* (DIR / NOTE / TITLE "
-        "/ COMMENT). NO writes. The output is the artifact shown to the "
-        "operator before any real `migration apply`.\n\n"
-        "Example:\n"
-        "  $ scitex-todo migration plan --json\n"
-        "  $ scitex-todo migration plan --markdown"
+    **spec_command_kwargs(
+        summary="Scan every lane + emit a plan classifying each row (no writes).",
+        description=(
+            "Scans every discovered lane + the global store; classifies "
+            "each row as CANONICAL or NEEDS_* (DIR / NOTE / TITLE / "
+            "COMMENT). The output is the artifact shown to the operator "
+            "before any real `migration apply`."
+        ),
+        examples=(
+            ("{prog} migration plan --json", "Machine-readable plan."),
+            ("{prog} migration plan --markdown", "Operator-facing review doc."),
+        ),
     ),
 )
 @click.option(
@@ -94,14 +103,18 @@ def migration_plan_cmd(as_json: bool, as_md: bool) -> None:
 
 @migration_group.command(
     "apply",
-    help=(
-        "Run the directory-card migration: for every row that needs it, "
-        "write tasks/<id>/README.md (atomic + bytes-equal verified) "
-        "THEN strip the migrated fields from tasks.yaml. Per-lane git "
-        "commit at end. Operator-blessed for ALL 7 lanes (2026-06-13).\n\n"
-        "Example:\n"
-        "  $ scitex-todo migration apply --dry-run\n"
-        "  $ scitex-todo migration apply -y"
+    **spec_command_kwargs(
+        summary="Run the directory-card migration across every discovered lane.",
+        description=(
+            "For every row that needs it, writes tasks/<id>/README.md "
+            "(atomic + bytes-equal verified) THEN strips the migrated "
+            "fields from tasks.yaml. Per-lane git commit at the end. "
+            "Operator-blessed for ALL 7 lanes (2026-06-13)."
+        ),
+        examples=(
+            ("{prog} migration apply --dry-run", "Preview without writing."),
+            ("{prog} migration apply -y", "Run the migration."),
+        ),
     ),
 )
 @click.option(

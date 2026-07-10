@@ -30,6 +30,7 @@ import sys
 
 import click
 
+from ._compat import spec_command_kwargs, spec_group_kwargs
 from ._mcp_channel_verb import attach_channel_verb
 from ._mcp_install import _fleet_apply_one, attach_install_verbs  # noqa: F401
 from ._mcp_tools import (  # noqa: F401
@@ -101,11 +102,12 @@ def _attach_unified_start(group: click.Group) -> None:
 
     @group.command(
         "start",
-        help=(
-            "Launch the scitex-todo MCP server (stdio): serves the card tools "
-            "AND pushes this agent's digest.\n\n"
-            "Example:\n  scitex-todo mcp start            # stdio (tools + digest)\n"
-            "  scitex-todo mcp start --http --port 7700   # HTTP, tools only"
+        **spec_command_kwargs(
+            summary="Launch the MCP server (stdio): tools + this agent's digest push.",
+            examples=(
+                ("{prog} mcp start", "stdio (tools + digest)."),
+                ("{prog} mcp start --http --port 7700", "HTTP, tools only."),
+            ),
         ),
     )
     @click.option("--http", is_flag=True, help="Use HTTP transport (tools only, no digest push).")
@@ -157,9 +159,12 @@ def _fallback_mcp_group() -> click.Group:
 
     @click.group(
         "mcp",
-        help=(
-            "MCP server subcommands.\n\n"
-            "Required: start, doctor, list-tools, install (SciTeX §3)."
+        **spec_group_kwargs(
+            summary="MCP server subcommands (SciTeX §3 required four).",
+            description="Required: start, doctor, list-tools, install.",
+            command_categories=(
+                ("Core", ("start", "doctor", "list-tools", "install", "install-fleet", "channel")),
+            ),
         ),
     )
     def mcp_group() -> None:
@@ -171,9 +176,9 @@ def _fallback_mcp_group() -> click.Group:
     # ── doctor ────────────────────────────────────────────────────────── #
     @mcp_group.command(
         "doctor",
-        help=(
-            "Self-diagnose the MCP install.\n\n"
-            "Example:\n  scitex-todo mcp doctor --json"
+        **spec_command_kwargs(
+            summary="Self-diagnose the MCP install.",
+            examples=(("{prog} mcp doctor --json", "Structured diagnostic."),),
         ),
     )
     @click.option("--json", "as_json", is_flag=True)
@@ -223,9 +228,10 @@ def _fallback_mcp_group() -> click.Group:
     # ── list-tools ────────────────────────────────────────────────────── #
     @mcp_group.command(
         "list-tools",
-        help=(
-            "Enumerate registered MCP tools.\n\n"
-            "Example:\n  scitex-todo mcp list-tools -vv"
+        **spec_command_kwargs(
+            summary="Enumerate registered MCP tools.",
+            description="Verbosity is additive (-v|-vv|-vvv), matching the §1a ladder.",
+            examples=(("{prog} mcp list-tools -vv", "Names + full descriptions."),),
         ),
     )
     @click.option("-v", "verbosity", count=True, help="Repeat for more detail.")
@@ -265,7 +271,13 @@ def register(main: click.Group) -> None:
         from scitex_dev._mcp_cli import attach_mcp_subcommands  # type: ignore
 
         @click.group(
-            "mcp", help="MCP server subcommands (start/doctor/list-tools/install)."
+            "mcp",
+            **spec_group_kwargs(
+                summary="MCP server subcommands (SciTeX §3 required four).",
+                command_categories=(
+                    ("Core", ("start", "doctor", "list-tools", "install", "install-fleet", "channel")),
+                ),
+            ),
         )
         def mcp_group() -> None:
             pass

@@ -8,9 +8,16 @@ Permanent version of the lead's one-time GitHub→board sync (a2a
 against existing tasks (pr_url / fuzzy title-token overlap), and emits
 done updates + new-task records.
 
-Split out of :mod:`scitex_todo._cli._stats` to keep each verb under the
-file-size budget. The aggregation function is still shared with ``stats``
-and the WIP gate via :mod:`scitex_todo._throughput`.
+Shares the aggregator in :mod:`scitex_todo._throughput` with the
+``print-stats`` verb (sibling module ``_stats.py``) so the WIP-
+validation gate, the board's compact `Δ delta` pill, and the
+``print-stats --notify`` body all derive from one shared definition of
+"open" / "stale" / "completed".
+
+Extracted from ``_cli/_stats.py`` (which had grown past the 512-line
+convention) into its own module — same split shape every other
+verb-group in this package already uses. Pure extraction: no behavior
+change. ``register()`` is called from ``_stats.py``.
 """
 
 from __future__ import annotations
@@ -20,6 +27,8 @@ import subprocess
 from datetime import datetime, timezone
 
 import click
+
+from ._compat import spec_command_kwargs
 
 from .._model import load_tasks
 from .._paths import resolve_tasks_path
@@ -58,7 +67,29 @@ def _is_ci_speedup(title: str) -> bool:
     return "ci-speedup" in t or "l1-l5" in t.lower()
 
 
-@click.command(name="sync-github")
+@click.command(
+    name="sync-github",
+    **spec_command_kwargs(
+        summary="Permanent GitHub -> board sync (merged PRs -> done tasks).",
+        description=(
+            "Pulls merged PRs across ywatanabe1989/* since the given "
+            "date (default: today UTC). Matches each PR against "
+            "existing tasks (pr_url first, then fuzzy title-token "
+            "overlap within the same project). Done-flips matches; "
+            "creates status=done records for unmatched PRs "
+            "(project=repo, agent='lead'). Mechanical CI-speedup PRs "
+            "(title contains 'ci-speedup' or 'L1-L5') collapse into a "
+            "single bundle record per day. The aggregation function is "
+            "shared with `print-stats` and the WIP gate via "
+            "scitex_todo._throughput.",
+        ),
+        examples=(
+            ("{prog} sync-github --dry-run", "Preview the planned actions."),
+            ("{prog} sync-github --since 2026-06-01 -y", "Sync since a date."),
+            ("{prog} sync-github -y", "Cron / scripted use."),
+        ),
+    ),
+)
 @click.option(
     "--since",
     default=None,
@@ -213,4 +244,9 @@ def sync_github_cmd(
     )
 
 
-__all__ = ["sync_github_cmd"]
+def register(group: click.Group) -> None:
+    """Attach the `sync-github` verb to the root CLI."""
+    group.add_command(sync_github_cmd)
+
+
+__all__ = ["register", "sync_github_cmd"]

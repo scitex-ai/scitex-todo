@@ -22,6 +22,8 @@ import json
 
 import click
 
+from ._compat import spec_command_kwargs
+
 from .._model import load_tasks
 from .._paths import resolve_tasks_path
 from .._throughput import (
@@ -29,7 +31,6 @@ from .._throughput import (
     aggregate,
     build_notify_body,
 )
-from ._sync_github import sync_github_cmd
 
 
 # --------------------------------------------------------------------------- #
@@ -106,7 +107,36 @@ def _rollup(path, by, since, fmt):
     return tasks, rows, out
 
 
-@click.command(name="print-stats")
+# §1f (audit-cli, WARN-only): 'print' is a non-canonical synonym for
+# 'show' per doctrine 06_noun-verb-catalog.md. NOT renamed in this pass
+# — renaming is a breaking change requiring the 3-phase deprecation
+# ladder (doctrine 11_deprecation.md: Warn+forward -> Error -> Removed),
+# out of scope for the mechanical §4b CliHelp migration this pass made.
+# TODO(Phase-W): introduce `show-stats` as the canonical name, register
+# `print-stats` as a hidden warn-forward alias via
+# scitex_dev._ecosystem.click_compat.deprecated_alias() once that
+# helper ships, then retire `print-stats` in a later minor per the
+# ladder. 2026-07-10 CLI-standardization audit pass.
+@click.command(
+    name="print-stats",
+    **spec_command_kwargs(
+        summary="Print throughput stats (per-agent / project / host).",
+        description=(
+            "Operator standing direction (lead a2a "
+            "4b23ebc177944deaa7549e256e9a375a, 2026-06-12): every agent "
+            "must measure its own creation vs completion rate so "
+            "completion > creation discipline holds across the fleet. "
+            "--notify pushes the per-agent summary so receivers "
+            "self-correct hourly.",
+        ),
+        examples=(
+            ("{prog} print-stats --by agent --since 2026-06-01", "Windowed stats."),
+            ("{prog} print-stats --by agent --notify", "Push per-agent summaries."),
+            ("{prog} print-stats --by agent --notify --nudge-quiet", "Also nudge stalled agents."),
+            ("{prog} print-stats --by project --format json", "Machine-readable, by project."),
+        ),
+    ),
+)
 @click.option(
     "--by",
     type=click.Choice(["agent", "project", "host"]),
@@ -325,8 +355,10 @@ def _emit_stale_active_nudges(tasks: list[dict]) -> None:
 
 
 def register(group: click.Group) -> None:
+    from . import _sync_github
+
     group.add_command(stats_cmd)
-    group.add_command(sync_github_cmd)
+    _sync_github.register(group)
 
 
-__all__ = ["register", "stats_cmd", "sync_github_cmd"]
+__all__ = ["register", "stats_cmd"]

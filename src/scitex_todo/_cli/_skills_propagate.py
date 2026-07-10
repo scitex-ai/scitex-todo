@@ -34,6 +34,8 @@ import json
 
 import click
 
+from ._compat import spec_command_kwargs
+
 
 _DEFAULT_SKILL_FIELD = "metadata.labels.skills"
 
@@ -215,10 +217,13 @@ def build_manifest_cmd():
 
     @click.command(
         "manifest",
-        help=(
-            "Print the canonical skill-ID manifest (skills that should "
-            "appear in every fleet agent's required_skills list).\n\n"
-            "Example:\n  scitex-todo skills manifest --json"
+        **spec_command_kwargs(
+            summary="Print the canonical skill-ID manifest.",
+            description=(
+                "The skills that should appear in every fleet agent's "
+                "required_skills list, per _skills/manifest.yaml.",
+            ),
+            examples=(("{prog} skills manifest --json", "Machine-readable manifest."),),
         ),
     )
     @click.option(
@@ -246,19 +251,26 @@ def build_propagate_cmd():
 
     @click.command(
         "propagate",
-        help=(
-            "Append the canonical scitex-todo skill IDs to every agent's "
-            "spec.yaml skill list (fleet-wide required_skills "
-            "propagation).\n\n"
-            "Default field is ``metadata.labels.skills`` (v3 CSV). Use "
-            "--field to target the YAML-list flavor "
-            "(``spec.required_skills``). Idempotent — repeated runs are a "
-            "no-op.\n\n"
-            "Example:\n"
-            "  scitex-todo skills propagate "
-            "--agents-dir ~/.scitex/agent-container/agents --dry-run\n"
-            "  scitex-todo skills propagate "
-            "--agents-dir ~/.scitex/agent-container/agents -y"
+        **spec_command_kwargs(
+            summary="Append canonical scitex-todo skill IDs to every agent's spec.yaml.",
+            description=(
+                "Fleet-wide required_skills propagation. Default field "
+                "is `metadata.labels.skills` (v3 CSV) — use --field to "
+                "target the YAML-list flavor (`spec.required_skills`). "
+                "Idempotent — repeated runs are a no-op.",
+            ),
+            examples=(
+                (
+                    "{prog} skills propagate "
+                    "--agents-dir ~/.scitex/agent-container/agents --dry-run",
+                    "Preview the planned edits.",
+                ),
+                (
+                    "{prog} skills propagate "
+                    "--agents-dir ~/.scitex/agent-container/agents -y",
+                    "Apply the propagation.",
+        ),
+            ),
         ),
     )
     @click.option(

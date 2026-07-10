@@ -12,6 +12,8 @@ import json
 
 import click
 
+from ._compat import spec_command_kwargs, spec_group_kwargs
+
 _SKILLS_PKG = "scitex-todo"
 
 
@@ -31,14 +33,23 @@ def _list_skill_files(root):
     return sorted(p for p in root.rglob("*.md") if p.is_file() and p.name != "SKILL.md")
 
 
-@click.group("skills", help="List / get / install the bundled agent skills.")
+@click.group(
+    "skills",
+    **spec_group_kwargs(
+        summary="List / get / install the bundled agent skills.",
+        command_categories=[("Core", ["list", "get", "install", "manifest", "propagate"])],
+    ),
+)
 def skills_grp() -> None:
     """Agent-facing skills bundled with scitex-todo (`_skills/scitex-todo/`)."""
 
 
 @skills_grp.command(
     "list",
-    help="List bundled skill files.\n\nExample:\n  scitex-todo skills list --json",
+    **spec_command_kwargs(
+        summary="List bundled skill files.",
+        examples=(("{prog} skills list --json", "Machine-readable listing."),),
+    ),
 )
 @click.option("--json", "as_json", is_flag=True, help="Emit machine-readable JSON.")
 def skills_list_cmd(as_json: bool) -> None:
@@ -57,7 +68,10 @@ def skills_list_cmd(as_json: bool) -> None:
 
 @skills_grp.command(
     "get",
-    help="Print a skill file by NAME.\n\nExample:\n  scitex-todo skills get 02_quick-start",
+    **spec_command_kwargs(
+        summary="Print a skill file by NAME.",
+        examples=(("{prog} skills get 02_quick-start", "Print one skill file."),),
+    ),
 )
 @click.argument("name")
 @click.option("--json", "as_json", is_flag=True, help="Emit machine-readable JSON.")
@@ -87,9 +101,14 @@ def skills_get_cmd(name: str, as_json: bool) -> None:
 
 @skills_grp.command(
     "install",
-    help=(
-        "Symlink the bundled skills into ~/.scitex/dev/skills/scitex-todo/.\n\n"
-        "Example:\n  scitex-todo skills install --claude-symlink"
+    **spec_command_kwargs(
+        summary="Symlink the bundled skills into ~/.scitex/dev/skills/scitex-todo/.",
+        description=(
+            "Symlinks by default (--no-link copies instead). "
+            "--claude-symlink also exposes the install at "
+            "~/.claude/skills/scitex/ for Claude Code consumers.",
+        ),
+        examples=(("{prog} skills install --claude-symlink", "Install + link for Claude Code."),),
     ),
 )
 @click.option(
