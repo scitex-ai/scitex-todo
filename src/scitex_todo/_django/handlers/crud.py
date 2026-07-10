@@ -97,6 +97,30 @@ def _slug_id(title: str, taken: set[str]) -> str:
     return f"{base}-{n}"
 
 
+def _check_status(payload: dict):
+    """400 on a status outside VALID_STATUSES; None when absent or valid.
+
+    The board is a SOURCE, and sources stay strict — a human picking from a
+    select must never mint a value the enum doesn't know. The save path
+    itself only WARNS on bad values now (operator ruling 2026-07-10: a
+    status must never cost someone their card on the SHARED store, where
+    the bad row may be another, newer agent's), so the 400 that used to
+    fall out of save-side validation must be raised here on purpose.
+    """
+    from scitex_todo._model import VALID_STATUSES
+
+    status = payload.get("status")
+    if status is not None and status not in VALID_STATUSES:
+        return JsonResponse(
+            {
+                "error": f"invalid status {status!r}; "
+                f"choose one of {sorted(VALID_STATUSES)}"
+            },
+            status=400,
+        )
+    return None
+
+
 def _save(tasks, board):
     """Validate + persist, resetting the cache. Returns an error response or None."""
     from scitex_todo import TaskValidationError
@@ -187,6 +211,10 @@ def handle_create(request, board):
         if k in payload and k not in _handled and payload[k] not in (None, "", [])
     }
 
+    err = _check_status(payload)
+    if err:
+        return err
+
     from scitex_todo import TaskValidationError
     from scitex_todo._store import add_task
 
@@ -197,7 +225,7 @@ def handle_create(request, board):
             board.store_path,
             id=new_id,
             title=title.strip(),
-            status=payload.get("status") or "pending",
+            status=payload.get("status") or "deferred",
             assignee=owner,
             created_by=created_by,
             **extra_fields,
@@ -224,6 +252,9 @@ def handle_update(request, board):
     task_id = payload.get("id")
     if not isinstance(task_id, str) or not task_id:
         return JsonResponse({"error": "update requires 'id'"}, status=400)
+    err = _check_status(payload)
+    if err:
+        return err
 
     tasks = list(board.tasks)
     task = next((t for t in tasks if t["id"] == task_id), None)

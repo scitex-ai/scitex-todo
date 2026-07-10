@@ -57,14 +57,16 @@ def test_load_tasks_raises_on_duplicate_id(tmp_path):
         load_tasks(store)
 
 
-def test_load_tasks_raises_on_bad_status(tmp_path):
-    # Arrange
+def test_load_tasks_warns_on_bad_status_but_loads(tmp_path):
+    # Arrange — tolerant read (2026-07-10 outage fix): an unknown VALUE must
+    # never take the whole store down; it may have been written by a newer
+    # agent. Structural corruption (missing title, dup id) still raises.
     store = _write(tmp_path, "tasks:\n  - {id: x, title: X, status: wibble}\n")
     # Act
-    ctx = pytest.raises(TaskValidationError)
-    # Assert
-    with ctx:
-        load_tasks(store)
+    with pytest.warns(UserWarning, match="wibble"):
+        tasks = load_tasks(store)
+    # Assert — the row survives, shouted about but readable.
+    assert tasks[0]["status"] == "wibble"
 
 
 def test_load_tasks_raises_on_missing_title(tmp_path):
@@ -221,9 +223,11 @@ def test_save_tasks_raises_on_bad_priority_type(tmp_path):
 
 def test_save_tasks_does_not_write_when_validation_fails(tmp_path):
     # Arrange
+    # STRUCTURAL fault (missing title) still fails loud and writes nothing.
+    # (A bad status VALUE now warns-and-writes — operator ruling 2026-07-10.)
     store = _write(tmp_path, "tasks:\n  - {id: a, title: First, status: done}\n")
     before = store.read_text(encoding="utf-8")
-    bad = [{"id": "a", "title": "First", "status": "bogus"}]
+    bad = [{"id": "a", "status": "done"}]
     with contextlib.suppress(TaskValidationError):
         save_tasks(bad, store)
     # Act
@@ -989,13 +993,13 @@ def test_task_dataclass_from_dict_carries_title():
     assert t.title == "X"
 
 
-def test_task_dataclass_from_dict_defaults_status_to_pending():
-    # Arrange
+def test_task_dataclass_from_dict_defaults_status_to_deferred():
+    # Arrange — `deferred` replaced the abolished `pending` as the default.
     from scitex_todo._model import Task
     # Act
     t = Task.from_dict(_MIN_TASK_PAYLOAD)
     # Assert
-    assert t.status == "pending"
+    assert t.status == "deferred"
 
 
 def test_task_dataclass_from_dict_defaults_comments_to_empty_list():
@@ -1093,7 +1097,7 @@ def test_task_dataclass_to_dict_omits_default_fields():
     # Act
     d = t.to_dict()
     # Assert
-    assert d == {"id": "x", "title": "X", "status": "pending"}
+    assert d == {"id": "x", "title": "X", "status": "deferred"}
 
 
 def test_task_dataclass_to_dict_omits_empty_depends_on(tmp_path):

@@ -337,7 +337,7 @@ def add_task(
     *,
     id: str,
     title: str,
-    status: str = "pending",
+    status: str = "deferred",
     scope: str | None = None,
     assignee: str | None = None,
     priority: int | None = None,
@@ -446,33 +446,41 @@ def add_task(
         doc, tasks = _read_write_doc(resolved, missing_ok=True)
         # WIP-validation gate (operator standing direction via lead a2a
         # `d99b8de6839d46e586e4ee692f43c1d9` + ``5acfbb5d0db44db8a7fa4f70c399d539``,
-        # 2026-06-12). Count the new task's agent's open tasks (status NOT
-        # in {done, goal}) BEFORE the append; WARN to stderr at the
-        # threshold, HARD REFUSE (raise) at 2x. Goal-tier umbrellas are
-        # excluded — they accumulate by design, not by WIP-failure.
+        # 2026-06-12). WARN to stderr at the limit, HARD REFUSE at 2x.
+        #
+        # The gate bounds work STARTED, never work RECORDED. It fires only
+        # when the incoming card is itself ``in_progress``, and it counts only
+        # the agent's other ``in_progress`` cards. Filing a card as blocked /
+        # deferred / goal — writing down a thing that exists — is always
+        # allowed. The inverse jammed the board shut on 2026-07-10: the gate
+        # counted every non-{done,goal} card, so after the pending→deferred
+        # migration agents could not even record the incident they were in.
+        # A gate that stops you from writing down a fire is not a WIP limit.
+        #
         # Direct YAML hand-edits bypass this gate by design (CLI/MCP
         # path enforcement only — operator wants the CLI/MCP path made
         # fat so hand-edits are unnecessary, not policed).
         agent_for_wip = new.get("agent")
-        if agent_for_wip and new.get("status") not in _wip_excluded_statuses():
+        if agent_for_wip and new.get("status") in _wip_statuses():
             from ._throughput import evaluate_wip
 
             rep = evaluate_wip(tasks, agent_for_wip)
             if rep is not None and rep.is_refuse:
                 raise TaskValidationError(
                     f"WIP gate refuses add: {rep.agent} already has "
-                    f"{rep.open_count} open tasks (>= 2 × limit "
-                    f"{rep.limit}). Close existing tasks before adding "
-                    f"more — see SCITEX_TODO_WIP_LIMIT env."
+                    f"{rep.wip_count} tasks in_progress (>= 2 × limit "
+                    f"{rep.limit}). Finish or park one before starting "
+                    f"another — or file this card as deferred/blocked, "
+                    f"which is never gated. See SCITEX_TODO_WIP_LIMIT env."
                 )
             if rep is not None and rep.is_warn:
                 import sys
 
                 print(
                     f"WARN: WIP gate — {rep.agent} now has "
-                    f"{rep.open_count + 1} open tasks (limit {rep.limit}). "
-                    f"Completion is not keeping up with creation; close "
-                    f"existing before adding more.",
+                    f"{rep.wip_count + 1} tasks in_progress (limit "
+                    f"{rep.limit}). Completion is not keeping up with "
+                    f"starts; finish existing before starting more.",
                     file=sys.stderr,
                 )
         tasks.append(new)
@@ -502,13 +510,30 @@ def add_task(
     return result
 
 
-def _wip_excluded_statuses() -> frozenset[str]:
-    """Re-export from ``_throughput`` so the gate's exclusion list stays
-    a single source of truth (lead-confirmed ``5acfbb5d`` — exclude
-    ``done`` + ``goal``)."""
-    from ._throughput import WIP_EXCLUDED_STATUSES
+def _stamp_deferred_at(task: dict, prior_status: str | None) -> None:
+    """Set ``deferred_at`` when a card ENTERS the backlog, and only then.
 
-    return WIP_EXCLUDED_STATUSES
+    Fires on the TRANSITION only. A card that was already ``deferred`` is left
+    untouched — including the legacy cards that carry no stamp at all, whose
+    age ``deferred_since`` reads from ``created_at``. Stamping those on any
+    passing mutation (a comment, a reassign) would silently reset the rot clock
+    on the entire existing backlog, which is the one thing this field exists to
+    prevent. A card that leaves and later returns is re-stamped, because that
+    genuinely is a new spell in the backlog.
+    """
+    from ._backlog_triage import BACKLOG_STATUS, FIELD_DEFERRED_AT
+
+    if task.get("status") != BACKLOG_STATUS or prior_status == BACKLOG_STATUS:
+        return
+    task[FIELD_DEFERRED_AT] = _utc_now_iso()
+
+
+def _wip_statuses() -> frozenset[str]:
+    """Re-export from ``_throughput`` so the gate's predicate stays a single
+    source of truth. WIP is work in flight — ``in_progress`` — not backlog."""
+    from ._throughput import WIP_STATUSES
+
+    return WIP_STATUSES
 
 
 def update_task(
@@ -558,6 +583,12 @@ def update_task(
                 # value wins over the auto-stamp.
                 if "last_activity" not in fields:
                     task["last_activity"] = _utc_now_iso()
+                # Stamp the backlog age clock ONCE, on entry into `deferred`.
+                # Never on a re-defer: `last_activity` above already moved, and
+                # if the age clock moved with it, a card re-deferred every week
+                # would read as permanently young and could never expire. The
+                # rot would be real and invisible at the same time.
+                _stamp_deferred_at(task, prior_status)
                 _save_doc_unlocked(doc, resolved, tasks=tasks)
                 result = dict(task)
                 transitioned_to_done = (
@@ -1138,6 +1169,11 @@ def comment_task(
             if isinstance(c, dict) and isinstance(c.get("author"), str)
         ]
         comments.append(entry)
+        # A comment IS activity. Without this stamp, an actively-discussed
+        # card reads as "untouched" to every staleness signal (idle_guard,
+        # list-stale, digests) — found 2026-07-10 when the idle guard kept
+        # flagging a card that had received progress comments minutes earlier.
+        target["last_activity"] = entry["ts"]
         _model._save_doc_unlocked(doc, tasks_path, tasks=tasks)
         owner = target.get("agent") or target.get("assignee")
         # Persistent role lists (ADR-0009) — captured under the lock so

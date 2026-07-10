@@ -51,8 +51,10 @@ from typing import Callable, Iterable, Optional
 # Statuses we consider "open work that may have merged". A card outside
 # this set (done / deferred / failed / cancelled / goal) is never
 # auto-closed — ``cancelled`` is already terminal, so it returns
-# ACTION_SKIP_NOT_OPEN like the other closed states.
-OPEN_STATUSES: frozenset[str] = frozenset({"pending", "in_progress", "blocked"})
+# ACTION_SKIP_NOT_OPEN like the other closed states. ``deferred`` stays out
+# on purpose: parked work must not be closed behind the owner's back by a
+# PR that happened to merge. (``pending`` was abolished 2026-07-10.)
+OPEN_STATUSES: frozenset[str] = frozenset({"in_progress", "blocked"})
 
 # Merge-state vocabulary the seam returns. "unknown" is the fail-soft value
 # for any parse/network error — it NEVER closes a card.

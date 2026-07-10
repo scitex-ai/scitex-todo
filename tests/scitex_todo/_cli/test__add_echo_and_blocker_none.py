@@ -78,43 +78,77 @@ def test_add_json_stdout_is_pure_json(tmp_path):
 # --------------------------------------------------------------------------- #
 # Bug 2: blocker=none is lenient on a non-blocked status                       #
 # --------------------------------------------------------------------------- #
-def test_add_pending_blocker_none_succeeds(tmp_path):
+def test_add_deferred_blocker_none_succeeds(tmp_path):
     # Arrange
     runner = CliRunner()
     store = _store_path(tmp_path)
     # Act
     result = _add(
-        runner, store, "x", "X", "--status", "pending", "--blocker", "none"
+        runner, store, "x", "X", "--status", "deferred", "--blocker", "none"
     )
     # Assert
     assert result.exit_code == 0, result.output
 
 
-def test_add_pending_blocker_none_stores_no_active_blocker(tmp_path):
+def test_add_deferred_blocker_none_stores_no_active_blocker(tmp_path):
     # Arrange
     runner = CliRunner()
     store = _store_path(tmp_path)
-    _add(runner, store, "x", "X", "--status", "pending", "--blocker", "none")
+    _add(runner, store, "x", "X", "--status", "deferred", "--blocker", "none")
     # Act
     tasks = _model.load_tasks(store)
     # Assert — the "none" sentinel is normalized away on a non-blocked row.
-    assert tasks[0]["status"] == "pending"
+    assert tasks[0]["status"] == "deferred"
     assert tasks[0].get("blocker") in (None,)
     assert "blocker" not in tasks[0]
 
 
-def test_add_pending_real_blocker_still_errors(tmp_path):
+def test_add_deferred_real_blocker_still_errors(tmp_path):
     """A REAL blocker variant on a non-blocked status STILL fails loud."""
     # Arrange
     runner = CliRunner()
     store = _store_path(tmp_path)
     # Act
     result = _add(
-        runner, store, "y", "Y", "--status", "pending", "--blocker", "compute"
+        runner, store, "y", "Y", "--status", "deferred", "--blocker", "compute"
     )
     # Assert
     assert result.exit_code != 0
     assert "blocker" in result.output.lower()
+
+
+def test_add_rejects_abolished_pending_at_the_cli_boundary(tmp_path):
+    """`pending` must be unreachable from the CLI.
+
+    Save-side validation only WARNS on an unknown status (operator ruling
+    2026-07-10: a status value must never cost someone their card), so the
+    enum is held honest at the SOURCES instead. This is one of them.
+    """
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    # Act
+    result = _add(runner, store, "p", "P", "--status", "pending")
+    # Assert
+    assert result.exit_code != 0
+    assert "pending" in result.output
+
+
+def test_add_defaults_to_deferred(tmp_path):
+    """A new card carries a real decision; the default is the backlog.
+
+    The old default was `pending`, and it kept minting abolished cards from
+    every agent still on an older build — two appeared in the live store
+    within hours of the sweep that removed them.
+    """
+    # Arrange
+    runner = CliRunner()
+    store = _store_path(tmp_path)
+    # Act
+    _add(runner, store, "d", "D")
+    tasks = _model.load_tasks(store)
+    # Assert
+    assert tasks[0]["status"] == "deferred"
 
 
 # --------------------------------------------------------------------------- #

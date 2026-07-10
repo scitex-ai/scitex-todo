@@ -131,8 +131,8 @@ def test_add_json_emits_status(tmp_path):
     result = runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store, "--json"])
     # Act
     payload = json.loads(result.output.strip())
-    # Assert
-    assert payload["status"] == "pending"
+    # Assert — add's default status is `deferred` since pending was abolished.
+    assert payload["status"] == "deferred"
 
 
 def test_add_duplicate_id_exits_nonzero(tmp_path):
@@ -577,7 +577,7 @@ def test_list_env_scope_default(tmp_path, env):
     runner.invoke(main, ["add", "--assignee", "agent:test-suite", "b", "B", "--tasks", store, "--scope", "agent:other"])
     env.set("SCITEX_TODO_SCOPE", "agent:lead")
     # Act — no --scope here so $SCITEX_TODO_SCOPE='agent:lead' applies via the filter path.
-    result = runner.invoke(main, ["list-tasks", "--tasks", store, "--json", "--status", "pending"])
+    result = runner.invoke(main, ["list-tasks", "--tasks", store, "--json", "--status", "deferred"])
     rows = json.loads(result.output.strip())
     # Assert
     assert {r["id"] for r in rows} == {"a"}
@@ -630,12 +630,12 @@ def test_list_filter_multi_status_unions(tmp_path):
     runner = CliRunner()
     store = _store_path(tmp_path)
     _seed_for_pr66(runner, store)
-    # Act — pending (px1, py1, py2) + in_progress (px2) = all 4
+    # Act — deferred (px1, py1, py2) + in_progress (px2) = all 4
     result = runner.invoke(
         main,
         [
             "list-tasks", "--tasks", store, "--json",
-            "--status", "pending", "--status", "in_progress",
+            "--status", "deferred", "--status", "in_progress",
         ],
     )
     rows = json.loads(result.output.strip())
@@ -709,8 +709,8 @@ def test_summary_emits_done_count(tmp_path):
     assert info["by_status"]["done"] == 1
 
 
-def test_summary_emits_pending_count(tmp_path):
-    # Arrange
+def test_summary_emits_deferred_count(tmp_path):
+    # Arrange — add's default status is `deferred` since pending was abolished.
     runner = CliRunner()
     store = _store_path(tmp_path)
     runner.invoke(main, ["add", "--assignee", "agent:test-suite", "a", "A", "--tasks", store])
@@ -719,7 +719,7 @@ def test_summary_emits_pending_count(tmp_path):
     # Act
     info = json.loads(result.output.strip())
     # Assert
-    assert info["by_status"]["pending"] == 1
+    assert info["by_status"]["deferred"] == 1
 
 
 # --------------------------------------------------------------------------- #

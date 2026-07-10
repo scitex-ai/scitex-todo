@@ -655,8 +655,8 @@ def test_summary_returns_done_count(tmp_path):
     assert info["by_status"]["done"] == 1
 
 
-def test_summary_returns_pending_count(tmp_path):
-    # Arrange
+def test_summary_returns_deferred_count(tmp_path):
+    # Arrange — add_task's default status is `deferred` since the abolition.
     from scitex_todo._mcp_server import add_task, summarize_tasks
 
     store = str(tmp_path / "tasks.yaml")
@@ -667,7 +667,7 @@ def test_summary_returns_pending_count(tmp_path):
     # Act
     info = json.loads(asyncio.run(_call_tool(summarize_tasks, tasks_path=store)))
     # Assert
-    assert info["by_status"]["pending"] == 1
+    assert info["by_status"]["deferred"] == 1
 
 
 def test_where_returns_resolved_path(tmp_path):

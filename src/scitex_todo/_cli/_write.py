@@ -125,7 +125,7 @@ def _emit(payload, *, as_json: bool, human: str) -> None:
 @click.option(
     "--status",
     type=_STATUS_CHOICE,
-    default="pending",
+    default="deferred",
     show_default=True,
     help="Initial status (closed enum — see VALID_STATUSES).",
 )

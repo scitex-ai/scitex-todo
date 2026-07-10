@@ -16,8 +16,13 @@ Semantics (composition over invention):
   1. Append a structured comment ``[CLOSED] {reason}`` via
      :func:`scitex_todo._store.comment_task` — the reason is now in
      ``task.comments[]`` (Gitea-shaped activity log).
-  2. Flip ``status`` to ``"deferred"`` (an existing VALID_STATUS that
-     matches the closing semantics — "we are not pursuing this now").
+  2. Flip ``status`` to ``"cancelled"`` — the real terminal "closed as not
+     planned" state. This verb previously wrote ``"deferred"`` because no
+     closed-ish status existed; that overload made ``deferred`` mean both
+     "closed" and "not now" at once, and TERMINAL_STATUSES resolved the
+     ambiguity by treating every deferred card as closed. 354 open cards
+     silently left the active board. Operator ruling 2026-07-10: "deferred
+     は終了ではない" — ``deferred`` is OPEN. ``close`` writes ``cancelled``.
   3. Stamp ``_log_meta.closed_{at,by}`` (UTC ISO + author precedence
      chain identical to ``comment`` / ``done``).
 
@@ -41,7 +46,7 @@ from ._write import _TASKS_OPTION, _emit
         description=(
             "The NON-SUCCESS terminal-state verb (doctrine §1d: exactly "
             "`done` for success and `close --reason` for everything else). "
-            "Composes `comment_task` + `update_task(status=deferred)` and "
+            "Composes `comment_task` + `update_task(status=cancelled)` and "
             "stamps _log_meta.closed_{at,by}. Reason is REQUIRED."
         ),
         examples=(
@@ -89,7 +94,7 @@ def close_cmd(task_id, reason, by, as_json, dry_run, yes, tasks_path) -> None:
     if dry_run:
         click.echo(
             f"# dry-run: would close task_id={task_id!r} reason={reason_text!r} "
-            f"by={by!r}  (append comment + status=deferred + stamp closed_at/by)"
+            f"by={by!r}  (append comment + status=cancelled + stamp closed_at/by)"
         )
         return
 
@@ -107,7 +112,7 @@ def close_cmd(task_id, reason, by, as_json, dry_run, yes, tasks_path) -> None:
         merged = _store.update_task(
             tasks_path,
             task_id,
-            status="deferred",
+            status="cancelled",
             _log_meta=log_meta,
         )
     except _store.TaskNotFoundError as exc:

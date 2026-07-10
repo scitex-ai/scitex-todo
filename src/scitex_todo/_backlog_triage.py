@@ -1,0 +1,318 @@
+#!/usr/bin/env python3
+"""Deferred-backlog triage: consume the fresh, expire the rotten.
+
+Operator doctrine (2026-07-10): *"deferred が負債なんですよね... 消費が蓄積を
+上回らないといけない... 古くなれば古くなるほど腐ります；タスクは鮮度が重要
+です."* A deferred card is debt, and debt that nobody looks at is debt that
+compounds.
+
+Two mechanisms, deliberately NOT one sample:
+
+**Pick-for-action** draws a handful of deferred cards and demands a decision
+on each. It is weighted toward RECENCY. The first design here was the
+opposite — oldest-first — and the operator caught it: drawing the oldest cards
+feeds an agent the least valuable work it owns, so the backlog ends up eating
+the agent. Fresh deferred work still has value; consume it before it rots.
+
+**Expiry** handles the other tail. Old cards are never offered for action.
+Past :data:`DEFAULT_EXPIRY_DAYS` the default outcome is cancellation, and an
+owner must actively rescue a card to keep it. Age is a reason to discard, not
+a reason to lovingly re-triage.
+
+The anti-rot invariant
+----------------------
+A "keep deferred" decision must never restamp the age clock. If it did, a card
+re-deferred every week would read as permanently young and would never expire —
+the rot would be real and invisible at the same time. So the age clock reads
+:func:`deferred_since`, which is stamped once on entry into ``deferred`` and
+never reset, and the re-draw cooldown reads ``last_triaged_at``, which is a
+separate field that exists only to stop the same card being drawn twice in a
+row. One field for truth, one for politeness.
+"""
+
+from __future__ import annotations
+
+import datetime as _dt
+import math
+import os
+import random
+from dataclasses import dataclass
+
+from ._throughput import _now_utc, _parse_iso
+
+#: The status this module governs.
+BACKLOG_STATUS = "deferred"
+
+#: How many cards one triage sweep puts in front of an owner. Small on
+#: purpose: a list of 50 "decide these" cards is itself ignorable.
+ENV_TRIAGE_SAMPLE = "SCITEX_TODO_TRIAGE_SAMPLE"
+DEFAULT_TRIAGE_SAMPLE = 10
+
+#: Recency half-life. A card deferred this many hours ago is half as likely to
+#: be drawn as one deferred just now. 7 days keeps roughly the last fortnight
+#: in play and lets the rest drift toward expiry.
+ENV_HALF_LIFE_HOURS = "SCITEX_TODO_TRIAGE_HALF_LIFE_HOURS"
+DEFAULT_HALF_LIFE_HOURS = 24.0 * 7
+
+#: A card drawn and kept-deferred is not drawn again for this long. Without a
+#: cooldown the weighting alone would re-draw the same fresh cards every sweep
+#: and never show the owner anything else.
+ENV_COOLDOWN_HOURS = "SCITEX_TODO_TRIAGE_COOLDOWN_HOURS"
+DEFAULT_COOLDOWN_HOURS = 72.0
+
+#: Past this age a deferred card is expired: proposed for cancellation rather
+#: than offered for action.
+ENV_EXPIRY_DAYS = "SCITEX_TODO_DEFERRED_EXPIRY_DAYS"
+DEFAULT_EXPIRY_DAYS = 30.0
+
+#: Field names. ``deferred_at`` is the age clock (stamped once, never reset);
+#: ``last_triaged_at`` is the cooldown clock.
+FIELD_DEFERRED_AT = "deferred_at"
+FIELD_LAST_TRIAGED_AT = "last_triaged_at"
+
+
+def _env_float(name: str, default: float) -> float:
+    """Env override read at CALL time; a junk value falls back, never raises."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
+def deferred_since(task: dict) -> _dt.datetime | None:
+    """When this card entered the backlog — the age clock.
+
+    Prefers the explicit ``deferred_at`` stamp. Falls back to ``created_at``
+    for the cards that predate the stamp, and NEVER to ``last_activity``: a
+    comment, a re-defer, or a bulk migration all touch ``last_activity``, and
+    reading it here would reset the rot clock on exactly the cards that have
+    been sitting longest.
+    """
+    return _parse_iso(task.get(FIELD_DEFERRED_AT) or task.get("created_at"))
+
+
+def age_hours(task: dict, now: _dt.datetime | None = None) -> float | None:
+    """Hours since the card entered the backlog. None when undatable."""
+    since = deferred_since(task)
+    if since is None:
+        return None
+    cur = now or _now_utc()
+    return (cur - since).total_seconds() / 3600.0
+
+
+def is_expired(
+    task: dict,
+    *,
+    now: _dt.datetime | None = None,
+    expiry_days: float | None = None,
+) -> bool:
+    """True when a deferred card has aged past the expiry horizon.
+
+    An undatable card is NOT expired. We refuse to propose destroying a card
+    on the basis of a timestamp we could not read.
+    """
+    if task.get("status") != BACKLOG_STATUS:
+        return False
+    age = age_hours(task, now or _now_utc())
+    if age is None:
+        return False
+    days = expiry_days if expiry_days is not None else _env_float(ENV_EXPIRY_DAYS, DEFAULT_EXPIRY_DAYS)
+    return age >= days * 24.0
+
+
+def _in_cooldown(task: dict, now: _dt.datetime, cooldown_hours: float) -> bool:
+    """True when this card was triaged too recently to draw again."""
+    last = _parse_iso(task.get(FIELD_LAST_TRIAGED_AT))
+    if last is None:
+        return False
+    return (now - last).total_seconds() / 3600.0 < cooldown_hours
+
+
+def recency_weight(age_h: float | None, half_life_h: float) -> float:
+    """Exponential decay: newer cards weigh more.
+
+    ``w = 2 ** (-age / half_life)`` — a card one half-life old is drawn half
+    as often as a brand-new one. Undatable cards get the weight of a card
+    exactly one half-life old: neither favoured nor silently excluded.
+    """
+    if half_life_h <= 0:
+        return 1.0
+    if age_h is None:
+        return 0.5
+    return math.pow(2.0, -max(0.0, age_h) / half_life_h)
+
+
+@dataclass(frozen=True)
+class TriageCard:
+    """One card put in front of its owner, with the numbers behind the draw."""
+
+    id: str
+    title: str
+    owner: str
+    age_hours: float | None
+    weight: float
+
+
+def _owner_of(task: dict) -> str:
+    owner = (task.get("agent") or task.get("assignee") or "").strip()
+    return owner or "(unassigned)"
+
+
+def candidates(
+    tasks: list[dict],
+    *,
+    owner: str | None = None,
+    now: _dt.datetime | None = None,
+    cooldown_hours: float | None = None,
+    expiry_days: float | None = None,
+) -> list[dict]:
+    """Deferred cards eligible to be DRAWN — fresh enough, off cooldown."""
+    cur = now or _now_utc()
+    cool = cooldown_hours if cooldown_hours is not None else _env_float(ENV_COOLDOWN_HOURS, DEFAULT_COOLDOWN_HOURS)
+    out = []
+    for t in tasks:
+        if t.get("status") != BACKLOG_STATUS:
+            continue
+        if owner is not None and _owner_of(t) != owner:
+            continue
+        if is_expired(t, now=cur, expiry_days=expiry_days):
+            continue
+        if _in_cooldown(t, cur, cool):
+            continue
+        out.append(t)
+    return out
+
+
+def expired(
+    tasks: list[dict],
+    *,
+    owner: str | None = None,
+    now: _dt.datetime | None = None,
+    expiry_days: float | None = None,
+) -> list[dict]:
+    """Deferred cards past the horizon — proposed for cancellation."""
+    cur = now or _now_utc()
+    return [
+        t
+        for t in tasks
+        if t.get("status") == BACKLOG_STATUS
+        and (owner is None or _owner_of(t) == owner)
+        and is_expired(t, now=cur, expiry_days=expiry_days)
+    ]
+
+
+def sample_for_triage(
+    tasks: list[dict],
+    *,
+    owner: str | None = None,
+    n: int | None = None,
+    now: _dt.datetime | None = None,
+    rng: random.Random | None = None,
+    half_life_hours: float | None = None,
+    cooldown_hours: float | None = None,
+    expiry_days: float | None = None,
+) -> list[TriageCard]:
+    """Draw up to ``n`` deferred cards, weighted toward RECENCY, no repeats.
+
+    Weighted sampling WITHOUT replacement via Efraimidis–Spirakis: give each
+    item the key ``u ** (1 / w)`` for ``u`` uniform on (0, 1], then take the
+    ``n`` largest keys. This gives each item an inclusion probability
+    proportional to its weight in a single pass, which a naive
+    "``random.choices`` then dedupe" does not.
+    """
+    cur = now or _now_utc()
+    r = rng or random.Random()
+    size = n if n is not None else _env_int(ENV_TRIAGE_SAMPLE, DEFAULT_TRIAGE_SAMPLE)
+    half = half_life_hours if half_life_hours is not None else _env_float(ENV_HALF_LIFE_HOURS, DEFAULT_HALF_LIFE_HOURS)
+
+    pool = candidates(tasks, owner=owner, now=cur, cooldown_hours=cooldown_hours, expiry_days=expiry_days)
+    keyed = []
+    for t in pool:
+        age = age_hours(t, cur)
+        w = recency_weight(age, half)
+        if w <= 0:
+            continue
+        # u == 0 would make the key 0 for every weight; nudge off the boundary.
+        u = r.random() or 1e-12
+        keyed.append((math.pow(u, 1.0 / w), t, age, w))
+
+    keyed.sort(key=lambda row: row[0], reverse=True)
+    return [
+        TriageCard(
+            id=t.get("id", ""),
+            title=t.get("title", ""),
+            owner=_owner_of(t),
+            age_hours=age,
+            weight=w,
+        )
+        for _key, t, age, w in keyed[: max(0, size)]
+    ]
+
+
+def _days(age_h: float | None) -> str:
+    return "?" if age_h is None else f"{age_h / 24.0:.0f}d"
+
+
+def build_triage_body(
+    drawn: list[TriageCard],
+    expired_cards: list[dict],
+    *,
+    expiry_days: float | None = None,
+) -> str:
+    """The nudge an owner receives. Every line demands a decision."""
+    horizon = expiry_days if expiry_days is not None else _env_float(ENV_EXPIRY_DAYS, DEFAULT_EXPIRY_DAYS)
+    lines: list[str] = []
+    if drawn:
+        lines.append(
+            f"BACKLOG TRIAGE — {len(drawn)} deferred card(s) drawn (newest weigh most). "
+            f"Decide each one now: start it, name its blocker, cancel it, or keep it "
+            f"deferred (kept cards keep ageing — the clock does not reset):"
+        )
+        for c in drawn:
+            lines.append(f"  - {c.id} [{_days(c.age_hours)} deferred] {c.title[:70]}")
+    if expired_cards:
+        lines.append("")
+        lines.append(
+            f"EXPIRED — deferred > {horizon:.0f}d. Default is cancellation. "
+            f"Rescue any you still want; silence cancels them:"
+        )
+        for t in expired_cards:
+            lines.append(f"  - {t.get('id', '')} {str(t.get('title', ''))[:70]}")
+    return "\n".join(lines)
+
+
+__all__ = [
+    "BACKLOG_STATUS",
+    "FIELD_DEFERRED_AT",
+    "FIELD_LAST_TRIAGED_AT",
+    "ENV_TRIAGE_SAMPLE",
+    "ENV_HALF_LIFE_HOURS",
+    "ENV_COOLDOWN_HOURS",
+    "ENV_EXPIRY_DAYS",
+    "DEFAULT_TRIAGE_SAMPLE",
+    "DEFAULT_HALF_LIFE_HOURS",
+    "DEFAULT_COOLDOWN_HOURS",
+    "DEFAULT_EXPIRY_DAYS",
+    "TriageCard",
+    "deferred_since",
+    "age_hours",
+    "is_expired",
+    "recency_weight",
+    "candidates",
+    "expired",
+    "sample_for_triage",
+    "build_triage_body",
+]

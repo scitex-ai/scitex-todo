@@ -56,27 +56,27 @@ def _card(cid, status, *, hours_ago=None, created_hours_ago=None, agent="a"):
 
 class TestDetectPendingBacklog:
     def test_old_pending_surfaced(self):
-        tasks = [_card("p1", "pending", hours_ago=30, agent="a")]
+        tasks = [_card("p1", "deferred", hours_ago=30, agent="a")]
         out = detect_pending_backlog(tasks, now=NOW, pending_hours=24.0)
         assert [c.id for c in out["a"]] == ["p1"]
 
     def test_fresh_pending_excluded(self):
-        tasks = [_card("p1", "pending", hours_ago=2, agent="a")]
+        tasks = [_card("p1", "deferred", hours_ago=2, agent="a")]
         out = detect_pending_backlog(tasks, now=NOW, pending_hours=24.0)
         assert "a" not in out
 
     def test_groups_by_owner(self):
         tasks = [
-            _card("p1", "pending", hours_ago=30, agent="a"),
-            _card("p2", "pending", hours_ago=30, agent="b"),
+            _card("p1", "deferred", hours_ago=30, agent="a"),
+            _card("p2", "deferred", hours_ago=30, agent="b"),
         ]
         out = detect_pending_backlog(tasks, now=NOW, pending_hours=24.0)
         assert set(out.keys()) == {"a", "b"}
 
     def test_oldest_first_within_owner(self):
         tasks = [
-            _card("young", "pending", hours_ago=25, agent="a"),
-            _card("old", "pending", hours_ago=100, agent="a"),
+            _card("young", "deferred", hours_ago=25, agent="a"),
+            _card("old", "deferred", hours_ago=100, agent="a"),
         ]
         out = detect_pending_backlog(tasks, now=NOW, pending_hours=24.0)
         assert [c.id for c in out["a"]] == ["old", "young"]
@@ -86,32 +86,32 @@ class TestDetectPendingBacklog:
             _card("ip", "in_progress", hours_ago=99, agent="a"),
             _card("bl", "blocked", hours_ago=99, agent="a"),
             _card("dn", "done", hours_ago=99, agent="a"),
-            _card("pd", "pending", hours_ago=99, agent="a"),
+            _card("pd", "deferred", hours_ago=99, agent="a"),
         ]
         out = detect_pending_backlog(tasks, now=NOW, pending_hours=24.0)
         assert [c.id for c in out["a"]] == ["pd"]
 
     def test_created_at_fallback_counts(self):
-        t = _card("x", "pending", created_hours_ago=48, agent="a")
+        t = _card("x", "deferred", created_hours_ago=48, agent="a")
         out = detect_pending_backlog([t], now=NOW, pending_hours=24.0)
         assert out["a"][0].id == "x"
 
     def test_no_timestamp_treated_as_stale(self):
-        t = {"id": "x", "status": "pending", "agent": "a", "title": "x"}
+        t = {"id": "x", "status": "deferred", "agent": "a", "title": "x"}
         out = detect_pending_backlog([t], now=NOW, pending_hours=24.0)
         assert out["a"][0].id == "x"
 
     def test_no_timestamp_sorts_first(self):
         tasks = [
-            _card("timed", "pending", hours_ago=48, agent="a"),
-            {"id": "untimed", "status": "pending", "agent": "a", "title": "u"},
+            _card("timed", "deferred", hours_ago=48, agent="a"),
+            {"id": "untimed", "status": "deferred", "agent": "a", "title": "u"},
         ]
         out = detect_pending_backlog(tasks, now=NOW, pending_hours=24.0)
         assert out["a"][0].id == "untimed"
 
     def test_assignee_fallback_owner(self):
         t = {
-            "id": "x", "status": "pending", "assignee": "z", "title": "x",
+            "id": "x", "status": "deferred", "assignee": "z", "title": "x",
             "last_activity": _iso(NOW - _dt.timedelta(hours=48)),
         }
         out = detect_pending_backlog([t], now=NOW, pending_hours=24.0)
@@ -119,7 +119,7 @@ class TestDetectPendingBacklog:
 
     def test_unassigned_bucket(self):
         t = {
-            "id": "x", "status": "pending", "title": "x",
+            "id": "x", "status": "deferred", "title": "x",
             "last_activity": _iso(NOW - _dt.timedelta(hours=48)),
         }
         out = detect_pending_backlog([t], now=NOW, pending_hours=24.0)
@@ -127,7 +127,7 @@ class TestDetectPendingBacklog:
 
     def test_threshold_env_override(self, monkeypatch):
         monkeypatch.setenv(ENV_PENDING_NUDGE_HOURS, "1")
-        t = _card("x", "pending", hours_ago=2, agent="a")
+        t = _card("x", "deferred", hours_ago=2, agent="a")
         out = detect_pending_backlog([t], now=NOW)
         assert out["a"][0].id == "x"
 
@@ -137,7 +137,7 @@ class TestDetectPendingBacklog:
     def test_default_threshold_more_lenient_than_stale_active(self):
         # A 5h-old pending card is FRESH under the 24h default (would be
         # stale under the 2h stale-active clock).
-        t = _card("x", "pending", hours_ago=5, agent="a")
+        t = _card("x", "deferred", hours_ago=5, agent="a")
         out = detect_pending_backlog([t], now=NOW)
         assert "a" not in out
 
@@ -150,15 +150,15 @@ class TestDetectPendingBacklog:
 class TestPendingNudgeLine:
     def test_line_contains_count_and_ids(self):
         out = detect_pending_backlog(
-            [_card("c1", "pending", hours_ago=30, agent="a")],
+            [_card("c1", "deferred", hours_ago=30, agent="a")],
             now=NOW, pending_hours=24.0,
         )
         line = pending_backlog_nudge_line("a", out["a"], pending_hours=24.0)
-        assert "1 untouched pending card(s)" in line and "c1" in line
+        assert "1 untouched deferred card(s)" in line and "c1" in line
 
     def test_line_mentions_threshold(self):
         out = detect_pending_backlog(
-            [_card("c1", "pending", hours_ago=30, agent="a")],
+            [_card("c1", "deferred", hours_ago=30, agent="a")],
             now=NOW, pending_hours=24.0,
         )
         line = pending_backlog_nudge_line("a", out["a"], pending_hours=24.0)
@@ -166,19 +166,19 @@ class TestPendingNudgeLine:
 
     def test_wording_distinct_from_stale_active(self):
         out = detect_pending_backlog(
-            [_card("c1", "pending", hours_ago=30, agent="a")],
+            [_card("c1", "deferred", hours_ago=30, agent="a")],
             now=NOW, pending_hours=24.0,
         )
         line = pending_backlog_nudge_line("a", out["a"], pending_hours=24.0)
         # Pending = "start or triage", NOT the stale-active "reconcile".
-        assert "PENDING-BACKLOG" in line
+        assert "BACKLOG" in line
         assert "start or triage" in line
         assert "STALE-ACTIVE" not in line
 
     def test_id_cap_collapses_remainder(self):
         cards = detect_pending_backlog(
             [
-                _card(f"c{i}", "pending", hours_ago=30, agent="a")
+                _card(f"c{i}", "deferred", hours_ago=30, agent="a")
                 for i in range(NUDGE_ID_CAP + 4)
             ],
             now=NOW, pending_hours=24.0,

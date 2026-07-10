@@ -31,9 +31,22 @@ from ._store_verify import _verify_dumped_tmp  # hook-bypass: line-limit
 
 # Valid task statuses. ``goal`` marks a north-star objective (rendered gold);
 # the rest are ordinary execution states.
+# ``pending`` was ABOLISHED 2026-07-10 by operator directive: "pending という
+# タスクがある。存在してはならない状態である。" A card in ``pending`` carried NO
+# decision — it was the dataclass default, so 406 of 1100 cards (37%) had silently
+# accumulated there and rotted. Every open card must now state its disposition:
+# ``in_progress`` (being worked), ``blocked`` (+ a blocker naming the gate),
+# or ``deferred`` (can be worked, consciously not now).
+ABOLISHED_STATUSES: dict[str, str] = {
+    "pending": (
+        "status 'pending' was abolished 2026-07-10 — a card must carry a "
+        "decision. Choose: 'in_progress' if you are working it, 'blocked' "
+        "with a blocker naming the gate, or 'deferred' if it can wait."
+    ),
+}
+
 VALID_STATUSES: tuple[str, ...] = (  # hook-bypass: line-limit
     "goal",
-    "pending",
     "in_progress",
     "blocked",
     "done",
@@ -147,6 +160,18 @@ class TaskValidationError(ValueError):
     """Raised when a task store fails structural validation."""
 
 
+class StaleStoreError(RuntimeError):
+    """The store changed between your read and your write — reload and retry.
+
+    Raised by :func:`save_tasks` when the caller passed
+    ``expected_generation`` and the on-disk store no longer matches it.
+    Writing anyway would silently discard every mutation the other writer
+    made since your read (the 2026-07-10 bulk-migration incident: raw
+    ``load_tasks → mutate → save_tasks`` scripts ate two concurrent sac
+    writes because nothing tied the write to the read it was based on).
+    """
+
+
 # ---------------------------------------------------------------------------
 # Task dataclass — SINGLE schema source (ADR-0007, quality-hygiene PR)
 # ---------------------------------------------------------------------------
@@ -251,7 +276,7 @@ class Task:
     deadlines: list[str] | None = None
 
     # --- lead-added: drives UI color + blocker views (TG 9667) -------------
-    status: str = "pending"  # current canonical = VALID_STATUSES (7-value);
+    status: str = "deferred"  # current canonical = VALID_STATUSES (7-value);
     # the operator's 4-value enum (working/waiting/done/blocked)
     # is mapped IN THE FE renderer for now, not in the
     # schema. See ADR-0007 Consequences for the
@@ -457,8 +482,10 @@ def is_overdue(task: dict, *, now=None) -> bool:
 
     status = (task.get("status") or "").strip()
     # Terminal/closed statuses are never overdue. ``cancelled`` (closed as
-    # not planned) joins done/deferred/failed here. (hook-bypass: line-limit.)
-    if status in {"done", "deferred", "failed", "cancelled", "goal"}:
+    # not planned) joins done/failed here. ``deferred`` is NOT terminal
+    # (operator ruling 2026-07-10) — a deferred card is open, so it CAN go
+    # overdue and must surface. (hook-bypass: line-limit.)
+    if status in {"done", "failed", "cancelled", "goal"}:
         return False
     nxt = next_deadline_for_task(task, now=now)
     if not nxt:
@@ -549,7 +576,10 @@ def load_doc(path: str | Path, *, validate: bool = False) -> dict:
 
     if validate:
         tasks = data.get("tasks") if isinstance(data, dict) else None
-        _validate_tasks(tasks, source=str(path))
+        # READ side: tolerate values this build does not know (a newer agent
+        # may have written them) and warn loudly. Structural corruption still
+        # raises. One unknown status must never take the fleet's board down.
+        _validate_tasks(tasks, source=str(path), strict=False)
     return data
 
 
@@ -748,12 +778,59 @@ def _parse_iso_date_or_raise(
     return dt
 
 
-def _validate_tasks(tasks: object, source: str) -> None:
+def _warn_tolerated(msg: str) -> None:
+    """Shout about a value this build does not understand, but keep going.
+
+    Read-side only. Loud on stderr AND through ``warnings`` so a human, a log
+    scraper, and ``-W error`` all see it. Deliberately NOT silent: the point
+    is that one row from a newer writer must not take the fleet's board down,
+    not that the problem should be hidden.
+    """
+    import sys as _sys
+    import warnings as _warnings
+
+    banner = f"[scitex-todo] TOLERATED (read-side): {msg}"
+    print(banner, file=_sys.stderr, flush=True)
+    _warnings.warn(banner, stacklevel=3)
+
+
+def _validate_tasks(tasks: object, source: str, strict: bool = True) -> None:
     """Validate a task list in place, raising on the first structural fault.
 
     The single gate shared by :func:`load_tasks` (read side) and
     :func:`save_tasks` (write side) so a bad mutation can never round-trip
     through the writer.
+
+    The split between STRUCTURE and VALUES is the fix for a fleet-wide outage
+    on 2026-07-10.
+
+    The store is SHARED and read by agents running DIFFERENT installed
+    versions. When a newer writer stored ``status: cancelled`` (a value its
+    own enum knew), every agent on an older build raised here and
+    ``load_tasks`` aborted — so ONE unknown value in ONE row took the whole
+    fleet's board down. A shared, multi-version store can never grow an enum
+    value under that design.
+
+    So, on BOTH sides:
+      * STRUCTURAL corruption raises — not a list, missing id/title, duplicate
+        id, non-integer priority. That is a broken store, not a newer one, and
+        no amount of tolerance makes it readable.
+      * A bad VALUE warns, loudly, naming the card and the likely cause. An
+        unknown status, a blocked card with no blocker: shouted about, never
+        fatal.
+
+    The write side warns rather than raises by operator ruling (2026-07-10:
+    "カードが書けないということはなしで大丈夫です、warning で十分です"). Raising
+    there was the writer-side twin of the same outage: ``save_tasks``
+    validates the WHOLE task list, so a single legacy row written by an older
+    agent made every *other* agent's write fail — and the live store grew two
+    such rows within hours of the sweep that removed them. The enum is kept
+    honest at the SOURCES instead (the CLI's ``--status`` Choice, the MCP and
+    board defaults), which reject a bad value before it is ever a card.
+
+    This is not a silent fallback: both sides shout. They simply refuse to
+    take the fleet offline, or to cost someone their card, because one row
+    came from the future.
 
     Parameters
     ----------
@@ -761,6 +838,9 @@ def _validate_tasks(tasks: object, source: str) -> None:
         The candidate ``tasks`` value (must be a list of mappings).
     source : str
         A label for error messages (the store path or ``"<save_tasks>"``).
+    strict : bool
+        Accepted for backwards compatibility; no longer changes behaviour.
+        Value faults warn on both paths, structural faults raise on both.
 
     Raises
     ------
@@ -790,10 +870,53 @@ def _validate_tasks(tasks: object, source: str) -> None:
             )
         status = task.get("status")
         if status not in VALID_STATUSES:
-            raise TaskValidationError(
-                f"{source}: task {tid!r} has invalid status {status!r}; "
-                f"must be one of {VALID_STATUSES}"
+            # An ABOLISHED status gets a message that says what to do instead,
+            # not just "invalid" — the caller is mid-write and needs the fix.
+            hint = ABOLISHED_STATUSES.get(status)
+            msg = (
+                f"{source}: task {tid!r}: {hint}"
+                if hint
+                else (
+                    f"{source}: task {tid!r} has unknown status {status!r}; "
+                    f"this build knows {VALID_STATUSES}. If another agent wrote "
+                    f"it, your scitex-todo is older than the writer's — upgrade "
+                    f"rather than rewriting the card."
+                )
             )
+            # WARN, never raise — on BOTH the read and the write side.
+            #
+            # Operator ruling 2026-07-10: "カードが書けないということはなしで
+            # 大丈夫です、warning で十分です." A status value must never cost
+            # someone their card. Strictness here is a trap on a SHARED store:
+            # save_tasks validates the whole task list, so one legacy row
+            # written by an older agent makes every *other* agent's write
+            # fail — the writer-side twin of the reader-side outage this
+            # branch was created to fix (incident-cancelled-enum-version-skew,
+            # 2026-07-10). The store held 2 such rows within hours of the
+            # pending sweep, minted by agents still on the old default.
+            #
+            # The enum is kept honest at the SOURCES instead — the CLI, MCP
+            # and board no longer offer abolished values — and this warning
+            # names the row so it gets migrated. Nothing is silently accepted;
+            # nothing is destructively refused.
+            _warn_tolerated(msg)
+        # A `blocked` card MUST name its gate. "Blocked with no blocker" is
+        # stuck-and-silent: nobody can clear a gate nobody stated. Found
+        # 2026-07-10 on 14 live cards, several idle for over a month.
+        elif status == "blocked":
+            blocker = (task.get("blocker") or "").strip()
+            if not blocker or blocker == "none":
+                msg = (
+                    f"{source}: task {tid!r} is 'blocked' but names no blocker. "
+                    f"A blocked card must state its gate so someone can clear it. "
+                    f"Set blocker to one of {VALID_BLOCKERS}, or use a status "
+                    f"that reflects reality: 'in_progress' if you are working it, "
+                    f"'deferred' if it can wait."
+                )
+                # WARN, never raise — same ruling as the status enum above. A
+                # missing blocker is a quality problem worth shouting about;
+                # it is not worth destroying the caller's card over.
+                _warn_tolerated(msg)
         priority = task.get("priority")
         # bool is an int subclass — reject it explicitly so `priority: true`
         # is a clear error rather than a silent 1.
@@ -1069,7 +1192,12 @@ def _store_lock(path: Path):
             fd.close()
 
 
-def save_tasks(tasks: list[dict], path: str | Path) -> None:
+def save_tasks(
+    tasks: list[dict],
+    path: str | Path,
+    *,
+    expected_generation: str | None = None,
+) -> None:
     """Validate then write a task list back to a YAML store, preserving comments.
 
     Re-runs the same validation gate as :func:`load_tasks` *before* touching
@@ -1098,13 +1226,71 @@ def save_tasks(tasks: list[dict], path: str | Path) -> None:
     >>> save_tasks(tasks, "tasks.yaml")            # doctest: +SKIP
     """
     path = Path(path).expanduser()
-    # Hold the cross-process advisory lock for the FULL read-modify-write
-    # cycle, not just the write — otherwise two writers could each load
-    # the file, mutate independently, and the second `dump` would silently
-    # clobber the first's mutation. The lock IS the at-most-once gate.
+    # The lock covers only THIS write. It cannot cover the caller's earlier
+    # `load_tasks`, so plain load → mutate → save still loses a concurrent
+    # writer's rows (2026-07-10 bulk-migration incident). Callers doing a
+    # read-modify-write must either use :func:`edit_tasks` (one lock across
+    # the whole cycle) or pass ``expected_generation`` from
+    # :func:`store_generation` so a stale write is refused, never applied.
     path.parent.mkdir(parents=True, exist_ok=True)
     with _store_lock(path):
+        if expected_generation is not None:
+            current = store_generation(path)
+            if current != expected_generation:
+                raise StaleStoreError(
+                    f"{path}: store changed since your read (generation "
+                    f"{current[:12]} != expected {expected_generation[:12]}). "
+                    f"Another writer committed in between; writing now would "
+                    f"erase their rows. Reload, re-apply your change, retry — "
+                    f"or use edit_tasks() to hold the lock across the cycle."
+                )
         _save_tasks_unlocked(tasks, path)
+
+
+def store_generation(path: str | Path) -> str:
+    """Content hash of the store file — the optimistic-concurrency token.
+
+    Take it BEFORE :func:`load_tasks`, hand it to
+    ``save_tasks(..., expected_generation=...)``. Content-based (sha256), not
+    mtime-based: mtime has coarse granularity on some filesystems and lies
+    across clock skew, and this store is shared over network mounts.
+    """
+    p = Path(path).expanduser()
+    if not p.exists():
+        return "absent"
+    import hashlib
+
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+@contextlib.contextmanager
+def edit_tasks(path: str | Path):
+    """One locked read-modify-write cycle — the sanctioned bulk-edit primitive.
+
+    Yields the mutable ``tasks`` list with the store lock HELD; on clean exit
+    the (possibly mutated) list is validated and written back, preserving the
+    non-``tasks`` sections and comments. On an exception nothing is written.
+
+    This exists because every raw ``load_tasks → mutate → save_tasks`` script
+    has a lost-update window as wide as its own runtime, and on 2026-07-10 a
+    bulk migration used exactly that shape and ate two concurrent writes.
+
+    Examples
+    --------
+    >>> with edit_tasks("tasks.yaml") as tasks:     # doctest: +SKIP
+    ...     for t in tasks:
+    ...         if t.get("status") == "pending":
+    ...             t["status"] = "deferred"
+    """
+    path = Path(path).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _store_lock(path):
+        doc = load_doc(path, validate=True) if path.exists() else {}
+        if not isinstance(doc, dict):
+            raise TaskValidationError(f"{path}: top level is not a mapping")
+        tasks = doc.get("tasks") or []
+        yield tasks
+        _save_doc_unlocked(doc, path, tasks=tasks)
 
 
 def _save_tasks_unlocked(tasks: list[dict], path: Path) -> None:

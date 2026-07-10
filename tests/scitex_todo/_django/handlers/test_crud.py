@@ -71,11 +71,12 @@ def test_create_generates_slug_id(store):
     assert payload["task"]["id"] == "my-new-thing"
 
 
-def test_create_defaults_status_to_pending(store):
+def test_create_defaults_status_to_deferred(store):
+    # `deferred` is the default since pending was abolished (2026-07-10).
     payload = json.loads(
         _post("create", store, {"title": "X", "assignee": "alice"}).content
     )
-    assert payload["task"]["status"] == "pending"
+    assert payload["task"]["status"] == "deferred"
 
 
 def test_create_persists_to_store(store):

@@ -249,25 +249,27 @@ def test_find_card_empty_when_none_match(tmp_path, env):
 
 
 def test_find_card_status_filter(tmp_path, env):
-    # Arrange — same repo, different statuses.
+    # Arrange — same repo, different statuses. (Seeded `deferred` since the
+    # pending abolition: an abolished value in the store makes every CLI call
+    # print the TOLERATED banner, which pollutes the output this test parses.)
     runner = CliRunner()
     store = _store_path(tmp_path)
     add_task(
-        store=store, id="c-pending", title="P", assignee="agent:t",
-        repo="owner/repo", status="pending",
+        store=store, id="c-deferred", title="P", assignee="agent:t",
+        repo="owner/repo", status="deferred",
     )
     add_task(
         store=store, id="c-done", title="D", assignee="agent:t",
         repo="owner/repo", status="done",
     )
-    # Act — only the pending card should match.
+    # Act — only the deferred card should match.
     result = runner.invoke(
         main,
-        ["find-card", "--repo", "owner/repo", "--status", "pending", "--tasks", store],
+        ["find-card", "--repo", "owner/repo", "--status", "deferred", "--tasks", store],
     )
     # Assert
     assert result.exit_code == 0, result.output
-    assert result.output.split() == ["c-pending"]
+    assert result.output.split() == ["c-deferred"]
 
 
 def test_find_card_then_emit_with_resolved_id(tmp_path, env):
