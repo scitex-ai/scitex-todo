@@ -654,26 +654,32 @@ class TestActivityBucketBadge:
 
 
 class TestStaleReviewPanel:
-    """Pins for the Stale Review layout + Archive button.
+    """Pins for the Stale Review render path + Archive button.
 
-    Backend half is PR #153 (/stale + /archive endpoints). This FE
-    half adds a 4th layout button ("🧹 Stale"), a fetch+render
-    function that pulls from /stale, a per-row Archive button that
-    POSTs to /archive (HTTP twin of CLI `close --reason` PR #151),
-    and a small toolbar with the days + include_no_timestamp knobs.
+    Backend half is PR #153 (/stale + /archive endpoints). The layout
+    BUTTON was removed 2026-07-10 (operator, card
+    todo-board-remove-stale-view-timeline-first-20260710 — "Stale view
+    要らない"): the first two pins now assert the button stays GONE and
+    the layout unreachable, while the fetch+render helpers, per-row
+    Archive button (HTTP twin of CLI `close --reason` PR #151) and the
+    days + include_no_timestamp toolbar knobs remain pinned as shared
+    code.
     """
 
-    def test_stale_layout_button_in_filterbar(self, board_text):
+    def test_stale_layout_button_removed_from_filterbar(self, board_text):
         # Arrange
         # Act
         # Assert
-        assert 'id="f-layout-stale"' in board_text
+        assert 'id="f-layout-stale"' not in board_text
+        assert "🧹 Stale" not in board_text
 
-    def test_stale_layout_button_glyph(self, board_text):
+    def test_stale_layout_unreachable_in_whitelist(self, board_text):
         # Arrange
         # Act
         # Assert
-        assert "🧹 Stale" in board_text
+        assert (
+            '"stale"' not in board_text.split("VALID_LAYOUTS = ")[1].split("]")[0]
+        ), "stale must stay out of the layout whitelist (operator removal)"
 
     def test_stale_render_helper_defined(self, board_text):
         # Arrange
