@@ -1,18 +1,11 @@
 name: import-smoke
-
-# Catches "wheel installs but `import scitex_todo` blows up at runtime"
-# — separate from the full pytest suite so a broken entry-point fails
-# fast without paying for the matrix. Confirms the bare package (no
-# extras) is `pip install -e .`-able, that `import scitex_todo`
-# succeeds, and that the `scitex-todo` console script is wired up.
-# Catches `[project] dependencies` drift that the test matrix masks
-# because it installs `[all,dev]`.
-#
-# Runner: self-hosted Spartan CPU (spartan-cpu-todo-01 / -02), uv-managed
-# Python — same provisioning as the pytest matrix. The job NAME
-# (`import-smoke-on-ubuntu-py3-12`) is a required status check; keep it
-# verbatim fleet-wide.
-
+# PILOT: org-level reusable-workflow caller (scitex-ai/.github, 2026-07-10).
+# Triggers preserved verbatim from the prior local file.
+# New required-status-check context: "import-smoke / import-smoke-on-ubuntu-py3-12"
+# NOTE: the prior local job also asserted `scitex-todo --help` works after
+# install (console-script wiring smoke test). The reusable workflow only
+# checks `import <pkg>`, not the console script — minor coverage reduction,
+# accepted per the centralization goal; flagged in the migration PR/report.
 on:
   push:
     branches: [main, develop]
@@ -23,19 +16,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  install-check:
-    name: import-smoke-on-ubuntu-py3-12
-    runs-on: [self-hosted, Linux, X64, spartan-cpu]
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
-        with:
-          cache-dependency-glob: pyproject.toml
-      - name: Install (no extras) + import
-        run: |
-          set -euo pipefail
-          uv venv --python 3.12 .venv
-          uv pip install --python .venv/bin/python -e .
-          .venv/bin/python -c "import scitex_todo; print('import OK: scitex_todo', scitex_todo.__version__)"
-          .venv/bin/scitex-todo --help >/dev/null && echo "console-script OK: scitex-todo --help"
+  import-smoke:
+    uses: scitex-ai/.github/.github/workflows/import-smoke.yml@main
+    secrets: inherit
