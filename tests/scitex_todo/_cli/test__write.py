@@ -1034,3 +1034,20 @@ def test_list_filter_by_kind_status_returns_only_status_rows(tmp_path):
 
 
 # EOF
+
+
+def test_update_help_renders(tmp_path):
+    """`update --help` must render on every supported click.
+
+    Regression (neurovista, 2026-07-11): _BlockerOrClearParamType.get_metavar
+    lacked the ctx kwarg click >= 8.2 passes, so --help crashed with a
+    TypeError inside get_help_record and the update syntax was
+    undiscoverable.
+    """
+    # Arrange
+    runner = CliRunner()
+    # Act
+    result = runner.invoke(main, ["update", "--help"])
+    # Assert
+    assert result.exit_code == 0, result.output
+    assert "--blocker" in result.output

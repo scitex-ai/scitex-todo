@@ -89,7 +89,10 @@ class _BlockerOrClearParamType(click.ParamType):
             param, ctx,
         )
 
-    def get_metavar(self, param):
+    def get_metavar(self, param, ctx=None):
+        # click >= 8.2 passes ctx as a keyword; older click passes only
+        # param. Without the default, `scitex-todo update --help` crashed
+        # with a TypeError on newer click (found by neurovista, 2026-07-11).
         return "[" + "|".join(list(VALID_BLOCKERS) + ["", "none"]) + "]"
 
 
