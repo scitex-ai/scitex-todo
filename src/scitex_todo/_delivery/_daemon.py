@@ -22,6 +22,11 @@ external cron:
   ledger via :func:`report_terminal_misses` and logs a THROTTLED WARNING that
   re-surfaces every outstanding comm-miss — a long-undeliverable user is never
   forgotten, but the warning does not spam every tick.
+* SWEEPS (:mod:`._sweeps`): each tick first runs the reminder/escalation sweep,
+  and — on its OWN much slower cadence (``--nudge-sweep-minutes``) — the
+  fleet-liveness stale/backlog nudge sweep, which before this had no scheduled
+  caller at all. Both are individually guarded: a raising sweep never stops the
+  delivery pass that follows it.
 * TICK RESILIENCE: each tick's work is wrapped so an unexpected error (ledger
   corruption, a disk/clock fault) is logged with a traceback and the loop
   CONTINUES to the next tick rather than dying. Combined with the unit's
@@ -47,6 +52,14 @@ from pathlib import Path
 from .._inbox import _resolved_store
 from ._ledger import TERMINAL_STATUS, Ledger, _KEY_SEP, ledger_path
 from ._loop import deliver_pending
+from ._sweeps import (
+    DEFAULT_NUDGE_SWEEP_MINUTES,
+    ENV_NUDGE_SWEEP_MINUTES,
+    _nudge_sweep_due,
+    _nudge_sweep_minutes,
+    _run_reminder_sweep,
+    _run_stale_nudge_sweep,
+)
 
 logger = logging.getLogger("scitex_todo.delivery.notifyd")
 
@@ -232,37 +245,6 @@ def _report_terminal_if_due(
         )
 
 
-def _run_reminder_sweep(*, store, now) -> None:
-    """Enqueue any DUE owner digests + operator escalations for this tick.
-
-    Fully guarded: loads the task list, runs the escalating-cadence sweep
-    (:func:`scitex_todo._reminders.sweep_reminders`), and logs a one-line
-    summary. Any error (bad store, etc.) is logged and swallowed so the
-    reminder sweep can NEVER block the delivery pass that follows it.
-    """
-    try:
-        from .._model import load_tasks
-        from .._reminders import sweep_reminders
-
-        # Resolve the store BEFORE use: notifyd's `store` is None by default
-        # (deliver_pending resolves it internally), but load_tasks / the sweep
-        # need a concrete path — passing None trips Path(None). Use the same
-        # resolver the daemon logs with so all three see one store.
-        resolved = _resolved_store(store)
-        tasks = load_tasks(resolved)
-        result = sweep_reminders(tasks, store=resolved, now=now)
-        if result["digested"] or result["escalated"]:
-            logger.info(
-                "notifyd nag sweep: %d owner digest(s), %d escalated, "
-                "%d not-yet-due",
-                len(result["digested"]),
-                len(result["escalated"]),
-                len(result["skipped"]),
-            )
-    except Exception:  # noqa: BLE001 — a sweep error must never block delivery
-        logger.exception("notifyd reminder sweep raised; continuing to delivery")
-
-
 def _install_signal_handlers(stop: threading.Event):
     """Wire SIGTERM/SIGINT to trip the stop event (graceful shutdown).
 
@@ -306,6 +288,7 @@ def run_notifyd(
     now_fn=None,
     max_iterations: int | None = None,
     terminal_report_every: int = DEFAULT_TERMINAL_REPORT_EVERY,
+    nudge_sweep_minutes: float | None = None,
 ) -> dict:
     """Run the always-on delivery loop until stopped.
 
@@ -339,6 +322,10 @@ def run_notifyd(
     terminal_report_every : int
         Re-surface standing terminal comm-misses every N ticks (throttle).
         ``<= 0`` disables the re-report.
+    nudge_sweep_minutes : float | None
+        Cadence (MINUTES) of the fleet-liveness sweep — kept OUT of the hot
+        delivery path on purpose. ``None`` → :data:`ENV_NUDGE_SWEEP_MINUTES` /
+        :data:`DEFAULT_NUDGE_SWEEP_MINUTES`; ``<= 0`` disables it.
 
     Returns
     -------
@@ -349,6 +336,11 @@ def run_notifyd(
     """
     stop = stop or threading.Event()
     now_fn = now_fn or (lambda: _dt.datetime.now(_dt.timezone.utc))
+    sweep_minutes = (
+        nudge_sweep_minutes if nudge_sweep_minutes is not None
+        else _nudge_sweep_minutes()
+    )
+    last_nudge_sweep: _dt.datetime | None = None
 
     lock = _SingleInstanceLock(pidfile_path(store))
     lock.acquire()  # raises DaemonAlreadyRunning — BEFORE the try/finally so a
@@ -362,11 +354,12 @@ def run_notifyd(
 
     logger.info(
         "notifyd started: pid=%d store=%s interval=%.1fs "
-        "terminal_report_every=%d",
+        "terminal_report_every=%d nudge_sweep_minutes=%.1f",
         os.getpid(),
         _resolved_store(store),
         interval,
         terminal_report_every,
+        sweep_minutes,
     )
 
     try:
@@ -386,6 +379,24 @@ def run_notifyd(
                 # this same tick's deliver_pending sends them. Its own guard so
                 # a sweep error never blocks delivery of already-queued notes.
                 _run_reminder_sweep(store=store, now=now_fn())
+                # LIVENESS sweep on its OWN (much slower) cadence — the stale/
+                # backlog nudge scans the whole store, so it stays OUT of the
+                # per-tick delivery path.
+                tick_now = now_fn()
+                if _nudge_sweep_due(
+                    last_nudge_sweep, tick_now, minutes=sweep_minutes
+                ):
+                    last_nudge_sweep = tick_now
+                    # Guarded AT THE CALL SITE, not only inside the sweep: the
+                    # tick's outer guard would skip THIS TICK'S DELIVERY if the
+                    # sweep escaped, which is precisely the coupling the sweep
+                    # must never have. Delivery runs even when detection dies.
+                    try:
+                        _run_stale_nudge_sweep(store=store, now=tick_now)
+                    except Exception:  # noqa: BLE001 — never block delivery
+                        logger.exception(
+                            "notifyd liveness sweep raised; continuing to delivery"
+                        )
                 summary = deliver_pending(
                     store=store,
                     channels=channels,
@@ -433,7 +444,9 @@ def run_notifyd(
 
 __all__ = [
     "DEFAULT_INTERVAL",
+    "DEFAULT_NUDGE_SWEEP_MINUTES",
     "DEFAULT_TERMINAL_REPORT_EVERY",
+    "ENV_NUDGE_SWEEP_MINUTES",
     "DaemonAlreadyRunning",
     "PIDFILE_NAME",
     "pidfile_path",

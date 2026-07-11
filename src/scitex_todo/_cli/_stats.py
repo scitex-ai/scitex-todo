@@ -248,7 +248,7 @@ def stats_cmd(
                     "(SCITEX_TODO_STALE_ACTIVE_HOURS / "
                     "SCITEX_TODO_PENDING_NUDGE_HOURS)"
                 )
-                _emit_stale_active_nudges(tasks)
+                _emit_stale_active_nudges(tasks, path)
         return
 
     # Plain, read-only path: an interactive `print-stats` (no --notify, or
@@ -334,18 +334,22 @@ def _emit_quiet_nudges(tasks: list[dict], rows: list) -> None:
     click.echo(f"# {pushed} quiet-nudge push(es) sent")
 
 
-def _emit_stale_active_nudges(tasks: list[dict]) -> None:
+def _emit_stale_active_nudges(tasks: list[dict], store) -> None:
     """Thin CLI wrapper around the stale-active + pending-backlog sweep.
 
     The detect + per-owner fail-soft delivery lives in
     :func:`scitex_todo._stale_active_nudge.sweep_and_nudge` (keeps the
     network side out of this near-cap CLI module). It emits BOTH the
     stale-active and pending-backlog per-owner lines. Each result line is
-    echoed for the cron log.
+    echoed for the cron log — including the owners whose nudge was SUPPRESSED
+    as unchanged, so the sweep is never silently doing nothing.
+
+    ``store`` is the RESOLVED task-store path; the sweep keeps its
+    deliver-on-change state in that store's ``runtime/`` sidecar.
     """
     from .._stale_active_nudge import sweep_and_nudge
 
-    for line in sweep_and_nudge(tasks):
+    for line in sweep_and_nudge(tasks, store=store):
         click.echo(line)
 
 
