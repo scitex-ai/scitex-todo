@@ -99,6 +99,42 @@ class _BlockerOrClearParamType(click.ParamType):
 _BLOCKER_OR_CLEAR = _BlockerOrClearParamType()
 
 
+class _KindOrClearParamType(click.ParamType):
+    """`--kind` accepting closed enum values + the `""` clear sentinel.
+
+    Same gap as `_BlockerOrClearParamType`, one field over: the strict
+    `_KIND_CHOICE` rejects `""` at parse time, so the "pass '' to CLEAR"
+    contract every other surface documents had no CLI form for `kind` —
+    a card mis-filed as `kind: status` could not be put back to the
+    default (absent `kind` == `"task"`) without hand-editing the YAML.
+
+    `""` converts to `""` and is passed VERBATIM to `update_task`, whose
+    store layer owns the clear rule (`_store_enums`) and pops the key.
+
+    Not used on the ADD verb — you cannot clear a field on insert.
+    """
+
+    name = "kind_or_clear"
+
+    def convert(self, value, param, ctx):
+        if value is None:
+            return None
+        s = str(value)
+        if s == "":
+            return ""
+        if s in VALID_KINDS:
+            return s
+        self.fail(f"{s!r} is not one of {VALID_KINDS} or ''", param, ctx)
+
+    def get_metavar(self, param, ctx=None):
+        # click >= 8.2 passes ctx as a keyword; older click passes only
+        # param — same compat shim as the blocker type above.
+        return "[" + "|".join(list(VALID_KINDS) + [""]) + "]"
+
+
+_KIND_OR_CLEAR = _KindOrClearParamType()
+
+
 def _emit(payload, *, as_json: bool, human: str) -> None:
     """Print `payload` as JSON or `human` as text, per the --json flag."""
     if as_json:

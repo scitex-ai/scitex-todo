@@ -14,13 +14,19 @@ from __future__ import annotations
 import click
 
 from .. import _store
+from .._store_enums import CLEARABLE_ENUM_FIELDS, UNCLEARABLE_ENUM_FIELDS
 from ._compat import spec_command_kwargs
 from ._write import (
     _BLOCKER_OR_CLEAR,
-    _KIND_CHOICE,
+    _KIND_OR_CLEAR,
     _STATUS_CHOICE,
     _TASKS_OPTION,
     _emit,
+)
+
+# Closed-enum fields — sourced from the store so the two cannot drift.
+_ENUM_FIELDS: frozenset[str] = frozenset(
+    CLEARABLE_ENUM_FIELDS + UNCLEARABLE_ENUM_FIELDS
 )
 
 
@@ -70,7 +76,12 @@ from ._write import (
 )
 @click.option("--pr-url", "pr_url", default=None)
 @click.option("--issue-url", "issue_url", default=None)
-@click.option("--kind", type=_KIND_CHOICE, default=None)
+@click.option(
+    "--kind",
+    type=_KIND_OR_CLEAR,
+    default=None,
+    help="Closed enum, OR '' to CLEAR (absent kind ⇒ 'task').",
+)
 # Compute-kind metadata.
 @click.option("--job-id", "job_id", default=None)
 @click.option("--command", default=None)
@@ -148,6 +159,13 @@ def update_cmd(
     # `None` default = "not passed"). Empty string is the explicit
     # "clear this field" signal — translate to None for `update_task` so
     # the key is popped rather than stored as `""`.
+    #
+    # EXCEPT the closed-enum fields, which go through VERBATIM: the store
+    # owns what `""` means on them (`_store_enums` — blocker/kind: delete
+    # the key; status: refuse loudly, since a card must carry a decision).
+    # `--status ''` cannot even be typed (click's closed Choice rejects it
+    # at parse time, naming the valid set), so the CLI never expresses a
+    # status clear — deliberate, matching the store's rule.
     for key, value in (
         ("title", title),
         ("status", status),
@@ -175,7 +193,10 @@ def update_cmd(
     ):
         if value is None:
             continue
-        fields[key] = None if value == "" else value
+        if key in _ENUM_FIELDS:
+            fields[key] = value
+        else:
+            fields[key] = None if value == "" else value
 
     # --depends-on / --blocks: click's `multiple=True` returns a tuple.
     # Empty tuple = flag not passed → don't touch. Tuple of one empty
