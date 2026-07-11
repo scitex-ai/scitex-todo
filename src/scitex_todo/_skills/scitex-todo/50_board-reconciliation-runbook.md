@@ -69,7 +69,7 @@ The `close` verb landed in PR #151 (2026-06-13). It records the reason in `comme
 ```sh
 scitex-todo close <task-id> --reason "<short reason in imperative or past tense>"
 
-# With author override (default chain: $SCITEX_TODO_AGENT -> $USER):
+# With author override (default chain: $SCITEX_TODO_AGENT_ID -> $USER):
 scitex-todo close <task-id> --reason "<text>" --by <author>
 
 # Dry-run first (prints intent, does NOT mutate):
@@ -110,7 +110,7 @@ A complete sweep for ONE agent looks like:
 
 ```sh
 # 0) Snapshot current state (saves a copy you can diff against later).
-scitex-todo list-tasks --assignee $SCITEX_TODO_AGENT --json > /tmp/my-cards-before.json
+scitex-todo list-tasks --assignee $SCITEX_TODO_AGENT_ID --json > /tmp/my-cards-before.json
 
 # 1) For every recently-merged PR you owned: mark its card done with the PR pointer.
 scitex-todo update <card-id> --status done --pr-url <pr-url>
@@ -122,7 +122,7 @@ scitex-todo close <card-id> --reason "<short why>"
 scitex-todo comment <card-id> "<update>"
 
 # 4) Re-snapshot + diff to verify your sweep landed:
-scitex-todo list-tasks --assignee $SCITEX_TODO_AGENT --json > /tmp/my-cards-after.json
+scitex-todo list-tasks --assignee $SCITEX_TODO_AGENT_ID --json > /tmp/my-cards-after.json
 diff <(jq -S . /tmp/my-cards-before.json) <(jq -S . /tmp/my-cards-after.json) | head -200
 ```
 
@@ -148,7 +148,7 @@ Regenerate the list:
 # (a2a "regen stale list" to proj-scitex-todo) — there's no scheduled cron yet.
 ```
 
-A future PR will wrap the generator in a `scitex-todo stale-list [--days 14]` CLI verb. Tracked as an in-board card.
+A future PR will wrap the generator in a `scitex-todo list-stale [--days 14]` CLI verb. Tracked as an in-board card.
 
 ---
 
@@ -161,7 +161,7 @@ MARK DONE + PR        scitex-todo update <id> --status done --pr-url <url>
 CLOSE WITH REASON     scitex-todo close <id> --reason "<short why>"
 ADD COMMENT           scitex-todo comment <id> "<text>"
 DRY-RUN ANY MUTATION  add --dry-run before the real call
-STORE OVERRIDE        --tasks <path>  OR  SCITEX_TODO_TASKS=<path>
+STORE OVERRIDE        --tasks <path>  OR  SCITEX_TODO_TASKS_YAML_SHARED=<path>
 
 # Fleet enablement (P3a, one-shot register the MCP server) ─ PR #155:
 PREVIEW REGISTRATION  scitex-todo mcp install --apply --dry-run
@@ -196,7 +196,7 @@ Lead-driven coordination (broadcast-rollout shape): the lead a2a's every agent w
 
 ## 8. Gotchas
 
-1. **Store resolution.** Default precedence: `--tasks` flag → `$SCITEX_TODO_TASKS` → project `<git-root>/.scitex/todo/tasks.yaml` → user `~/.scitex/todo/tasks.yaml` → bundled example. Check with `scitex-todo resolve-store`. Many agents bind only the user store; the project store can shadow it silently.
+1. **Store resolution.** Default precedence: `--tasks` flag → `$SCITEX_TODO_TASKS_YAML_SHARED` → project `<git-root>/.scitex/todo/tasks.yaml` → user `~/.scitex/todo/tasks.yaml` → bundled example. Check with `scitex-todo resolve-store`. Many agents bind only the user store; the project store can shadow it silently.
 2. **Container store divergence.** Open audit report at `src/scitex_todo/docs/audit/2026-06-13-container-store-divergence.md` (PR #143). If your container sees a partial board, read that first.
 3. **`done` vs `update --status done`.** `done` is shorthand without PR-pointer recording. Prefer `update` when there's a PR.
 4. **PR pointer field.** It's `pr_url` (string), not `pr-url` (the CLI flag). The YAML key is `pr_url`.

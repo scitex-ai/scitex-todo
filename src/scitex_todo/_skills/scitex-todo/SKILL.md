@@ -34,7 +34,7 @@ import it. The mermaid adapter (YAML → dependency PNG) and a read-only web
 board ship today; org-mode and drag-to-reprioritize are on the roadmap.
 
 The store is resolved in precedence order: explicit `--tasks` →
-`$SCITEX_TODO_TASKS` → project `<git-root>/.scitex/todo/tasks.yaml` → user
+`$SCITEX_TODO_TASKS_YAML_SHARED` → project `<git-root>/.scitex/todo/tasks.yaml` → user
 `~/.scitex/todo/tasks.yaml` → the bundled generic example.
 
 ## ⚑ MANDATE — single source of truth (operator + lead, 2026-06-12)
@@ -222,7 +222,7 @@ scitex-todo list-tasks --kind status        # status-tracking only
 scitex-todo update todo-pYY --depends-on todo-pXX
 
 # Pick the next runnable task FOR THIS AGENT (single canonical rule).
-SCITEX_TODO_AGENT=proj-scitex-todo \
+SCITEX_TODO_AGENT_ID=proj-scitex-todo \
   scitex-todo next --mine --auto-claim --json
 
 # Push side — wake the owning agent on new/commented/changed tasks.
@@ -234,7 +234,7 @@ landed): `add_task`, `update_task`, `comment_task`, `list_tasks`,
 plus the upcoming `next` (P3d). Schema in
 [05_mcp-tools.md](05_mcp-tools.md).
 
-Attribution: every write tags the agent via `SCITEX_TODO_AGENT`
+Attribution: every write tags the agent via `SCITEX_TODO_AGENT_ID`
 (P3a env). A missing tag is a config bug — fix the agent's
 `to_home/.mcp.json` rather than committing under a wrong name.
 
@@ -301,7 +301,7 @@ monitors. Read 32 before wiring up a new agent's harness.
   their LEAF / root blocker; Phase 2 escalate every RUNNABLE task to
   its owning agent), lead-centric funnel routing, and registration as
   a `scitex-dev cron` JobSpec (the ecosystem plugin pattern, same
-  shape as `ci-watch` / `quota-keepalive`). Keeps consumption rate >
+  shape as `watch-ci` / `quota-keepalive`). Keeps consumption rate >
   arrival rate so the board doesn't drift out of sync with the
   codebase. Name locked by operator TG 332 + 335: must carry "task";
   no "branch" / "graph" metaphors.

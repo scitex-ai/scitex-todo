@@ -11,7 +11,11 @@ conventions.
 
 Verb names follow audit §1 (bare transitive verbs at the top level
 need a noun object): `init` → `init-store`, `sync` → `sync-store`,
-`where` → `resolve-store`.
+`where` → `resolve-store`. `resolve-store` is a deliberate §1f
+exception (see `.scitex/dev/cli-audit-dict.yaml`): it means "figure
+out which config file path wins," not "close a task" — the blanket
+resolve→done verb-synonym mapping over-fires on this noun-scoped
+usage of "resolve."
 """
 
 from __future__ import annotations
@@ -19,6 +23,8 @@ from __future__ import annotations
 import json
 
 import click
+
+from ._compat import spec_command_kwargs
 
 from .._paths import resolve_tasks_path
 from . import _write as _write_mod  # for the shared _TASKS_OPTION constant
@@ -89,14 +95,70 @@ def list_tasks_filtered(
         )
 
 
+def list_blocking_operator(tasks_path: str | None, as_json: bool) -> None:
+    """Print the operator's decision queue — a glanceable, project-grouped view.
+
+    Surfaces the tasks the OPERATOR is blocking (the ``blocking_me`` predicate:
+    ``status=blocked AND blocker=operator-decision``) so the operator can see
+    and clear the queue at a glance. Grouped by ``project`` (falling back to
+    ``scope``), each row shows the title plus the first line of the card's
+    ``note`` as the WHY / how-to-unblock context. A card with no note is
+    flagged so the owner knows to add the decision context (the common reason a
+    block is un-actionable). ``--json`` emits the raw matching rows for tooling.
+    """
+    from .. import _store
+
+    rows = _store.list_tasks(tasks_path, blocking_me=True)
+    if as_json:
+        click.echo(json.dumps(rows))
+        return
+    resolved = resolve_tasks_path(tasks_path)
+    if not rows:
+        click.echo("✓ Nothing is waiting on the operator (0 operator-decision blocks).")
+        click.echo(f"# {resolved}")
+        return
+
+    groups: dict[str, list[dict]] = {}
+    for task in rows:
+        key = task.get("project") or task.get("scope") or "(no project)"
+        groups.setdefault(key, []).append(task)
+
+    click.echo(
+        f"# Waiting on operator — {len(rows)} decision(s) "
+        f"across {len(groups)} project(s)"
+    )
+    click.echo(f"# {resolved}")
+    for proj in sorted(groups):
+        members = groups[proj]
+        click.echo(f"\n{proj}  ({len(members)})")
+        for task in members:
+            click.echo(f"  • {task['id']:<28} {task['title']}")
+            note = (task.get("note") or "").strip()
+            if note:
+                click.echo(f"      ↳ {note.splitlines()[0]}")
+            else:
+                click.echo("      ↳ (no context noted — ask the owner to add why + options)")
+    click.echo(
+        "\nClear a block from the board, or via the CLI update/resolve verbs "
+        "once you've decided."
+    )
+
+
 # --------------------------------------------------------------------------- #
 # resolve-store (was `where` — renamed per audit §1: noun-like leaf)          #
 # --------------------------------------------------------------------------- #
 @click.command(
     "resolve-store",
-    help=(
-        "Show which store would be used and the precedence chain.\n\n"
-        "Example:\n  scitex-todo resolve-store"
+    **spec_command_kwargs(
+        summary="Show which store would be used and the precedence chain.",
+        description=(
+            "Prints the resolved tasks.yaml path plus every candidate "
+            "in the precedence chain (explicit --tasks, "
+            "$SCITEX_TODO_TASKS, project store, user store, bundled "
+            "example) — the debugging tool for 'why is my task not "
+            "showing up.'",
+        ),
+        examples=(("{prog} resolve-store", "Show the resolved store."),),
     ),
 )
 @click.option("--json", "as_json", is_flag=True)
@@ -112,7 +174,7 @@ def resolve_store_cmd(as_json, tasks_path) -> None:
     click.echo(f"resolved:        {info['resolved']}")
     click.echo(f"exists:          {info['exists']}")
     click.echo(f"explicit:        {info['explicit']}")
-    click.echo(f"$SCITEX_TODO_TASKS: {info['env_tasks']}")
+    click.echo(f"$SCITEX_TODO_TASKS_YAML_SHARED: {info['env_tasks']}")
     click.echo(f"user store:      {info['user_store']}")
     click.echo(f"bundled example: {info['bundled_example']}")
 
@@ -122,11 +184,14 @@ def resolve_store_cmd(as_json, tasks_path) -> None:
 # --------------------------------------------------------------------------- #
 @click.command(
     "init-store",
-    help=(
-        "Create an empty task store at the chosen scope (idempotent).\n\n"
-        "  --shared  -> ~/.scitex/todo/tasks.yaml (user scope, the default)\n"
-        "  --project -> <git-root>/.scitex/todo/tasks.yaml\n\n"
-        "Example:\n  scitex-todo init-store --shared"
+    **spec_command_kwargs(
+        summary="Create an empty task store at the chosen scope (idempotent).",
+        description=(
+            "--shared -> ~/.scitex/todo/tasks.yaml (user scope, the "
+            "default). --project -> <git-root>/.scitex/todo/tasks.yaml. "
+            "No-op (prints 'exists') when the target already exists.",
+        ),
+        examples=(("{prog} init-store --shared", "Create the user-scope store."),),
     ),
 )
 @click.option(
@@ -190,12 +255,16 @@ def init_store_cmd(scope_choice, dry_run, yes) -> None:
 # --------------------------------------------------------------------------- #
 @click.command(
     "sync-store",
-    help=(
-        "Sync the user-scope store across hosts. PHASE-1 STUB.\n\n"
-        "Phase 2 body: `git -C ~/.scitex/todo pull --rebase --autostash "
-        "&& git push` against an operator-owned remote. The stub prints\n"
-        "the plan and exits 0 so docs/skills can reference the verb today.\n\n"
-        "Example:\n  scitex-todo sync-store --dry-run"
+    **spec_command_kwargs(
+        summary="Sync the user-scope store across hosts (PHASE-1 STUB).",
+        description=(
+            "Phase 2 body: `git -C ~/.scitex/todo pull --rebase "
+            "--autostash && git push` against an operator-owned remote. "
+            "The Phase-1 stub prints the plan and exits 0 (--dry-run is "
+            "the default mode) so docs/skills can reference the verb "
+            "today; --apply is not yet implemented and errors.",
+        ),
+        examples=(("{prog} sync-store --dry-run", "Preview the planned sync."),),
     ),
 )
 @click.option(

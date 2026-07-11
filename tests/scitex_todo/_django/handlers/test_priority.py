@@ -215,7 +215,8 @@ def test_priority_endpoint_rejects_non_string_ids_with_400(store):
 @pytest.fixture
 def commented_store_after_reorder(tmp_path):
     """Write a store with a hand-written comment, reorder it, and return the
-    (raw text, {id: priority}) tuple so the ruamel round-trip can be inspected."""
+    (raw text, {id: priority}) tuple so the fast safe-dump write can be
+    inspected."""
     path = tmp_path / "commented.yaml"
     path.write_text(
         "# top-of-file comment about the task store\n"
@@ -236,13 +237,15 @@ def commented_store_after_reorder(tmp_path):
     return text, priorities
 
 
-def test_priority_endpoint_preserves_yaml_comment(commented_store_after_reorder):
+def test_priority_endpoint_drops_yaml_comment(commented_store_after_reorder):
+    # Contract CHANGE (fix/fast-store-write): the write path swapped the
+    # ruamel round-trip for a fast safe dump, which does NOT keep comments.
     # Arrange
     text, _priorities = commented_store_after_reorder
     # Act
     comment_survived = "top-of-file comment" in text
-    # Assert — the hand-written comment survives the ruamel round-trip.
-    assert comment_survived
+    # Assert — the hand-written comment is dropped (accepted trade-off).
+    assert not comment_survived
 
 
 def test_priority_endpoint_applies_priorities_to_commented_store(

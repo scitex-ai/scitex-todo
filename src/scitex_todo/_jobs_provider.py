@@ -93,7 +93,12 @@ def provide_jobs() -> list[JobSpec]:
             name="scitex-todo.wake-watcher",
             kind="service",
             schedule="",
-            command="scitex-todo watch --push --interval 2",
+            # --interval 30 (was 2): a 2s interval re-parsed the ~9 MB store
+            # faster than the tick finished on a slow host and death-spiraled
+            # the fleet on 2026-07-08 (incident-todo-wake-watcher-interval2-
+            # spiral). The `watch` command additionally CLAMPS anything below
+            # a 10s hard floor, so this value can never foot-gun again.
+            command="scitex-todo watch --push --interval 30",
             description=(
                 "scitex-todo wake-watcher — push side of the "
                 "self-consuming board loop. POSTs /v1/turn to the "
@@ -112,6 +117,12 @@ def provide_jobs() -> list[JobSpec]:
         # gone untouched for > SCITEX_TODO_NUDGE_QUIET_MIN minutes
         # (default 10). Structural feedback loop: silence + in_progress
         # → escalation, no manual lead intervention required.
+        #
+        # The --nudge-quiet path ALSO runs the stale-active sweep
+        # (_stale_active_nudge.sweep_and_nudge): per-OWNER nudge for
+        # in_progress/blocked cards untouched > SCITEX_TODO_STALE_ACTIVE_HOURS
+        # (default 2 h) over the same push wire. Replaces the manual
+        # card-freshness campaign; no new cron — it rides this */10 one.
         JobSpec(
             name="scitex-todo.notify",
             # `cron` (the JobSpec valid set is `cron|service|timer`).
@@ -142,6 +153,10 @@ def provide_jobs() -> list[JobSpec]:
         # different cadences, each STANDALONE: todo down → sac still
         # delivers; sac down → todo still records.
         JobSpec(
+            # NOTE: the JobSpec NAME is a registry identity (systemd
+            # unit / dedupe key), so it keeps its historical spelling;
+            # the COMMAND uses the canonical verb (`watch-ci`, renamed
+            # from `ci-watch` in the slice-6b verb-rename pilot).
             name="scitex-todo.ci-watch",
             kind="cron",
             # 5-field cron: every 5 min. Matches the cadence dev
@@ -149,9 +164,9 @@ def provide_jobs() -> list[JobSpec]:
             # run slower (10 / 15 / 30) without breaking parity since
             # the dedupe key (head_sha, overall) is content-keyed.
             schedule="*/5 * * * *",
-            command="scitex-todo ci-watch --once",
+            command="scitex-todo watch-ci --once",
             description=(
-                "scitex-todo ci-watch — record-only CI poller. Polls "
+                "scitex-todo watch-ci — record-only CI poller. Polls "
                 "the configured fleet repos every 5 min, diffs vs "
                 "~/.scitex/todo/ci-state.json, logs per-repo "
                 "transitions (newly-green / newly-red / still-pending). "
@@ -159,6 +174,30 @@ def provide_jobs() -> list[JobSpec]:
             ),
             restart_policy="no",
             timeout_sec=180,
+        ),
+        # reconcile-merged-prs (card-freshness automation) — deterministic
+        # auto-close. Every ~15 min, scan open cards (pending / in_progress /
+        # blocked) that carry a `pr_url`, check whether the linked PR has
+        # MERGED (gh on the host, curl GitHub-REST fallback), and flip the
+        # merged ones to `done` + an audit comment. `--apply` because the
+        # cron IS the mutation path (the verb is DRY-RUN by default for
+        # humans); the core is fail-soft (unknown merge-state -> skip, never
+        # wrongly close). kind=cron / restart_policy=no: a missed tick just
+        # closes on the next one — no long-running process to keep alive.
+        JobSpec(
+            name="scitex-todo.reconcile-merged-prs",
+            kind="cron",
+            # 5-field cron (min hour dom mon dow): every 15 min.
+            schedule="*/15 * * * *",
+            command="scitex-todo reconcile-merged-prs --apply",
+            description=(
+                "scitex-todo reconcile-merged-prs — periodic card-freshness "
+                "automation. Every 15 min, auto-close cards whose linked PR "
+                "(pr_url) has merged so nobody hand-updates the board. "
+                "Fail-soft: unknown merge-state is skipped, never closed."
+            ),
+            restart_policy="no",
+            timeout_sec=300,
         ),
     ]
 

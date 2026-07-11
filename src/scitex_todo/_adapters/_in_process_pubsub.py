@@ -14,7 +14,7 @@ Channel glob semantics (default impl scope, minimal):
 - bare ``"*"`` matches everything.
 
 More elaborate glob/pattern matching is the fleet adapter's
-responsibility (e.g. routing via the sac channel router).
+responsibility (e.g. routing via an external channel router).
 """
 
 from __future__ import annotations

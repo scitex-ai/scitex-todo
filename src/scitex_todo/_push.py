@@ -4,13 +4,13 @@
 
 Operator standing direction (lead a2a `8e51b1e072d14e2a81f5171cb5aca9f8`
 + `ffc6629c80e4462a8401fb7e4ebb7240`, 2026-06-12, operator TG12617): the
-package must NOT depend on the `sac` CLI for outbound notifications.
-Push delivery lives inside scitex-todo itself; the contract is HTTP,
-not Python imports (ecosystem doctrine).
+package must NOT depend on any external agent-runtime CLI for outbound
+notifications. Push delivery lives inside scitex-todo itself; the
+contract is HTTP, not Python imports (ecosystem doctrine).
 
-Operator TG12618 follow-up: the long-term architecture mirrors
-claude-code-telegrammer — a dedicated stdio MCP channel + a board-event
-poller per agent, wired via per-agent `.mcp.json`. That is queued as
+Operator TG12618 follow-up: the long-term architecture is a dedicated
+stdio MCP channel + a board-event poller per agent, wired via per-agent
+`.mcp.json`, all owned by scitex-todo. That is queued as
 PR (j) in the implementation roadmap. THIS module is the v1
 **HTTP-push** half: a one-shot wake of the agent's turn URL with the
 board-event body. Agents that read MCP inbox first (via the future
@@ -22,22 +22,17 @@ Configuration
 their turn URLs (any HTTP endpoint that accepts a JSON ``POST``):
 
     SCITEX_TODO_AGENT_TURN_URLS='{
-        "proj-scitex-todo": "https://sac.scitex/v1/turn/proj-scitex-todo",
-        "lead": "https://sac.scitex/v1/turn/lead"
+        "proj-scitex-todo": "https://agents.example/v1/turn/proj-scitex-todo",
+        "lead": "https://agents.example/v1/turn/lead"
     }'
 
 Per-agent fallback ``SCITEX_TODO_TURN_URL_<AGENT_SLUG>`` (agent slug
-upper-case + hyphens → underscores) — same shape as
-claude-code-telegrammer's `TURN_URL` env.
+upper-case + hyphens → underscores) — scitex-todo's own per-agent
+turn-url env contract.
 
-Registry fallback (lead a2a ``90acf63b4276422cbe9270cd936b2b45``,
-2026-06-12): when neither env is set we query the sac listen daemon
-at ``SCITEX_TODO_SAC_LISTEN_URL`` (default ``http://127.0.0.1:7878``)
-for ``GET /agents`` and derive the turn URL from the matching row's
-``turn_url`` (preferred) or ``a2a_port`` (HTTP-only contract — no
-sac CLI / Python imports). The dispatch fields aren't on the row
-shape as of 2026-06-12; agent-container is the owner of that field
-addition. The code is wired and waits.
+When neither env nor the user registry resolves a URL, delivery
+returns ``no-turn-url-configured`` (fail-loud); scitex-todo has no
+external-runtime fallback.
 
 Loud-but-not-fatal policy (lead-confirmed)
 ------------------------------------------
@@ -67,34 +62,27 @@ import os
 import urllib.error
 import urllib.request
 
+# Turn-URL RESOLUTION (the "where do I deliver?" concern) lives in
+# ``_turn_url``; this module owns the delivery WIRE. We re-export the
+# resolution surface so existing ``from scitex_todo._push import
+# turn_url_for / ENV_MAP / PER_AGENT_PREFIX / ...``
+# imports keep resolving unchanged.
+from ._turn_url import (
+    ENV_MAP,
+    PER_AGENT_PREFIX,
+    _slug,
+    turn_url_for,
+)
+
 logger = logging.getLogger(__name__)
 
-ENV_MAP = "SCITEX_TODO_AGENT_TURN_URLS"
 ENV_DRY_RUN = "SCITEX_TODO_PUSH_DRY_RUN"
-PER_AGENT_PREFIX = "SCITEX_TODO_TURN_URL_"
-
-#: Lead-defined env (a2a `90acf63b4276422cbe9270cd936b2b45`,
-#: 2026-06-12): point at the sac listen daemon's HTTP control-plane.
-#: Named per scitex env-var convention (no ``SAC_`` rename — the
-#: package must not appear to import sac). Defaults to the in-container
-#: loopback URL the sac runtime sets up at agent boot.
-ENV_SAC_LISTEN = "SCITEX_TODO_SAC_LISTEN_URL"
-#: Bearer-token env, matching the value sac listen populates in every
-#: agent container. We read the existing ``SAC_LISTEN_BEARER`` so no
-#: extra wiring is required from agent-container's side; if it ever
-#: changes, the env name is a single-line update here.
-ENV_SAC_BEARER = "SAC_LISTEN_BEARER"
-DEFAULT_SAC_LISTEN = "http://127.0.0.1:7878"
-#: Aggressive: a slow registry must not block per-agent nudge fan-out.
-#: 2 s is enough for a same-host loopback round-trip; anything longer
-#: would stall the whole cron sweep.
-SAC_REGISTRY_TIMEOUT_S = 2.0
 
 #: Default per-POST timeout in seconds. Env-overridable.
 #:
 #: Why 30 (not 5):
 #:
-#: SAC's ``/v1/turn`` runs the agent's turn SYNCHRONOUSLY before
+#: The receiver's ``/v1/turn`` runs the agent's turn SYNCHRONOUSLY before
 #: responding (up to its own ``timeout_s=120`` budget). With the prior
 #: 5 s client cap, the cron's POST timed out before the receiver had
 #: even queued the turn — proj-scitex-dev's ``session.jsonl`` had ZERO
@@ -137,139 +125,6 @@ def _default_timeout_s() -> float:
         return float(raw)
     except (TypeError, ValueError):
         return DEFAULT_TIMEOUT_S
-
-
-def _slug(agent: str) -> str:
-    """Match claude-code-telegrammer's env-slug convention."""
-    return agent.upper().replace("-", "_").replace("/", "_")
-
-
-def _turn_url_from_registry(agent: str) -> str | None:
-    """Resolve ``agent``'s turn URL via the sac listen daemon's HTTP registry.
-
-    HTTP-only contract (lead a2a `8e51b1e0` + `90acf63b`): we never
-    import the sac CLI or Python — the registry shape is exchanged
-    purely over HTTP. Reads:
-
-      * ``SCITEX_TODO_SAC_LISTEN_URL`` — base URL of the sac listen
-        daemon (default ``http://127.0.0.1:7878``).
-      * ``SAC_LISTEN_BEARER`` — bearer token the sac runtime sets in
-        every agent container.
-
-    Endpoint: ``GET <base>/agents`` returns ``{"agents": [{name,
-    ...}]}``. The dispatch fields we recognise on each row, in order
-    of precedence:
-
-      * ``turn_url`` (string) — full URL, used verbatim.
-      * ``a2a_port`` (int)   — derive ``http://<base-host>:<port>/v1/turn``.
-
-    Returns:
-      * The resolved URL (str) when the row exists AND carries one of
-        the dispatch fields.
-      * ``None`` when the registry is unreachable, the bearer isn't
-        set, the agent isn't in the list, or the row lacks dispatch
-        fields. The caller then falls through to the next precedence
-        step (today, that means fail-loud "no-turn-url-configured" —
-        the same shape as the env-miss path).
-
-    Note: the dispatch fields (``turn_url`` / ``a2a_port``) are NOT
-    yet exposed on the ``/agents`` row in the sac listen daemon as of
-    2026-06-12. Agent-container is the owner of that field addition
-    (lead-confirmed via a2a `90acf63b`); this function ships ready to
-    consume them the moment they appear. Until then every agent falls
-    through, and the failure mode is unchanged from the prior code.
-    """
-    bearer = os.environ.get(ENV_SAC_BEARER, "").strip()
-    if not bearer:
-        # No bearer → we're not inside a sac-managed container OR sac
-        # is down. Either way, registry path can't help — silent miss.
-        return None
-    base = os.environ.get(ENV_SAC_LISTEN, DEFAULT_SAC_LISTEN).strip().rstrip("/")
-    if not base:
-        return None
-    url = f"{base}/agents"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "Authorization": f"Bearer {bearer}",
-            "User-Agent": "scitex-todo/_push (registry-lookup)",
-        },
-        method="GET",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=SAC_REGISTRY_TIMEOUT_S) as resp:
-            data = json.load(resp)
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
-        # DEBUG: this is a quiet fallback, not an alert. The caller
-        # surfaces the user-visible failure when ALL precedence steps
-        # miss.
-        logger.debug(
-            "[scitex-todo._push] sac registry %s unreachable: %s", url, e,
-        )
-        return None
-    except json.JSONDecodeError as e:
-        logger.debug(
-            "[scitex-todo._push] sac registry %s returned non-JSON: %s",
-            url, e,
-        )
-        return None
-    rows = data.get("agents", []) if isinstance(data, dict) else []
-    for row in rows:
-        if not isinstance(row, dict) or row.get("name") != agent:
-            continue
-        explicit = row.get("turn_url")
-        if isinstance(explicit, str) and explicit.strip():
-            return explicit.strip()
-        port = row.get("a2a_port")
-        if isinstance(port, int) and port > 0:
-            from urllib.parse import urlparse
-            parsed = urlparse(base)
-            host = parsed.hostname or "127.0.0.1"
-            return f"http://{host}:{port}/v1/turn"
-        # Row exists but lacks dispatch fields — known gap until
-        # agent-container ships the field. Treat as miss.
-        return None
-    return None
-
-
-def turn_url_for(agent: str) -> str | None:
-    """Resolve the turn URL for ``agent``. Returns None when not configured.
-
-    Lookup order (lead a2a `90acf63b`, 2026-06-12):
-      1. ``SCITEX_TODO_AGENT_TURN_URLS`` JSON map entry (operator-pinned).
-      2. ``SCITEX_TODO_TURN_URL_<SLUG>`` per-agent env (telegrammer wire).
-      3. sac listen daemon's ``/agents`` HTTP registry — derive from
-         the row's ``turn_url`` (preferred) or ``a2a_port``. See
-         :func:`_turn_url_from_registry` for the contract.
-      4. None — caller falls through to fail-loud
-         "no-turn-url-configured".
-
-    The registry step (3) keeps the package's HTTP-only contract: we
-    never import the sac CLI or sac's Python, we talk to its listen
-    daemon. That contract is locked by lead a2a `8e51b1e0` /
-    `ffc6629c80`.
-    """
-    raw = os.environ.get(ENV_MAP)
-    if raw:
-        try:
-            mapping = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            logger.error(
-                "[scitex-todo._push] %s is not valid JSON — ignoring: %s",
-                ENV_MAP, exc,
-            )
-            mapping = {}
-        if isinstance(mapping, dict):
-            url = mapping.get(agent)
-            if isinstance(url, str) and url.strip():
-                return url.strip()
-    per_agent = os.environ.get(PER_AGENT_PREFIX + _slug(agent))
-    if per_agent and per_agent.strip():
-        return per_agent.strip()
-    registry_url = _turn_url_from_registry(agent)
-    if registry_url:
-        return registry_url
-    return None
 
 
 def _now_iso() -> str:
@@ -380,11 +235,11 @@ def deliver(
             "reason": "no-turn-url-configured",
         }
 
-    # ``text`` is the field SAC's /v1/turn (and claude-code-telegrammer's
-    # TURN_URL) expects; ``body`` is scitex-todo's historical name. We send
-    # BOTH so the wire is back-compat: consumers that key off ``text`` (SAC,
-    # the telegrammer) succeed, and any older consumer keying off ``body``
-    # still works. Without this alias the SAC receiver returns
+    # ``text`` is the field the turn-url receiver expects; ``body`` is
+    # scitex-todo's historical name. We send BOTH so the wire is
+    # back-compat: consumers that key off ``text`` succeed, and any older
+    # consumer keying off ``body`` still works. Without this alias a
+    # text-keyed receiver returns
     # ``HTTP 400 missing or empty 'text' field`` and the whole nudge chain
     # is dead on arrival (proj-scitex-todo P3a(c) pilot, 2026-06-13 — see
     # lead a2a ``8afe659e``).
@@ -461,11 +316,16 @@ def announce_missing_at_boot(tasks: list[dict]) -> list[str]:
 
     Returns the list of missing agents so callers (tests, the boot
     hook) can assert / surface the gap themselves.
+
+    Enumerates the OWNER SSOT (:func:`scitex_todo._owner.card_owner` =
+    ``agent`` falling back to ``assignee``) so an assignee-only card's owner
+    is included — the same target the comment relay / nudge resolve, so the
+    boot warning never misses a relay target.
     """
+    from ._owner import card_owner
+
     agents = sorted({
-        (t.get("agent") or "").strip()
-        for t in tasks
-        if (t.get("agent") or "").strip()
+        owner for t in tasks if (owner := card_owner(t))
     })
     missing = [a for a in agents if turn_url_for(a) is None]
     if missing:
@@ -482,10 +342,6 @@ __all__ = [
     "ENV_DRY_RUN",
     "ENV_PUSH_TIMEOUT_S",
     "PER_AGENT_PREFIX",
-    "ENV_SAC_LISTEN",
-    "ENV_SAC_BEARER",
-    "DEFAULT_SAC_LISTEN",
-    "SAC_REGISTRY_TIMEOUT_S",
     "DEFAULT_TIMEOUT_S",
     "NOTIFY_TIMEOUT_S",
     "turn_url_for",

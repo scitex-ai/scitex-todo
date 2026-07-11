@@ -2,18 +2,10 @@
 # -*- coding: utf-8 -*-
 """scitex-todo MCP server — one FastMCP instance per the SciTeX convention.
 
-Tools (audit §6 Convention A — ``tool_name == python_api_name``):
-
-    add_task          — add a new task                  (scitex_todo.add_task)
-    update_task       — mutate fields of an existing task (scitex_todo.update_task)
-    complete_task     — mark done + stamp _log_meta     (scitex_todo.complete_task)
-    list_tasks        — filter the store                (scitex_todo.list_tasks)
-    summarize_tasks   — counts by status/scope/assignee (scitex_todo.summarize_tasks)
-    resolve_store     — resolved store path + chain     (scitex_todo.resolve_store)
-    help_wait         — upsert an agent's help-wait card (scitex_todo._help_wait.help_wait)
-    help_clear        — resolve an agent's help-wait card (scitex_todo._help_wait.help_clear)
-    todo_skills_list  — list bundled agent skills       (audit §5 required pair)
-    todo_skills_get   — get one bundled skill's content (audit §5 required pair)
+Tools follow audit §6 Convention A (``tool_name == python_api_name``); see
+``TOOL_NAMES`` for the full registered set (task CRUD + edges + roles, the
+``help_wait`` / ``help_clear`` cards, ``poll_notifications`` — the standalone
+PULL card-message inbox — and the ``todo_skills_*`` §5 pair).
 
 The task-store tool surface is a thin wrapper around :mod:`scitex_todo._store`
 (the Python API) so MCP / CLI / GUI all share one logic path — §6 Python-API
@@ -31,7 +23,10 @@ hint as a click error).
 
 from __future__ import annotations
 
+import functools
 import json
+
+import anyio
 
 try:
     from fastmcp import FastMCP
@@ -50,7 +45,7 @@ mcp = FastMCP(
         "Use list_tasks with a `scope` arg (e.g. "
         "'agent:proj-scitex-todo') to see only your slice. The canonical "
         "store lives at ~/.scitex/todo/tasks.yaml; precedence is "
-        "explicit > $SCITEX_TODO_TASKS > project (<git-root>/.scitex/todo) > "
+        "explicit > $SCITEX_TODO_TASKS_YAML_SHARED > project (<git-root>/.scitex/todo) > "
         "user (~/.scitex/todo) > bundled example."
     ),
 )
@@ -63,7 +58,7 @@ mcp = FastMCP(
 async def add_task(
     id: str,
     title: str,
-    status: str = "pending",
+    status: str = "deferred",
     scope: str | None = None,
     assignee: str | None = None,
     priority: int | None = None,
@@ -113,7 +108,8 @@ async def add_task(
     rejects ``deadline < scheduled``). See ``scitex_todo._model`` +
     ``next_deadline_for_task`` for parse rules.
     """
-    inserted = _store.add_task(
+    _call = functools.partial(
+        _store.add_task,
         tasks_path,
         id=id,
         title=title,
@@ -145,6 +141,7 @@ async def add_task(
         scheduled=scheduled,
         created_by=created_by,  # hook-bypass: line-limit
     )
+    inserted = await anyio.to_thread.run_sync(_call)
     return json.dumps(inserted)
 
 
@@ -236,7 +233,9 @@ async def update_task(
         fields["blocks"] = list(blocks) if blocks else None
     if deadlines is not None:
         fields["deadlines"] = list(deadlines) if deadlines else None
-    merged = _store.update_task(tasks_path, task_id, **fields)
+    merged = await anyio.to_thread.run_sync(
+        functools.partial(_store.update_task, tasks_path, task_id, **fields)
+    )
     return json.dumps(merged)
 
 
@@ -249,9 +248,11 @@ async def complete_task(
     """Mark a task done and stamp `_log_meta.completed_{at,by}`.
 
     Idempotent: re-completing a `done` task keeps the original stamp.
-    `by` overrides the $SCITEX_TODO_AGENT → $USER precedence.
+    `by` overrides the $SCITEX_TODO_AGENT_ID → $USER precedence.
     """
-    done = _store.complete_task(tasks_path, task_id, by=by)
+    done = await anyio.to_thread.run_sync(
+        functools.partial(_store.complete_task, tasks_path, task_id, by=by)
+    )
     return json.dumps(done)
 
 
@@ -283,7 +284,8 @@ async def list_tasks(
     the fleet payload's ``overdue_count``; see scitex_todo._model.is_overdue
     — todo-p6-overdue-ui, PR #125 / #126).
     """
-    rows = _store.list_tasks(
+    _call = functools.partial(
+        _store.list_tasks,
         tasks_path,
         scope=scope,
         assignee=assignee,
@@ -298,6 +300,7 @@ async def list_tasks(
         blocking_me=blocking_me,
         overdue=overdue,
     )
+    rows = await anyio.to_thread.run_sync(_call)
     return json.dumps(rows)
 
 
@@ -308,9 +311,12 @@ async def summarize_tasks(
     tasks_path: str | None = None,
 ) -> str:
     """Numeric progress: counts by status / scope / assignee."""
-    return json.dumps(
-        _store.summarize_tasks(tasks_path, scope=scope, assignee=assignee)
+    result = await anyio.to_thread.run_sync(
+        functools.partial(
+            _store.summarize_tasks, tasks_path, scope=scope, assignee=assignee
+        )
     )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -334,7 +340,10 @@ async def get_task(
     Mirrors the equivalent ``handle_get`` shape on the Django board, so
     MCP agents can use it without going through HTTP.
     """
-    return json.dumps(_store.get_task(tasks_path, task_id))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_store.get_task, tasks_path, task_id)
+    )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -348,7 +357,10 @@ async def delete_task(
     Returns ``{"removed": <task>, "refs": [<scrubbed-ref-ids>]}``.
     Wraps the board v3 Delete-with-Undo flow for MCP agents.
     """
-    return json.dumps(_store.delete_task(tasks_path, task_id))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_store.delete_task, tasks_path, task_id)
+    )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -360,7 +372,10 @@ async def restore_task(
     """Undo a ``delete_task`` — re-insert at the original id. ``task``
     must be the exact dict ``delete_task`` returned in ``"removed"``.
     """
-    return json.dumps(_store.restore_task(tasks_path, task=task, refs=refs))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_store.restore_task, tasks_path, task=task, refs=refs)
+    )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -372,9 +387,12 @@ async def comment_task(
 ) -> str:
     """Append an entry to a task's ``comments[]`` thread (the
     Gitea-compatible Issue-activity log). ``by`` overrides the default
-    author resolution ($SCITEX_TODO_AGENT → $USER).
+    author resolution ($SCITEX_TODO_AGENT_ID → $USER).
     """
-    return json.dumps(_store.comment_task(tasks_path, task_id, text, by=by))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_store.comment_task, tasks_path, task_id, text, by=by)
+    )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -392,11 +410,17 @@ async def set_edge(
       kind: ``"depends_on"`` or ``"blocks"``.
       source / target: task ids on the edge.
     """
-    return json.dumps(
-        _store.set_edge(
-            tasks_path, action=action, kind=kind, source=source, target=target
+    result = await anyio.to_thread.run_sync(
+        functools.partial(
+            _store.set_edge,
+            tasks_path,
+            action=action,
+            kind=kind,
+            source=source,
+            target=target,
         )
     )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -411,7 +435,10 @@ async def resolve_task(
     This is the MCP equivalent of the board v3 "Resolve → notify agent"
     button (ADR-0006/0007).
     """
-    return json.dumps(_store.resolve_task(tasks_path, task_id, actor=actor))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_store.resolve_task, tasks_path, task_id, actor=actor)
+    )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -423,7 +450,10 @@ async def reopen_task(
     """Un-resolve: flip ``status=done`` back to ``blocked`` /
     ``blocker=operator-decision``. The Resolve→Undo partner.
     """
-    return json.dumps(_store.reopen_task(tasks_path, task_id, by=by))
+    result = await anyio.to_thread.run_sync(
+        functools.partial(_store.reopen_task, tasks_path, task_id, by=by)
+    )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -445,9 +475,12 @@ async def set_collaborator(
     collaborator leaves their subscription intact; use ``set_subscriber``
     with ``action="remove"`` to also stop their notices.
     """
-    return json.dumps(
-        _store.set_collaborator(tasks_path, task_id=task_id, who=who, action=action)
+    result = await anyio.to_thread.run_sync(
+        functools.partial(
+            _store.set_collaborator, tasks_path, task_id=task_id, who=who, action=action
+        )
     )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -468,15 +501,17 @@ async def set_subscriber(
     Anyone may unsubscribe — even a collaborator (the "always
     unsubscribable" rule).
     """
-    return json.dumps(
-        _store.set_subscriber(tasks_path, task_id=task_id, who=who, action=action)
+    result = await anyio.to_thread.run_sync(
+        functools.partial(
+            _store.set_subscriber, tasks_path, task_id=task_id, who=who, action=action
+        )
     )
+    return json.dumps(result)
 
 
-#: Canonical list of registered tool names — kept here as a constant so the
-#: `mcp doctor` / `mcp list-tools` CLI verbs don't have to introspect
-#: FastMCP's internal registry (which drifts between 2.x and 3.x). Update
-#: this tuple whenever a `@mcp.tool()` is added or removed above.
+#: Canonical list of registered tool names — a constant so the `mcp doctor`
+#: / `mcp list-tools` CLI verbs need not introspect FastMCP's drifting
+#: internal registry. Update when a `@mcp.tool()` is added/removed.
 TOOL_NAMES: tuple[str, ...] = (
     "add_task",
     "update_task",
@@ -494,18 +529,26 @@ TOOL_NAMES: tuple[str, ...] = (
     "set_subscriber",
     "resolve_task",
     "reopen_task",
+    # Registered in `_mcp_skills` (budget): reassign (1:1 `_store.reassign_task`)
+    "reassign_task",
     # Help-wait SoC lift — semantics lifted out of the dotfiles hook.
     "help_wait",
     "help_clear",
+    # Standalone pull-inbox read path (1:1 `_inbox.poll_inbox`; in _mcp_skills).
+    "poll_notifications",
+    # Package-level health doctor (1:1 `_health.health`; in _mcp_skills). Broad
+    # store/notifyd/channel diagnosis — distinct from the narrow `mcp doctor`.
+    "health",
     "todo_skills_list",
     "todo_skills_get",
+    # Operator↔agent DMs (threads.yaml sidecar; registered in _mcp_skills).
+    "dm_send",  # hook-bypass: line-limit — _mcp_server split still queued
+    "dm_list",  # hook-bypass: line-limit — _mcp_server split still queued
 )
 
-# Register the extracted tool clusters (skills §5 pair + help-wait) — kept in
-# ``_mcp_skills`` to hold this module under its line budget. The import has the
-# side effect of decorating ``todo_skills_list`` / ``todo_skills_get`` /
-# ``help_wait`` / ``help_clear`` onto the shared ``mcp`` instance, so
-# ``from scitex_todo._mcp_server import mcp`` exposes every tool.
+# Import for the registration side effect: ``_mcp_skills`` (kept separate for
+# this module's line budget) decorates its extra tools onto the shared ``mcp``
+# instance, so ``from scitex_todo._mcp_server import mcp`` exposes every tool.
 from . import _mcp_skills  # noqa: E402,F401
 
 __all__ = ["TOOL_NAMES", "mcp"]

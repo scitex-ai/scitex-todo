@@ -10,21 +10,28 @@ from pathlib import Path
 import pytest
 
 from scitex_todo._paths import bundled_example, resolve_tasks_path
-from scitex_todo._paths import ENV_TASKS
+from scitex_todo._paths import ENV_TASKS, ENV_TASKS_DEPRECATED, _find_git_root
 
 
 @pytest.fixture
 def clean_tasks_env():
-    """Save and restore $SCITEX_TODO_TASKS around a test."""
-    saved = os.environ.get(ENV_TASKS)
-    os.environ.pop(ENV_TASKS, None)
+    """Save and restore the task-store env vars around a test.
+
+    Clears BOTH the current ``$SCITEX_TODO_TASKS_YAML_SHARED`` and the
+    deprecated ``$SCITEX_TODO_TASKS`` so a stale export in the ambient
+    environment can't leak in and trip the fail-loud guard mid-test.
+    """
+    saved = {v: os.environ.get(v) for v in (ENV_TASKS, ENV_TASKS_DEPRECATED)}
+    for v in (ENV_TASKS, ENV_TASKS_DEPRECATED):
+        os.environ.pop(v, None)
     try:
         yield
     finally:
-        if saved is None:
-            os.environ.pop(ENV_TASKS, None)
-        else:
-            os.environ[ENV_TASKS] = saved
+        for v, val in saved.items():
+            if val is None:
+                os.environ.pop(v, None)
+            else:
+                os.environ[v] = val
 
 
 @pytest.fixture
@@ -81,6 +88,36 @@ def test_falls_back_to_bundled_example(clean_tasks_env, isolated_cwd):
     assert resolved == expected
 
 
+def test_deprecated_env_var_fails_loud(monkeypatch, clean_tasks_env):
+    """The renamed-away $SCITEX_TODO_TASKS must never be silently honoured when
+    the current var is absent: with ONLY the old name set, resolution fails LOUD
+    pointing at the new name so a stale export can't quietly pin the wrong
+    store."""
+    # Arrange: only the deprecated old name is set.
+    monkeypatch.setenv(ENV_TASKS_DEPRECATED, "/some/legacy/tasks.yaml")
+    # Act / Assert
+    with pytest.raises(RuntimeError, match=ENV_TASKS):
+        resolve_tasks_path(None)
+
+
+def test_current_tasks_var_wins_over_stale_deprecated(
+    monkeypatch, tmp_path, clean_tasks_env
+):
+    """The CURRENT $SCITEX_TODO_TASKS_YAML_SHARED wins: when it is set, a stale
+    leftover $SCITEX_TODO_TASKS is IGNORED (warn, no raise) so a correctly
+    configured store is not disabled by a leftover old-name export."""
+    # Arrange: the current var points at a real store AND the stale old name is
+    # also exported.
+    target = tmp_path / "current.yaml"
+    target.write_text("tasks: []\n", encoding="utf-8")
+    monkeypatch.setenv(ENV_TASKS, str(target))
+    monkeypatch.setenv(ENV_TASKS_DEPRECATED, "/some/legacy/tasks.yaml")
+    # Act
+    resolved = resolve_tasks_path(None)
+    # Assert: the current var wins, no raise.
+    assert resolved == target
+
+
 def test_bundled_example_file_exists_and_loads():
     # Arrange
     example = bundled_example()
@@ -116,9 +153,14 @@ def test_explicit_path_string_is_expanded(tmp_path, clean_tasks_env):
     assert resolved == target
 
 
-def test_project_scope_wins_over_user_scope(tmp_path, clean_tasks_env, env):
-    """Resolution precedence 3 — project (.git found) beats user scope."""
-    # Arrange — a fake project root with a real .git + tasks.yaml.
+def test_user_scope_wins_over_project_store(tmp_path, clean_tasks_env, env):
+    """DATA store = USER-CANONICAL. Regression guard for the 2026-07-06 stale-
+    store incident: even when cwd is inside a repo that HAS a
+    ``<git-root>/.scitex/todo/tasks.yaml``, resolution must reach the canonical
+    USER store — never the per-repo copy. The data store has DELIBERATELY no
+    project-scope layer (only the CONFIG in _config.py keeps its project
+    override)."""
+    # Arrange — a fake project root with a real .git + a would-be shadow store.
     project = tmp_path / "repo"
     project.mkdir()
     (project / ".git").mkdir()
@@ -126,7 +168,7 @@ def test_project_scope_wins_over_user_scope(tmp_path, clean_tasks_env, env):
     proj_store_dir.mkdir(parents=True)
     proj_store = proj_store_dir / "tasks.yaml"
     proj_store.write_text("tasks: []\n", encoding="utf-8")
-    # Also create a user-scope candidate so we know the project beats it.
+    # The canonical user-scope store the resolver MUST prefer.
     user_root = tmp_path / "user-scitex"
     user_dir = user_root / "todo"
     user_dir.mkdir(parents=True)
@@ -136,8 +178,9 @@ def test_project_scope_wins_over_user_scope(tmp_path, clean_tasks_env, env):
     env.chdir(project)
     # Act
     resolved = resolve_tasks_path(None)
-    # Assert
-    assert resolved == proj_store
+    # Assert — user store wins; the in-repo shadow is ignored.
+    assert resolved == user_store
+    assert resolved != proj_store
 
 
 def test_user_scope_used_when_no_project_store(tmp_path, clean_tasks_env, env):
@@ -158,22 +201,22 @@ def test_user_scope_used_when_no_project_store(tmp_path, clean_tasks_env, env):
     assert resolved == user_store
 
 
-def test_find_git_root_walks_up(tmp_path, clean_tasks_env, env):
-    """`_find_git_root` ascends parents; runs from a deep subdir of repo."""
+def test_find_git_root_walks_up(tmp_path):
+    """`_find_git_root` ascends parents from a deep subdir to the repo root.
+
+    The helper is retained (the CONFIG layer in _config.py still uses it for
+    the reminders config's project override) even though the DATA store no
+    longer consults it. Test it directly, not via resolve_tasks_path."""
     # Arrange — repo at tmp_path/repo, subdir at tmp_path/repo/a/b/c.
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
-    proj_store_dir = repo / ".scitex" / "todo"
-    proj_store_dir.mkdir(parents=True)
-    proj_store = proj_store_dir / "tasks.yaml"
-    proj_store.write_text("tasks: []\n", encoding="utf-8")
     deep = repo / "a" / "b" / "c"
     deep.mkdir(parents=True)
-    env.chdir(deep)
     # Act
-    resolved = resolve_tasks_path(None)
-    # Assert
-    assert resolved == proj_store
+    found = _find_git_root(deep)
+    # Assert — ascends to the repo root; a dir with no .git ancestor yields None.
+    assert found == repo.resolve()
+    assert _find_git_root(tmp_path.parent) != repo.resolve()
 
 
 # EOF

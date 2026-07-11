@@ -81,11 +81,11 @@ def test_manual_block_chain_is_empty():
     assert result.tasks[0].chain == ()
 
 
-def test_depends_on_reason_when_upstream_pending():
+def test_depends_on_reason_when_upstream_deferred():
     # Arrange — t-b's depends_on is unresolved.
     tasks = [
-        {"id": "t-up", "title": "up", "status": "pending"},
-        {"id": "t-b", "title": "down", "status": "pending", "depends_on": ["t-up"]},
+        {"id": "t-up", "title": "up", "status": "deferred"},
+        {"id": "t-b", "title": "down", "status": "deferred", "depends_on": ["t-up"]},
     ]
     # Act
     result = blocked_tasks(tasks)
@@ -98,8 +98,8 @@ def test_depends_on_reason_when_upstream_pending():
 def test_depends_on_chain_carries_unresolved_upstream_ids():
     # Arrange
     tasks = [
-        {"id": "t-up", "title": "up", "status": "pending"},
-        {"id": "t-b", "title": "down", "status": "pending", "depends_on": ["t-up"]},
+        {"id": "t-up", "title": "up", "status": "deferred"},
+        {"id": "t-b", "title": "down", "status": "deferred", "depends_on": ["t-up"]},
     ]
     # Act
     result = blocked_tasks(tasks)
@@ -109,10 +109,10 @@ def test_depends_on_chain_carries_unresolved_upstream_ids():
 
 
 def test_reverse_blocks_reason_when_upstream_z_blocks_us():
-    # Arrange — Z has `blocks: [t-b]` and Z is pending.
+    # Arrange — Z has `blocks: [t-b]` and Z is deferred.
     tasks = [
-        {"id": "t-z", "title": "blocker", "status": "pending", "blocks": ["t-b"]},
-        {"id": "t-b", "title": "downstream", "status": "pending"},
+        {"id": "t-z", "title": "blocker", "status": "deferred", "blocks": ["t-b"]},
+        {"id": "t-b", "title": "downstream", "status": "deferred"},
     ]
     # Act
     result = blocked_tasks(tasks)
@@ -164,8 +164,8 @@ def test_goal_umbrella_not_in_blocked_list():
 
 
 def test_runnable_task_is_excluded():
-    # Arrange — pending task with no deps; this is RUNNABLE, not blocked.
-    tasks = [{"id": "t-a", "title": "x", "status": "pending"}]
+    # Arrange — deferred task with no deps; this is RUNNABLE, not blocked.
+    tasks = [{"id": "t-a", "title": "x", "status": "deferred"}]
     # Act
     result = blocked_tasks(tasks)
     # Assert
@@ -185,8 +185,8 @@ def test_by_reason_histogram_counts_each_reason():
             "blocker": "operator-decision",
         },
         {"id": "t-b", "title": "y", "status": "blocked", "blocker": "compute"},
-        {"id": "t-up", "title": "up", "status": "pending"},
-        {"id": "t-c", "title": "down", "status": "pending", "depends_on": ["t-up"]},
+        {"id": "t-up", "title": "up", "status": "deferred"},
+        {"id": "t-c", "title": "down", "status": "deferred", "depends_on": ["t-up"]},
     ]
     # Act
     result = blocked_tasks(tasks)
@@ -272,7 +272,7 @@ def test_cli_blocked_lists_blocked_tasks(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
     add_task(
-        store=store, id="t-a", title="x", status="blocked", blocker="operator-decision"
+        store=store, id="t-a", title="x", status="blocked", blocker="operator-decision", assignee="agent:test-suite"
     )
     runner = CliRunner()
     # Act
@@ -285,7 +285,7 @@ def test_cli_blocked_json_emits_structured_payload(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
     add_task(
-        store=store, id="t-a", title="x", status="blocked", blocker="operator-decision"
+        store=store, id="t-a", title="x", status="blocked", blocker="operator-decision", assignee="agent:test-suite"
     )
     runner = CliRunner()
     # Act
@@ -301,7 +301,7 @@ def test_cli_blocked_json_emits_structured_payload(tmp_path: Path):
 def test_cli_blocked_empty_queue_emits_clear_message(tmp_path: Path):
     # Arrange — no blocked tasks at all.
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-a", title="x", status="pending")
+    add_task(store=store, id="t-a", title="x", status="deferred", assignee="agent:test-suite")
     runner = CliRunner()
     # Act
     result = runner.invoke(main, ["blocked", "--tasks", str(store)])

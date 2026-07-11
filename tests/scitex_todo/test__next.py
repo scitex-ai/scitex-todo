@@ -51,14 +51,14 @@ class TestRunnableFilter:
         # Assert
         assert next_task(tasks, assignee="proj-x").task is None
 
-    def test_accepts_pending_runnable_task(self):
+    def test_accepts_deferred_runnable_task(self):
         # Arrange
         # Act
         tasks = [
             {
                 "id": "a",
                 "title": "A",
-                "status": "pending",
+                "status": "deferred",
                 "agent": "proj-x",
             }
         ]
@@ -86,7 +86,7 @@ class TestRunnableFilter:
             {
                 "id": "a",
                 "title": "A",
-                "status": "pending",
+                "status": "deferred",
                 "agent": "proj-y",
             }
         ]
@@ -100,7 +100,7 @@ class TestRunnableFilter:
             {
                 "id": "a",
                 "title": "A",
-                "status": "pending",
+                "status": "deferred",
                 "assignee": "proj-x",
             }
         ]
@@ -114,7 +114,7 @@ class TestRunnableFilter:
             {
                 "id": "a",
                 "title": "A",
-                "status": "pending",
+                "status": "deferred",
                 "agent": "proj-x",
             }
         ]
@@ -131,14 +131,14 @@ class TestProjectFilter:
             {
                 "id": "a",
                 "title": "A",
-                "status": "pending",
+                "status": "deferred",
                 "agent": "proj-x",
                 "project": "alpha",
             },
             {
                 "id": "b",
                 "title": "B",
-                "status": "pending",
+                "status": "deferred",
                 "agent": "proj-x",
                 "project": "beta",
             },
@@ -156,14 +156,14 @@ class TestPrioritySort:
             {
                 "id": "low",
                 "title": "L",
-                "status": "pending",
+                "status": "deferred",
                 "agent": "proj-x",
                 "priority": 5,
             },
             {
                 "id": "high",
                 "title": "H",
-                "status": "pending",
+                "status": "deferred",
                 "agent": "proj-x",
                 "priority": 1,
             },
@@ -179,11 +179,11 @@ class TestPrioritySort:
             {
                 "id": "rated",
                 "title": "R",
-                "status": "pending",
+                "status": "deferred",
                 "agent": "proj-x",
                 "priority": 99,
             },
-            {"id": "unrated", "title": "U", "status": "pending", "agent": "proj-x"},
+            {"id": "unrated", "title": "U", "status": "deferred", "agent": "proj-x"},
         ]
         # Act
         out = next_task(tasks, assignee="proj-x")
@@ -198,7 +198,7 @@ class TestActivitySort:
             {
                 "id": "old",
                 "title": "O",
-                "status": "pending",
+                "status": "deferred",
                 "agent": "proj-x",
                 "priority": 1,
                 "last_activity": "2026-01-01",
@@ -206,7 +206,7 @@ class TestActivitySort:
             {
                 "id": "new",
                 "title": "N",
-                "status": "pending",
+                "status": "deferred",
                 "agent": "proj-x",
                 "priority": 1,
                 "last_activity": "2026-06-12",
@@ -225,14 +225,14 @@ class TestIdTiebreak:
             {
                 "id": "b",
                 "title": "B",
-                "status": "pending",
+                "status": "deferred",
                 "agent": "proj-x",
                 "priority": 1,
             },
             {
                 "id": "a",
                 "title": "A",
-                "status": "pending",
+                "status": "deferred",
                 "agent": "proj-x",
                 "priority": 1,
             },
@@ -247,8 +247,8 @@ class TestCandidateCount:
     def test_candidate_count_matches_filter_size(self):
         # Arrange
         tasks = [
-            {"id": "a", "title": "A", "status": "pending", "agent": "proj-x"},
-            {"id": "b", "title": "B", "status": "pending", "agent": "proj-x"},
+            {"id": "a", "title": "A", "status": "deferred", "agent": "proj-x"},
+            {"id": "b", "title": "B", "status": "deferred", "agent": "proj-x"},
             {
                 "id": "c",
                 "title": "C",

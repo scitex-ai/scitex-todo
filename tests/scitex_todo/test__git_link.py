@@ -297,6 +297,62 @@ def test_build_event_explicit_card_id_overrides_parsing():
     assert event["card_ids"] == ["explicit-id"]
 
 
+# === build_push_event: trigger field (C6 — commit vs push) =================
+
+
+def test_build_event_default_trigger_is_push():
+    # Arrange
+    kwargs = dict(repo="owner/repo", branch="feat/some-card", commit_sha="abc123")
+    # Act
+    event = build_push_event(**kwargs)
+    # Assert — historical default keeps the `push` behaviour.
+    assert event["trigger"] == "push"
+
+
+def test_build_event_carries_commit_trigger():
+    # Arrange
+    kwargs = dict(
+        repo="owner/repo",
+        branch="feat/some-card",
+        commit_sha="abc123",
+        trigger="commit",
+    )
+    # Act
+    event = build_push_event(**kwargs)
+    # Assert
+    assert event["trigger"] == "commit"
+
+
+def test_build_event_unknown_trigger_coerced_to_push():
+    # Arrange — a hint, never a hard contract: bogus → fail-soft `push`.
+    kwargs = dict(
+        repo="owner/repo",
+        branch="feat/some-card",
+        commit_sha="abc123",
+        trigger="bogus",
+    )
+    # Act
+    event = build_push_event(**kwargs)
+    # Assert
+    assert event["trigger"] == "push"
+
+
+def test_validator_carries_trigger_through():
+    # Arrange — the validator must preserve `trigger` for the push handler.
+    from scitex_todo._hooks import event_validate
+
+    event = build_push_event(
+        repo="owner/repo",
+        branch="feat/some-card",
+        commit_sha="abc123",
+        trigger="commit",
+    )
+    # Act
+    normalized = event_validate(event)
+    # Assert
+    assert normalized["trigger"] == "commit"
+
+
 # === wire-contract: built event passes the real consumer validator =========
 
 

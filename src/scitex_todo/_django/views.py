@@ -88,6 +88,16 @@ def board_v3_page(request):
         _version = "?"
     label = f"scitex-todo v{_version}"
 
+    # SSOT status colors (kill the 4-bucket color collapse). The board's
+    # color layer is single-sourced from ``STATUS_STYLE`` via the same
+    # projection the /graph payload uses (``handlers.graph._status_colors``),
+    # so the FIRST-PAINT CSS vars + the JS-driven mermaid/timeline color
+    # exactly match the python-rendered mermaid artifacts. Do NOT re-derive
+    # colors anywhere else — reuse this one map.
+    from .handlers.graph import _status_colors
+
+    status_colors = _status_colors()
+
     # PR (g) (lead a2a `ffc6629c80e4462a8401fb7e4ebb7240`, 2026-06-12):
     # one-shot boot announce of agents that have no turn URL configured,
     # so the operator sees the gap before any nudge / comment-relay
@@ -102,6 +112,10 @@ def board_v3_page(request):
                 "app_name": "scitex-todo",
                 "app_label": label,
                 "scitex_todo_version": _version,
+                # Per-status SSOT colors for first-paint CSS vars (board_v3
+                # <head> renders a `:root{--status-fill-<s>...}` block from
+                # this so cards/timeline/mermaid never collapse 7→4 colors).
+                "status_colors": status_colors,
             },
             request=request,
         )
@@ -109,6 +123,30 @@ def board_v3_page(request):
     except Exception:
         logger.exception("[scitex-todo] board_v3 render failed; using fallback")
         return HttpResponse(_static_graph_page(request))
+
+
+def chat_page(request):
+    """Serve the operator↔agent direct-message CHAT view (mobile-first).
+
+    Minimal slice of the DM board pane (card
+    ``fleet-agent-direct-message-board-pane-20260707``): agent list +
+    per-agent thread + compose + history. Server-rendered template
+    (``chat.html``, separate from the oversized ``board_v3.html``) whose JS
+    lives in ``static/scitex_todo/chat/chat.js`` and polls the ``/dm/*``
+    JSON endpoints (:mod:`.handlers.dm`) every ~5s.
+    """
+    from django.template.loader import render_to_string
+
+    try:
+        from scitex_todo import __version__ as _version
+    except Exception:  # noqa: BLE001
+        _version = "?"
+    html = render_to_string(
+        "scitex_todo/chat.html",
+        {"scitex_todo_version": _version},
+        request=request,
+    )
+    return HttpResponse(html)
 
 
 _TURN_URL_ANNOUNCED = False

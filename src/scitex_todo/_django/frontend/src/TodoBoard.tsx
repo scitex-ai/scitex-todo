@@ -4,8 +4,6 @@
 import { useEffect, useMemo } from "react";
 import { CalendarView } from "./CalendarView";
 import { FleetCiPills } from "./FleetCiPills";
-import { FleetHostsPanel } from "./FleetHostsPanel";
-import { FleetMeshPanel } from "./FleetMeshPanel";
 import { FleetTimingPanel } from "./FleetTimingPanel";
 import { GraphView } from "./GraphView";
 import { RecentView } from "./RecentView";
@@ -548,21 +546,6 @@ export function TodoBoard() {
          * registry-reader harness in handlers/fleet/ is the template
          * subsequent waves (hosts / mesh / timing / chat) plug into. */}
         <FleetCiPills />
-        {/* Fleet host-geometry panel (Phase 2 of FLEET DASHBOARD —
-         * lead a2a `74db4f2d` + `10afa799`). Polls /fleet/hosts every
-         * 30s; reads the local host + peer registry live from
-         * `sac host list --json` (NEVER duplicates state). Sits next
-         * to the CI-pills strip to give the operator a single glance
-         * at "where am I + who is on the mesh right now". */}
-        <FleetHostsPanel />
-        {/* Fleet agent-mesh + ACL graph panel (Phase 3 of FLEET
-         * DASHBOARD — lead a2a `74db4f2d` + `10afa799`). Polls
-         * /fleet/mesh every 30s; reads the registered agents from
-         * `sac a2a list --json` + the ``comms_grants`` ACL from
-         * `sac a2a grants --json` (NEVER duplicates state). Sits in
-         * the STATUS group next to the hosts panel — the operator's
-         * one-glance answer to "who can message whom right now". */}
-        <FleetMeshPanel />
         {/* Fleet timing-chart panel (Phase 5 of FLEET DASHBOARD — lead
          * a2a `74db4f2d` + `10afa799`, operator ask 2026-06-14:
          * "record what took how long → self-improvement"). Polls

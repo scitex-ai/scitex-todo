@@ -58,14 +58,14 @@ raise `RenderError`.
 ### `resolve_tasks_path(explicit=None) -> Path`
 
 Returns the first existing store in precedence order (explicit →
-`$SCITEX_TODO_TASKS` → project → user → bundled). `bundled_example()` returns
+`$SCITEX_TODO_TASKS_YAML_SHARED` → project → user → bundled). `bundled_example()` returns
 the path to the generic example shipped in the wheel.
 
 ## Constants and exceptions
 
 | Name               | Meaning                                                       |
 |--------------------|---------------------------------------------------------------|
-| `VALID_STATUSES`   | `goal`/`pending`/`in_progress`/`blocked`/`done`/`deferred`/`failed` |
+| `VALID_STATUSES`   | `goal`/`pending`/`in_progress`/`blocked`/`done`/`deferred`/`failed`/`cancelled` (cancelled = closed-as-not-planned, terminal) |
 | `STATUS_STYLE`     | per-status fill color + edge style used by `build_mermaid`     |
 | `TaskValidationError` | raised by `load_tasks`/`save_tasks` on a bad task           |
 | `RenderError`      | raised by `render*` when no backend can produce the PNG       |

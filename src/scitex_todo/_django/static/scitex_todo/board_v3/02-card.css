@@ -41,20 +41,35 @@
   bottom: 0;
   width: 4px;
 }
-/* Map the existing 7-status enum to the operator-co-designed 4 colors
- * (working/waiting/done/blocked) until the schema migration lands —
- * FE-side mapping per ADR-0007. */
-.card--working::before {
-  background: var(--green);
+/* Per-status COLOR layer — single-sourced from STATUS_STYLE via the
+ * server-rendered `--status-*` CSS vars (see board_v3.html
+ * `#status-color-vars`). The left bar fills with the status's SSOT fill,
+ * so all 7 statuses render DISTINCT + consistent with the mermaid graph.
+ * Column placement still comes from the `card--<bucket>` class; only the
+ * color moved to `data-status`. */
+.card[data-status="goal"]::before {
+  background: var(--status-fill-goal);
 }
-.card--waiting::before {
-  background: var(--amber);
+.card[data-status="done"]::before {
+  background: var(--status-fill-done);
 }
-.card--done::before {
-  background: var(--grey);
+.card[data-status="in_progress"]::before {
+  background: var(--status-fill-in_progress);
 }
+.card[data-status="blocked"]::before {
+  background: var(--status-fill-blocked);
+}
+.card[data-status="pending"]::before {
+  background: var(--status-fill-pending);
+}
+.card[data-status="deferred"]::before {
+  background: var(--status-fill-deferred);
+}
+.card[data-status="failed"]::before {
+  background: var(--status-fill-failed);
+}
+/* Blocked keeps its attention-grabbing pulse (bucket-driven, unchanged). */
 .card--blocked::before {
-  background: var(--red);
   animation: pulse-red 1.8s ease-in-out infinite;
 }
 .card-pad {
@@ -73,17 +88,27 @@
   font-weight: 700;
   font-size: 0.65rem;
 }
-.card--working .card-status {
-  color: var(--green);
+/* Status label color = the status's SSOT stroke (per-status, 7 distinct). */
+.card[data-status="goal"] .card-status {
+  color: var(--status-stroke-goal);
 }
-.card--waiting .card-status {
-  color: var(--amber);
+.card[data-status="done"] .card-status {
+  color: var(--status-stroke-done);
 }
-.card--done .card-status {
-  color: var(--grey);
+.card[data-status="in_progress"] .card-status {
+  color: var(--status-stroke-in_progress);
 }
-.card--blocked .card-status {
-  color: var(--red);
+.card[data-status="blocked"] .card-status {
+  color: var(--status-stroke-blocked);
+}
+.card[data-status="pending"] .card-status {
+  color: var(--status-stroke-pending);
+}
+.card[data-status="deferred"] .card-status {
+  color: var(--status-stroke-deferred);
+}
+.card[data-status="failed"] .card-status {
+  color: var(--status-stroke-failed);
 }
 .card-last {
   color: var(--text-muted);
@@ -183,16 +208,19 @@
  * sibling span to advertise the affordance even when the input is
  * empty. Global "/" focuses it; Esc blurs. Pinned by the regression
  * test ``tests/scitex_todo/test__board_v3_signatures.py``. */
+/* Operator 2026-07-10 (でかすぎ, todo-board-search-box-oversized-20260710):
+ * the search input dwarfed the sibling .filt controls (44.5px tall, 16px
+ * font, permanent purple glow). Sized to the filterbar baseline; the glow
+ * now appears on :focus only (see :focus rule below). */
 .filt-search {
-  min-width: 320px;
-  flex: 1 1 320px;
-  padding: 10px 14px !important;
-  font-size: 1rem;
+  min-width: 220px;
+  flex: 1 1 220px;
+  padding: 5px 10px !important;
+  font-size: 0.85rem;
   font-weight: 500;
-  border: 2px solid var(--purple) !important;
-  border-radius: 10px !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
   background: rgba(109, 76, 173, 0.04);
-  box-shadow: 0 0 0 3px rgba(109, 76, 173, 0.1);
   transition:
     box-shadow 120ms ease,
     background 120ms ease,
@@ -204,13 +232,12 @@
 }
 .filt-search:hover {
   background: rgba(109, 76, 173, 0.08);
-  box-shadow: 0 0 0 4px rgba(109, 76, 173, 0.18);
 }
 .filt-search:focus {
   outline: none;
   border-color: var(--purple);
   background: rgba(109, 76, 173, 0.12);
-  box-shadow: 0 0 0 4px rgba(109, 76, 173, 0.35);
+  box-shadow: 0 0 0 2px rgba(109, 76, 173, 0.3);
 }
 .filt-search-kbd {
   display: inline-flex;

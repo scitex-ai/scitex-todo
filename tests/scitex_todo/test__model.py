@@ -57,14 +57,16 @@ def test_load_tasks_raises_on_duplicate_id(tmp_path):
         load_tasks(store)
 
 
-def test_load_tasks_raises_on_bad_status(tmp_path):
-    # Arrange
+def test_load_tasks_warns_on_bad_status_but_loads(tmp_path):
+    # Arrange — tolerant read (2026-07-10 outage fix): an unknown VALUE must
+    # never take the whole store down; it may have been written by a newer
+    # agent. Structural corruption (missing title, dup id) still raises.
     store = _write(tmp_path, "tasks:\n  - {id: x, title: X, status: wibble}\n")
     # Act
-    ctx = pytest.raises(TaskValidationError)
-    # Assert
-    with ctx:
-        load_tasks(store)
+    with pytest.warns(UserWarning, match="wibble"):
+        tasks = load_tasks(store)
+    # Assert — the row survives, shouted about but readable.
+    assert tasks[0]["status"] == "wibble"
 
 
 def test_load_tasks_raises_on_missing_title(tmp_path):
@@ -160,13 +162,17 @@ def test_save_tasks_round_trip_preserves_priority(tmp_path):
     assert reloaded[0]["priority"] == 7
 
 
-def test_save_tasks_round_trip_preserves_comments(tmp_path):
+def test_save_tasks_round_trips_data_across_rewrite(tmp_path):
+    # Contract CHANGE (fix/fast-store-write): the write path swapped the
+    # slow ruamel round-trip (which preserved hand-written comments) for a
+    # fast safe dump. Comments are INTENTIONALLY dropped — the store is
+    # machine-managed. What MUST survive is the task DATA. This pins that.
     # Arrange
     path = tmp_path / "tasks.yaml"
     path.write_text(
-        "# top-of-file comment kept verbatim\n"
+        "# top-of-file comment (intentionally NOT preserved)\n"
         "tasks:\n"
-        "  - id: a  # inline task comment\n"
+        "  - id: a  # inline task comment (intentionally NOT preserved)\n"
         "    title: First\n"
         "    status: done\n",
         encoding="utf-8",
@@ -175,12 +181,16 @@ def test_save_tasks_round_trip_preserves_comments(tmp_path):
     tasks[0]["priority"] = 1
     # Act
     save_tasks(tasks, path)
-    rewritten = path.read_text(encoding="utf-8")
-    # Assert
-    assert "# top-of-file comment kept verbatim" in rewritten
+    reloaded = load_tasks(path)
+    # Assert — the mutated data round-trips exactly.
+    assert reloaded == [
+        {"id": "a", "title": "First", "status": "done", "priority": 1}
+    ]
 
 
-def test_save_tasks_preserves_inline_comment(tmp_path):
+def test_save_tasks_drops_comments_by_design(tmp_path):
+    # Documents the accepted trade-off: the fast write does NOT keep the
+    # hand-written comments the old ruamel round-trip preserved.
     # Arrange
     path = tmp_path / "tasks.yaml"
     path.write_text(
@@ -195,8 +205,8 @@ def test_save_tasks_preserves_inline_comment(tmp_path):
     # Act
     save_tasks(tasks, path)
     rewritten = path.read_text(encoding="utf-8")
-    # Assert
-    assert "# inline task comment" in rewritten
+    # Assert — comment is gone (accepted); block-style + key order kept.
+    assert "# inline task comment" not in rewritten
 
 
 def test_save_tasks_raises_on_bad_priority_type(tmp_path):
@@ -213,9 +223,11 @@ def test_save_tasks_raises_on_bad_priority_type(tmp_path):
 
 def test_save_tasks_does_not_write_when_validation_fails(tmp_path):
     # Arrange
+    # STRUCTURAL fault (missing title) still fails loud and writes nothing.
+    # (A bad status VALUE now warns-and-writes — operator ruling 2026-07-10.)
     store = _write(tmp_path, "tasks:\n  - {id: a, title: First, status: done}\n")
     before = store.read_text(encoding="utf-8")
-    bad = [{"id": "a", "title": "First", "status": "bogus"}]
+    bad = [{"id": "a", "status": "done"}]
     with contextlib.suppress(TaskValidationError):
         save_tasks(bad, store)
     # Act
@@ -735,13 +747,15 @@ def test_save_tasks_round_trip_writes_finished_at(tmp_path):
     assert reloaded["finished_at"] == "2026-06-06T13:30:00Z"
 
 
-def test_save_tasks_round_trip_preserves_header_comment(tmp_path):
+def test_save_tasks_round_trip_drops_header_comment(tmp_path):
+    # Contract CHANGE (fix/fast-store-write): the fast safe dump does NOT
+    # preserve hand-written header comments; the store is machine-managed.
     # Arrange
     store, tasks = _prepare_compute_store(tmp_path)
     # Act
     save_tasks(tasks, store)
-    # Assert
-    assert "# preserved header" in store.read_text()
+    # Assert — comment dropped (accepted trade-off for the ~15x speedup).
+    assert "# preserved header" not in store.read_text()
 
 
 # ---------------------------------------------------------------------------
@@ -942,13 +956,14 @@ def test_save_tasks_round_trip_decision_preserves_kind(tmp_path):
     assert reloaded["kind"] == "decision"
 
 
-def test_save_tasks_round_trip_decision_preserves_header_comment(tmp_path):
+def test_save_tasks_round_trip_decision_drops_header_comment(tmp_path):
+    # Contract CHANGE (fix/fast-store-write): fast safe dump drops comments.
     # Arrange
     store, tasks = _prepare_decision_store(tmp_path)
     # Act
     save_tasks(tasks, store)
-    # Assert
-    assert "# preserved" in store.read_text()
+    # Assert — header comment gone (accepted for machine-managed store).
+    assert "# preserved" not in store.read_text()
 
 
 # ===========================================================================
@@ -978,13 +993,13 @@ def test_task_dataclass_from_dict_carries_title():
     assert t.title == "X"
 
 
-def test_task_dataclass_from_dict_defaults_status_to_pending():
-    # Arrange
+def test_task_dataclass_from_dict_defaults_status_to_deferred():
+    # Arrange — `deferred` replaced the abolished `pending` as the default.
     from scitex_todo._model import Task
     # Act
     t = Task.from_dict(_MIN_TASK_PAYLOAD)
     # Assert
-    assert t.status == "pending"
+    assert t.status == "deferred"
 
 
 def test_task_dataclass_from_dict_defaults_comments_to_empty_list():
@@ -1082,7 +1097,7 @@ def test_task_dataclass_to_dict_omits_default_fields():
     # Act
     d = t.to_dict()
     # Assert
-    assert d == {"id": "x", "title": "X", "status": "pending"}
+    assert d == {"id": "x", "title": "X", "status": "deferred"}
 
 
 def test_task_dataclass_to_dict_omits_empty_depends_on(tmp_path):

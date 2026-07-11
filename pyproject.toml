@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "scitex-todo"
-version = "0.7.28"
+version = "0.8.0"
 description = "Canonical YAML task store with pluggable adapters (mermaid dependency graphs)"
 readme = "README.md"
 license = "AGPL-3.0-only"
@@ -25,7 +25,11 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-dependencies = ["pyyaml", "click", "ruamel.yaml"]
+# `scitex_config` is a FOUNDATIONAL ecosystem lib (not a leaf peer): it
+# supplies `local_state.user_path`, the user-canonical path resolver the
+# shadow-SQLite adapter (`_db.resolve_db_path`) delegates to instead of
+# re-rolling a project/user precedence (RFC #348 S0).
+dependencies = ["pyyaml", "click", "ruamel.yaml", "scitex_config"]
 
 [project.optional-dependencies]
 dev = [
@@ -98,6 +102,20 @@ scitex-todo = "scitex_todo._jobs_provider:provide_jobs"
 #
 # See `scitex_todo._hooks` for the canonical event-payload spec and
 # the built-in handlers (which run regardless of plugins).
+# Standalone notification-DELIVERY channel registry (slice 1). The
+# delivery loop (`scitex-todo deliver`) discovers channels registered
+# under this group via importlib.metadata and hands each pending
+# notification to the channels a user is configured for in
+# recipients.yaml. Channel plugin = a class implementing the
+# DeliveryChannel Protocol (attribute `name`, synchronous `deliver`).
+# This group name is DELIBERATELY distinct from any
+# `scitex_agent_container.*` group — scitex-todo's delivery rail is
+# fully independent of sac (ZERO sac imports). See
+# src/scitex_todo/_delivery/_registry.py.
+[project.entry-points."scitex_todo.delivery_channels"]
+log = "scitex_todo._delivery._channels.log:LogChannel"
+telegram = "scitex_todo._delivery._channels.telegram:TelegramChannel"
+
 [project.entry-points."scitex_todo.hooks"]
 # scitex-todo's built-in handler is invoked DIRECTLY by
 # dispatch_event (not via the plugin loop). External producers add

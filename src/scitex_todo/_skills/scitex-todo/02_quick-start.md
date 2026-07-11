@@ -37,7 +37,7 @@ tasks:
 ## CLI
 
 ```bash
-# default store: project -> user -> bundled example (or $SCITEX_TODO_TASKS)
+# default store: project -> user -> bundled example (or $SCITEX_TODO_TASKS_YAML_SHARED)
 scitex-todo render-graph -o tasks.png
 
 # inspect the generated mermaid without rendering

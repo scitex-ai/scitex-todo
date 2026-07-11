@@ -92,6 +92,9 @@ _CONVENTION_A_NAMES = {
     "set_edge",
     "resolve_task",
     "reopen_task",
+    # C5 reassign primitive — 1:1 with `_store.reassign_task` (Convention
+    # A; registered in `_mcp_skills` to keep `_mcp_server` under budget).
+    "reassign_task",
     # Card roles (ADR-0009) — 1:1 with `_store.set_collaborator` /
     # `_store.set_subscriber` (Convention A).
     "set_collaborator",
@@ -100,6 +103,14 @@ _CONVENTION_A_NAMES = {
     # `_help_wait.help_clear`. Semantics lifted out of the dotfiles hook.
     "help_wait",
     "help_clear",
+    # Standalone pull-inbox read path — 1:1 with `_inbox.poll_inbox`
+    # (registered in `_mcp_skills`). PULL card-message delivery, no sac.
+    "poll_notifications",
+    # Operator↔agent direct messages — 1:1 with `_threads.append_message` /
+    # `_threads.get_thread` (registered in `_mcp_skills`; scitex-dev DM
+    # convention v1, threads.yaml sidecar).
+    "dm_send",
+    "dm_list",
 }
 # Convention B — `todo_<verb>_<noun>` for the audit §5 required skills
 # tools. These don't map 1:1 to a Python API; they introspect the bundled
@@ -107,6 +118,12 @@ _CONVENTION_A_NAMES = {
 _CONVENTION_B_NAMES = {
     "todo_skills_list",
     "todo_skills_get",
+}
+# Cross-package standard names — a fixed tool name shared verbatim with the
+# sac/cct health tools (single token by that shared spec, so exempt from the
+# no-single-token guard below).
+_STANDARD_NAMES = {
+    "health",
 }
 
 
@@ -124,7 +141,11 @@ def test_no_tool_uses_dropped_scitex_todo_prefix():
     names = _tool_names(mcp)
     # Act
     bad_prefix = [n for n in names if n.startswith("scitex_todo_")]
-    single_token = [n for n in names if "_" not in n]
+    # `health` is a cross-package STANDARD single-token name (shared verbatim
+    # with sac/cct), so it is exempt from the no-single-token audit rule.
+    single_token = [
+        n for n in names if "_" not in n and n not in _STANDARD_NAMES
+    ]
     # Assert
     assert not bad_prefix and not single_token, (
         f"tools {bad_prefix + single_token!r} regress audit §6 / §2"
@@ -137,7 +158,7 @@ def test_tool_names_match_known_conventions():
     from scitex_todo._mcp_server import mcp
 
     names = set(_tool_names(mcp))
-    allowed = _CONVENTION_A_NAMES | _CONVENTION_B_NAMES
+    allowed = _CONVENTION_A_NAMES | _CONVENTION_B_NAMES | _STANDARD_NAMES
     # Act
     extras = names - allowed
     # Assert
@@ -181,6 +202,7 @@ def test_add_returns_id(tmp_path):
             id="a",
             title="A",
             scope="agent:test",
+            assignee="agent:test",
             tasks_path=store,
         )
     )
@@ -200,6 +222,7 @@ def test_add_task_stores_created_by(tmp_path):
             add_task,
             id="a",
             title="A",
+            assignee="agent:explicit",
             created_by="agent:explicit",
             tasks_path=store,
         )
@@ -209,14 +232,14 @@ def test_add_task_stores_created_by(tmp_path):
 
 
 def test_add_task_defaults_created_by_from_env(tmp_path, env):
-    # Arrange — no explicit author; resolves from $SCITEX_TODO_AGENT.
+    # Arrange — no explicit author; resolves from $SCITEX_TODO_AGENT_ID.
     from scitex_todo._mcp_server import add_task
 
     store = str(tmp_path / "tasks.yaml")
-    env.set("SCITEX_TODO_AGENT", "agent:fromenv")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:fromenv")
     # Act
     add = asyncio.run(
-        _call_tool(add_task, id="a", title="A", tasks_path=store)
+        _call_tool(add_task, id="a", title="A", assignee="agent:x", tasks_path=store)
     )
     # Assert
     assert json.loads(add)["created_by"] == "agent:fromenv"
@@ -233,6 +256,7 @@ def test_add_then_list_round_trip(tmp_path):
             id="a",
             title="A",
             scope="agent:test",
+            assignee="agent:test",
             tasks_path=store,
         )
     )
@@ -381,6 +405,7 @@ def test_add_task_with_deadline_sets_deadline_field(tmp_path):
             add_task,
             id="a",
             title="A",
+            assignee="agent:x",
             deadline="2030-01-01",
             tasks_path=store,
         )
@@ -399,7 +424,7 @@ def test_update_task_with_deadline_sets_deadline_field(tmp_path):
     from scitex_todo._mcp_server import add_task, list_tasks, update_task
 
     store = str(tmp_path / "tasks.yaml")
-    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
+    asyncio.run(_call_tool(add_task, id="a", title="A", assignee="agent:x", tasks_path=store))
     asyncio.run(
         _call_tool(
             update_task,
@@ -426,6 +451,7 @@ def test_add_task_with_deadlines_list_sets_multi_deadlines(tmp_path):
             add_task,
             id="a",
             title="A",
+            assignee="agent:x",
             deadlines=["2030-01-01", "2030-07-01"],
             tasks_path=store,
         )
@@ -439,7 +465,7 @@ def test_add_task_with_deadlines_list_sets_multi_deadlines(tmp_path):
 
 def test_complete_sets_status_done(tmp_path, env):
     # Arrange
-    env.set("SCITEX_TODO_AGENT", "agent:mcp-test")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:mcp-test")
     from scitex_todo._mcp_server import (
         add_task,
         complete_task,
@@ -457,7 +483,7 @@ def test_complete_sets_status_done(tmp_path, env):
 
 def test_complete_stamps_completed_by(tmp_path, env):
     # Arrange
-    env.set("SCITEX_TODO_AGENT", "agent:mcp-test")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:mcp-test")
     from scitex_todo._mcp_server import (
         add_task,
         complete_task,
@@ -475,7 +501,7 @@ def test_complete_stamps_completed_by(tmp_path, env):
 
 def test_complete_stamps_completed_at_z_suffix(tmp_path, env):
     # Arrange
-    env.set("SCITEX_TODO_AGENT", "agent:mcp-test")
+    env.set("SCITEX_TODO_AGENT_ID", "agent:mcp-test")
     from scitex_todo._mcp_server import (
         add_task,
         complete_task,
@@ -629,8 +655,8 @@ def test_summary_returns_done_count(tmp_path):
     assert info["by_status"]["done"] == 1
 
 
-def test_summary_returns_pending_count(tmp_path):
-    # Arrange
+def test_summary_returns_deferred_count(tmp_path):
+    # Arrange — add_task's default status is `deferred` since the abolition.
     from scitex_todo._mcp_server import add_task, summarize_tasks
 
     store = str(tmp_path / "tasks.yaml")
@@ -641,7 +667,7 @@ def test_summary_returns_pending_count(tmp_path):
     # Act
     info = json.loads(asyncio.run(_call_tool(summarize_tasks, tasks_path=store)))
     # Assert
-    assert info["by_status"]["pending"] == 1
+    assert info["by_status"]["deferred"] == 1
 
 
 def test_where_returns_resolved_path(tmp_path):
@@ -709,4 +735,116 @@ async def _call_tool(tool_callable, **kwargs):
     the async function.
     """
     fn = getattr(tool_callable, "fn", None) or tool_callable
+    # add_task now FAILS LOUD without an owner (creator+assignee mandatory).
+    # Tests that don't care about ownership get a default owner here; owner-
+    # specific tests pass their own assignee/agent (this only fills the gap).
+    if (
+        getattr(fn, "__name__", "") == "add_task"
+        and not kwargs.get("assignee")
+        and not kwargs.get("agent")
+    ):
+        kwargs["assignee"] = "agent:test-suite"
     return await fn(**kwargs)
+
+
+# --------------------------------------------------------------------------- #
+# Fix A — async handlers offload blocking store calls to a worker thread.     #
+#                                                                             #
+# The synchronous store functions take a process-wide flock and load the      #
+# whole (multi-MB) store from disk under it — seconds of blocking IO. Run on   #
+# the event-loop thread they FREEZE the loop (the MCP `initialize` handshake   #
+# starves, pushes stall). Fix A wraps each blocking store/inbox/help call in   #
+# `await anyio.to_thread.run_sync(functools.partial(fn, ...))`, mirroring      #
+# `_mcp_channel.drain_once`. These tests pin (a) correctness still holds       #
+# through the to_thread hop and (b) the loop is NOT blocked during the call.   #
+# --------------------------------------------------------------------------- #
+def test_get_task_roundtrip_through_to_thread(tmp_path):
+    # Arrange
+    from scitex_todo._mcp_server import add_task, get_task
+
+    store = str(tmp_path / "tasks.yaml")
+    asyncio.run(_call_tool(add_task, id="a", title="A", tasks_path=store))
+    # Act
+    out = json.loads(asyncio.run(_call_tool(get_task, task_id="a", tasks_path=store)))
+    # Assert
+    assert out["id"] == "a"
+
+
+def test_reassign_task_roundtrip_through_to_thread(tmp_path):
+    # Covers the _mcp_skills offload path (reassign_task → _store.reassign_task).
+    # Arrange
+    from scitex_todo._mcp_server import add_task
+    from scitex_todo._mcp_skills import reassign_task
+
+    store = str(tmp_path / "tasks.yaml")
+    asyncio.run(
+        _call_tool(add_task, id="a", title="A", agent="proj-x", tasks_path=store)
+    )
+    # Act
+    out = json.loads(
+        asyncio.run(
+            _call_tool(
+                reassign_task,
+                task_id="a",
+                new_owner="proj-y",
+                by="agent:test",
+                tasks_path=store,
+            )
+        )
+    )
+    # Assert — reassign returns {task_id, from_owner, to_owner, actor,
+    # changed, task}; the offloaded call still mutated the owner.
+    assert out["to_owner"] == "proj-y"
+    assert out["changed"] is True
+    assert out["task"]["agent"] == "proj-y"
+
+
+def test_handler_does_not_block_event_loop(tmp_path, monkeypatch):
+    """A slow SYNC store call inside a handler must NOT freeze the loop.
+
+    Regression for Fix A. We monkeypatch `_store.get_task` with a variant
+    that sleeps 0.3 s (standing in for the flock-guarded multi-MB load),
+    then run the `get_task` handler concurrently with a 10 ms-cadence
+    ticker coroutine. If the blocking call ran ON the loop thread the
+    ticker would be frozen (≈0 ticks); because Fix A offloads it to a
+    worker thread, the ticker keeps advancing while the store op is
+    in-flight.
+    """
+    # Arrange
+    import time
+
+    from scitex_todo import _store
+    from scitex_todo._mcp_server import get_task
+
+    store = str(tmp_path / "tasks.yaml")
+    _store.add_task(store, id="a", title="A", assignee="agent:test")
+
+    real_get_task = _store.get_task
+
+    def _slow_get_task(*args, **kwargs):
+        time.sleep(0.3)
+        return real_get_task(*args, **kwargs)
+
+    monkeypatch.setattr(_store, "get_task", _slow_get_task)
+
+    async def _drive():
+        ticks = 0
+
+        async def _ticker():
+            nonlocal ticks
+            for _ in range(100):
+                await asyncio.sleep(0.01)
+                ticks += 1
+
+        fn = getattr(get_task, "fn", None) or get_task
+        handler = asyncio.ensure_future(fn(task_id="a", tasks_path=store))
+        ticker = asyncio.ensure_future(_ticker())
+        result = await handler
+        ticker.cancel()
+        return result, ticks
+
+    # Act
+    result, ticks = asyncio.run(_drive())
+    # Assert — correct result AND the loop stayed live during the 0.3 s call.
+    assert json.loads(result)["id"] == "a"
+    assert ticks >= 5, f"event loop appeared blocked (only {ticks} ticks)"

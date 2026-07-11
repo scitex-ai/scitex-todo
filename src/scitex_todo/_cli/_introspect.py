@@ -12,6 +12,8 @@ import json
 
 import click
 
+from ._compat import spec_command_kwargs
+
 
 def _describe_api(module, name: str) -> dict:
     """Introspect ``module.name`` into a name/signature/summary/source record."""
@@ -42,11 +44,16 @@ def _describe_api(module, name: str) -> dict:
 
 @click.command(
     "list-python-apis",
-    help=(
-        "List the public Python API (scitex_todo.__all__).\n\n"
-        "Verbosity is additive: -v adds signatures, -vv adds docstring "
-        "summaries, -vvv adds source paths.\n\n"
-        "Example:\n  scitex-todo list-python-apis -v"
+    **spec_command_kwargs(
+        summary="List the public Python API (scitex_todo.__all__).",
+        description=(
+            "Verbosity is additive: -v adds signatures, -vv adds "
+            "docstring summaries, -vvv adds source paths.",
+        ),
+        examples=(
+            ("{prog} list-python-apis -v", "List with signatures."),
+            ("{prog} list-python-apis --json", "Full records as JSON."),
+        ),
     ),
 )
 @click.option(

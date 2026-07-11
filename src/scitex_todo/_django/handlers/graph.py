@@ -8,7 +8,34 @@ and ``load_tasks``), the mermaid source comes from ``build_mermaid``, and node
 colors come from ``STATUS_STYLE``.
 """
 
+from pathlib import Path
+
 from django.http import JsonResponse
+
+#: The board's HTML templates live here (board_v3.html + any partials). Their
+#: max mtime is a cheap fingerprint for "the GUI code changed" — see
+#: :func:`_board_asset_rev`.
+_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "scitex_todo"
+
+
+def _board_asset_rev() -> float:
+    """Max mtime across the board's HTML templates — a cheap GUI-version stamp.
+
+    The ``/rev`` poll already tells the browser when the store DATA changed;
+    this adds a second signal for when the board's own GUI CODE changed (a
+    template/JS/CSS edit, or a merged PR that updated ``board_v3.html`` under
+    the editable install). In DEBUG Django already serves the new template on
+    the next full page load — the open pane just doesn't know to fetch it. The
+    frontend compares this stamp across polls and hard-reloads (``location.
+    reload()``) when it moves, so the operator's board pane picks up GUI
+    updates WITHOUT a manual restart / F5. Falls back to ``0.0`` if the
+    template dir can't be stat'd (never raises into the poll response).
+    """
+    try:
+        mtimes = [p.stat().st_mtime for p in _TEMPLATE_DIR.glob("*.html")]
+    except OSError:
+        return 0.0
+    return max(mtimes, default=0.0)
 
 
 def _status_colors() -> dict:
@@ -158,10 +185,12 @@ def _build_graph(board) -> dict:
 
 # Statuses that exclude a task from the "runnable" count for liveness.
 # Mirrors the task-harvest skill's non-runnable set (40_task-harvest.md):
-# blocked / done / deferred / failed are not "could be progressed now";
-# `goal` rows are umbrella nodes the harvest doesn't escalate either.
+# blocked / done / deferred / failed / cancelled are not "could be
+# progressed now"; `goal` rows are umbrella nodes the harvest doesn't
+# escalate either. ``cancelled`` (closed as not planned) is terminal, so
+# it never counts toward runnable liveness — same as done/failed.
 _LIVENESS_NONRUNNABLE: frozenset[str] = frozenset(
-    {"blocked", "done", "deferred", "failed", "goal"}
+    {"blocked", "done", "deferred", "failed", "cancelled", "goal"}
 )
 
 
@@ -237,9 +266,18 @@ def _build_fleet(tasks: list[dict], *, now=None) -> list[dict]:
                               for "what's queued waiting to be picked up";
                               feeds the task-harvest sweep's ESCALATE list)
       blocked_count           tasks with status=blocked
-      blocking_operator_count tasks with blocker=operator-decision (the
-                              "stuck on YOU" subset the operator needs to
-                              see jump out)
+      blocking_operator_count count of the "waiting-on-operator" queue:
+                              cards matching the board's BLOCKING-YOU
+                              predicate (status=blocked AND
+                              blocker=operator-decision), the "stuck on
+                              YOU" subset the operator needs to see jump
+                              out. Derived from the SAME predicate as
+                              ``list_tasks(blocking_me=True)`` (the
+                              ``_match(..., blocking_me=True)`` SSOT) — NOT
+                              a re-implemented check.
+      blocking_operator_ids   the ids of those same cards, so the FE can
+                              link straight to the queue without re-walking
+                              the store.
     """
     import datetime as _dt
     import os
@@ -265,9 +303,15 @@ def _build_fleet(tasks: list[dict], *, now=None) -> list[dict]:
             parsed = parsed.replace(tzinfo=_dt.timezone.utc)
         return (cur - parsed).total_seconds()
 
+    from ..._owner import card_owner
+
     by_agent: dict[str, list[dict]] = {}
     for t in tasks:
-        a = t.get("agent") or t.get("assignee")
+        # Owner SSOT (agent||assignee). Owner-less rows are excluded from the
+        # liveness dot-strip by design (keeps it small/readable); add_task now
+        # REJECTS owner-less cards at creation, so this only ever skips legacy
+        # rows pending re-home.
+        a = card_owner(t)
         if not a:
             continue
         by_agent.setdefault(str(a), []).append(t)
@@ -320,6 +364,21 @@ def _build_fleet(tasks: list[dict], *, now=None) -> list[dict]:
         # tally without re-walking the store on the client side.
         from scitex_todo._model import is_overdue as _is_overdue
 
+        # "Waiting-on-operator" queue (operator P1
+        # todo-operator-blocking-queue-view): cards stuck on a
+        # human decision. SSOT — reuse the board's BLOCKING-YOU
+        # predicate (``_match(..., blocking_me=True)`` == the same
+        # filter ``list_tasks(blocking_me=True)`` uses) so the count
+        # and id list never drift from the canonical
+        # ``status==blocked AND blocker==operator-decision`` rule.
+        from ..._store import _match
+
+        blocking_operator_ids = [
+            str(t.get("id"))
+            for t in items
+            if _match(t, blocking_me=True) and t.get("id") is not None
+        ]
+
         out.append(
             {
                 "name": agent,
@@ -334,9 +393,8 @@ def _build_fleet(tasks: list[dict], *, now=None) -> list[dict]:
                     if str(t.get("status") or "") not in _LIVENESS_NONRUNNABLE
                 ),
                 "blocked_count": sum(1 for t in items if t.get("status") == "blocked"),
-                "blocking_operator_count": sum(
-                    1 for t in items if t.get("blocker") == "operator-decision"
-                ),
+                "blocking_operator_count": len(blocking_operator_ids),
+                "blocking_operator_ids": blocking_operator_ids,
                 "overdue_count": sum(1 for t in items if _is_overdue(t, now=cur)),
             }
         )
@@ -424,6 +482,9 @@ def handle_rev(request, board):
             "mtime": board.mtime,
             "count": len(board.tasks),
             "store_path": str(board.store_path),
+            # GUI-code version stamp: lets the open pane hard-reload itself
+            # when the board template changes (no manual restart/F5).
+            "asset_rev": _board_asset_rev(),
         }
     )
 

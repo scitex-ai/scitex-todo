@@ -28,6 +28,8 @@ import sys
 
 import click
 
+from ._compat import spec_command_kwargs
+
 
 def register(main: click.Group) -> None:
     """Attach the ``next`` and ``watch`` verbs to the root group."""
@@ -35,16 +37,19 @@ def register(main: click.Group) -> None:
     main.add_command(watch_cmd)
 
 
-@click.command("next", help=(
-    "Print the next runnable task for an agent (single canonical "
-    "predicate).\n\n"
-    "Used by every agent's harness on wake: pick the top task, flip "
-    "to in_progress, work it, comment progress, mark done. See the "
-    "'agent self-consumption loop' sub-skill (32) for the 7-step "
-    "pattern.\n\n"
-    "Example:\n"
-    "  scitex-todo next --mine --json"
-))
+@click.command(
+    "next",
+    **spec_command_kwargs(
+        summary="Print the next runnable task for an agent (single canonical predicate).",
+        description=(
+            "Used by every agent's harness on wake: pick the top task, "
+            "flip to in_progress, work it, comment progress, mark done. "
+            "See the 'agent self-consumption loop' sub-skill (32) for "
+            "the 7-step pattern.",
+        ),
+        examples=(("{prog} next --mine --json", "Pick my next task, as JSON."),),
+    ),
+)
 @click.option(
     "--tasks", "tasks_path", default=None,
     help="Path to tasks.yaml (default: resolver chain).",
@@ -55,7 +60,7 @@ def register(main: click.Group) -> None:
 )
 @click.option(
     "--mine", "use_mine", is_flag=True,
-    help="Filter on SCITEX_TODO_AGENT env var.",
+    help="Filter on SCITEX_TODO_AGENT_ID env var.",
 )
 @click.option(
     "--project", default=None,
@@ -91,10 +96,10 @@ def next_cmd(
             "Pass --assignee OR --mine, not both."
         )
     if use_mine:
-        env = os.environ.get("SCITEX_TODO_AGENT")
+        env = os.environ.get("SCITEX_TODO_AGENT_ID")
         if not env:
             raise click.ClickException(
-                "--mine needs SCITEX_TODO_AGENT to be set in the env."
+                "--mine needs SCITEX_TODO_AGENT_ID to be set in the env."
             )
         assignee = env
 
@@ -153,15 +158,19 @@ def _auto_claim(path, task_id: str, *, assignee: str) -> None:
     save_tasks(tasks, path)
 
 
-@click.command("watch", help=(
-    "Watch tasks.yaml and POST /v1/turn to the owning agent on "
-    "new/commented/status-changed tasks (the push side of the "
-    "self-consuming board loop).\n\n"
-    "Pairs with `scitex-todo next` (the pull side) — see the "
-    "'agent self-consumption loop' sub-skill (32).\n\n"
-    "Example:\n"
-    "  scitex-todo watch --push --interval 2"
-))
+@click.command(
+    "watch",
+    **spec_command_kwargs(
+        summary="Watch tasks.yaml and POST /v1/turn to the owning agent on change.",
+        description=(
+            "Wakes on new/commented/status-changed tasks (the push side "
+            "of the self-consuming board loop). Pairs with `next` (the "
+            "pull side) — see the 'agent self-consumption loop' "
+            "sub-skill (32).",
+        ),
+        examples=(("{prog} watch --push --interval 2", "Poll every 2s and push wakes."),),
+    ),
+)
 @click.option(
     "--push", is_flag=True, default=True,
     help=(
@@ -174,8 +183,12 @@ def _auto_claim(path, task_id: str, *, assignee: str) -> None:
     help="Path to tasks.yaml (default: resolver chain).",
 )
 @click.option(
-    "--interval", "interval_s", type=float, default=2.0, show_default=True,
-    help="Polling interval in seconds.",
+    "--interval", "interval_s", type=float, default=30.0, show_default=True,
+    help=(
+        "Polling interval in seconds. Clamped up to a 10s hard floor — a "
+        "sub-floor value (e.g. --interval 2) death-spiraled the fleet on "
+        "2026-07-08 and is now rejected with a loud warning."
+    ),
 )
 @click.option(
     "--min-wake-interval", "min_wake_interval_s",
@@ -197,9 +210,14 @@ def watch_cmd(
     from .._paths import resolve_tasks_path
     from .._wake_watcher import (
         WatcherState,
+        clamp_interval,
         run_watcher_forever,
         run_watcher_once,
     )
+
+    # Enforce the anti-spiral floor at the CLI boundary too, so the loud
+    # warning fires for an interactive operator, not only inside the loop.
+    interval_s = clamp_interval(interval_s)
 
     path = resolve_tasks_path(tasks_path)
     if once:

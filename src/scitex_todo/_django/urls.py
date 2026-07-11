@@ -6,10 +6,9 @@ from django.urls import path
 
 from . import views
 from .handlers.chat import chat_view
+from .handlers.dm import dm_thread_view, dm_threads_view
 from .handlers.fleet import (
     fleet_ci_status_view,
-    fleet_hosts_view,
-    fleet_mesh_view,
     fleet_timing_view,
 )
 from .handlers.hooks import hook_done_view, hook_push_view
@@ -28,23 +27,6 @@ urlpatterns = [
     # "fleet/ci-status"). The fleet surfaces are intentionally
     # namespaced under ``/fleet/`` so future panels sit next to it.
     path("fleet/ci-status", fleet_ci_status_view, name="fleet_ci_status"),
-    # Fleet dashboard — Phase 2 surface (host geometry panel). Reads
-    # the local host + peer registry from ``sac host list --json`` via
-    # the same registry-reader pattern as the CI-status pills. Lead
-    # a2a `74db4f2d` + `10afa799` greenlight; mounts next to the CI
-    # pills strip in TodoBoard.tsx. Registered BEFORE the catch-all
-    # ``<path:endpoint>`` route for the same reason as ``/fleet/ci-status``.
-    path("fleet/hosts", fleet_hosts_view, name="fleet_hosts"),
-    # Fleet dashboard — Phase 3 surface (agent-mesh + ACL graph). Reads
-    # the registered agents from ``sac a2a list --json`` + the
-    # ``comms_grants`` ACL from ``sac a2a grants --json`` (lead a2a
-    # `74db4f2d` + `10afa799`). The directed mesh graph is rendered by
-    # ``FleetMeshPanel`` next to the hosts panel in the STATUS toolbar
-    # group. Same registry-reader pattern as ``/fleet/hosts``;
-    # registered BEFORE the catch-all ``<path:endpoint>`` route so the
-    # slashed path is matched cleanly instead of getting routed to
-    # ``api_dispatch`` (which would 404).
-    path("fleet/mesh", fleet_mesh_view, name="fleet_mesh"),
     # Fleet dashboard — Phase 4 surface (timing telemetry). Operator
     # ask (TG, relayed by lead a2a `74db4f2d` + `10afa799`,
     # 2026-06-14): "record what took how long → self-improvement". The
@@ -81,6 +63,16 @@ urlpatterns = [
     # path is matched cleanly instead of getting routed to
     # ``api_dispatch`` (which would 404 — no handler named "chat/<id>").
     path("chat/<str:card_id>", chat_view, name="chat"),
+    # Operator↔agent DIRECT-MESSAGE surface (scitex-dev DM convention v1;
+    # card fleet-agent-direct-message-board-pane-20260707). `/chat` (no
+    # trailing segment — distinct from the per-card `/chat/<card_id>`
+    # comment thread above) serves the mobile-first DM page; the two
+    # `/dm/*` JSON endpoints back its agent list + thread pane + compose.
+    # Registered BEFORE the catch-all `<path:endpoint>` route so the
+    # slashed paths are matched cleanly instead of 404ing in api_dispatch.
+    path("chat", views.chat_page, name="chat_page"),
+    path("dm/threads", dm_threads_view, name="dm_threads"),
+    path("dm/thread/<str:peer>", dm_thread_view, name="dm_thread"),
     # Hook-consumer endpoints (lead a2a `6fff33d6` + `fbffb879`,
     # 2026-06-14, operator-mandated). Loose-coupling contract for
     # SAC's push-hook + dev's merge-Action to record progress / DONE

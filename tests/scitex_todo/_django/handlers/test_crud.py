@@ -57,57 +57,43 @@ def _load(store_path):
 
 
 # ── create ───────────────────────────────────────────────────────────────
+# Every create now REQUIRES an owner (handle_create delegates to add_task,
+# fail-loud without one), so happy-path bodies carry an `assignee`.
 def test_create_returns_ok(store):
-    # Arrange
-    body = {"title": "New Thing"}
-    # Act
-    response = _post("create", store, body)
-    # Assert
+    response = _post("create", store, {"title": "New Thing", "assignee": "alice"})
     assert response.status_code == 200
 
 
 def test_create_generates_slug_id(store):
-    # Arrange
-    body = {"title": "My New Thing!"}
-    # Act
-    payload = json.loads(_post("create", store, body).content)
-    # Assert
+    payload = json.loads(
+        _post("create", store, {"title": "My New Thing!", "assignee": "alice"}).content
+    )
     assert payload["task"]["id"] == "my-new-thing"
 
 
-def test_create_defaults_status_to_pending(store):
-    # Arrange
-    body = {"title": "X"}
-    # Act
-    payload = json.loads(_post("create", store, body).content)
-    # Assert
-    assert payload["task"]["status"] == "pending"
+def test_create_defaults_status_to_deferred(store):
+    # `deferred` is the default since pending was abolished (2026-07-10).
+    payload = json.loads(
+        _post("create", store, {"title": "X", "assignee": "alice"}).content
+    )
+    assert payload["task"]["status"] == "deferred"
 
 
 def test_create_persists_to_store(store):
-    # Arrange
-    body = {"title": "Persisted", "note": "hi"}
-    # Act
-    _post("create", store, body)
-    # Assert
+    _post("create", store, {"title": "Persisted", "note": "hi", "assignee": "alice"})
     assert "persisted" in _load(store)
 
 
 def test_create_dedupes_id_on_title_collision(store):
-    # Arrange
-    _post("create", store, {"title": "Dup"})
-    # Act
-    payload = json.loads(_post("create", store, {"title": "Dup"}).content)
-    # Assert
+    _post("create", store, {"title": "Dup", "assignee": "alice"})
+    payload = json.loads(
+        _post("create", store, {"title": "Dup", "assignee": "alice"}).content
+    )
     assert payload["task"]["id"] == "dup-2"
 
 
 def test_create_rejects_missing_title_with_400(store):
-    # Arrange
-    body = {"status": "pending"}
-    # Act
-    response = _post("create", store, body)
-    # Assert
+    response = _post("create", store, {"status": "pending", "assignee": "alice"})
     assert response.status_code == 400
 
 
@@ -118,6 +104,35 @@ def test_create_rejects_get_with_405(store):
     response = views.api_dispatch(request, "create")
     # Assert
     assert response.status_code == 405
+
+
+def test_create_owns_card_and_stamps_creator(store, monkeypatch):
+    # Fully-OWNED card + stamped creator: assignee set, agent in lock-step,
+    # created_by defaulting to "operator" (the board's identity).
+    monkeypatch.delenv("SCITEX_TODO_AGENT_ID", raising=False)
+    task = json.loads(
+        _post("create", store, {"title": "Owned Card", "assignee": "bob"}).content
+    )["task"]
+    assert task["assignee"] == "bob"
+    assert task["agent"] == "bob"
+    assert task["created_by"] == "operator"
+
+
+def test_create_accepts_agent_as_owner(store):
+    # `agent` alone also satisfies the owner requirement; assignee == agent.
+    task = json.loads(
+        _post("create", store, {"title": "Agent Owned", "agent": "carol"}).content
+    )["task"]
+    assert task["agent"] == "carol" and task["assignee"] == "carol"
+
+
+def test_create_rejects_missing_assignee_with_400(store):
+    # No owner -> 400 AND nothing written: fail-loud, not fail-corrupt.
+    response = _post("create", store, {"title": "Ownerless"})
+    payload = json.loads(response.content)
+    assert response.status_code == 400
+    assert "assignee" in payload["error"]
+    assert "ownerless" not in _load(store)
 
 
 # ── update ───────────────────────────────────────────────────────────────
@@ -302,20 +317,15 @@ def test_comment_unknown_id_returns_404(store):
     assert response.status_code == 404
 
 
-# ── comment relay: never hang, fail loud (operator P1, 2026-06-25) ────────
-def _closed_port() -> int:
-    """Bind+release a port so it is currently refusing connections."""
-    import socket
-
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
+# ── comment delivery via the standalone INBOX (no direct-POST) ────────────
+# Comments now deliver through the per-recipient PULL-inbox: handle_comment
+# delegates to comment_task (which emits `commented` → the C4 dispatcher
+# enqueues to each recipient's inbox), and the /comment toast reflects that
+# QUEUE — not a direct turn-URL POST. So a comment NEVER depends on a network
+# call to a (possibly containerized / unreachable) owner. No mocks: a real
+# tmp store, real comment_task/emit, real poll_inbox.
 def _store_with_agent(tmp_path):
-    """A store whose card is OWNED by 'owner-agent' so the relay fires."""
+    """A store whose card is OWNED by 'owner-agent' so the comment is queued."""
     path = tmp_path / "tasks.yaml"
     path.write_text(
         "tasks:\n"
@@ -326,48 +336,12 @@ def _store_with_agent(tmp_path):
     return str(path)
 
 
-def test_comment_relay_returns_promptly_when_owner_unreachable(
-    tmp_path, monkeypatch
-):
-    # Operator P1: posting a comment must NOT hang ~30 s when the owning
-    # agent's /v1/turn is unreachable. Point the owner at a CLOSED port
-    # (real refused connection, no mocks) and assert the POST returns in
-    # a few seconds — not the old 30 s.
+def test_comment_toast_reports_inbox_queue_not_connection_error(tmp_path):
+    # The toast must reflect the INBOX QUEUE (wire=inbox, queued names) so the
+    # board shows "queued to N recipient(s)" — never the old direct-POST
+    # connection error. The owner is the queued recipient (author != owner).
     # Arrange
-    import json as _json
-    import time
-
     store_path = _store_with_agent(tmp_path)
-    port = _closed_port()
-    monkeypatch.setenv(
-        "SCITEX_TODO_AGENT_TURN_URLS",
-        _json.dumps({"owner-agent": f"http://127.0.0.1:{port}/v1/turn"}),
-    )
-    monkeypatch.delenv("SCITEX_TODO_PUSH_DRY_RUN", raising=False)
-    try:
-        # Act
-        t0 = time.monotonic()
-        _post("comment", store_path, {"id": "owned", "text": "ping", "author": "operator"})
-        elapsed = time.monotonic() - t0
-    finally:
-        _reset_cache()
-    # Assert
-    assert elapsed < 5.0
-
-
-def test_comment_relay_reports_failure_in_response(tmp_path, monkeypatch):
-    # The notify failure must be VISIBLE (loud toast), not swallowed: the
-    # /comment JSON carries relay.sent=False so the board toasts it.
-    # Arrange
-    import json as _json
-
-    store_path = _store_with_agent(tmp_path)
-    port = _closed_port()
-    monkeypatch.setenv(
-        "SCITEX_TODO_AGENT_TURN_URLS",
-        _json.dumps({"owner-agent": f"http://127.0.0.1:{port}/v1/turn"}),
-    )
-    monkeypatch.delenv("SCITEX_TODO_PUSH_DRY_RUN", raising=False)
     try:
         # Act
         resp = _post(
@@ -378,16 +352,85 @@ def test_comment_relay_reports_failure_in_response(tmp_path, monkeypatch):
     finally:
         _reset_cache()
     # Assert
-    assert payload["relay"]["sent"] is False
+    relay = payload["relay"]
+    assert relay["sent"] is True
+    assert relay["wire"] == "inbox"
+    assert relay["target"] == "owner-agent"
+    assert relay["queued"] == ["owner-agent"]
 
 
-def test_comment_still_saved_when_relay_fails(tmp_path, monkeypatch):
-    # Fail-loud, not fail-closed: a relay miss must NOT lose the comment.
+def test_comment_does_not_await_a_turn_url_post(tmp_path, monkeypatch):
+    # A comment must NOT depend on / await a turn-URL POST. Point the owner at
+    # a CLOSED port (a real refused connection) and assert the relay went over
+    # the inbox rail (wire == "inbox"). That structural guarantee — not a
+    # wall-clock threshold — is what proves the comment path never awaits the
+    # turn-URL: a refused connection resolves instantly, so timing cannot tell
+    # a correct run from a regressed one, and under CI load the correct path
+    # alone can exceed any tight threshold (a wall-clock assert here was a
+    # flaky release blocker). Speed is covered structurally by the inbox wire.
     # Arrange
     import json as _json
+    import socket
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
 
     store_path = _store_with_agent(tmp_path)
-    port = _closed_port()
+    monkeypatch.setenv(
+        "SCITEX_TODO_AGENT_TURN_URLS",
+        _json.dumps({"owner-agent": f"http://127.0.0.1:{port}/v1/turn"}),
+    )
+    monkeypatch.delenv("SCITEX_TODO_PUSH_DRY_RUN", raising=False)
+    try:
+        # Act
+        resp = _post(
+            "comment", store_path, {"id": "owned", "text": "ping", "author": "operator"}
+        )
+        payload = json.loads(resp.content)
+    finally:
+        _reset_cache()
+    # Assert — the relay went over the inbox rail, not a synchronous turn-URL
+    # POST (the structural proof that the comment path does not await one).
+    assert payload["relay"]["wire"] == "inbox"
+
+
+def test_comment_enqueues_to_owner_inbox(tmp_path):
+    # End-to-end: posting a comment ENQUEUES a `commented` notification into
+    # the owner's standalone inbox (the always-works rail), readable via
+    # poll_inbox. No mocks.
+    # Arrange
+    from scitex_todo._inbox import poll_inbox
+
+    store_path = _store_with_agent(tmp_path)
+    try:
+        # Act
+        _post(
+            "comment", store_path,
+            {"id": "owned", "text": "ping", "author": "operator"},
+        )
+        notes = poll_inbox("owner-agent", store=store_path)
+    finally:
+        _reset_cache()
+    # Assert
+    assert [n["event_type"] for n in notes] == ["commented"]
+    assert notes[0]["card_id"] == "owned"
+
+
+def test_comment_still_saved_when_owner_unreachable(tmp_path, monkeypatch):
+    # The comment must always land on disk — there is no network on the write
+    # path now, but assert persistence even with an unreachable turn-URL set.
+    # Arrange
+    import json as _json
+    import socket
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+
+    store_path = _store_with_agent(tmp_path)
     monkeypatch.setenv(
         "SCITEX_TODO_AGENT_TURN_URLS",
         _json.dumps({"owner-agent": f"http://127.0.0.1:{port}/v1/turn"}),

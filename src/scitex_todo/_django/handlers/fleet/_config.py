@@ -61,6 +61,8 @@ def _load_yaml(path: Path) -> dict:
     except ImportError as exc:  # pragma: no cover — yaml is a hard dep
         raise FleetAdapterError(f"PyYAML is required to load {path}: {exc}") from exc
 
+    from scitex_todo._yaml import safe_load
+
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
@@ -69,7 +71,7 @@ def _load_yaml(path: Path) -> dict:
         ) from exc
 
     try:
-        data = yaml.safe_load(text)
+        data = safe_load(text)
     except yaml.YAMLError as exc:
         raise FleetAdapterError(
             f"malformed YAML in dashboard config {path}: {exc}"

@@ -10,7 +10,7 @@ per STX-NM / PA-306). Covers:
   - --json: prints a JSON-decodable task dict
   - no candidate: exits non-zero with a clear stderr message
   - --assignee filters down
-  - --mine + SCITEX_TODO_AGENT env round-trip
+  - --mine + SCITEX_TODO_AGENT_ID env round-trip
   - --mine without env: ClickException
   - --assignee + --mine mutually exclusive
   - --auto-claim flips status to in_progress + stamps a comment
@@ -35,19 +35,19 @@ from scitex_todo._cli._loop import next_cmd
 
 _STORE_TEXT = (
     "tasks:\n"
-    "  - id: a-pending\n"
-    "    title: 'A pending'\n"
-    "    status: pending\n"
+    "  - id: a-deferred\n"
+    "    title: 'A deferred'\n"
+    "    status: deferred\n"
     "    agent: proj-alpha\n"
     "    priority: 1\n"
-    "  - id: a-pending-low\n"
-    "    title: 'A pending low'\n"
-    "    status: pending\n"
+    "  - id: a-deferred-low\n"
+    "    title: 'A deferred low'\n"
+    "    status: deferred\n"
     "    agent: proj-alpha\n"
     "    priority: 30\n"
-    "  - id: b-pending\n"
-    "    title: 'B pending'\n"
-    "    status: pending\n"
+    "  - id: b-deferred\n"
+    "    title: 'B deferred'\n"
+    "    status: deferred\n"
     "    agent: proj-beta\n"
     "    priority: 2\n"
     "  - id: a-blocked\n"
@@ -83,11 +83,11 @@ class TestHappyPath:
         assert result.exit_code == 0
 
     def test_output_contains_top_priority_id(self, store):
-        # Arrange — a-pending (priority=1) is the global top.
+        # Arrange — a-deferred (priority=1) is the global top.
         # Act
         result = CliRunner().invoke(next_cmd, ["--tasks", store])
         # Assert
-        assert "a-pending" in result.output
+        assert "a-deferred" in result.output
 
 
 class TestJsonOutput:
@@ -127,31 +127,31 @@ class TestAssigneeFilter:
     """`--assignee X` filters to only that agent's tasks."""
 
     def test_assignee_beta_returns_only_b(self, store):
-        # Arrange — agent=proj-beta only owns b-pending.
+        # Arrange — agent=proj-beta only owns b-deferred.
         # Act
         result = CliRunner().invoke(
             next_cmd, ["--tasks", store, "--assignee", "proj-beta", "--json"]
         )
         payload = json.loads(result.output)
         # Assert
-        assert payload["id"] == "b-pending"
+        assert payload["id"] == "b-deferred"
 
 
 class TestMineFlag:
-    """`--mine` reads SCITEX_TODO_AGENT from the env."""
+    """`--mine` reads SCITEX_TODO_AGENT_ID from the env."""
 
     def test_mine_with_env_resolves_to_agent(self, store, env):
         # Arrange
-        env.set("SCITEX_TODO_AGENT", "proj-beta")
+        env.set("SCITEX_TODO_AGENT_ID", "proj-beta")
         # Act
         result = CliRunner().invoke(next_cmd, ["--tasks", store, "--mine", "--json"])
         payload = json.loads(result.output)
         # Assert
-        assert payload["id"] == "b-pending"
+        assert payload["id"] == "b-deferred"
 
     def test_mine_without_env_raises_click_exception(self, store, env):
         # Arrange
-        env.delete("SCITEX_TODO_AGENT")
+        env.delete("SCITEX_TODO_AGENT_ID")
         # Act
         result = CliRunner().invoke(next_cmd, ["--tasks", store, "--mine"])
         # Assert
@@ -196,7 +196,7 @@ class TestAutoClaim:
             ],
         )
         # Assert
-        assert _load(store)["a-pending"]["status"] == "in_progress"
+        assert _load(store)["a-deferred"]["status"] == "in_progress"
 
     def test_auto_claim_appends_starting_comment(self, store):
         # Arrange
@@ -211,6 +211,6 @@ class TestAutoClaim:
                 "--auto-claim",
             ],
         )
-        comments = _load(store)["a-pending"].get("comments") or []
+        comments = _load(store)["a-deferred"].get("comments") or []
         # Assert — at least one comment exists with the auto-claim marker.
         assert any("auto-claim" in (c.get("text") or "") for c in comments)

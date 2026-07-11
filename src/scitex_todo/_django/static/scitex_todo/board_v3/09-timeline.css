@@ -3,7 +3,9 @@
  * Themed via the same --* vars the other board_v3 modules use, so it flips
  * with the dark/light shell theme. Covers: the controls row, the SVG time-
  * raster (agent / project views), and the rich per-task "simple" cards.
- * Status colours reuse the card palette (--green/--amber/--grey/--red). */
+ * Status colours come from the SSOT STATUS_STYLE map, surfaced as the
+ * server-rendered --status-fill-<s> / --status-stroke-<s> CSS vars (7
+ * distinct statuses, matching the cards + mermaid graph). */
 
 .tl-wrap {
   display: flex;
@@ -38,6 +40,38 @@
 }
 .tl-count {
   color: var(--text-muted, #8a96a8);
+}
+
+/* ── dependency-edge legend (raster views only) ───────────────────────
+   A small, muted key for the two edge styles — built in timelineControls.js
+   with inline-SVG swatches that REUSE the .tl-edge--depends / .tl-edge--blocks
+   classes above, so the key stays single-sourced with the real edges (dotted
+   grey "depends on" + solid red "blocks") and flips with the theme. */
+.tl-edge-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--text-muted, #8a96a8);
+}
+.tl-edge-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.tl-edge-legend-swatch {
+  display: inline-block;
+  flex: none;
+  overflow: visible;
+}
+/* The swatch <line> inherits .tl-edge's transition; pin it full-opacity so
+   the key reads clearly regardless of the edges' resting 0.55 opacity. */
+.tl-edge-legend-swatch .tl-edge {
+  opacity: 1;
+}
+.tl-edge-legend-label {
+  white-space: nowrap;
 }
 .tl-error {
   color: var(--red, #e5484d);
@@ -80,10 +114,66 @@
   font-size: 11px;
   font-weight: 600;
 }
+
+/* ── per-agent avatar (lane-label icon, "By Agent" raster only) ────────
+   Operator 2026-07-10 (todo-board-agent-icons-status-rings-20260710):
+   tracing left across the raster to find the owning agent is slow. The
+   ring reuses the SAME --status-stroke-<s> tokens as .tl-dot / the status
+   legend above, so it reads consistently everywhere on the board. Markup
+   emitted by timeline.js via window.STX.agentAvatar (10-agent-avatar.js). */
+.tl-avatar-bg {
+  stroke: var(--col-bg, #131820);
+  stroke-width: 1.5;
+}
+.tl-avatar-text {
+  font-size: 9px;
+  font-weight: 700;
+  fill: #fff;
+  font-family: ui-monospace, monospace;
+  pointer-events: none;
+}
+/* Brand labels longer than 3 chars (TODO / Grant / Writer / pClew) shrink to
+ * stay inside the r=9 circle; 2-3 char labels keep the full 9px. */
+.tl-avatar-text--sm {
+  font-size: 6px;
+  letter-spacing: -0.02em;
+}
+.tl-avatar-ring {
+  fill: none;
+  stroke-width: 2.5;
+}
+.tl-avatar-ring--goal {
+  stroke: var(--status-stroke-goal);
+}
+.tl-avatar-ring--done {
+  stroke: var(--status-stroke-done);
+}
+.tl-avatar-ring--in_progress {
+  stroke: var(--status-stroke-in_progress);
+}
+.tl-avatar-ring--blocked {
+  stroke: var(--status-stroke-blocked);
+}
+.tl-avatar-ring--pending {
+  stroke: var(--status-stroke-pending);
+}
+.tl-avatar-ring--deferred {
+  stroke: var(--status-stroke-deferred);
+}
+.tl-avatar-ring--failed {
+  stroke: var(--status-stroke-failed);
+}
+.tl-avatar-ring--none {
+  stroke: var(--text-muted, #8a96a8);
+  opacity: 0.5;
+}
 .tl-edge {
   stroke-width: 1.4;
   fill: none;
   opacity: 0.55;
+  transition:
+    opacity 0.12s ease,
+    stroke-width 0.12s ease;
 }
 .tl-edge--depends {
   stroke: var(--text-muted, #8a96a8);
@@ -92,31 +182,73 @@
 .tl-edge--blocks {
   stroke: var(--red, #e5484d);
 }
+
+/* ── hover-highlight: trace a dot's dependency subgraph ────────────────
+   When the SVG carries .tl--highlighting (set by timelineControls.js on
+   dot/edge hover), the edges + dots touching the hovered marker get
+   .tl-edge--hot / .tl-dot--hot — they brighten + thicken — while every
+   unrelated edge/dot dims so the connected subgraph stands out. Restored
+   on mouse-out. Subtle transitions; reuses the theme vars + edge colours. */
+.tl-svg.tl--highlighting .tl-edge:not(.tl-edge--hot) {
+  opacity: 0.12;
+}
+.tl-svg.tl--highlighting .tl-dot:not(.tl-dot--hot) {
+  opacity: 0.22;
+}
+.tl-edge--hot {
+  opacity: 1;
+  stroke-width: 2.6;
+}
+.tl-dot--hot {
+  opacity: 1;
+  stroke-width: 2.5;
+  filter: brightness(1.18);
+}
+/* Keep the multi-select accent ring readable even while dimmed. */
+.tl-svg.tl--highlighting .tl-dot--selected {
+  opacity: 0.85;
+}
 .tl-dot {
   cursor: pointer;
   stroke-width: 1.5;
   transition: r 0.08s ease;
 }
 .tl-dot:hover {
-  r: 8;
+  r: 10;
   filter: brightness(1.2);
 }
-.tl-dot--working {
-  fill: var(--green, #30a46c);
-  stroke: var(--green, #30a46c);
+/* Per-status dot color — single-sourced from STATUS_STYLE via the
+   server-rendered `--status-fill-<s>` / `--status-stroke-<s>` CSS vars
+   (board_v3.html `#status-color-vars`). 7 distinct, matching cards +
+   mermaid; the 4-bucket collapse is gone. */
+.tl-dot[data-status="goal"] {
+  fill: var(--status-fill-goal);
+  stroke: var(--status-stroke-goal);
 }
-.tl-dot--waiting {
-  fill: var(--amber, #f5a524);
-  stroke: var(--amber, #f5a524);
-}
-.tl-dot--blocked {
-  fill: var(--red, #e5484d);
-  stroke: var(--red, #e5484d);
-}
-.tl-dot--done {
-  fill: var(--grey, #6b7280);
-  stroke: var(--grey, #6b7280);
+.tl-dot[data-status="done"] {
+  fill: var(--status-fill-done);
+  stroke: var(--status-stroke-done);
   opacity: 0.5;
+}
+.tl-dot[data-status="in_progress"] {
+  fill: var(--status-fill-in_progress);
+  stroke: var(--status-stroke-in_progress);
+}
+.tl-dot[data-status="blocked"] {
+  fill: var(--status-fill-blocked);
+  stroke: var(--status-stroke-blocked);
+}
+.tl-dot[data-status="pending"] {
+  fill: var(--status-fill-pending);
+  stroke: var(--status-stroke-pending);
+}
+.tl-dot[data-status="deferred"] {
+  fill: var(--status-fill-deferred);
+  stroke: var(--status-stroke-deferred);
+}
+.tl-dot[data-status="failed"] {
+  fill: var(--status-fill-failed);
+  stroke: var(--status-stroke-failed);
 }
 /* Live (still-running) tasks get a bright ring so the operator can spot
    what's being processed at a glance. */
@@ -130,8 +262,20 @@
 .tl-dot--selected {
   stroke: var(--purple, #8e6cff);
   stroke-width: 3;
-  r: 7;
+  r: 9;
   filter: drop-shadow(0 0 3px var(--purple, #8e6cff));
+}
+
+/* ── marquee (rubber-band) selection rectangle — timelineMarquee.js ────
+   A dashed accent box drawn while the operator drags across empty raster
+   space; dots whose centres fall inside it get selected on mouseup. */
+.tl-marquee {
+  fill: var(--purple, #8e6cff);
+  fill-opacity: 0.12;
+  stroke: var(--purple, #8e6cff);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
 }
 
 /* ── simple per-task cards ─────────────────────────────────────────── */
@@ -158,18 +302,28 @@
   border-color: var(--purple, #8e6cff);
   box-shadow: 0 0 0 1px var(--purple, #8e6cff);
 }
-.tl-card--working {
-  border-left-color: var(--green, #30a46c);
+/* Per-status left-bar color (7 distinct, SSOT --status-fill-<s>). */
+.tl-card[data-status="goal"] {
+  border-left-color: var(--status-fill-goal);
 }
-.tl-card--waiting {
-  border-left-color: var(--amber, #f5a524);
-}
-.tl-card--blocked {
-  border-left-color: var(--red, #e5484d);
-}
-.tl-card--done {
-  border-left-color: var(--grey, #6b7280);
+.tl-card[data-status="done"] {
+  border-left-color: var(--status-fill-done);
   opacity: 0.72;
+}
+.tl-card[data-status="in_progress"] {
+  border-left-color: var(--status-fill-in_progress);
+}
+.tl-card[data-status="blocked"] {
+  border-left-color: var(--status-fill-blocked);
+}
+.tl-card[data-status="pending"] {
+  border-left-color: var(--status-fill-pending);
+}
+.tl-card[data-status="deferred"] {
+  border-left-color: var(--status-fill-deferred);
+}
+.tl-card[data-status="failed"] {
+  border-left-color: var(--status-fill-failed);
 }
 .tl-card-top {
   display: flex;
@@ -184,14 +338,27 @@
   font-size: 0.62rem;
   color: var(--text-muted, #8a96a8);
 }
-.tl-card--working .tl-card-status {
-  color: var(--green, #30a46c);
+/* Status label color = the status's SSOT stroke (7 distinct). */
+.tl-card[data-status="goal"] .tl-card-status {
+  color: var(--status-stroke-goal);
 }
-.tl-card--waiting .tl-card-status {
-  color: var(--amber, #f5a524);
+.tl-card[data-status="done"] .tl-card-status {
+  color: var(--status-stroke-done);
 }
-.tl-card--blocked .tl-card-status {
-  color: var(--red, #e5484d);
+.tl-card[data-status="in_progress"] .tl-card-status {
+  color: var(--status-stroke-in_progress);
+}
+.tl-card[data-status="blocked"] .tl-card-status {
+  color: var(--status-stroke-blocked);
+}
+.tl-card[data-status="pending"] .tl-card-status {
+  color: var(--status-stroke-pending);
+}
+.tl-card[data-status="deferred"] .tl-card-status {
+  color: var(--status-stroke-deferred);
+}
+.tl-card[data-status="failed"] .tl-card-status {
+  color: var(--status-stroke-failed);
 }
 .tl-card-time {
   font-size: 0.72rem;

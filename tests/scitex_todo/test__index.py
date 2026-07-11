@@ -254,7 +254,7 @@ class TestCliRebuildAndInfo:
             store,
             "tasks:\n  - {id: a, title: A, status: pending}\n",
         )
-        env.set("SCITEX_TODO_TASKS", str(store))
+        env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
         # The autouse fixture already sets SCITEX_TODO_LANE_GLOBS="".
         runner = CliRunner()
         # Act
@@ -273,7 +273,7 @@ class TestCliRebuildAndInfo:
         # Arrange
         store = tmp_path / "global.yaml"
         _write_store(store, "tasks: []\n")
-        env.set("SCITEX_TODO_TASKS", str(store))
+        env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
         runner = CliRunner()
         # Act
         rb = runner.invoke(main, ["index", "rebuild", "--dry-run"])

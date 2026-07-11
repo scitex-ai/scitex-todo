@@ -31,9 +31,9 @@ from scitex_todo._store import add_task
 # === Base filter (status + blocker) ========================================
 
 
-def test_pending_task_is_runnable():
+def test_deferred_task_is_runnable():
     # Arrange
-    tasks = [{"id": "t-a", "title": "x", "status": "pending"}]
+    tasks = [{"id": "t-a", "title": "x", "status": "deferred"}]
     # Act
     result = runnable_tasks(tasks)
     # Assert
@@ -64,7 +64,7 @@ def test_blocked_task_is_not_runnable():
         {
             "id": "t-a",
             "title": "x",
-            "status": "pending",
+            "status": "deferred",
             "blocker": "operator-decision",
         }
     ]
@@ -77,14 +77,14 @@ def test_blocked_task_is_not_runnable():
 # === Dependency closure ====================================================
 
 
-def test_task_blocked_by_pending_upstream_is_filtered_out():
-    # Arrange — t-b depends on t-a which is still pending.
+def test_task_blocked_by_deferred_upstream_is_filtered_out():
+    # Arrange — t-b depends on t-a which is still deferred.
     tasks = [
-        {"id": "t-a", "title": "upstream", "status": "pending"},
+        {"id": "t-a", "title": "upstream", "status": "deferred"},
         {
             "id": "t-b",
             "title": "downstream",
-            "status": "pending",
+            "status": "deferred",
             "depends_on": ["t-a"],
         },
     ]
@@ -101,7 +101,7 @@ def test_task_becomes_runnable_when_upstream_done():
         {
             "id": "t-b",
             "title": "downstream",
-            "status": "pending",
+            "status": "deferred",
             "depends_on": ["t-a"],
         },
     ]
@@ -115,8 +115,8 @@ def test_blocks_field_creates_implicit_upstream():
     # Arrange — t-a has `blocks: [t-b]` which is the SAME as t-b depends_on
     # t-a. The runnable engine respects both forms symmetrically.
     tasks = [
-        {"id": "t-a", "title": "upstream", "status": "pending", "blocks": ["t-b"]},
-        {"id": "t-b", "title": "downstream", "status": "pending"},
+        {"id": "t-a", "title": "upstream", "status": "deferred", "blocks": ["t-b"]},
+        {"id": "t-b", "title": "downstream", "status": "deferred"},
     ]
     # Act
     result = runnable_tasks(tasks)
@@ -133,7 +133,7 @@ def test_unknown_dep_id_is_permissive():
         {
             "id": "t-a",
             "title": "x",
-            "status": "pending",
+            "status": "deferred",
             "depends_on": ["never-existed"],
         },
     ]
@@ -147,8 +147,8 @@ def test_blocked_by_deps_count_reflects_filtered_set():
     # Arrange — 1 task is base-runnable but blocked by deps; 1 is
     # truly runnable. Diagnostic counters should distinguish them.
     tasks = [
-        {"id": "t-up", "title": "up", "status": "pending"},
-        {"id": "t-down", "title": "down", "status": "pending", "depends_on": ["t-up"]},
+        {"id": "t-up", "title": "up", "status": "deferred"},
+        {"id": "t-down", "title": "down", "status": "deferred", "depends_on": ["t-up"]},
     ]
     # Act
     result = runnable_tasks(tasks)
@@ -165,10 +165,10 @@ def test_agent_filter_matches_agent_field():
         {
             "id": "t-mine",
             "title": "x",
-            "status": "pending",
+            "status": "deferred",
             "agent": "proj-scitex-todo",
         },
-        {"id": "t-other", "title": "y", "status": "pending", "agent": "proj-other"},
+        {"id": "t-other", "title": "y", "status": "deferred", "agent": "proj-other"},
     ]
     # Act
     result = runnable_tasks(tasks, agent="proj-scitex-todo")
@@ -182,7 +182,7 @@ def test_agent_filter_matches_legacy_assignee_field():
         {
             "id": "t-a",
             "title": "x",
-            "status": "pending",
+            "status": "deferred",
             "assignee": "proj-scitex-todo",
         }
     ]
@@ -198,8 +198,8 @@ def test_agent_filter_matches_legacy_assignee_field():
 def test_group_filter_matches_T11_group_field():
     # Arrange
     tasks = [
-        {"id": "t-a", "title": "x", "status": "pending", "group": "paper-portfolio"},
-        {"id": "t-b", "title": "y", "status": "pending", "group": "ci-recovery"},
+        {"id": "t-a", "title": "x", "status": "deferred", "group": "paper-portfolio"},
+        {"id": "t-b", "title": "y", "status": "deferred", "group": "ci-recovery"},
     ]
     # Act
     result = runnable_tasks(tasks, group="paper-portfolio")
@@ -213,10 +213,10 @@ def test_group_empty_string_matches_ungrouped_only():
         {
             "id": "t-grouped",
             "title": "x",
-            "status": "pending",
+            "status": "deferred",
             "group": "paper-portfolio",
         },
-        {"id": "t-ungrouped", "title": "y", "status": "pending"},
+        {"id": "t-ungrouped", "title": "y", "status": "deferred"},
     ]
     # Act
     result = runnable_tasks(tasks, group="")
@@ -230,8 +230,8 @@ def test_group_empty_string_matches_ungrouped_only():
 def test_lower_priority_number_picked_first():
     # Arrange — priority 1 picks before priority 5.
     tasks = [
-        {"id": "t-late", "title": "x", "status": "pending", "priority": 5},
-        {"id": "t-early", "title": "y", "status": "pending", "priority": 1},
+        {"id": "t-late", "title": "x", "status": "deferred", "priority": 5},
+        {"id": "t-early", "title": "y", "status": "deferred", "priority": 1},
     ]
     # Act
     result = runnable_tasks(tasks)
@@ -245,7 +245,7 @@ def test_lower_priority_number_picked_first():
 def test_cli_runnable_lists_runnable_tasks(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-a", title="x", group="paper-portfolio")
+    add_task(store=store, id="t-a", title="x", group="paper-portfolio", assignee="agent:test-suite")
     runner = CliRunner()
     # Act
     result = runner.invoke(
@@ -259,7 +259,7 @@ def test_cli_runnable_lists_runnable_tasks(tmp_path: Path):
 def test_cli_runnable_json_emits_full_payload(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-a", title="x", group="paper-portfolio")
+    add_task(store=store, id="t-a", title="x", group="paper-portfolio", assignee="agent:test-suite")
     runner = CliRunner()
     # Act
     result = runner.invoke(
@@ -274,8 +274,8 @@ def test_cli_runnable_json_emits_full_payload(tmp_path: Path):
 def test_cli_runnable_group_filter_narrows_results(tmp_path: Path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-paper", title="x", group="paper-portfolio")
-    add_task(store=store, id="t-ci", title="y", group="ci-recovery")
+    add_task(store=store, id="t-paper", title="x", group="paper-portfolio", assignee="agent:test-suite")
+    add_task(store=store, id="t-ci", title="y", group="ci-recovery", assignee="agent:test-suite")
     runner = CliRunner()
     # Act
     result = runner.invoke(
@@ -290,7 +290,7 @@ def test_cli_runnable_group_filter_narrows_results(tmp_path: Path):
 def test_cli_runnable_exit_1_when_queue_empty(tmp_path: Path):
     # Arrange — empty store.
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-done", title="x", status="done")
+    add_task(store=store, id="t-done", title="x", status="done", assignee="agent:test-suite")
     runner = CliRunner()
     # Act
     result = runner.invoke(
@@ -302,10 +302,10 @@ def test_cli_runnable_exit_1_when_queue_empty(tmp_path: Path):
 
 
 def test_cli_runnable_mine_uses_env_agent(tmp_path: Path, env):
-    # Arrange — --mine reads $SCITEX_TODO_AGENT.
+    # Arrange — --mine reads $SCITEX_TODO_AGENT_ID.
     store = tmp_path / "tasks.yaml"
     add_task(store=store, id="t-a", title="x", agent="proj-scitex-todo")
-    env.set("SCITEX_TODO_AGENT", "proj-scitex-todo")
+    env.set("SCITEX_TODO_AGENT_ID", "proj-scitex-todo")
     runner = CliRunner()
     # Act
     result = runner.invoke(
@@ -320,11 +320,11 @@ def test_cli_runnable_mine_uses_env_agent(tmp_path: Path, env):
 # === Diagnostic constants exported =========================================
 
 
-def test_runnable_statuses_contains_pending_and_in_progress():
+def test_runnable_statuses_contains_deferred_and_in_progress():
     # Arrange
     # Act
     # Assert
-    assert RUNNABLE_STATUSES == frozenset({"pending", "in_progress"})
+    assert RUNNABLE_STATUSES == frozenset({"deferred", "in_progress"})
 
 
 def test_resolved_statuses_contains_done_and_goal():

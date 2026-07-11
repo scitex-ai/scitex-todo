@@ -46,9 +46,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from ._model import TaskValidationError
+from ._yaml import safe_load
 
 
 @dataclass(frozen=True)
@@ -127,7 +126,7 @@ def load_groups(path: str | Path, *, task_ids: set[str] | None = None) -> list[G
         raise FileNotFoundError(f"task store not found: {path}")
 
     with path.open(encoding="utf-8") as handle:
-        data = yaml.safe_load(handle) or {}
+        data = safe_load(handle) or {}
 
     raw = data.get("groups")
     if raw is None:

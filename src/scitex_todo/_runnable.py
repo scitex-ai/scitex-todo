@@ -47,7 +47,14 @@ from typing import Iterable, Optional
 
 
 #: Status values eligible for runnable-pickup.
-RUNNABLE_STATUSES: frozenset[str] = frozenset({"pending", "in_progress"})
+#:
+#: ``deferred`` replaced ``pending`` as the not-yet-started state when pending
+#: was abolished (2026-07-10). It reads as "not now", but it is still the
+#: backlog an agent picks its next card from — a deferred card whose deps are
+#: satisfied and whose blocker is empty is exactly a runnable card. Leaving
+#: the abolished ``pending`` here silently reduced the runnable set to work
+#: ALREADY in flight, so no agent could ever start anything new.
+RUNNABLE_STATUSES: frozenset[str] = frozenset({"deferred", "in_progress"})
 
 #: Status values that SATISFY a dependency (upstream task is "done enough").
 RESOLVED_STATUSES: frozenset[str] = frozenset({"done", "goal"})

@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""`scitex-todo ci-watch` — server-side CI poller (record-only).
+"""`scitex-todo watch-ci` — server-side CI poller (record-only).
+
+Renamed from `ci-watch` in the slice-6b verb-rename pilot (doctrine §1d:
+compounds are kebab-case and VERB-FIRST); the old name stays as a hidden
+warn-phase deprecated alias until v0.9.
 
 Lead a2a (operator decoupled-pollers override, dev msg `96afacc7`,
 2026-06-15): each server polls GitHub CI INDEPENDENTLY + dedupes its
@@ -40,7 +44,8 @@ the env override ``SCITEX_TODO_FLEET_CI_REPOS=owner/name,...``:
 ## Designed for cron use
 
 JobSpec entry ``scitex-todo.ci-watch`` (registered via
-``_jobs_provider.py``) runs ``scitex-todo ci-watch --once`` every
+``_jobs_provider.py``; the JobSpec NAME is a registry identity and
+keeps its historical spelling) runs ``scitex-todo watch-ci --once`` every
 5 min via ``scitex-dev ecosystem up``. The ``--once`` flag exits
 after one sweep; absence of it loops with a configurable interval
 (default 300s). Per the operator's principle: SAC + todo poll at
@@ -63,10 +68,19 @@ from typing import Any
 
 import click
 
+from ._compat import deprecated_alias, spec_command_kwargs
+
 
 def register(main: click.Group) -> None:
-    """Attach the ``ci-watch`` verb to the root CLI."""
-    main.add_command(ci_watch_cmd)
+    """Attach the ``watch-ci`` verb (+ hidden warn-phase ``ci-watch`` alias).
+
+    Renamed in the slice-6b verb-rename pilot: ``ci-watch`` was a
+    noun-first compound; doctrine §1d grammar requires kebab-case
+    VERB-FIRST compounds (``watch-ci``). The old name forwards with a
+    once-per-shell stderr warning until v0.9.
+    """
+    main.add_command(watch_ci_cmd, name="watch-ci")
+    deprecated_alias(main, "ci-watch", target="watch-ci", remove_in="0.9")
 
 
 #: Status values that mean "we have a definitive verdict."
@@ -157,19 +171,25 @@ def save_state(state: dict[str, dict[str, Any]], path: Path | None = None) -> No
 
 
 @click.command(
-    "ci-watch",
-    help=(
-        "Server-side CI poller (record-only, decoupled-pollers lane).\n\n"
-        "Polls every configured repo's GitHub CI default-branch state, "
-        "compares to the local state cache at "
-        "``~/.scitex/todo/ci-state.json`` (override via env "
-        "``SCITEX_TODO_CI_STATE``), and logs the transition.\n\n"
-        "Designed for cron use: ``--once`` runs ONE sweep + exits 0; "
-        "absence of ``--once`` loops with ``--interval`` (default 300s)."
-        "\n\nExamples:\n"
-        "  scitex-todo ci-watch --once\n"
-        "  scitex-todo ci-watch --interval 600\n"
-        "  SCITEX_TODO_FLEET_CI_REPOS=owner/a,owner/b scitex-todo ci-watch --once"
+    "watch-ci",
+    **spec_command_kwargs(
+        summary="Server-side CI poller (record-only, decoupled-pollers lane).",
+        description=(
+            "Polls every configured repo's GitHub CI default-branch state, "
+            "compares to the local state cache at "
+            "~/.scitex/todo/ci-state.json (override via env "
+            "SCITEX_TODO_CI_STATE), and logs the transition.\n\n"
+            "Designed for cron use: --once runs ONE sweep + exits 0; "
+            "absence of --once loops with --interval (default 300s)."
+        ),
+        examples=(
+            ("{prog} watch-ci --once", ""),
+            ("{prog} watch-ci --interval 600", ""),
+            (
+                "SCITEX_TODO_FLEET_CI_REPOS=owner/a,owner/b {prog} watch-ci --once",
+                "",
+            ),
+        ),
     ),
 )
 @click.option(
@@ -184,7 +204,7 @@ def save_state(state: dict[str, dict[str, Any]], path: Path | None = None) -> No
     "--dry-run", is_flag=True,
     help="Print the planned per-repo transition + summary without writing the state cache.",
 )
-def ci_watch_cmd(once: bool, interval: int, dry_run: bool) -> None:
+def watch_ci_cmd(once: bool, interval: int, dry_run: bool) -> None:
     """Poll GH CI for every configured repo + record transitions."""
     while True:
         result = _run_one_sweep(dry_run=dry_run)
@@ -206,7 +226,7 @@ def _run_one_sweep(*, dry_run: bool) -> dict[str, int]:
     try:
         cfg = fleet_config_load()
     except Exception as exc:  # noqa: BLE001
-        click.echo(f"# ci-watch: config load failed: {exc}", err=True)
+        click.echo(f"# watch-ci: config load failed: {exc}", err=True)
         return {"agents": 0, "errors": 1, "transitions": 0}
     repos = list(((cfg.get("fleet") or {}).get("ci_status") or {}).get("repos") or [])
     state = load_state()
@@ -214,12 +234,12 @@ def _run_one_sweep(*, dry_run: bool) -> dict[str, int]:
     errors = 0
     for slug in repos:
         if not isinstance(slug, str) or "/" not in slug:
-            click.echo(f"# ci-watch: skipping invalid slug {slug!r}", err=True)
+            click.echo(f"# watch-ci: skipping invalid slug {slug!r}", err=True)
             continue
         try:
             current = fetch_repo_ci_status(slug)
         except FleetAdapterError as exc:
-            click.echo(f"# ci-watch: {slug} adapter error: {exc}", err=True)
+            click.echo(f"# watch-ci: {slug} adapter error: {exc}", err=True)
             errors += 1
             continue
         prior = state.get(slug)
@@ -227,7 +247,7 @@ def _run_one_sweep(*, dry_run: bool) -> dict[str, int]:
         head_sha = (current.get("head_sha") or "")[:10]
         overall = current.get("overall") or "unknown"
         click.echo(
-            f"# ci-watch: {slug} @ {head_sha} → {overall} ({label})",
+            f"# watch-ci: {slug} @ {head_sha} → {overall} ({label})",
             err=True,
         )
         if label != "unchanged":
@@ -243,10 +263,10 @@ def _run_one_sweep(*, dry_run: bool) -> dict[str, int]:
         try:
             save_state(state)
         except OSError as exc:
-            click.echo(f"# ci-watch: state save failed: {exc}", err=True)
+            click.echo(f"# watch-ci: state save failed: {exc}", err=True)
             errors += 1
     click.echo(
-        f"# ci-watch: repos={len(repos)} transitions={transitions} "
+        f"# watch-ci: repos={len(repos)} transitions={transitions} "
         f"errors={errors} dry_run={dry_run}",
         err=True,
     )

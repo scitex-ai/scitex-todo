@@ -17,7 +17,7 @@ def _store(tmp_path):
     path.write_text(
         "tasks:\n"
         "  - {id: design, title: Design, status: done}\n"
-        "  - {id: build, title: Build, status: pending, depends_on: [design]}\n",
+        "  - {id: build, title: Build, status: deferred, depends_on: [design]}\n",
         encoding="utf-8",
     )
     return str(path)

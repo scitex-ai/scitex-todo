@@ -32,20 +32,50 @@ Design constraints
   default value for ``list_tasks(scope=...)`` when the caller doesn't pass
   one explicitly. Pass ``scope=""`` (empty string) to ignore the env
   default and see everything.
+
+C5 (card-event producers) wires the mutating verbs to ALSO emit a
+canonical :class:`scitex_todo._events.Event` onto the hook bus, plus a
+new atomic :func:`reassign_task` owner-change primitive. The mutation→
+event mapping (each emit is ADDITIVE + FAIL-SOFT — the mutation persists
+first, THEN we emit, and a raising/slow emit can never break or roll back
+the write):
+
+    add_task        → ``created``        {card_id, actor, ts}
+    comment_task    → ``commented``      (IN ADDITION to the existing
+                                          ``card-message`` dispatch)
+    update_task     → ``status_changed`` ONLY when ``status`` actually
+                      changes {extra:{from,to}} — a completion via
+                      update_task(status="done") emits ``completed``
+                      (see the completed-vs-status_changed rule below).
+    complete_task   → ``completed``      {card_id, actor, ts}
+    resolve_task    → ``status_changed`` {extra:{from,to:done}}
+    reassign_task   → ``reassigned``     {extra:{from_owner,to_owner}}
+
+Completed-vs-status_changed rule: a flip to ``done`` is modelled as a
+single ``completed`` event (NOT also a ``status_changed``) to avoid
+double-firing; every OTHER status flip is a ``status_changed``.
+
+There is intentionally NO consumer wired here — delivery / notify is C4
+(a separate card). ``reassign_task`` EMITS the ``reassigned`` event; it
+does NOT deliver. NO ``sac`` import: this stays a pure producer that
+reuses :func:`scitex_todo._events.emit` + the store's own lock/save
+helpers. (hook-bypass: line-limit — this module is the SSOT task store,
+already over the 512-line cap by design; targeted edits only.)
 """
 
 from __future__ import annotations
 
 import datetime as _dt
-import getpass
 import os
 from pathlib import Path
 
 from ._model import (
     VALID_STATUSES,
     TaskValidationError,
+    _save_doc_unlocked,
     _save_tasks_unlocked,
     _store_lock,
+    load_doc,
     load_tasks,
     save_tasks,
 )
@@ -58,7 +88,25 @@ ENV_SCOPE = "SCITEX_TODO_SCOPE"
 
 #: Env var name carrying the agent's identity. Used as the default
 #: `completed_by` when :func:`complete_task` doesn't get an explicit `by=`.
-ENV_AGENT = "SCITEX_TODO_AGENT"
+ENV_AGENT = "SCITEX_TODO_AGENT_ID"
+
+#: previous name of :data:`ENV_AGENT`. Renamed 2026-07-02. We fail LOUD (never
+#: silently honour it) if it is still set, so a stale export can't quietly
+#: mis-attribute a write — the operator must migrate to the new name.
+ENV_AGENT_DEPRECATED = "SCITEX_TODO_AGENT"
+
+
+def _reject_deprecated_agent_env() -> None:
+    """Fail loud if the old ``SCITEX_TODO_AGENT`` var is still set.
+
+    No silent fallback: a leftover export of the old name is a configuration
+    error the operator must fix, not something we quietly translate.
+    """
+    if os.environ.get(ENV_AGENT_DEPRECATED) is not None:
+        raise RuntimeError(
+            f"{ENV_AGENT_DEPRECATED} was renamed to {ENV_AGENT}; "
+            f"unset the old var (it is no longer honoured)."
+        )
 
 
 class TaskNotFoundError(KeyError):
@@ -96,21 +144,59 @@ def _default_scope(arg: str | None) -> str | None:
 
 
 def _default_agent(arg: str | None) -> str:
-    """Resolve a `completed_by` argument with the env→login→unknown chain.
+    """Resolve an ACTOR/AUTHOR — FAIL LOUD when it cannot be resolved.
 
-    Per ``GITIGNORED/QUESTIONS.md`` #2 the precedence is
-    ``$SCITEX_TODO_AGENT`` → ``getpass.getuser()`` → ``"unknown"`` (final
-    fallback handles environments where login info isn't available).
+    Precedence: an explicit ``by=``/``actor`` arg → ``$SCITEX_TODO_AGENT_ID``.
+    Deliberately does NOT fall back to ``getpass.getuser()`` / ``"unknown"``
+    (the former lenient chain): the operator mandate (constitution rule 2
+    "fail fast and fail loud, NO silent fallbacks") requires completion /
+    comment authorship to record a REAL acting agent, never a blank or
+    ``"unknown"`` placeholder that mis-attributes the action on the board.
+
+    Now identical in behaviour to :func:`_resolve_creator_or_raise` — it
+    simply delegates to keep a single source of truth (DRY) while preserving
+    this public name for the completion/comment callers. (hook-bypass:
+    line-limit)
+
+    Raises
+    ------
+    TaskValidationError
+        When the actor resolves to empty or the ``"unknown"`` sentinel, with
+        an ACTIONABLE hint naming both fixes.
     """
-    if arg:
-        return arg
-    env = os.environ.get(ENV_AGENT)
-    if env:
-        return env
-    try:
-        return getpass.getuser()
-    except Exception:  # pragma: no cover — extremely rare environments
-        return "unknown"
+    return _resolve_creator_or_raise(arg)
+
+
+def _resolve_creator_or_raise(arg: str | None) -> str:
+    """Resolve a card CREATOR — FAIL LOUD when it cannot be resolved.
+
+    Precedence: an explicit ``created_by``/``by=`` arg → ``$SCITEX_TODO_AGENT_ID``.
+    Deliberately does NOT fall back to ``getpass.getuser()`` / ``"unknown"``:
+    the operator mandate (constitution rule 2 "fail fast and fail loud, NO
+    silent fallbacks") requires a card to record a REAL creator, never a blank
+    or ``"unknown"`` placeholder. A card whose creator can't be resolved must
+    not be born. This is the SSOT resolver — :func:`_default_agent` (actor /
+    author for completion & comments) now delegates here so both share the
+    identical fail-loud behaviour. (hook-bypass: line-limit)
+
+    Raises
+    ------
+    RuntimeError
+        When the deprecated ``$SCITEX_TODO_AGENT`` is still exported (renamed
+        away — see :func:`_reject_deprecated_agent_env`).
+    TaskValidationError
+        When the creator resolves to empty or the ``"unknown"`` sentinel,
+        with an ACTIONABLE hint naming both fixes.
+    """
+    _reject_deprecated_agent_env()
+    resolved = (arg or os.environ.get(ENV_AGENT) or "").strip()
+    if not resolved or resolved == "unknown":
+        raise TaskValidationError(
+            "creator unresolved — set SCITEX_TODO_AGENT_ID=<your-agent> or pass "
+            "created_by=/by= (creator+assignee are mandatory; no silent "
+            "fallback to a blank/'unknown' creator; see constitution)."
+        )
+    return resolved
 
 
 def _utc_now_iso() -> str:
@@ -138,6 +224,7 @@ def _match(
     agent: str | None = None,
     project: str | None = None,
     host: str | None = None,
+    repo: str | None = None,  # hook-bypass: line-limit
     blocker: str | None = None,
     kind: str | None = None,
     id_prefix: str | None = None,
@@ -171,6 +258,8 @@ def _match(
     if project is not None and task.get("project") != project:
         return False
     if host is not None and task.get("host") != host:
+        return False
+    if repo is not None and task.get("repo") != repo:  # hook-bypass: line-limit
         return False
     if blocker is not None:
         if blocker == "__none":
@@ -207,6 +296,40 @@ def _match(
 
 
 # --------------------------------------------------------------------------- #
+# Read-modify-write helper                                                     #
+# --------------------------------------------------------------------------- #
+def _read_write_doc(
+    path: str | Path, *, missing_ok: bool = False
+) -> tuple[dict, list]:
+    """Load the FULL store doc ONCE for a locked read-modify-write cycle.
+
+    Returns ``(doc, tasks)`` where ``tasks is doc["tasks"]`` (always a list).
+    Callers mutate ``tasks`` (or rebind it) then persist via
+    ``_save_doc_unlocked(doc, path, tasks=tasks)`` — so the ONE parse done
+    here serves BOTH the mutated ``tasks`` payload AND the non-``tasks``
+    sections (``users:`` etc.) that must survive the rewrite, eliminating the
+    second ``safe_load`` the old ``_save_tasks_unlocked`` re-read performed.
+
+    Mirrors the two historical read shapes:
+    - ``missing_ok=False`` (default) → ``load_tasks(p)`` semantics: raises
+      ``FileNotFoundError`` if the store is absent; also re-validates on read.
+    - ``missing_ok=True`` → ``load_tasks(p) if p.exists() else []`` semantics:
+      an absent store yields an empty doc instead of raising.
+    """
+    p = Path(path)
+    if missing_ok and not p.exists():
+        return {"tasks": []}, []
+    doc = load_doc(p, validate=True)  # raises FileNotFoundError if absent
+    if not isinstance(doc, dict):
+        doc = {"tasks": []}
+    tasks = doc.get("tasks")
+    if not isinstance(tasks, list):
+        tasks = []
+        doc["tasks"] = tasks
+    return doc, tasks
+
+
+# --------------------------------------------------------------------------- #
 # Public API                                                                  #
 # --------------------------------------------------------------------------- #
 def add_task(
@@ -214,7 +337,7 @@ def add_task(
     *,
     id: str,
     title: str,
-    status: str = "pending",
+    status: str = "deferred",
     scope: str | None = None,
     assignee: str | None = None,
     priority: int | None = None,
@@ -224,6 +347,7 @@ def add_task(
     blocks: list[str] | None = None,
     repo: str | None = None,
     created_by: str | None = None,  # hook-bypass: line-limit
+    entry_points=None,
     **extras,
 ) -> dict:
     """Append a new task to ``store`` and persist via :func:`save_tasks`.
@@ -251,6 +375,25 @@ def add_task(
     """
     resolved = _resolved_store(store)
     resolved.parent.mkdir(parents=True, exist_ok=True)
+    # FAIL-LOUD on a missing/blank OWNER (operator mandate 2026-06-26,
+    # constitution rule 2 "no silent fallbacks"). The OWNER is `assignee`
+    # OR `agent` (lock-step below). A card with neither reached a blank
+    # creator/assignee on the board + a fallback lane + an owner-less
+    # comment relay that silently no-op'd — so an owner is REQUIRED.
+    # `agent` arrives via **extras (operator-co-designed field). (hook-bypass: line-limit)
+    _agent_in = extras.get("agent")
+    _owner_in = (assignee or _agent_in or "")
+    _owner_in = _owner_in.strip() if isinstance(_owner_in, str) else _owner_in
+    if not _owner_in:
+        raise TaskValidationError(
+            "assignee is required — pass assignee=<user> (or agent=<user>); "
+            "creator+assignee are mandatory and an owner-less card is "
+            "rejected (no silent fallback; see constitution)."
+        )
+    # RESOLVE the creator STRICTLY — raises a clear, actionable error when
+    # it can't be resolved (blank / "unknown"). Done BEFORE any write so a
+    # creatorless card never touches disk. (hook-bypass: line-limit)
+    _creator = _resolve_creator_or_raise(created_by)
     new: dict = {"id": id, "title": title, "status": status}
     # D11 partial-fix (ADR-0008): auto-stamp ``created_at`` +
     # ``last_activity`` at insert time. ``created_at`` is the immutable
@@ -260,17 +403,20 @@ def add_task(
     _stamp = _utc_now_iso()
     new["created_at"] = _stamp
     new["last_activity"] = _stamp
-    # `created_by` — the creating USER (agent or human; user.kind=agent).
-    # Resolved from the SAME author chain comment authorship uses
-    # ($SCITEX_TODO_AGENT → $USER → "unknown") via `_default_agent`, so a
-    # card always records who made it. ADR-0009's "creator auto-subscribe"
-    # later phase reads this; for now it drives the board detail ROLES
-    # section. (hook-bypass: line-limit.)
-    new["created_by"] = _default_agent(created_by)
+    # `created_by` — the creating USER, STRICTLY resolved above (never a
+    # blank/"unknown" placeholder). Drives the board detail ROLES section +
+    # ADR-0009's creator auto-subscribe. (hook-bypass: line-limit)
+    new["created_by"] = _creator
     if scope is not None:
         new["scope"] = scope
-    if assignee is not None:
-        new["assignee"] = assignee
+    # Keep `agent` + `assignee` in LOCK-STEP: whichever the caller supplied,
+    # BOTH are stamped to the resolved owner so the board/relay/notify never
+    # see an owner-less or half-owned card (mirrors `reassign_task`). The
+    # `agent` half is set from **extras after this block; force it here so
+    # an assignee-only OR agent-only call yields a fully-owned card. The
+    # explicit `agent` extra (if any) is overwritten with the same owner.
+    new["assignee"] = _owner_in
+    extras["agent"] = _owner_in
     if priority is not None:
         new["priority"] = priority
     if parent is not None:
@@ -297,55 +443,104 @@ def add_task(
     # silently clobbers the first writer's insert. See
     # tests/scitex_todo/test__store.py::test_two_concurrent_writers...
     with _store_lock(resolved):
-        tasks = load_tasks(resolved) if resolved.exists() else []
+        doc, tasks = _read_write_doc(resolved, missing_ok=True)
         # WIP-validation gate (operator standing direction via lead a2a
         # `d99b8de6839d46e586e4ee692f43c1d9` + ``5acfbb5d0db44db8a7fa4f70c399d539``,
-        # 2026-06-12). Count the new task's agent's open tasks (status NOT
-        # in {done, goal}) BEFORE the append; WARN to stderr at the
-        # threshold, HARD REFUSE (raise) at 2x. Goal-tier umbrellas are
-        # excluded — they accumulate by design, not by WIP-failure.
+        # 2026-06-12). WARN to stderr at the limit, HARD REFUSE at 2x.
+        #
+        # The gate bounds work STARTED, never work RECORDED. It fires only
+        # when the incoming card is itself ``in_progress``, and it counts only
+        # the agent's other ``in_progress`` cards. Filing a card as blocked /
+        # deferred / goal — writing down a thing that exists — is always
+        # allowed. The inverse jammed the board shut on 2026-07-10: the gate
+        # counted every non-{done,goal} card, so after the pending→deferred
+        # migration agents could not even record the incident they were in.
+        # A gate that stops you from writing down a fire is not a WIP limit.
+        #
         # Direct YAML hand-edits bypass this gate by design (CLI/MCP
         # path enforcement only — operator wants the CLI/MCP path made
         # fat so hand-edits are unnecessary, not policed).
         agent_for_wip = new.get("agent")
-        if agent_for_wip and new.get("status") not in _wip_excluded_statuses():
+        if agent_for_wip and new.get("status") in _wip_statuses():
             from ._throughput import evaluate_wip
 
             rep = evaluate_wip(tasks, agent_for_wip)
             if rep is not None and rep.is_refuse:
                 raise TaskValidationError(
                     f"WIP gate refuses add: {rep.agent} already has "
-                    f"{rep.open_count} open tasks (>= 2 × limit "
-                    f"{rep.limit}). Close existing tasks before adding "
-                    f"more — see SCITEX_TODO_WIP_LIMIT env."
+                    f"{rep.wip_count} tasks in_progress (>= 2 × limit "
+                    f"{rep.limit}). Finish or park one before starting "
+                    f"another — or file this card as deferred/blocked, "
+                    f"which is never gated. See SCITEX_TODO_WIP_LIMIT env."
                 )
             if rep is not None and rep.is_warn:
                 import sys
 
                 print(
                     f"WARN: WIP gate — {rep.agent} now has "
-                    f"{rep.open_count + 1} open tasks (limit {rep.limit}). "
-                    f"Completion is not keeping up with creation; close "
-                    f"existing before adding more.",
+                    f"{rep.wip_count + 1} tasks in_progress (limit "
+                    f"{rep.limit}). Completion is not keeping up with "
+                    f"starts; finish existing before starting more.",
                     file=sys.stderr,
                 )
         tasks.append(new)
-        _save_tasks_unlocked(tasks, resolved)
-    return dict(new)
+        _save_doc_unlocked(doc, resolved, tasks=tasks)
+    # C5: emit a canonical `created` card-event AFTER the card is durably
+    # persisted + the lock released. Fail-soft (the mutation already
+    # succeeded). Actor = the resolved creating user (same chain that
+    # `created_by` resolves through). (hook-bypass: line-limit)
+    _emit_card_event(
+        "card_created",
+        id,
+        actor=new.get("created_by"),
+        store=resolved,
+        entry_points=entry_points,
+    )
+    # Liveness (assignee-liveness feature): the creator just touched the
+    # store → stamp its heartbeat; and surface the ASSIGNEE's liveness in
+    # the result so the caller learns immediately if it just assigned to a
+    # non-running agent. Both fail-soft (never break the durable write).
+    from ._liveness import _assignee_liveness, _heartbeat
+
+    _heartbeat(new.get("created_by"), resolved)
+    result = dict(new)
+    _liveness = _assignee_liveness(new.get("assignee"), resolved)
+    if _liveness is not None:
+        result["assignee_liveness"] = _liveness
+    return result
 
 
-def _wip_excluded_statuses() -> frozenset[str]:
-    """Re-export from ``_throughput`` so the gate's exclusion list stays
-    a single source of truth (lead-confirmed ``5acfbb5d`` — exclude
-    ``done`` + ``goal``)."""
-    from ._throughput import WIP_EXCLUDED_STATUSES
+def _stamp_deferred_at(task: dict, prior_status: str | None) -> None:
+    """Set ``deferred_at`` when a card ENTERS the backlog, and only then.
 
-    return WIP_EXCLUDED_STATUSES
+    Fires on the TRANSITION only. A card that was already ``deferred`` is left
+    untouched — including the legacy cards that carry no stamp at all, whose
+    age ``deferred_since`` reads from ``created_at``. Stamping those on any
+    passing mutation (a comment, a reassign) would silently reset the rot clock
+    on the entire existing backlog, which is the one thing this field exists to
+    prevent. A card that leaves and later returns is re-stamped, because that
+    genuinely is a new spell in the backlog.
+    """
+    from ._backlog_triage import BACKLOG_STATUS, FIELD_DEFERRED_AT
+
+    if task.get("status") != BACKLOG_STATUS or prior_status == BACKLOG_STATUS:
+        return
+    task[FIELD_DEFERRED_AT] = _utc_now_iso()
+
+
+def _wip_statuses() -> frozenset[str]:
+    """Re-export from ``_throughput`` so the gate's predicate stays a single
+    source of truth. WIP is work in flight — ``in_progress`` — not backlog."""
+    from ._throughput import WIP_STATUSES
+
+    return WIP_STATUSES
 
 
 def update_task(
     store: str | Path | None = None,
     task_id: str | None = None,
+    *,
+    entry_points=None,  # hook-bypass: line-limit
     **fields,
 ) -> dict:
     """Update fields of the task with id ``task_id``; return the merged dict.
@@ -367,8 +562,12 @@ def update_task(
     resolved = _resolved_store(store)
     result: dict | None = None
     transitioned_to_done = False
+    # C5: capture the (from, to) status pair when `status` actually flips
+    # so we can emit the matching card-event AFTER the lock. None = no flip.
+    # (hook-bypass: line-limit)
+    status_change: tuple[str | None, str | None] | None = None
     with _store_lock(resolved):
-        tasks = load_tasks(resolved)
+        doc, tasks = _read_write_doc(resolved)
         for task in tasks:
             if task.get("id") == task_id:
                 prior_status = task.get("status")
@@ -384,11 +583,22 @@ def update_task(
                 # value wins over the auto-stamp.
                 if "last_activity" not in fields:
                     task["last_activity"] = _utc_now_iso()
-                _save_tasks_unlocked(tasks, resolved)
+                # Stamp the backlog age clock ONCE, on entry into `deferred`.
+                # Never on a re-defer: `last_activity` above already moved, and
+                # if the age clock moved with it, a card re-deferred every week
+                # would read as permanently young and could never expire. The
+                # rot would be real and invisible at the same time.
+                _stamp_deferred_at(task, prior_status)
+                _save_doc_unlocked(doc, resolved, tasks=tasks)
                 result = dict(task)
                 transitioned_to_done = (
                     fields.get("status") == "done" and prior_status != "done"
                 )
+                # Record a genuine status flip (post-state differs from
+                # prior): `status` present in fields AND changed value.
+                new_status = task.get("status")
+                if "status" in fields and new_status != prior_status:
+                    status_change = (prior_status, new_status)
                 break
     if result is None:
         raise TaskNotFoundError(f"task id {task_id!r} not found in {resolved}")
@@ -398,6 +608,44 @@ def update_task(
     # (e.g. update_task then complete_task) idempotent.
     if transitioned_to_done:
         _emit_unblock_for_dependents(resolved, task_id, by=None)
+    # C5: emit a canonical card-event for a genuine status flip, AFTER the
+    # write is durable + lock released (fail-soft). A flip TO `done` is a
+    # `completed` event (NOT also a `status_changed` — avoids double-fire);
+    # every other flip is a `status_changed` with {from,to}.
+    if status_change is not None:
+        _from, _to = status_change
+        if _to == "done":
+            _emit_card_event(
+                "completed",
+                task_id,
+                actor=None,
+                store=resolved,
+                entry_points=entry_points,
+            )
+        else:
+            _emit_card_event(
+                "status_changed",
+                task_id,
+                actor=None,
+                extra={"from": _from, "to": _to},
+                store=resolved,
+                entry_points=entry_points,
+            )
+    # Liveness (assignee-liveness feature). Heartbeat the acting agent
+    # (best-effort from $SCITEX_TODO_AGENT_ID — update_task has no `by`, and we
+    # deliberately reuse the SAME env identity seam rather than inventing a
+    # second one; fail-soft so a missing env never breaks the update). When
+    # this update SET an assignee/agent, surface that owner's liveness in the
+    # result so a reassign-via-update also tells the caller "you assigned to
+    # a non-running agent."
+    from ._liveness import _assignee_liveness, _heartbeat
+
+    _heartbeat(os.environ.get(ENV_AGENT), resolved)
+    if "assignee" in fields or "agent" in fields:
+        _owner = result.get("assignee") or result.get("agent")
+        _liveness = _assignee_liveness(_owner, resolved)
+        if _liveness is not None:
+            result["assignee_liveness"] = _liveness
     return result
 
 
@@ -406,13 +654,14 @@ def complete_task(
     task_id: str | None = None,
     *,
     by: str | None = None,
+    entry_points=None,  # hook-bypass: line-limit
 ) -> dict:
     """Mark ``task_id`` as ``done`` and stamp ``_log_meta.completed_{at,by}``.
 
     Idempotent per ``GITIGNORED/QUESTIONS.md`` #3: re-completing a
     ``done`` task is a no-op (timestamps stay frozen from the first
     completion). Pass ``by=`` to override the
-    ``$SCITEX_TODO_AGENT`` → ``$USER`` → ``"unknown"`` precedence chain.
+    ``$SCITEX_TODO_AGENT_ID`` → ``$USER`` → ``"unknown"`` precedence chain.
 
     Returns the (post-mutation) task mapping.
 
@@ -427,7 +676,7 @@ def complete_task(
     result: dict | None = None
     transitioned = False
     with _store_lock(resolved):
-        tasks = load_tasks(resolved)
+        doc, tasks = _read_write_doc(resolved)
         for task in tasks:
             if task.get("id") == task_id:
                 if task.get("status") == "done":
@@ -441,7 +690,7 @@ def complete_task(
                     task["_log_meta"] = log_meta
                 log_meta["completed_at"] = _utc_now_iso()
                 log_meta["completed_by"] = _default_agent(by)
-                _save_tasks_unlocked(tasks, resolved)
+                _save_doc_unlocked(doc, resolved, tasks=tasks)
                 result = dict(task)
                 transitioned = True
                 break
@@ -452,6 +701,19 @@ def complete_task(
     # same lock). Only on a real pending→done transition.
     if transitioned:
         _emit_unblock_for_dependents(resolved, task_id, by=by)
+        # C5: a completion emits a canonical `completed` card-event (the
+        # chosen mapping — complete_task → `completed`, NOT also a
+        # `status_changed`, to avoid double-firing). Fail-soft, post-
+        # persist, only on a real transition (idempotent re-complete
+        # returned early above and emits nothing). Actor = resolved
+        # completer. (hook-bypass: line-limit)
+        _emit_card_event(
+            "completed",
+            task_id,
+            actor=_default_agent(by),
+            store=resolved,
+            entry_points=entry_points,
+        )
     return result
 
 
@@ -531,6 +793,51 @@ def _emit_unblock_for_dependents(
         return []
 
 
+def _emit_card_event(
+    factory: str,
+    card_id: str,
+    *,
+    actor: str | None,
+    store=None,  # mutation's store -> threaded to dispatcher/inbox (hook-bypass: line-limit)
+    entry_points=None,
+    **kw,
+) -> None:
+    """Fail-soft emit of a canonical C1 card-event from a store mutation.
+
+    C5 producer seam (hook-bypass: line-limit). ``factory`` names a
+    classmethod on :class:`scitex_todo._events.Event` (``card_created`` /
+    ``commented`` / ``status_changed`` / ``completed`` / ``reassigned``);
+    ``kw`` carries the event-specific extras (e.g.
+    ``extra={"from": ..., "to": ...}``).
+
+    DEFENSIVE / ADDITIVE: this is ALWAYS called AFTER the mutation is
+    durably persisted (and outside the file lock), so a raising or slow
+    emit can never break or roll back the write. :func:`scitex_todo._events.emit`
+    already never raises, but we wrap the lazy import + envelope
+    construction too — mirroring ``_hooks._handlers._emit_git_event``. The
+    ``_events`` import is lazy because ``_events`` imports ``_utc_now_iso``
+    from THIS module (avoid a top-level circular import).
+
+    ``entry_points`` is the in-process injection seam (forwarded to
+    ``emit`` → ``dispatch_event``) so no-mock tests capture the emitted
+    event via a real fake handler; ``None`` uses real plugin discovery.
+    """
+    try:
+        from ._events import Event, emit
+
+        ev = getattr(Event, factory)(card_id, actor=actor, **kw)
+        emit(ev, store=store, entry_points=entry_points)  # hook-bypass: line-limit
+    except Exception:  # noqa: BLE001 — emit must never break a mutation
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "scitex_todo._store: card-event emit failed for factory=%r card_id=%r",
+            factory,
+            card_id,
+            exc_info=True,
+        )
+
+
 def list_tasks(
     store: str | Path | None = None,
     *,
@@ -542,6 +849,7 @@ def list_tasks(
     agent: str | None = None,
     project: str | None = None,
     host: str | None = None,
+    repo: str | None = None,  # hook-bypass: line-limit
     blocker: str | None = None,
     kind: str | None = None,
     id_prefix: str | None = None,
@@ -551,11 +859,15 @@ def list_tasks(
     """Snapshot the store, then filter by any combination of fields.
 
     Filter semantics:
+
     - ``scope=None`` (default): use ``$SCITEX_TODO_SCOPE`` if set, else
       no filter. ``scope=""`` opts out of the env default explicitly.
-    - ``assignee`` / ``agent`` / ``project`` / ``host`` / ``status``:
-      ``None`` = no filter; any string = exact match. (Generic Req 8 —
-      no fuzzy / glob; callers compose.)
+    - ``assignee`` / ``agent`` / ``project`` / ``host`` / ``repo`` /
+      ``status``: ``None`` = no filter; any string = exact match.
+      (Generic Req 8 — no fuzzy / glob; callers compose.) ``repo`` matches
+      the card's ``repo`` field (``owner/repo``) — the reusable seam a
+      producer uses to resolve repo->card at emit time (find-card verb).
+      (hook-bypass: line-limit)
     - ``statuses`` (list) AND ``status`` (single) are OR-combined.
     - ``blocker="__none"`` matches rows with no blocker field; any other
       value is an exact match (closed-enum gating at the CLI layer).
@@ -585,6 +897,7 @@ def list_tasks(
             agent=agent,
             project=project,
             host=host,
+            repo=repo,  # hook-bypass: line-limit
             blocker=blocker,
             kind=kind,
             id_prefix=id_prefix,
@@ -658,7 +971,7 @@ def resolve_store(store: str | Path | None = None) -> dict:
         {
           "resolved":         "/abs/path/to/tasks.yaml",
           "explicit":         <the `store` arg you passed, or None>,
-          "env_tasks":        <value of $SCITEX_TODO_TASKS, or None>,
+          "env_tasks":        <value of $SCITEX_TODO_TASKS_YAML_SHARED, or None>,
           "user_store":       "/abs/path/to/~/.scitex/todo/tasks.yaml",
           "bundled_example":  "/abs/path/to/bundled/example.yaml",
           "pkg_short":        "scitex_todo",
@@ -735,7 +1048,7 @@ def delete_task(
     if not task_id:
         raise ValueError("delete_task: 'task_id' is required")
     with _model._store_lock(tasks_path):
-        tasks = _model.load_tasks(tasks_path)
+        doc, tasks = _read_write_doc(tasks_path)
         target = None
         keep: list = []
         for t in tasks:
@@ -763,7 +1076,7 @@ def delete_task(
                 mutated = True
             if mutated:
                 refs.append(t.get("id"))
-        _model._save_tasks_unlocked(keep, tasks_path)
+        _model._save_doc_unlocked(doc, tasks_path, tasks=keep)
     return {"removed": target, "refs": refs}
 
 
@@ -785,11 +1098,11 @@ def restore_task(
         raise ValueError("restore_task: 'task' must be a dict with 'id'")
     tid = task["id"]
     with _model._store_lock(tasks_path):
-        tasks = _model.load_tasks(tasks_path)
+        doc, tasks = _read_write_doc(tasks_path)
         if any(t.get("id") == tid for t in tasks):
             raise ValueError(f"restore_task: id {tid!r} already present")
         tasks.append(dict(task))
-        _model._save_tasks_unlocked(tasks, tasks_path)
+        _model._save_doc_unlocked(doc, tasks_path, tasks=tasks)
     # refs are descriptive (the client passes them through so callers can
     # see which tasks had been mutated; we don't reverse-apply them since
     # the depends_on / blocks values were just stripped, not stored).
@@ -807,7 +1120,7 @@ def comment_task(
     """Append an entry to ``task.comments[]`` (the established Issue-
     activity-log shape from skill 30, Gitea-compatible field).
 
-    `by` overrides the $SCITEX_TODO_AGENT → $USER precedence used by
+    `by` overrides the $SCITEX_TODO_AGENT_ID → $USER precedence used by
     add_task / complete_task.
 
     `kind` is an optional feedback-ring / event tag (e.g. ``push`` /
@@ -839,7 +1152,7 @@ def comment_task(
     if kind:
         entry["kind"] = str(kind)
     with _model._store_lock(tasks_path):
-        tasks = _model.load_tasks(tasks_path)
+        doc, tasks = _read_write_doc(tasks_path)
         target = None
         for t in tasks:
             if t.get("id") == task_id:
@@ -856,7 +1169,12 @@ def comment_task(
             if isinstance(c, dict) and isinstance(c.get("author"), str)
         ]
         comments.append(entry)
-        _model._save_tasks_unlocked(tasks, tasks_path)
+        # A comment IS activity. Without this stamp, an actively-discussed
+        # card reads as "untouched" to every staleness signal (idle_guard,
+        # list-stale, digests) — found 2026-07-10 when the idle guard kept
+        # flagging a card that had received progress comments minutes earlier.
+        target["last_activity"] = entry["ts"]
+        _model._save_doc_unlocked(doc, tasks_path, tasks=tasks)
         owner = target.get("agent") or target.get("assignee")
         # Persistent role lists (ADR-0009) — captured under the lock so
         # the bus emit below works off a consistent snapshot.
@@ -920,6 +1238,27 @@ def comment_task(
             task_id,
             exc_info=True,
         )
+    # C5: ALSO emit the canonical `commented` card-event — the foundation
+    # path, IN ADDITION to the legacy `card-message` dispatch above (NOT a
+    # replacement; any double-notify is C4's dedup concern). Fail-soft,
+    # post-persist; reuses the comment's own ts so a downstream timeline
+    # can correlate. `extra` carries the comment body (no stable comment-
+    # id exists on the entry shape, so body is the available payload).
+    # (hook-bypass: line-limit)
+    _emit_card_event(
+        "commented",
+        task_id,
+        actor=author,
+        ts=entry["ts"],
+        extra={"body": entry["text"]},
+        store=tasks_path,  # hook-bypass: line-limit
+        entry_points=entry_points,
+    )
+    # Liveness heartbeat: the comment author just touched the store.
+    # Fail-soft; reuses the already-resolved actor (no second identity path).
+    from ._liveness import _heartbeat
+
+    _heartbeat(author, tasks_path)
     return {"task_id": task_id, "comment": entry}
 
 
@@ -947,7 +1286,7 @@ def set_edge(
         raise ValueError("set_edge: self-edge is forbidden")
     tasks_path = _resolved_store(store)
     with _model._store_lock(tasks_path):
-        tasks = _model.load_tasks(tasks_path)
+        doc, tasks = _read_write_doc(tasks_path)
         src_task = next((t for t in tasks if t.get("id") == source), None)
         tgt_task = next((t for t in tasks if t.get("id") == target), None)
         if src_task is None:
@@ -963,7 +1302,7 @@ def set_edge(
             src_task[kind] = edges
         else:
             src_task.pop(kind, None)
-        _model._save_tasks_unlocked(tasks, tasks_path)
+        _model._save_doc_unlocked(doc, tasks_path, tasks=tasks)
     return {"action": action, "kind": kind, "source": source, "target": target}
 
 
@@ -981,7 +1320,7 @@ def _set_list_member(
     the YAML stays sparse). Stamps ``last_activity``. Returns the task.
     """
     with _store_lock(tasks_path):
-        tasks = load_tasks(tasks_path)
+        doc, tasks = _read_write_doc(tasks_path)
         for task in tasks:
             if task.get("id") == task_id:
                 members = [m for m in (task.get(field) or []) if m != who]
@@ -992,7 +1331,7 @@ def _set_list_member(
                 else:
                     task.pop(field, None)
                 task["last_activity"] = _utc_now_iso()
-                _save_tasks_unlocked(tasks, tasks_path)
+                _save_doc_unlocked(doc, tasks_path, tasks=tasks)
                 return dict(task)
     raise TaskNotFoundError(f"task id {task_id!r} not found in {tasks_path}")
 
@@ -1050,6 +1389,8 @@ def resolve_task(
     store: str | Path | None = None,
     task_id: str | None = None,
     actor: str | None = None,
+    *,
+    entry_points=None,  # hook-bypass: line-limit
 ) -> dict:
     """Flip a task from ``status=blocked`` (typically ``blocker=operator-
     decision``) to ``done`` and clear the blocker. Appends an audit
@@ -1065,11 +1406,12 @@ def resolve_task(
     who = _default_agent(actor)
     tasks_path = _resolved_store(store)
     with _model._store_lock(tasks_path):
-        tasks = _model.load_tasks(tasks_path)
+        doc, tasks = _read_write_doc(tasks_path)
         target = next((t for t in tasks if t.get("id") == task_id), None)
         if target is None:
             raise TaskNotFoundError(f"resolve_task: unknown id {task_id!r}")
         was_done = target.get("status") == "done"
+        prior_status = target.get("status")  # C5: capture for the event
         target["status"] = "done"
         target.pop("blocker", None)
         comments = target.setdefault("comments", [])
@@ -1084,12 +1426,25 @@ def resolve_task(
                 ),
             }
         )
-        _model._save_tasks_unlocked(tasks, tasks_path)
+        _model._save_doc_unlocked(doc, tasks_path, tasks=tasks)
     # Active-unblock DRIVE (ADR-0009) — resolving a blocker card to done
     # can free its dependents too. Outside the lock; skip the noop
     # (already-done) path. Handler token-dedupe keeps it idempotent.
     if not was_done:
         _emit_unblock_for_dependents(tasks_path, task_id, by=who)
+        # C5: a resolve is a status flip TO done. Per the project mapping
+        # the resolve path emits `status_changed` {from,to:done} (the
+        # `completed` event is reserved for complete_task / a done flip via
+        # update_task). Fail-soft, post-persist, skip the noop path.
+        # (hook-bypass: line-limit)
+        _emit_card_event(
+            "status_changed",
+            task_id,
+            actor=who,
+            extra={"from": prior_status, "to": "done"},
+            store=tasks_path,
+            entry_points=entry_points,
+        )
     return {"task_id": task_id, "actor": who, "task": dict(target)}
 
 
@@ -1109,7 +1464,7 @@ def reopen_task(
     who = _default_agent(by)
     tasks_path = _resolved_store(store)
     with _model._store_lock(tasks_path):
-        tasks = _model.load_tasks(tasks_path)
+        doc, tasks = _read_write_doc(tasks_path)
         target = next((t for t in tasks if t.get("id") == task_id), None)
         if target is None:
             raise TaskNotFoundError(f"reopen_task: unknown id {task_id!r}")
@@ -1123,8 +1478,137 @@ def reopen_task(
                 "text": "[REOPENED via mcp.reopen_task] flipped status='done'->blocked, blocker=operator-decision restored.",
             }
         )
-        _model._save_tasks_unlocked(tasks, tasks_path)
+        _model._save_doc_unlocked(doc, tasks_path, tasks=tasks)
     return {"task_id": task_id, "by": who, "task": dict(target)}
+
+
+def reassign_task(
+    store: str | Path | None = None,
+    task_id: str | None = None,
+    new_owner: str | None = None,
+    *,
+    by: str | None = None,
+    entry_points=None,  # hook-bypass: line-limit
+) -> dict:
+    """Atomically change a card's owner — the primitive the board lacked.
+
+    C5 (``todo-reassign-verb-with-owner-notify``). In ONE locked write:
+
+      * set ``agent = assignee = new_owner`` (keep the legacy ``assignee``
+        in lock-step with the operator-co-designed ``agent`` so every
+        reader — old dict-style and new — agrees on the owner), AND
+      * set ``scope = "agent:<new_owner>"`` (the convention the fleet
+        slices on), AND
+      * append an audit comment ``"reassigned <old> -> <new> by <actor>"``.
+
+    THEN (post-persist, outside the lock, fail-soft) emit a canonical
+    ``reassigned`` card-event with ``extra={"from_owner", "to_owner"}``.
+    The EVENT is the notification path — there is intentionally NO bespoke
+    notify/delivery here (delivery is C4, a separate card; this primitive
+    EMITS, it does not deliver).
+
+    Idempotent: reassigning to the SAME current owner is a no-op — no
+    write, no audit comment, no spurious event — so a replayed/duplicate
+    reassign is harmless.
+
+    Parameters
+    ----------
+    task_id : str
+        The card to reassign (required).
+    new_owner : str
+        The new owning agent (required, non-empty).
+    by : str, optional
+        The actor performing the reassignment; resolved through the usual
+        ``$SCITEX_TODO_AGENT_ID`` → ``$USER`` → ``"unknown"`` chain.
+    entry_points : iterable, optional
+        In-process injection seam forwarded to the event emit (real fake
+        handler in tests); ``None`` uses real plugin discovery.
+
+    Returns
+    -------
+    dict
+        ``{"task_id", "from_owner", "to_owner", "actor", "changed", "task"}``
+        where ``changed`` is ``False`` on the same-owner no-op path.
+
+    Raises
+    ------
+    ValueError
+        If ``task_id`` or ``new_owner`` is missing/empty.
+    TaskNotFoundError
+        If no task matches ``task_id``.
+    """
+    from . import _model
+
+    if not task_id:
+        raise ValueError("reassign_task: 'task_id' is required")
+    if not new_owner or not str(new_owner).strip():
+        raise ValueError("reassign_task: 'new_owner' is required")
+    new_owner = str(new_owner)
+    actor = _default_agent(by)
+    tasks_path = _resolved_store(store)
+    changed = False
+    old_owner: str | None = None
+    result_task: dict | None = None
+    with _model._store_lock(tasks_path):
+        doc, tasks = _read_write_doc(tasks_path)
+        target = next((t for t in tasks if t.get("id") == task_id), None)
+        if target is None:
+            raise TaskNotFoundError(f"reassign_task: unknown id {task_id!r}")
+        # Current owner = `agent`, falling back to legacy `assignee`.
+        old_owner = target.get("agent") or target.get("assignee")
+        if old_owner == new_owner:
+            # Idempotent no-op: same owner → no write, no event. Return the
+            # current state with changed=False.
+            result_task = dict(target)
+        else:
+            target["agent"] = new_owner
+            target["assignee"] = new_owner
+            target["scope"] = f"agent:{new_owner}"
+            comments = target.setdefault("comments", [])
+            comments.append(
+                {
+                    "author": actor,
+                    "ts": _utc_now_iso(),
+                    "text": (
+                        f"reassigned {old_owner or '(unassigned)'} -> "
+                        f"{new_owner} by {actor}"
+                    ),
+                }
+            )
+            target["last_activity"] = _utc_now_iso()
+            _model._save_doc_unlocked(doc, tasks_path, tasks=tasks)
+            result_task = dict(target)
+            changed = True
+    # C5: emit `reassigned` ONLY on a real owner change, AFTER the write is
+    # durable + the lock released (fail-soft). The event is the
+    # notification path; delivery is C4. (hook-bypass: line-limit)
+    if changed:
+        _emit_card_event(
+            "reassigned",
+            task_id,
+            actor=actor,
+            extra={"from_owner": old_owner, "to_owner": new_owner},
+            store=tasks_path,
+            entry_points=entry_points,
+        )
+    # Liveness (assignee-liveness feature): heartbeat the reassigning actor,
+    # and surface the NEW owner's liveness so the caller learns immediately
+    # if it just reassigned the card to a non-running agent. Both fail-soft.
+    from ._liveness import _assignee_liveness, _heartbeat
+
+    _heartbeat(actor, tasks_path)
+    out = {
+        "task_id": task_id,
+        "from_owner": old_owner,
+        "to_owner": new_owner,
+        "actor": actor,
+        "changed": changed,
+        "task": result_task,
+    }
+    _liveness = _assignee_liveness(new_owner, tasks_path)
+    if _liveness is not None:
+        out["assignee_liveness"] = _liveness
+    return out
 
 
 __all__ = [
@@ -1138,6 +1622,7 @@ __all__ = [
     "delete_task",
     "get_task",
     "list_tasks",
+    "reassign_task",  # hook-bypass: line-limit
     "reopen_task",
     "resolve_store",
     "resolve_task",

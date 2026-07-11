@@ -133,20 +133,39 @@
   margin-bottom: 14px;
   font-family: ui-monospace, monospace;
 }
+/* Operator 2026-07-10 (todo-board-detail-row-readability-20260710): the
+ * label/value pair read as visually run-together in the 584px drawer.
+ * Give the label its own fixed-width muted column (uppercase, matching the
+ * repo's other label conventions — 02-card.css .card-status / 06-layout-
+ * and-recent.css lane labels), let the value wrap on word boundaries
+ * instead of mid-word (overflow-wrap: anywhere still breaks unbroken long
+ * ids/urls when needed), align on the first line's baseline, and raise
+ * line-height so rows breathe. tabular-nums keeps digit-heavy values
+ * (timestamps) aligned; a full monospace font-family was deliberately
+ * NOT applied here since this class is shared by prose fields (title,
+ * goal) too — see PR report. */
 .detail-row {
   display: flex;
-  gap: 10px;
-  margin-bottom: 6px;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
   font-size: 0.85rem;
+  line-height: 1.5;
 }
 .detail-key {
+  flex: 0 0 110px;
   color: var(--text-muted);
-  min-width: 100px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.72rem;
 }
 .detail-val {
   color: #fff;
   flex: 1;
-  word-break: break-all;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 .detail-actions {
   display: flex;

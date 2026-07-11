@@ -22,7 +22,6 @@ surfaces as a 400 rather than corrupting the store.
 
 from __future__ import annotations
 
-import datetime
 import json
 import logging
 import os
@@ -98,6 +97,30 @@ def _slug_id(title: str, taken: set[str]) -> str:
     return f"{base}-{n}"
 
 
+def _check_status(payload: dict):
+    """400 on a status outside VALID_STATUSES; None when absent or valid.
+
+    The board is a SOURCE, and sources stay strict — a human picking from a
+    select must never mint a value the enum doesn't know. The save path
+    itself only WARNS on bad values now (operator ruling 2026-07-10: a
+    status must never cost someone their card on the SHARED store, where
+    the bad row may be another, newer agent's), so the 400 that used to
+    fall out of save-side validation must be raised here on purpose.
+    """
+    from scitex_todo._model import VALID_STATUSES
+
+    status = payload.get("status")
+    if status is not None and status not in VALID_STATUSES:
+        return JsonResponse(
+            {
+                "error": f"invalid status {status!r}; "
+                f"choose one of {sorted(VALID_STATUSES)}"
+            },
+            status=400,
+        )
+    return None
+
+
 def _save(tasks, board):
     """Validate + persist, resetting the cache. Returns an error response or None."""
     from scitex_todo import TaskValidationError
@@ -133,11 +156,17 @@ def _apply_fields(task: dict, payload: dict) -> None:
 
 
 def handle_create(request, board):
-    """POST create -> append a new task. Body: ``{title, status?, ...}``.
+    """POST create -> append a new task. Body: ``{title, assignee, status?, ...}``.
 
-    ``title`` is required; ``status`` defaults to ``pending``. The id is
-    generated from the title (unique within the store). Returns the created
-    task plus its ``store_path``.
+    Operator constitution (no silent fallbacks): EVERY card has a creator AND an
+    owner. This is the web sibling of :func:`scitex_todo._store.add_task`; it
+    DELEGATES the write to ``add_task`` (instead of hand-building the dict — the
+    old bug gave a UI card a BLANK creator + no required owner) so the UI path
+    reuses the same fail-loud + ``agent==assignee`` lock-step + ``created_by``
+    stamp. Owner (``assignee`` or ``agent``) REQUIRED -> 400 otherwise.
+    ``created_by`` defaults payload -> ``$SCITEX_TODO_AGENT_ID`` -> ``"operator"``
+    (the board is the operator's surface), never blank. ``status`` defaults
+    ``pending``; the id is unique across the union view (global + lanes).
     """
     if request.method != "POST":
         return JsonResponse({"error": "create endpoint requires POST"}, status=405)
@@ -151,19 +180,59 @@ def handle_create(request, board):
             {"error": "create requires a non-empty 'title'"}, status=400
         )
 
-    tasks = list(board.tasks)
-    taken = {t["id"] for t in tasks}
-    task = {
-        "id": _slug_id(title.strip(), taken),
-        "title": title.strip(),
-        "status": payload.get("status") or "pending",
-    }
-    _apply_fields(task, {k: v for k, v in payload.items() if k != "status"})
-    tasks.append(task)
+    # REQUIRE an owner up front so the rejection is a clean 400 the modal toasts
+    # (not the 500 api_dispatch turns add_task's TaskValidationError into).
+    # Accept either field the form may send; add_task locks agent==assignee.
+    def _clean(v):
+        return v.strip() if isinstance(v, str) else v
 
-    err = _save(tasks, board)
+    owner = _clean(payload.get("assignee")) or _clean(payload.get("agent"))
+    if not owner:
+        return JsonResponse(
+            {"error": "assignee is required — pick an owner"}, status=400
+        )
+    # Default the creator to the operator (the board's identity) when neither
+    # payload nor env names one — never blank. add_task re-validates this.
+    created_by = (
+        _clean(payload.get("created_by"))
+        or os.environ.get("SCITEX_TODO_AGENT_ID")
+        or "operator"
+    )
+    # Unique id across the union view (global + lanes) the board renders, so a
+    # UI id never collides with a lane task though the write lands global.
+    taken = {t["id"] for t in board.tasks if isinstance(t, dict) and t.get("id")}
+    new_id = _slug_id(title.strip(), taken)
+    # Forward the other editable form fields (project/note/...) as extras,
+    # dropping empties (UI clear-on-empty semantics keep the YAML sparse).
+    _handled = {"title", "status", "assignee", "agent", "created_by"}
+    extra_fields = {
+        k: payload[k]
+        for k in _EDITABLE_FIELDS
+        if k in payload and k not in _handled and payload[k] not in (None, "", [])
+    }
+
+    err = _check_status(payload)
     if err:
         return err
+
+    from scitex_todo import TaskValidationError
+    from scitex_todo._store import add_task
+
+    from ..services import _reset_cache
+
+    try:
+        task = add_task(
+            board.store_path,
+            id=new_id,
+            title=title.strip(),
+            status=payload.get("status") or "deferred",
+            assignee=owner,
+            created_by=created_by,
+            **extra_fields,
+        )
+    except TaskValidationError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+    _reset_cache()
     logger.info("[scitex-todo] created task %s in %s", task["id"], board.store_path)
     return JsonResponse({"task": task, "store_path": str(board.store_path)})
 
@@ -183,6 +252,9 @@ def handle_update(request, board):
     task_id = payload.get("id")
     if not isinstance(task_id, str) or not task_id:
         return JsonResponse({"error": "update requires 'id'"}, status=400)
+    err = _check_status(payload)
+    if err:
+        return err
 
     tasks = list(board.tasks)
     task = next((t for t in tasks if t["id"] == task_id), None)
@@ -306,12 +378,19 @@ def handle_restore(request, board):
 def handle_comment(request, board):
     """POST comment -> append a comment to a task's thread.
 
-    Body: ``{id, text, author?}``. The server stamps ``ts`` (ISO-8601 UTC)
-    and defaults ``author`` to the supplied value, else ``$USER``, else
-    ``"user"``. Append-only: it reads the task's current ``comments`` list and
-    adds one entry, so concurrent comments from other agents are not clobbered
-    the way a wholesale rewrite would. Unknown id -> 404. Returns the appended
-    comment plus the task's new comment count.
+    Body: ``{id, text, author?}``. ``author`` defaults to the supplied value,
+    else ``$USER``, else ``"user"``. Delegates the append to
+    :func:`scitex_todo._store.comment_task` (the SSOT): append-only under the
+    store lock — so concurrent comments from other agents are not clobbered —
+    which ALSO emits the canonical ``commented`` card-event. The C4 dispatcher
+    then ENQUEUES that comment into each resolved recipient's standalone
+    PULL-inbox (the always-works rail; a containerized owner PULLs it via
+    ``poll_notifications``) — there is NO direct turn-URL POST, which could
+    never reach a containerized owner and slowed the write.
+
+    Unknown id -> 404. Returns the appended comment, the new comment count,
+    and a ``relay`` toast describing the INBOX QUEUE (the recipient names the
+    comment was queued to) rather than a direct-POST result.
     """
     if request.method != "POST":
         return JsonResponse({"error": "comment endpoint requires POST"}, status=405)
@@ -332,48 +411,40 @@ def handle_comment(request, board):
     author = payload.get("author")
     if not isinstance(author, str) or not author.strip():
         author = os.environ.get("USER") or "user"
+    author = author.strip()
 
-    tasks = list(board.tasks)
-    task = next((t for t in tasks if t["id"] == task_id), None)
-    if task is None:
+    # 404 fast-path: an unknown id is a clean 404, not the TaskNotFoundError
+    # comment_task would raise (which api_dispatch turns into a 500).
+    if not any(t["id"] == task_id for t in board.tasks):
         return JsonResponse({"error": f"no task with id {task_id!r}"}, status=404)
 
-    comment = {
-        "ts": datetime.datetime.now(datetime.timezone.utc)
-        .replace(microsecond=0)
-        .isoformat(),
-        "author": author.strip(),
-        "text": text.strip(),
-    }
-    existing = task.get("comments")
-    task["comments"] = ([*existing] if isinstance(existing, list) else []) + [comment]
+    from scitex_todo._store import comment_task
 
-    err = _save(tasks, board)
-    if err:
-        return err
+    from ..services import _reset_cache
+    from ._comment_relay import comment_inbox_toast
+
+    # SSOT append + `commented` emit (→ C4 enqueues to each recipient's inbox).
+    result = comment_task(
+        store=board.store_path, task_id=task_id, text=text.strip(), by=author
+    )
+    _reset_cache()
+    comment = result["comment"]
     logger.info(
-        "[scitex-todo] comment on %s by %s in %s",
-        task_id,
-        author,
-        board.store_path,
+        "[scitex-todo] comment on %s by %s in %s", task_id, author, board.store_path
     )
 
-    # PR (g) comment-relay (lead a2a `9e710ab074ef4bf3a615be41793e0c51`,
-    # operator TG12611 2026-06-12): when the comment author is NOT
-    # the task's owning agent, push the full body to the owner via
-    # the same wire the nudge button uses. Best-effort — relay failure
-    # does NOT fail the comment write. Relay outcome surfaces in the
-    # response so the UI can toast.
-    from ._comment_relay import maybe_relay_comment
-
-    relay = maybe_relay_comment(task, comment)
+    # Re-read the freshly-written card (comment_task wrote under its own lock,
+    # so board.tasks is stale) for the count + the inbox-queue toast.
+    fresh = next((t for t in board.tasks if t["id"] == task_id), None) or {}
+    comments = fresh.get("comments")
+    count = len(comments) if isinstance(comments, list) else 1
 
     return JsonResponse(
         {
             "comment": comment,
-            "count": len(task["comments"]),
+            "count": count,
             "store_path": str(board.store_path),
-            "relay": relay,
+            "relay": comment_inbox_toast(fresh, author, store=board.store_path),
         }
     )
 

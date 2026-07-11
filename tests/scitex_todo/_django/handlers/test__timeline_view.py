@@ -39,7 +39,7 @@ from scitex_todo._store import add_task, complete_task
 @pytest.fixture()
 def store_with_timeline_tasks(tmp_path: Path, env) -> Path:
     """Seed a tmp store with one in-window + one out-of-window task plus
-    a depends_on edge. Pinned via ``SCITEX_TODO_TASKS`` so the view's
+    a depends_on edge. Pinned via ``SCITEX_TODO_TASKS_YAML_SHARED`` so the view's
     ``resolve_tasks_path(None)`` picks it up.
 
     The fresh task uses ``add_task`` which stamps ``created_at`` to NOW
@@ -74,17 +74,35 @@ def store_with_timeline_tasks(tmp_path: Path, env) -> Path:
         # validator gates closed enums; created_at is free-form ISO.
         created_at="2020-01-01T00:00:00+00:00",
     )
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     return store
 
 
 @pytest.fixture()
 def store_ungrouped(tmp_path: Path, env) -> Path:
-    """One task without ``agent`` or ``group`` — should land in
-    ``"(ungrouped)"`` regardless of ``lane_by``."""
+    """One OWNER-LESS task (no ``agent``/``assignee``/``group``) — should land
+    in ``"(ungrouped)"`` regardless of ``lane_by``.
+
+    Written as RAW YAML on purpose: ``add_task`` now REQUIRES an owner
+    (assignee/agent are mandatory — fail-loud, no silent fallback), so an
+    owner-less card can only exist as a LEGACY hand-written row. The board /
+    timeline must still bucket such a legacy row under ``"(ungrouped)"``
+    (``card_owner`` returns ``None``)."""
     store = tmp_path / "tasks.yaml"
-    add_task(store=store, id="t-naked", title="No lane")
-    env.set("SCITEX_TODO_TASKS", str(store))
+    # Stamp a NOW ``created_at`` so the row lands inside the timeline window
+    # (the standard add_task auto-stamp the other fixtures rely on); we write
+    # raw YAML only to keep the row OWNER-LESS, which add_task now forbids.
+    now = _dt.datetime.now(tz=_dt.timezone.utc).replace(microsecond=0).isoformat()
+    store.write_text(
+        "tasks:\n"
+        "  - id: t-naked\n"
+        "    title: No lane\n"
+        "    status: pending\n"
+        f"    created_at: {now!r}\n"
+        f"    last_activity: {now!r}\n",
+        encoding="utf-8",
+    )
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     return store
 
 
@@ -307,7 +325,7 @@ def test_timeline_view_edge_dropped_when_endpoint_out_of_window(tmp_path: Path, 
         agent="a",
         depends_on=["t-old"],
     )
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     rf = RequestFactory()
     req = rf.get("/timeline")
     # Act
@@ -381,7 +399,7 @@ def test_timeline_view_completed_task_in_window_renders(tmp_path: Path, env):
         created_at="2020-01-01T00:00:00+00:00",
     )
     complete_task(store=store, task_id="t-done")
-    env.set("SCITEX_TODO_TASKS", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     rf = RequestFactory()
     req = rf.get("/timeline")
     # Act

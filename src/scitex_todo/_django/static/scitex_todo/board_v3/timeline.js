@@ -30,10 +30,13 @@
   // Layout constants for the raster SVG.
   var LANE_H = 26; // px floor per lane row (a 1-row lane keeps this height)
   var BAR_INSET = 4; // vertical padding inside a lane
-  var LABEL_W = 150; // lane-label gutter width
+  var LABEL_W = 124; // lane-label gutter width (tightened 150→124 to give the
+  //                    plot more of the left side; labels truncate to 22 chars
+  //                    which fit in ~120px at the 11px bold lane-label font)
   var AXIS_H = 22; // top time-axis height
   var TICKS = 6; // axis tick count (incl. both ends)
-  var SUB_ROW_H = 18; // px per beeswarm sub-row inside a lane
+  var SUB_ROW_H = 20; // px per beeswarm sub-row inside a lane (18→20 so the
+  //                     larger r=7 dots + selected ring don't collide)
   var SUB_ROW_GAP = 2; // px gap two markers need to share one sub-row
   var MAX_ROWS = 12; // cap on sub-rows per lane (overflow clamps)
 
@@ -111,46 +114,29 @@
     };
 
   // ── controls row (shared by all three views) ─────────────────────────
+  // Built in timelineControls.js (captured here like _pack/_geo so this
+  // file stays under the per-file cap). That sibling appends the
+  // dependency-edge legend for the raster views and self-wires the
+  // hover-highlight delegation on #columns. Fallback keeps the page usable
+  // (selects-only, no legend) if the sibling hasn't loaded.
+  var _ctl =
+    (typeof globalThis !== "undefined" &&
+      globalThis.STX &&
+      globalThis.STX.timelineControls) ||
+    null;
+  // Per-agent lane avatar (10-agent-avatar.js); null until wired in.
+  var _avatar =
+    (typeof globalThis !== "undefined" &&
+      globalThis.STX &&
+      globalThis.STX.agentAvatar) ||
+    null;
   function controlsHtml(countLabel) {
-    function opt(val, cur, label) {
-      return (
-        '<option value="' +
-        val +
-        '"' +
-        (val === cur ? " selected" : "") +
-        ">" +
-        label +
-        "</option>"
-      );
-    }
-    var err = TL.error
-      ? '<span class="tl-error" title="' +
-        escapeHtml(TL.error) +
-        '">! ' +
-        escapeHtml(TL.error) +
-        "</span>"
-      : "";
+    if (_ctl && _ctl.controlsHtml)
+      return _ctl.controlsHtml(TL, countLabel, escapeHtml);
     return (
-      '<div class="tl-controls">' +
-      '<label class="tl-ctl">View ' +
-      '<select onchange="setTimelineView(this.value)" ' +
-      'title="Rows by agent or project, or a rich per-task list">' +
-      opt("agent", TL.view, "By Agent") +
-      opt("project", TL.view, "By Project") +
-      opt("simple", TL.view, "Simple (per task)") +
-      "</select></label>" +
-      '<label class="tl-ctl">Window ' +
-      '<select onchange="setTimelineWindow(this.value)" ' +
-      'title="How far back the timeline reaches">' +
-      opt("1d", TL.windowKey, "Day") +
-      opt("1w", TL.windowKey, "Week") +
-      opt("1m", TL.windowKey, "Month") +
-      "</select></label>" +
-      '<span class="tl-count">' +
+      '<div class="tl-controls"><span class="tl-count">' +
       escapeHtml(countLabel) +
-      "</span>" +
-      err +
-      "</div>"
+      "</span></div>"
     );
   }
 
@@ -250,6 +236,12 @@
     });
     var total = cursor + 6;
     var ticks = makeTicks(ws, we, width, TICKS);
+    // "By Agent" rows get the avatar (10-agent-avatar.js) once wired in.
+    var isAgentLane = TL.view !== "project";
+    var laneStatus =
+      _avatar && _avatar.laneStatusMap
+        ? _avatar.laneStatusMap(lanes, byLane, ms)
+        : {};
 
     // axis
     var svg = "";
@@ -275,11 +267,11 @@
         "</text>";
     });
     svg += "</g>";
-    // lane stripes + labels
     svg += '<g class="tl-lanes">';
     lanes.forEach(function (lane, i) {
       var yTop = laneTops[i];
       var laneH = laneHeights[i];
+      var cy = yTop + laneH / 2;
       svg +=
         '<rect class="tl-lane-bg' +
         (i % 2 === 0 ? " tl-lane-bg--even" : "") +
@@ -289,12 +281,14 @@
         (LABEL_W + width) +
         '" height="' +
         laneH +
-        '"></rect>' +
-        '<text class="tl-lane-label" x="8" y="' +
-        (yTop + laneH / 2 + 4) +
-        '">' +
-        escapeHtml(_truncate(lane, 22)) +
-        "</text>";
+        '"></rect>';
+      svg += _avatar
+        ? _avatar.laneLabelSvg(cy, lane, laneStatus[lane], isAgentLane)
+        : '<text class="tl-lane-label" x="8" y="' +
+          (cy + 4) +
+          '">' +
+          escapeHtml(lane) +
+          "</text>";
     });
     svg += "</g>";
     // dependency lines (drawn before the dots) — connect dot centres
@@ -306,6 +300,10 @@
       svg +=
         '<line class="tl-edge tl-edge--' +
         (e.kind === "blocks" ? "blocks" : "depends") +
+        '" data-source="' +
+        escapeHtml(String(e.source)) +
+        '" data-target="' +
+        escapeHtml(String(e.target)) +
         '" x1="' +
         s.cx +
         '" y1="' +
@@ -318,8 +316,9 @@
     });
     svg += "</g>";
     // dots — ONE per task (the scatter). Click → detail drawer; hover →
-    // the <title> tooltip. Completed dots fade; live (still-running) ones
-    // keep a bright ring so you can spot what's being processed.
+    // the cursor-OFFSET tip from 12-hover-tip.js (data-tip), because the
+    // native SVG tooltip sat UNDER the cursor (operator msg 944). Completed
+    // dots fade; live ones keep a bright ring.
     svg += '<g class="tl-dots">';
     dots.forEach(function (d) {
       var done = d.ev.ended_at != null;
@@ -330,18 +329,21 @@
         (d.ev.started_at ? "\nstarted: " + d.ev.started_at : "") +
         (d.ev.ended_at ? "\ncompleted: " + d.ev.ended_at : "");
       svg +=
-        '<circle class="tl-dot tl-dot--' +
-        bucket(d.ev.status) +
+        '<circle class="tl-dot' +
         (done ? " tl-dot--done" : " tl-dot--live") +
+        '" data-card-id="' +
+        escapeHtml(String(d.ev.id)) +
+        '" data-status="' +
+        escapeHtml(String(d.ev.status || "")) +
         '" cx="' +
         d.cx +
         '" cy="' +
         d.cy +
-        '" r="5" onclick="openDetail(\'' +
-        escapeHtml(String(d.ev.id)) +
-        "')\"><title>" +
+        '" r="7" data-tip="' +
         escapeHtml(title) +
-        "</title></circle>";
+        '" onclick="openDetail(\'' +
+        escapeHtml(String(d.ev.id)) +
+        "')\"></circle>";
     });
     svg += "</g>";
 
@@ -406,8 +408,8 @@
           .filter(Boolean)
           .join(" · ");
         return (
-          '<div class="tl-card tl-card--' +
-          bucket(t.status) +
+          '<div class="tl-card" data-status="' +
+          escapeHtml(String(t.status || "")) +
           '" onclick="openDetail(\'' +
           escapeHtml(String(t.id)) +
           "')\">" +

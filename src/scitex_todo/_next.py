@@ -33,9 +33,11 @@ from dataclasses import dataclass
 from typing import Iterable, Optional
 
 
-# Status values that are eligible for "next pickup". Mirrors the
-# in_progress / pending pair the consumption loop expects.
-RUNNABLE_STATUSES: frozenset[str] = frozenset({"pending", "in_progress"})
+# Status values that are eligible for "next pickup". Imported, not restated:
+# this was a hand-copied duplicate of _runnable's set, and when ``pending`` was
+# abolished only one of the two copies got updated — leaving `next` and
+# `runnable` silently disagreeing about what an agent may pick up.
+from ._runnable import RUNNABLE_STATUSES  # noqa: E402  (SSOT, not a restatement)
 
 
 @dataclass(frozen=True)
@@ -102,7 +104,7 @@ def _is_runnable(
         return False
     if assignee is not None:
         # Accept either `agent` (operator-co-designed, ADR-0007) OR the
-        # legacy `assignee` field. agents wired with SCITEX_TODO_AGENT
+        # legacy `assignee` field. agents wired with SCITEX_TODO_AGENT_ID
         # will match either spelling so older tasks aren't orphaned.
         agent_match = task.get("agent") == assignee
         legacy_match = task.get("assignee") == assignee

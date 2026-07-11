@@ -29,7 +29,7 @@ if [ -n "${MSG_FILE}" ]; then
     git -C "${REPO_ROOT}" log -1 --format='%B' HEAD >"${MSG_FILE}" 2>/dev/null || true
 fi
 
-sttc_emit_push "${REPO_ROOT}" "${BRANCH}" "${SHA}" "${MSG_FILE}" || true
+sttc_emit_push "${REPO_ROOT}" "${BRANCH}" "${SHA}" "${MSG_FILE}" "commit" || true
 
 [ -n "${MSG_FILE}" ] && rm -f "${MSG_FILE}" 2>/dev/null
 

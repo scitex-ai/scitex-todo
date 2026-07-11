@@ -104,7 +104,7 @@ zero if you stayed local.
 
 | # | Path                                                  | Role                                                                       |
 | - | ----------------------------------------------------- | -------------------------------------------------------------------------- |
-| 1 | `$SCITEX_TODO_TASKS` (explicit env)                   | Container glue (spec.yaml sets this for the agent's chosen scope).         |
+| 1 | `$SCITEX_TODO_TASKS_YAML_SHARED` (explicit env)                   | Container glue (spec.yaml sets this for the agent's chosen scope).         |
 | 2 | `<git-root>/.scitex/todo/tasks.yaml` (PROJECT-LOCAL)  | Default when you `cd <a repo>` — auto-picks the project-local root.         |
 | 3 | `~/.scitex/todo/tasks.yaml` (USER-GLOBAL)             | Default when you're outside a git repo (or on the operator's host).         |
 | 4 | bundled `examples/tasks.yaml`                         | Read-only fallback; never written.                                          |
@@ -126,11 +126,11 @@ scitex-todo --tasks ~/.scitex/todo/tasks.yaml add fleet-cutover-2026Q3 \
     '[P0] [GOAL] Fleet release cutover 2026Q3' ...
 
 # Or env-pin for a session (useful in scripts):
-SCITEX_TODO_TASKS=~/.scitex/todo/tasks.yaml scitex-todo list-tasks --json
+SCITEX_TODO_TASKS_YAML_SHARED=~/.scitex/todo/tasks.yaml scitex-todo list-tasks --json
 ```
 
 If you're running inside an agent container, the spec.yaml has
-exported `$SCITEX_TODO_TASKS` for you. The container glue chose
+exported `$SCITEX_TODO_TASKS_YAML_SHARED` for you. The container glue chose
 the right tier; trust it unless an explicit cross-tier need says
 otherwise.
 
@@ -328,7 +328,7 @@ scitex-todo done proj-scitex-todo-fleet-rollout --by proj-scitex-todo
 ```
 
 Stamps `_log_meta.completed_at` (UTC ISO-8601) + `completed_by` (the
-`--by` value, defaults to `$SCITEX_TODO_AGENT` then `$USER`).
+`--by` value, defaults to `$SCITEX_TODO_AGENT_ID` then `$USER`).
 Idempotent (re-doneing a `done` task keeps the original stamp).
 
 MCP: `complete_task`. Python: `scitex_todo.complete_task`.
@@ -529,14 +529,14 @@ When a worker needs the fleet view (e.g. "what's the lead waiting on
 across all projects?"):
 
 ```bash
-SCITEX_TODO_TASKS=~/.scitex/todo/tasks.yaml scitex-todo list-tasks --json
+SCITEX_TODO_TASKS_YAML_SHARED=~/.scitex/todo/tasks.yaml scitex-todo list-tasks --json
 ```
 
 When the lead needs a specific worker's project tier (e.g. to verify
 a row hasn't yet propagated):
 
 ```bash
-SCITEX_TODO_TASKS=~/proj/<worker-repo>/.scitex/todo/tasks.yaml \
+SCITEX_TODO_TASKS_YAML_SHARED=~/proj/<worker-repo>/.scitex/todo/tasks.yaml \
     scitex-todo list-tasks --json
 ```
 

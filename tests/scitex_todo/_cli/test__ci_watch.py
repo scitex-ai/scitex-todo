@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""`scitex-todo ci-watch` — record-only CI poller.
+"""`scitex-todo watch-ci` — record-only CI poller (renamed from `ci-watch`).
 
 Lead a2a (operator decoupled-pollers override, dev msg `96afacc7`,
 2026-06-15). Tests the pure-function transition classifier, the
@@ -170,7 +170,7 @@ def test_ci_watch_dry_run_with_no_repos_configured(tmp_path: Path, env):
     env.delete("SCITEX_TODO_FLEET_CI_REPOS")
     runner = CliRunner()
     # Act
-    result = runner.invoke(main, ["ci-watch", "--once", "--dry-run"])
+    result = runner.invoke(main, ["watch-ci", "--once", "--dry-run"])
     # Assert — empty config + dry-run → exit 0, summary line carries
     # `repos=0`.
     assert result.exit_code == 0
@@ -183,10 +183,10 @@ def test_ci_watch_dry_run_summary_line_present(tmp_path: Path, env):
     env.delete("SCITEX_TODO_FLEET_CI_REPOS")
     runner = CliRunner()
     # Act
-    result = runner.invoke(main, ["ci-watch", "--once", "--dry-run"])
+    result = runner.invoke(main, ["watch-ci", "--once", "--dry-run"])
     # Assert — the bottom summary line is the operator's at-a-glance
     # health check.
-    assert "ci-watch: repos=0" in result.output
+    assert "watch-ci: repos=0" in result.output
 
 
 def test_ci_watch_dry_run_does_not_write_state(tmp_path: Path, env):
@@ -197,7 +197,7 @@ def test_ci_watch_dry_run_does_not_write_state(tmp_path: Path, env):
     env.delete("SCITEX_TODO_FLEET_CI_REPOS")
     runner = CliRunner()
     # Act
-    runner.invoke(main, ["ci-watch", "--once", "--dry-run"])
+    runner.invoke(main, ["watch-ci", "--once", "--dry-run"])
     # Assert
     assert not state_file.exists()
 
@@ -226,7 +226,7 @@ def test_ci_watch_jobspec_runs_record_only_command():
     # Act
     spec = next(j for j in jobs if j.name == "scitex-todo.ci-watch")
     # Assert
-    assert spec.command == "scitex-todo ci-watch --once"
+    assert spec.command == "scitex-todo watch-ci --once"
 
 
 def test_ci_watch_jobspec_is_5_min_cron():

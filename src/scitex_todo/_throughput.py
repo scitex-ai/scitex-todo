@@ -31,8 +31,42 @@ import re
 from dataclasses import dataclass, field
 
 DONE_STATUSES = frozenset({"done"})
-TERMINAL_STATUSES = frozenset({"done", "deferred", "failed"})
-WIP_EXCLUDED_STATUSES = frozenset({"done", "goal"})  # goal-tier umbrellas don't consume WIP.
+# Closed/terminal states — a card here is NOT open and does NOT count as
+# backlog. ``cancelled`` (GitHub "closed as not planned") joins done/failed
+# so a cancelled card drops out of ``open_count`` exactly like ``done``
+# (see the open-count gate in ``aggregate``).
+#
+# ``deferred`` is NOT terminal (operator ruling, 2026-07-10: "deferred は終了
+# ではない"). A deferred card is OPEN — consciously not being worked right now,
+# but still carried. It was wrongly listed here because ``deferred`` had been
+# overloaded as the close status (``scitex-todo close`` and the board's close
+# button both wrote status=deferred, since no ``closed`` value existed). That
+# overload made 354 open cards silently vanish from every active view.
+# Closing now writes ``cancelled``; ``deferred`` means "not now", and shows.
+TERMINAL_STATUSES = frozenset({"done", "failed", "cancelled"})
+
+# OPEN vs WIP are two different questions, and conflating them is what jammed
+# the add gate shut (incident 2026-07-10; sac refused at "88 open" while its
+# board digest showed 2).
+#
+#   OPEN  = "still on my plate, show it to me" — everything not terminal, minus
+#           goal-tier umbrellas (which accumulate by design). A ``deferred``
+#           card IS open: consciously not-now, still carried.
+#   WIP   = "work actually in flight, consuming capacity" — ``in_progress``
+#           only. A ``blocked`` card is not progressing; a ``deferred`` card is
+#           explicitly not being worked. Charging either against an agent's WIP
+#           punishes it for the honesty of saying so.
+#
+# Both predicates now derive from TERMINAL_STATUSES, so a future status value
+# lands in the right bucket by construction instead of by a second hand-edit.
+OPEN_EXCLUDED_STATUSES = TERMINAL_STATUSES | frozenset({"goal"})
+WIP_STATUSES = frozenset({"in_progress"})
+
+# Deprecated alias. The name says "WIP" but every caller used it for OPEN, and
+# it excluded only {done, goal} — so ``failed`` and ``cancelled`` cards kept
+# nagging in digests and kept consuming gate budget forever. Kept as an alias
+# (its real, always-intended meaning) so out-of-tree importers do not break.
+WIP_EXCLUDED_STATUSES = OPEN_EXCLUDED_STATUSES
 
 # ``--notify`` truncation constants. The first 10 RUNNABLE-first tasks
 # always render; remainder collapses to a "+ N more" line. Recent-done
@@ -187,7 +221,7 @@ def aggregate(
                 if since_dt is None or (lt and lt >= since_dt):
                     g.completed += 1
 
-        if status not in TERMINAL_STATUSES and status != "goal":
+        if status not in OPEN_EXCLUDED_STATUSES:
             g.open_count += 1
             if status == "in_progress":
                 age_h = _hours_since(last_activity, now=cur)
@@ -208,31 +242,45 @@ def aggregate(
 @dataclass
 class WipReport:
     agent: str
+    wip_count: int
     open_count: int
     limit: int
 
     @property
     def is_warn(self) -> bool:
-        return self.open_count >= self.limit
+        return self.wip_count >= self.limit
 
     @property
     def is_refuse(self) -> bool:
-        return self.open_count >= (2 * self.limit)
+        return self.wip_count >= (2 * self.limit)
 
 
 def count_open_for_agent(tasks: list[dict], agent: str) -> int:
     """Tasks owned by ``agent`` (``agent`` field) that are still open.
 
-    "Open" = ``status`` not in :data:`WIP_EXCLUDED_STATUSES` (excludes
-    ``done`` + ``goal`` umbrellas per lead-confirm a2a ``5acfbb5d``).
+    "Open" = ``status`` not in :data:`OPEN_EXCLUDED_STATUSES` — i.e. not
+    terminal, and not a ``goal`` umbrella. ``deferred`` counts as open
+    (operator ruling 2026-07-10: deferred is not an ending).
     """
     if not agent:
         return 0
     return sum(
         1
         for t in tasks
-        if t.get("agent") == agent and t.get("status") not in WIP_EXCLUDED_STATUSES
+        if t.get("agent") == agent and t.get("status") not in OPEN_EXCLUDED_STATUSES
     )
+
+
+def count_wip_for_agent(tasks: list[dict], agent: str) -> int:
+    """Tasks owned by ``agent`` that are actively in flight.
+
+    This — not :func:`count_open_for_agent` — is what the add gate bounds.
+    A backlog of 300 deferred cards costs an agent nothing; three
+    simultaneous ``in_progress`` cards cost it its attention.
+    """
+    if not agent:
+        return 0
+    return sum(1 for t in tasks if t.get("agent") == agent and t.get("status") in WIP_STATUSES)
 
 
 def evaluate_wip(tasks: list[dict], agent: str | None) -> WipReport | None:
@@ -243,6 +291,7 @@ def evaluate_wip(tasks: list[dict], agent: str | None) -> WipReport | None:
     limit = int(os.environ.get(ENV_WIP_LIMIT, DEFAULT_WIP_LIMIT))
     return WipReport(
         agent=agent,
+        wip_count=count_wip_for_agent(tasks, agent),
         open_count=count_open_for_agent(tasks, agent),
         limit=limit,
     )
@@ -338,7 +387,7 @@ def build_notify_body(
     mine = [t for t in tasks if t.get("agent") == agent]
     by_id = {t["id"]: t for t in tasks if t.get("id")}
 
-    open_tasks = [t for t in mine if t.get("status") not in WIP_EXCLUDED_STATUSES]
+    open_tasks = [t for t in mine if t.get("status") not in OPEN_EXCLUDED_STATUSES]
     done_tasks = [t for t in mine if t.get("status") == "done"]
 
     # Window filter
@@ -431,6 +480,9 @@ __all__ = [
     "DONE_STATUSES",
     "TERMINAL_STATUSES",
     "WIP_EXCLUDED_STATUSES",
+    "OPEN_EXCLUDED_STATUSES",
+    "WIP_STATUSES",
+    "count_wip_for_agent",
     "NOTIFY_OPEN_CAP",
     "TITLE_TRUNC",
     "SHORT_ID_TRUNC",

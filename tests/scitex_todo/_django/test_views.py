@@ -305,4 +305,140 @@ def test_rev_endpoint_includes_positive_mtime(store):
     assert isinstance(payload["mtime"], (int, float)) and payload["mtime"] > 0
 
 
+def test_rev_endpoint_includes_asset_rev(store):
+    # Arrange
+    request = RequestFactory().get(f"/rev?store={store}")
+    # Act
+    payload = json.loads(views.api_dispatch(request, "rev").content)
+    # Assert — asset_rev is a positive float (max template mtime) so the
+    # frontend can hard-reload the pane when the board GUI code changes.
+    assert isinstance(payload["asset_rev"], (int, float))
+    assert payload["asset_rev"] > 0
+
+
+# --- board_v3 first-paint status-color CSS vars (SSOT, kill 4-bucket) ------
+
+_ALL_STATUSES = (
+    "goal",
+    "done",
+    "in_progress",
+    "blocked",
+    "pending",
+    "deferred",
+    "failed",
+)
+
+
+def test_status_colors_projects_all_seven_statuses():
+    """_status_colors() projects the SSOT STATUS_STYLE into exactly 7 keys.
+
+    The board's color layer is single-sourced from this map; if a status is
+    dropped the FE silently loses a distinct color and the 4-bucket collapse
+    sneaks back in.
+    """
+    # Arrange / Act
+    from scitex_todo._django.handlers.graph import _status_colors
+
+    colors = _status_colors()
+    # Assert
+    assert set(colors) == set(_ALL_STATUSES)
+
+
+def test_status_colors_each_entry_has_fill_stroke_dashed():
+    """Every projected status carries the three fields the FE CSS vars need."""
+    # Arrange / Act
+    from scitex_todo._django.handlers.graph import _status_colors
+
+    colors = _status_colors()
+    # Assert
+    for status, entry in colors.items():
+        assert set(entry) == {"fill", "stroke", "dashed"}, status
+        assert isinstance(entry["dashed"], bool), status
+
+
+def test_board_v3_page_renders_status_color_vars_block(store):
+    """board_v3 ships the server-rendered #status-color-vars <style> block."""
+    # Arrange
+    request = RequestFactory().get(f"/board_v3?store={store}")
+    # Act
+    body = views.board_v3_page(request).content
+    # Assert
+    assert b'id="status-color-vars"' in body
+
+
+def test_board_v3_page_emits_css_var_for_every_status(store):
+    """All 7 statuses get --status-fill/stroke/border CSS vars in first paint.
+
+    Pins that the color layer is per-RAW-status (not the legacy 4 buckets),
+    sourced from STATUS_STYLE via _status_colors().
+    """
+    # Arrange
+    request = RequestFactory().get(f"/board_v3?store={store}")
+    # Act
+    body = views.board_v3_page(request).content.decode("utf-8")
+    # Assert
+    for status in _ALL_STATUSES:
+        assert f"--status-fill-{status}:" in body, status
+        assert f"--status-stroke-{status}:" in body, status
+        assert f"--status-border-{status}:" in body, status
+
+
+def test_board_v3_page_deferred_status_border_is_dashed(store):
+    """`deferred` is the only dashed status — its border var must read dashed.
+
+    This is the SSOT differentiator (STATUS_STYLE deferred carries `5 3`),
+    so it must survive the template projection.
+    """
+    # Arrange
+    request = RequestFactory().get(f"/board_v3?store={store}")
+    # Act
+    body = views.board_v3_page(request).content.decode("utf-8")
+    # Assert
+    assert "--status-border-deferred: dashed;" in body
+    assert "--status-border-goal: solid;" in body
+
+
+def test_board_v3_page_renders_status_legend(store):
+    """board_v3 ships the single-sourced status color legend container."""
+    # Arrange
+    request = RequestFactory().get(f"/board_v3?store={store}")
+    # Act
+    body = views.board_v3_page(request).content
+    # Assert
+    assert b'id="status-legend"' in body
+
+
+def test_board_v3_legend_has_chip_for_every_status(store):
+    """The legend renders one swatch+label chip per SSOT status.
+
+    Pins that the legend iterates the SAME `status_colors` context (so it
+    auto-updates with STATUS_STYLE) — each status gets a stable
+    `data-legend-status="<s>"` chip + the status name as its label.
+    """
+    # Arrange
+    request = RequestFactory().get(f"/board_v3?store={store}")
+    # Act
+    body = views.board_v3_page(request).content.decode("utf-8")
+    # Assert
+    for status in _ALL_STATUSES:
+        assert f'data-legend-status="{status}"' in body, status
+
+
+def test_board_v3_legend_swatches_reference_ssot_css_vars(store):
+    """Each legend swatch reads the per-status --status-* CSS vars.
+
+    The swatch must single-source off the first-paint vars (not inline
+    hex), so the legend color tracks the cards/timeline/mermaid exactly.
+    """
+    # Arrange
+    request = RequestFactory().get(f"/board_v3?store={store}")
+    # Act
+    body = views.board_v3_page(request).content.decode("utf-8")
+    # Assert
+    for status in _ALL_STATUSES:
+        assert f"var(--status-fill-{status})" in body, status
+        assert f"var(--status-border-{status}" in body, status
+        assert f"var(--status-stroke-{status})" in body, status
+
+
 # EOF

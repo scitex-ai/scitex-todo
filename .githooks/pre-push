@@ -43,7 +43,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
             >"${MSG_FILE}" 2>/dev/null || true
     fi
 
-    sttc_emit_push "${REPO_ROOT}" "${branch}" "${local_sha}" "${MSG_FILE}" || true
+    sttc_emit_push "${REPO_ROOT}" "${branch}" "${local_sha}" "${MSG_FILE}" "push" || true
 
     [ -n "${MSG_FILE}" ] && rm -f "${MSG_FILE}" 2>/dev/null
 done

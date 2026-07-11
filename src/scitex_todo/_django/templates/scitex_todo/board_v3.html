@@ -48,6 +48,7 @@
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/07-toolbar-groups.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/08-time-grouping.css' %}">{# 08-time-grouping.css: bucket headers TODAY/WEEK/MONTH/OLDER for Group-by-time (a2a `ff1441d7`) #}
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/09-timeline.css' %}">{# 09-timeline.css: Timeline layout — raster + per-task simple cards (operator TODO 2026-06-17) #}
+<link rel="stylesheet" href="{% static 'scitex_todo/board_v3/11-sticky-wall.css' %}">{# 11-sticky-wall.css: Wall layout (notes + islands) + the shared .stx-flash status-transition glow #}
 {# combobox.css (loaded below the page-CSS so its specificity sits ON TOP if needed) #}
 <link rel="stylesheet" href="{% static 'scitex_ui/css/app/combobox.css' %}">
 <script defer src="{% static 'scitex_ui/js/app/combobox.js' %}"></script>
@@ -86,6 +87,32 @@
 {% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/timelineGeo.js' %}"></script>
 {% comment %}
+  10-agent-avatar.js — per-agent lane avatar (fleet brand colour/label, or
+  deterministic hash-hue + initials fallback) + status ring for the Timeline
+  raster. MUST load BEFORE timeline.js: publishes window.STX.agentAvatar,
+  captured like _pack/_geo; timeline.js falls back to plain-text lane labels
+  when absent. Operator 2026-07-10 (todo-board-agent-icons-status-rings).
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/10-agent-avatar.js' %}"></script>
+{% comment %}
+  11-sticky-wall.js — the "sticky note wall" layout: notes readable without
+  hover, clustered by assignee/project/status, and each agent's NEXT-UP stack
+  derived here from nodes+depends_on edges (no agent cooperation required).
+  Loads AFTER 10-agent-avatar.js (it reuses window.STX.agentAvatar for the
+  note avatar) and publishes window.STX.stickyWall; render() falls back to the
+  column layout when absent. Operator design, card
+  todo-board-sticky-wall-view-20260710.
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/11-sticky-wall.js' %}"></script>
+{% comment %}
+  12-hover-tip.js — cursor-OFFSET hover tooltip for any [data-tip] element.
+  Replaces the browser's native tooltip (SVG <title> / title=""), which
+  renders under the cursor and covers the dot or note being pointed at
+  (operator msg 944). Self-attaches on DOMContentLoaded; one delegated
+  listener, so every current and future view inherits it.
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/12-hover-tip.js' %}"></script>
+{% comment %}
   timelineGate.js — anti-flash change-detection gate for the Timeline raster.
   MUST load BEFORE timeline.js: publishes window.STX.timelineGate (rasterSig +
   a stateful gate that skips identical 4s rebuilds and preserves .tl-scroll
@@ -101,6 +128,16 @@
   (hook-bypass: line-limit.)
 {% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/timelineSelect.js' %}"></script>
+{% comment %}
+  timelineControls.js — Timeline controls-row builder (incl. the dependency-
+  edge legend) + the edge hover-highlight. MUST load BEFORE timeline.js:
+  publishes window.STX.timelineControls.controlsHtml (captured by timeline.js
+  at init, like timelineGeo) and self-wires the hover delegation on #columns
+  (mouseover/mouseout) so it survives the raster's auto-rebuilds without
+  timeline.js re-attaching. Pure controlsHtml/edgeLegendHtml are node-testable.
+  Factored out so timeline.js stays under the per-file cap.
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/timelineControls.js' %}"></script>
 {% comment %}
   timeline.js — the Timeline layout renderer (raster by agent/project +
   a rich per-task "simple" list). Classic <script defer> so it shares the
@@ -130,6 +167,22 @@
     width: 100vw;
   }
 </style>
+{% comment %}
+  FIRST-PAINT status-color CSS vars — the SINGLE source of truth for the
+  board's per-status color layer (hook-bypass: line-limit). Server-rendered
+  (deterministic, no FE flash) from `status_colors` (views.board_v3_page →
+  handlers.graph._status_colors → _diagram.STATUS_STYLE). Cards, timeline,
+  and the in-board mermaid all consume `--status-fill-<s>` /
+  `--status-stroke-<s>` / `--status-border-<s>` so the 7 statuses render
+  distinct + consistent, matching the python `build_mermaid()` artifacts.
+  The 4 buckets still drive COLUMN placement + the blocked pulse — only the
+  color layer is per-status.
+{% endcomment %}
+<style id="status-color-vars">:root{
+{% for s, c in status_colors.items %}  --status-fill-{{ s }}: {{ c.fill }};
+  --status-stroke-{{ s }}: {{ c.stroke }};
+  --status-border-{{ s }}: {% if c.dashed %}dashed{% else %}solid{% endif %};
+{% endfor %}}</style>
 {% endblock extra_css %}
 
 {% block app_content %}
@@ -197,8 +250,8 @@
           <select id="f-blocker"><option value="">All blockers</option></select>
         </div>
         <div class="filt-popover-row">
-          <label for="f-agent">Agent</label>
-          <select id="f-agent"><option value="">All agents</option></select>
+          <label for="f-agent">Assignee</label>
+          <select id="f-agent"><option value="">All assignees</option></select>
         </div>
         <div class="filt-popover-row">
           <label for="f-date">Date</label>
@@ -266,10 +319,25 @@
          flat sortable rows view; Graph is the dependency / blocker
          graph (mermaid SVG, fed from /graph). Recent is NOT a layout
          — it's a sort mode below that applies across all layouts. -->
+    <!-- Order: Timeline FIRST (operator 2026-07-10, card
+         todo-board-remove-stale-view-timeline-first-20260710 — "Timeline
+         view 本丸なので一番左に"). The Stale layout button was removed on the
+         same card ("Stale view 要らない"); its render path + /stale
+         endpoint stay (shared code), only the layout is unreachable.
+         Default view is still Column (the --on button) — changing the
+         default is an OPEN question on the card, not decided. -->
     <span class="filt-layout"
-          title="Switch layout: Graph (dep map) | Column (kanban) | Table (rows)">
+          title="Switch layout: Timeline (time raster) | Graph (dep map) | Column (kanban) | Table (rows)">
       <label class="filt-layout-label">Layout</label>
       <div class="filt-layout-seg" role="radiogroup" aria-label="Layout mode">
+        <button type="button" class="filt-layout-btn" id="f-layout-timeline"
+                data-layout="timeline" onclick="onLayoutChange('timeline')"
+                role="radio" aria-checked="false"
+                title="Timeline — time raster by agent/project, or a per-task simple list (day/week/month windows)">⏱ Timeline</button>
+        <button type="button" class="filt-layout-btn" id="f-layout-wall"
+                data-layout="wall" onclick="onLayoutChange('wall')"
+                role="radio" aria-checked="false"
+                title="Wall — sticky notes clustered by assignee; the selected agent's next-up stack rises to the top">🗒 Wall</button>
         <button type="button" class="filt-layout-btn" id="f-layout-graph"
                 data-layout="graph" onclick="onLayoutChange('graph')"
                 role="radio" aria-checked="false"
@@ -283,22 +351,6 @@
                 data-layout="table" onclick="onLayoutChange('table')"
                 role="radio" aria-checked="false"
                 title="Flat rows view">📑 Table</button>
-        <!-- Stale Review (2026-06-13, operator via lead a2a) — recurring
-             stale-cards review panel. Pulls from GET /stale; per-row
-             [Archive] button posts to /archive (HTTP twin of the CLI
-             `close --reason` verb shipped in PR #151). -->
-        <button type="button" class="filt-layout-btn" id="f-layout-stale"
-                data-layout="stale" onclick="onLayoutChange('stale')"
-                role="radio" aria-checked="false"
-                title="Stale cards review — archive obsolete pending cards with a reason">🧹 Stale</button>
-        <!-- Timeline (operator TODO 2026-06-17) — live time raster (by
-             agent / by project) + a rich per-task "simple" list. Own-data
-             layout, sibling of Stale: agent/project rasters pull /timeline;
-             the simple list projects STATE.graph by time. -->
-        <button type="button" class="filt-layout-btn" id="f-layout-timeline"
-                data-layout="timeline" onclick="onLayoutChange('timeline')"
-                role="radio" aria-checked="false"
-                title="Timeline — time raster by agent/project, or a per-task simple list (day/week/month windows)">⏱ Timeline</button>
       </div>
     </span>
     <span class="filt-sort">
@@ -360,7 +412,7 @@
     <span class="filt-recent-count" id="recent-count-pill"
           title="Click to switch Sort to Recent (newest first)"
           onclick="setSortRecent()" style="display:none">
-      🆕 <span id="recent-count-value">0</span> new in 24 h
+      <span id="recent-count-value">0</span> new/24h
     </span>
     <button id="reload" class="reload-btn" onclick="loadGraph()">Reload</button>
     <!-- Project-hide — per-project COLUMN hide (operator TG 344
@@ -424,6 +476,32 @@
   </div>
 
   {% comment %}
+    STATUS COLOR LEGEND (operator: "add color legends") — decodes the
+    per-status colors used by cards / timeline / mermaid. SINGLE-SOURCED:
+    iterates the SAME `status_colors` template context (views.board_v3_page
+    → handlers.graph._status_colors → _diagram.STATUS_STYLE) in
+    STATUS_STYLE order, so adding/removing a status updates the legend
+    automatically — no hardcoded status list or hex colors here. Each chip
+    references the first-paint `--status-fill-<s>` / `--status-stroke-<s>`
+    / `--status-border-<s>` CSS vars (rendered by #status-color-vars) so
+    the swatch matches the cards exactly, including `deferred`'s dashed
+    border. `data-legend-status` per chip keeps the test robust.
+  {% endcomment %}
+  <div class="status-legend" id="status-legend"
+       role="group" aria-label="Status color legend">
+    <span class="status-legend-title" aria-hidden="true">Legend</span>
+    {% for s, c in status_colors.items %}
+    <span class="status-legend-chip" data-legend-status="{{ s }}"
+          title="{{ s }}" aria-label="status color: {{ s }}">
+      <span class="status-legend-swatch" aria-hidden="true"
+            style="background: var(--status-fill-{{ s }});
+                   border: 1px var(--status-border-{{ s }}, solid) var(--status-stroke-{{ s }});"></span>
+      <span class="status-legend-label">{{ s }}</span>
+    </span>
+    {% endfor %}
+  </div>
+
+  {% comment %}
     BLOCKING-YOU 360 px aside REMOVED (P12, lead a2a 2026-06-12). The
     "right-end giant lane" the operator photographed is now a normal
     project column synthesized client-side as the `user` lane (see
@@ -470,7 +548,7 @@
               disabled
               onchange="bulkSetStatus(this.value); this.value='';">
         <option value="">— change to… —</option>
-        <option value="pending">pending</option>
+        {# `pending` abolished 2026-07-10; writing it now fails validation. #}
         <option value="in_progress">in_progress</option>
         <option value="blocked">blocked</option>
         <option value="done">done</option>
@@ -548,7 +626,7 @@
           <div style="flex: 1;">
             <label for="d-edit-status">Status</label>
             <select class="d-edit-select" id="d-edit-status">
-              <option value="pending">pending</option>
+              {# `pending` abolished 2026-07-10; writing it now fails validation. #}
               <option value="in_progress">in_progress</option>
               <option value="blocked">blocked</option>
               <option value="done">done</option>
@@ -575,7 +653,7 @@
             <input class="d-edit-input" id="d-edit-project" type="text">
           </div>
           <div style="flex: 1;">
-            <label for="d-edit-agent">Agent</label>
+            <label for="d-edit-agent">Assignee</label>
             <input class="d-edit-input" id="d-edit-agent" type="text">
           </div>
         </div>
@@ -614,6 +692,17 @@
         <input class="at-input" id="at-title" type="text" autocomplete="off"
                placeholder="What needs to get done?">
       </div>
+      <!-- Assignee is REQUIRED (operator constitution, no silent fallbacks): a
+           card must have an owner. The server (handle_create -> add_task) also
+           rejects an owner-less create, but require it client-side so the user
+           gets an inline message before the round-trip. hook-bypass: line-limit -->
+      <div class="at-row">
+        <label for="at-assignee">Assignee <span style="color: var(--red);">*</span></label>
+        <input class="at-input" id="at-assignee" name="task-assignee" type="text"
+               autocomplete="off" required list="at-assignee-list"
+               placeholder="Who owns this card? (e.g. operator)">
+        <datalist id="at-assignee-list"></datalist>
+      </div>
       <div class="at-row" style="flex-direction: row; gap: 10px;">
         <div style="flex: 1;">
           <label for="at-project">Project</label>
@@ -624,7 +713,8 @@
         <div style="flex: 1;">
           <label for="at-status">Status</label>
           <select class="at-select" id="at-status">
-            <option value="pending">pending</option>
+            {# `pending` abolished 2026-07-10 — the honest default is `deferred`. #}
+            <option value="deferred">deferred</option>
             <option value="in_progress">in_progress</option>
             <option value="blocked">blocked</option>
             <option value="goal">goal</option>
@@ -648,9 +738,12 @@
 
 {% block extra_js %}
   <script>
-    // Status mapping — the existing 7-value enum on the wire maps to the
-    // operator-co-designed 4-color set on the FE (ADR-0007 follow-up #4
-    // defers the full schema migration; today the FE handles the colors).
+    // Status mapping — the 7-value enum on the wire maps to 4 BUCKETS used
+    // ONLY for COLUMN placement + sort order + the blocked pulse animation.
+    // The per-status COLOR layer no longer uses these buckets: cards /
+    // timeline / mermaid read the SSOT --status-* CSS vars (from
+    // STATUS_STYLE via _status_colors) so all 7 statuses render distinct.
+    // (hook-bypass: line-limit.)
     const STATUS_BUCKET = {
       working: "working",
       in_progress: "working",
@@ -663,6 +756,22 @@
       failed: "done",
     };
     function bucket(status) { return STATUS_BUCKET[status] || "waiting"; }
+
+    // Owner SSOT (client mirror of scitex_todo._owner.card_owner) — the
+    // SINGLE rule for "who owns this card": `agent` falling back to
+    // `assignee`, else null (an owner-less card). Used for the card-render
+    // owner line + the unassigned-lane bucketing so an assignee-only card
+    // shows its real owner instead of a blank, and an owner-less card lands
+    // in a clearly-labeled lane rather than a retired fallback identity.
+    // (hook-bypass: line-limit — board_v3.html split still queued.)
+    function cardOwner(t) {
+      if (!t) return null;
+      const o = ((t.agent || t.assignee || "") + "").trim();
+      return o || null;
+    }
+    // The lane key an owner-less card buckets under — a clearly-labeled
+    // lane, NEVER a retired identity (operator mandate 2026-06-26).
+    const UNASSIGNED_LANE = "(unassigned)";
 
     let STATE = { graph: null, openId: null, lastMtime: null,
       filters: { project: "", host: "", status: "", blocker: "", agent: "",
@@ -692,7 +801,11 @@
       // operator's last choice survives reloads. STATE.sort (incl.
       // "recent") is orthogonal — applies within whichever layout is
       // active.
-      layout: localStorage.getItem("scitex-todo:layout") || "column" };
+      // "stale" is no longer a reachable layout (operator 2026-07-10, card
+      // todo-board-remove-stale-view-timeline-first-20260710) — a stored
+      // value from before the removal coerces to the kanban here.
+      layout: (function () { const l = localStorage.getItem("scitex-todo:layout");
+                             return (l === "stale" || !l) ? "column" : l; })() };
 
     // Sticky STATE.sort across reloads — operator picks Recent once,
     // expects it to remember next time. (hook-bypass: line-limit.)
@@ -849,7 +962,7 @@
       if (!f.showDone && t.status === "done") return false;
       if (f.project && (t.project || "Uncategorized") !== f.project) return false;
       if (f.host && (t.host || "") !== f.host) return false;
-      if (f.status && bucket(t.status) !== f.status) return false;
+      if (f.status && t.status !== f.status) return false;  // RAW 7-status filter (hook-bypass: line-limit)
       if (f.blocker) {
         if (f.blocker === "__none" && t.blocker) return false;
         if (f.blocker !== "__none" && t.blocker !== f.blocker) return false;
@@ -1279,11 +1392,15 @@
       if (nodes.some(n => !n.project)) projects.push("Uncategorized");
       set("f-project", projects, "All projects");
       set("f-host", uniq("host"), "All hosts");
-      set("f-agent", uniq("agent"), "All agents");
-      // Status / blocker = closed enums; statuses bucketed to 4.
+      set("f-agent", uniq("agent"), "All assignees");
+      // Status / blocker = closed enums. Status now lists the 7 REAL
+      // statuses (SSOT STATUS_STYLE order) and filters by RAW status — the
+      // 4-bucket collapse was the source of the goal/failed color confusion.
+      // (hook-bypass: line-limit.)
       document.getElementById("f-status").innerHTML =
         `<option value="">All statuses</option>` +
-        ["working", "waiting", "blocked", "done"].map(s => `<option value="${s}">${s}</option>`).join("");
+        ["goal", "done", "in_progress", "blocked", "deferred", "failed", "cancelled"]
+          .map(s => `<option value="${s}">${s}</option>`).join("");
       document.getElementById("f-blocker").innerHTML =
         `<option value="">All blockers</option>` +
         ["compute", "dependency", "dep", "operator-decision", "agent-wait", "none"]
@@ -1316,6 +1433,19 @@
       const host = t.host ? `<span class="card-host">${escapeHtml(t.host)}</span>` : "<span></span>";
       const last = t.last_activity ? `last ${escapeHtml(t.last_activity)}` : "";
       const id = escapeHtml(t.id);
+      // Owner (SSOT cardOwner = agent||assignee) + creator (created_by,
+      // falling back to the earliest comment author). An assignee-only card
+      // now shows its REAL owner instead of a blank; an owner-less card is
+      // flagged "⚠ unassigned" rather than silently blank. (hook-bypass: line-limit)
+      const _owner = cardOwner(t);
+      const _firstComment = (t.comments || [])
+        .map(c => c && c.author).find(a => typeof a === "string" && a);
+      const _creator = t.created_by || _firstComment || "";
+      const ownerLine = `<span class="card-owner" title="owner (assignee/agent)${_creator ? " · created by " + escapeHtml(_creator) : ""}">${
+        _owner
+          ? "👤 " + escapeHtml(_owner)
+          : '<span class="card-owner--unassigned">⚠ unassigned</span>'
+      }${_creator ? ' <span class="card-creator">· by ' + escapeHtml(_creator) + "</span>" : ""}</span>`;
       // Priority ↑↓ on every card (operator TG 9776 / 276). Re-orders the
       // POSITION-IN-FULL-LIST, not just within this column — the existing
       // /priority handler reassigns ranks 1..N over the entire payload, so
@@ -1369,8 +1499,12 @@
         title="Select this card for bulk actions"
         aria-label="Select card ${id} for bulk actions"
         onclick="event.stopPropagation(); toggleCardSelected('${id}', this.checked)" />`;
+      // `data-status` (raw 7-value enum) drives the per-status COLOR layer
+      // (left-bar fill + status-label color) via the --status-* CSS vars;
+      // `card--${b}` (4 buckets) still drives COLUMN placement + the blocked
+      // pulse animation. (hook-bypass: line-limit.)
       return `<article class="card card--${b}${hiddenCls}"
-        data-card-id="${id}" draggable="true"
+        data-card-id="${id}" data-status="${escapeHtml(t.status || "")}" draggable="true"
         ondragstart="onCardDragStart(event,'${id}')"
         ondragend="onCardDragEnd(event)"
         onclick="openDetail('${id}')"
@@ -1378,7 +1512,7 @@
         <div class="card-pad">
           <div class="card-top">
             ${selBox}
-            <span class="card-status">${b}</span>
+            <span class="card-status">${escapeHtml(t.status || b)}</span>
             ${activityBadgeHtml(t)}
             ${newBadge}
             <span class="card-last">${last}</span>
@@ -1389,6 +1523,7 @@
           ${goal}
           <div class="card-task">${taskLine}</div>
           ${datePillHtml(t)}
+          <div class="card-owner-line">${ownerLine}</div><!-- owner+creator (hook-bypass: line-limit) -->
           <div class="card-bot">${host}<span style="display:flex;gap:4px;align-items:center;">${pr}${issue}${copyBtn}${hideBtn}</span></div>
           ${blocker}
         </div>
@@ -1407,7 +1542,18 @@
       const projects = STATE.graph
         ? [...new Set(STATE.graph.nodes.map(n => n.project).filter(Boolean))].sort()
         : [];
-      const statuses = ["pending", "in_progress", "blocked", "done", "deferred", "failed", "goal"];
+      // Statuses come from the server's STATUS_STYLE SSOT (payload
+      // `status_colors`), never a hardcoded list. The old literal still
+      // offered `pending` — abolished 2026-07-10, and writing it now fails
+      // validation — while omitting `cancelled`. Deriving keeps this menu
+      // correct through any future enum change. The fallback only fires for
+      // a payload predating status_colors. (hook-bypass: line-limit.)
+      const statuses = Object.keys(
+        (STATE.graph && STATE.graph.status_colors) || {},
+      ).filter((s) => s !== "pending");
+      if (!statuses.length) {
+        statuses.push("in_progress", "blocked", "done", "deferred", "failed", "goal");
+      }
       const isHidden = hiddenSet().has(cardId);
       const menu = document.createElement("div");
       menu.className = "card-ctx-menu";
@@ -1910,9 +2056,20 @@
         // pull /timeline; the per-task "simple" list projects STATE.graph
         // by time. Ignores the kanban `visible` filter set by design.
         _renderTimelineView(canvas);
+      } else if (layout === "wall" && window.STX && window.STX.stickyWall) {
+        // Wall layout — sticky notes clustered by assignee (11-sticky-wall.js).
+        // Uses the SAME filtered `visible` set as column/table. The next-up
+        // stack is derived from nodes + STATE.graph.edges inside the module,
+        // so no agent has to maintain it. Falls through to column when the
+        // module hasn't loaded (deferred script not yet executed).
+        _renderWallView(canvas, visible);
       } else {
         _renderColumnView(canvas, visible);
       }
+      // One-shot glow on any card whose status changed since the last render
+      // (operator msg 933). No-op on first paint — the map starts empty, so
+      // nothing "transitions" into existence.
+      _flashStatusTransitions(canvas);
       renderGroupStrip();
       _renderRecentCountPill(visible);
       // Update the "show hidden (N)" counter in the filter bar so the
@@ -2062,6 +2219,83 @@
     // sortable table. Each row click opens the existing detail
     // drawer (openDetail). NEW badge applies here too when sort
     // mode is "recent". (hook-bypass: line-limit.)
+    // Wall layout state. `groupBy` = assignee|project|status (operator's
+    // "切り口"), `selected` = the expanded island. Sticky across reloads so
+    // picking your own lane once is remembered. (hook-bypass: line-limit.)
+    const WALL = {
+      groupBy: (() => { try { return localStorage.getItem("scitex-todo:wall-group") || "assignee"; } catch { return "assignee"; } })(),
+      selected: (() => { try { return localStorage.getItem("scitex-todo:wall-selected") || null; } catch { return null; } })(),
+    };
+    function _renderWallView(canvas, visible) {
+      const edges = (STATE.graph && STATE.graph.edges) || [];
+      canvas.innerHTML = window.STX.stickyWall.wallHtml(visible, edges, {
+        groupBy: WALL.groupBy,
+        selected: WALL.selected,
+        nowMs: Date.now(),
+      });
+    }
+    // Delegated: island title toggles selection; a note opens the existing
+    // detail drawer. One listener for the whole wall, survives re-renders.
+    document.addEventListener("click", (ev) => {
+      const head = ev.target.closest && ev.target.closest(".sw-island-title");
+      if (head) {
+        const k = head.getAttribute("data-key");
+        WALL.selected = WALL.selected === k ? null : k;
+        try { localStorage.setItem("scitex-todo:wall-selected", WALL.selected || ""); } catch {}
+        render();
+        return;
+      }
+      const note = ev.target.closest && ev.target.closest(".sw-note");
+      if (note) openDetail(note.getAttribute("data-id"));
+    });
+
+    // Uniform right-click across EVERY view (operator msg 943: "right click
+    // should work on tasks — scatters/cards on all views in the same
+    // manner"). One delegated listener instead of an inline handler per
+    // view: resolve the card id from `data-card-id` (timeline dots) or
+    // `data-id` (wall notes) and open the same menu.
+    //
+    // Column cards and table rows already carry an inline `oncontextmenu`.
+    // openCardCtx() calls preventDefault() but NOT stopPropagation(), so the
+    // event still bubbles here — skip those to avoid opening the menu twice.
+    document.addEventListener("contextmenu", (ev) => {
+      if (!ev.target.closest) return;
+      const el = ev.target.closest("[data-card-id],[data-id]");
+      if (!el) return;
+      if (el.closest("[oncontextmenu]")) return; // inline handler owns it
+      const id =
+        el.getAttribute("data-card-id") || el.getAttribute("data-id");
+      if (id) openCardCtx(ev, id);
+    });
+
+    // Status-transition glow (operator msg 933). Cheap by construction: a
+    // prev-status map diffed on each render; the CSS does the rest and the
+    // class is removed on animationend so it never accumulates. Applies to
+    // any element carrying data-id + data-status — wall notes today, and any
+    // future view that adopts the same two attributes.
+    const _PREV_STATUS = new Map();
+    function _flashStatusTransitions(root) {
+      if (!root) return;
+      // Wall notes carry data-id; timeline dots carry data-card-id. Both
+      // carry data-status, so both get the glow from this one pass.
+      root
+        .querySelectorAll("[data-id][data-status],[data-card-id][data-status]")
+        .forEach((el) => {
+        const id =
+          el.getAttribute("data-card-id") || el.getAttribute("data-id");
+        const st = el.getAttribute("data-status");
+        const prev = _PREV_STATUS.get(id);
+        _PREV_STATUS.set(id, st);
+        if (prev === undefined || prev === st) return;
+        el.classList.add("stx-flash", `stx-flash--${st}`);
+        el.addEventListener(
+          "animationend",
+          () => el.classList.remove("stx-flash", `stx-flash--${st}`),
+          { once: true },
+        );
+      });
+    }
+
     function _renderTableView(canvas, visible) {
       const sorted = visible.slice().sort(_sortComparator(STATE.sort || "default"));
       const recentMode = (STATE.sort || "default") === "recent";
@@ -2338,10 +2572,10 @@
         return;
       }
 
+      // Each node maps to its RAW status class (st-<status>) so the in-board mermaid matches python build_mermaid() artifacts, not the 4-bucket collapse. (hook-bypass: line-limit.)
       const nodeLines = connected.map(t => {
-        const b = bucket(t.status);
         const label = `${(t.project || "—").slice(0, 18)}<br>${_safe(t.task || t.title)}`;
-        return `  ${_esc(t.id)}["${label}"]:::st-${b}`;
+        return `  ${_esc(t.id)}["${label}"]:::st-${(t.status || "deferred").replace(/[^a-z_]/gi, "")}`;
       });
       const edgeLines = allEdges.map(e => {
         if (e.kind === "parent") {
@@ -2352,12 +2586,19 @@
         return `  ${_esc(e.src)} --> ${_esc(e.dst)}`;
       });
 
+      // classDefs generated from the SSOT status_colors (STATUS_STYLE,
+      // projected by handlers.graph._status_colors into the /graph payload).
+      // Dashed `deferred` reuses STATUS_STYLE's dash via stroke-dasharray.
+      const sc = (STATE.graph && STATE.graph.status_colors) || {};
+      const classDefLines = Object.keys(sc).map(s => {
+        const c = sc[s];
+        let style = `fill:${c.fill},stroke:${c.stroke},stroke-width:1px,color:#222`;
+        if (c.dashed) style += ",stroke-dasharray:5 3";
+        return `  classDef st-${s} ${style};`;
+      });
       const src = [
         "flowchart LR",
-        "  classDef st-working fill:#1f7a1f,stroke:#4caf50,color:#fff;",
-        "  classDef st-waiting fill:#5c4a00,stroke:#ffb300,color:#fff;",
-        "  classDef st-blocked fill:#7a1f1f,stroke:#f44336,color:#fff;",
-        "  classDef st-done    fill:#3a3a3a,stroke:#9e9e9e,color:#cfcfcf;",
+        ...classDefLines,
         ...nodeLines,
         ...edgeLines,
       ].join("\n");
@@ -2925,10 +3166,11 @@
     // selected layout is persisted in localStorage so the operator's
     // choice survives reloads. (hook-bypass: line-limit.)
     function onLayoutChange(mode) {
-      // Whitelist every real layout. The old `graph||table` guard silently
-      // coerced `stale` AND `timeline` → `column` (a latent bug that broke
-      // the Stale button); unknown values still fall back to the kanban.
-      const VALID_LAYOUTS = ["graph", "table", "column", "stale", "timeline"];
+      // Whitelist every real layout; unknown values fall back to the kanban.
+      // "stale" removed 2026-07-10 (operator, card todo-board-remove-stale-
+      // view-timeline-first-20260710) — the render path stays but the
+      // layout is unreachable (button gone, whitelist + boot both coerce).
+      const VALID_LAYOUTS = ["graph", "table", "column", "timeline", "wall"];
       const m = VALID_LAYOUTS.includes(mode) ? mode : "column";
       STATE.layout = m;
       try { localStorage.setItem("scitex-todo:layout", m); } catch {}
@@ -3635,6 +3877,20 @@
         const r = await fetch("/rev");
         if (!r.ok) return;
         const rev = await r.json();
+        // GUI-code hot-reload: if the board template changed on disk (a
+        // merged PR / local edit under the editable install), the server is
+        // already serving new HTML/JS but THIS pane is still running the old
+        // bundle. Hard-reload so the operator picks up GUI updates without a
+        // manual restart / F5. First observation only records the baseline.
+        if (rev.asset_rev !== undefined) {
+          if (STATE.assetRev === undefined) {
+            STATE.assetRev = rev.asset_rev;
+          } else if (rev.asset_rev !== STATE.assetRev) {
+            STATE.assetRev = rev.asset_rev;
+            location.reload();
+            return;
+          }
+        }
         const key = `${rev.mtime}:${rev.count}`;
         if (STATE.lastMtime === null) { STATE.lastMtime = key; return; }
         if (key !== STATE.lastMtime) {
@@ -3709,13 +3965,26 @@
         document.getElementById("at-project-list").innerHTML =
           projects.map(p => `<option value="${escapeHtml(p)}">`).join("");
       }
+      // Suggest known owners (existing card owners) in the assignee datalist
+      // so the operator can pick fast, while still allowing a free-form name.
+      // hook-bypass: line-limit (board_v3.html split still queued)
+      if (STATE.graph) {
+        const owners = [...new Set(
+          STATE.graph.nodes.map(n => cardOwner(n)).filter(Boolean)
+        )].sort();
+        document.getElementById("at-assignee-list").innerHTML =
+          owners.map(o => `<option value="${escapeHtml(o)}">`).join("");
+      }
       document.getElementById("at-title").value = "";
+      // Assignee is required; reset it empty on each open so a stale value
+      // can't silently re-own the next card.
+      document.getElementById("at-assignee").value = "";
       // If invoked from an empty column's placeholder (operator TG 381),
       // pre-fill the project so the new task goes straight to that
       // column without retyping the name.
       const projInput = document.getElementById("at-project");
       projInput.value = presetProject && presetProject !== "—" ? presetProject : "";
-      document.getElementById("at-status").value = "pending";
+      document.getElementById("at-status").value = "deferred";
       document.getElementById("at-task").value = "";
       document.getElementById("add-task-backdrop").classList.add("show");
       setTimeout(() => document.getElementById("at-title").focus(), 50);
@@ -3731,13 +4000,24 @@
         document.getElementById("at-title").focus();
         return;
       }
+      // Assignee is REQUIRED — a card must have an owner (operator
+      // constitution, no silent fallbacks). Block the POST + show an inline
+      // message rather than create an owner-less card. The server enforces
+      // this too (handle_create -> add_task), this is the fast UX gate.
+      // hook-bypass: line-limit (board_v3.html split still queued)
+      const assignee = document.getElementById("at-assignee").value.trim();
+      if (!assignee) {
+        toast("assignee is required — pick an owner", true);
+        document.getElementById("at-assignee").focus();
+        return;
+      }
       const project = document.getElementById("at-project").value.trim();
       const status = document.getElementById("at-status").value;
       const task = document.getElementById("at-task").value.trim();
       const btn = document.getElementById("at-create");
       btn.disabled = true; btn.textContent = "creating…";
       try {
-        const body = { title, status };
+        const body = { title, status, assignee };
         if (project) body.project = project;
         if (task) body.task = task;
         const r = await fetch("/create", {
@@ -3766,7 +4046,7 @@
       const t = (STATE.graph?.nodes || []).find(x => x.id === STATE.openId);
       if (!t) return;
       document.getElementById("d-edit-title").value = t.title || "";
-      document.getElementById("d-edit-status").value = t.status || "pending";
+      document.getElementById("d-edit-status").value = t.status || "deferred";
       document.getElementById("d-edit-blocker").value = t.blocker || "";
       document.getElementById("d-edit-project").value = t.project || "";
       document.getElementById("d-edit-agent").value = t.agent || "";
@@ -3987,7 +4267,7 @@
     //  lives in the lead's periodic reports, not the board.)
     function toggleAgentFilter(agent) {
       // Click a dot: if it's not the current f-agent value, set it; if
-      // it IS, clear it back to "All agents". Updates the <select> too
+      // it IS, clear it back to "All assignees". Updates the <select> too
       // so the existing filter pipeline stays consistent.
       const sel = document.getElementById("f-agent");
       if (!sel) return;

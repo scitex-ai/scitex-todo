@@ -120,14 +120,18 @@ class TestP1SearchAsLauncher:
             "Esc to blur" in board_text
         ), "search input must hint at 'Esc to blur' in its placeholder"
 
-    def test_search_input_min_width_bumped(self, css_text):
-        # The P1 CSS bump to 320px is what makes the search the PRIMARY
-        # go-to. A regression to 180px (the pre-P1 narrow form) reverts
-        # the affordance. (CSS pin — extracted to 02-card.css 2026-06-12.)
+    def test_search_input_min_width_filterbar_scale(self, css_text):
+        # Operator 2026-07-10 (でかすぎ,
+        # todo-board-search-box-oversized-20260710): the P1-era 320px /
+        # 1rem / permanent-glow search input dwarfed the sibling .filt
+        # controls; resized to the filterbar baseline (220px min-width,
+        # 0.85rem, glow on :focus only). Still wider than the pre-P1
+        # 180px narrow form so the primary-affordance intent survives.
+        # (CSS pin — 02-card.css.)
         # Arrange
         # Act
         # Assert
-        assert "min-width: 320px" in css_text
+        assert "min-width: 220px" in css_text
 
 
 # -----------------------------------------------------------------------------
@@ -521,7 +525,6 @@ class TestMultiselectBatchOpsStage1:
         # Act
         # Assert
         for status in (
-            "pending",
             "in_progress",
             "blocked",
             "done",
@@ -530,6 +533,13 @@ class TestMultiselectBatchOpsStage1:
             "goal",
         ):
             assert f'value="{status}"' in board_text
+
+        # `pending` was ABOLISHED 2026-07-10 (operator: "存在してはならない状態
+        # である"); it is out of VALID_STATUSES and any write of it now fails
+        # validation. A status <option> offering it would hand the operator a
+        # guaranteed error, so no picker may expose it. This pin is the guard
+        # against it creeping back in.
+        assert '<option value="pending">' not in board_text
 
     def test_toolbar_followup_ops_left_as_commented_hooks(self, board_text):
         # The card asks for 5 bulk ops. Stage 1 ships ONE; the other 4
@@ -650,26 +660,32 @@ class TestActivityBucketBadge:
 
 
 class TestStaleReviewPanel:
-    """Pins for the Stale Review layout + Archive button.
+    """Pins for the Stale Review render path + Archive button.
 
-    Backend half is PR #153 (/stale + /archive endpoints). This FE
-    half adds a 4th layout button ("🧹 Stale"), a fetch+render
-    function that pulls from /stale, a per-row Archive button that
-    POSTs to /archive (HTTP twin of CLI `close --reason` PR #151),
-    and a small toolbar with the days + include_no_timestamp knobs.
+    Backend half is PR #153 (/stale + /archive endpoints). The layout
+    BUTTON was removed 2026-07-10 (operator, card
+    todo-board-remove-stale-view-timeline-first-20260710 — "Stale view
+    要らない"): the first two pins now assert the button stays GONE and
+    the layout unreachable, while the fetch+render helpers, per-row
+    Archive button (HTTP twin of CLI `close --reason` PR #151) and the
+    days + include_no_timestamp toolbar knobs remain pinned as shared
+    code.
     """
 
-    def test_stale_layout_button_in_filterbar(self, board_text):
+    def test_stale_layout_button_removed_from_filterbar(self, board_text):
         # Arrange
         # Act
         # Assert
-        assert 'id="f-layout-stale"' in board_text
+        assert 'id="f-layout-stale"' not in board_text
+        assert "🧹 Stale" not in board_text
 
-    def test_stale_layout_button_glyph(self, board_text):
+    def test_stale_layout_unreachable_in_whitelist(self, board_text):
         # Arrange
         # Act
         # Assert
-        assert "🧹 Stale" in board_text
+        assert (
+            '"stale"' not in board_text.split("VALID_LAYOUTS = ")[1].split("]")[0]
+        ), "stale must stay out of the layout whitelist (operator removal)"
 
     def test_stale_render_helper_defined(self, board_text):
         # Arrange

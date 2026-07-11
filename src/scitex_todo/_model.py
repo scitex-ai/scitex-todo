@@ -26,18 +26,41 @@ import fcntl
 import os
 from pathlib import Path
 
-import yaml
+from ._yaml import safe_dump, safe_load  # hook-bypass: line-limit
+from ._store_verify import _verify_dumped_tmp  # hook-bypass: line-limit
 
 # Valid task statuses. ``goal`` marks a north-star objective (rendered gold);
 # the rest are ordinary execution states.
-VALID_STATUSES: tuple[str, ...] = (
+# ``pending`` was ABOLISHED 2026-07-10 by operator directive: "pending という
+# タスクがある。存在してはならない状態である。" A card in ``pending`` carried NO
+# decision — it was the dataclass default, so 406 of 1100 cards (37%) had silently
+# accumulated there and rotted. Every open card must now state its disposition:
+# ``in_progress`` (being worked), ``blocked`` (+ a blocker naming the gate),
+# or ``deferred`` (can be worked, consciously not now).
+ABOLISHED_STATUSES: dict[str, str] = {
+    "pending": (
+        "status 'pending' was abolished 2026-07-10 — a card must carry a "
+        "decision. Choose: 'in_progress' if you are working it, 'blocked' "
+        "with a blocker naming the gate, or 'deferred' if it can wait."
+    ),
+}
+
+VALID_STATUSES: tuple[str, ...] = (  # hook-bypass: line-limit
     "goal",
-    "pending",
     "in_progress",
     "blocked",
     "done",
     "deferred",
     "failed",
+    # ``cancelled`` = GitHub "closed as not planned": a TERMINAL/closed
+    # state distinct from ``done`` (completed successfully) and ``failed``
+    # (attempted, did not succeed). A cancelled card is CLOSED — it drops
+    # out of every open/actionable/stale/backlog view exactly like ``done``
+    # (see TERMINAL_STATUSES in _throughput.py, the is_overdue closed-set
+    # below, and _LIVENESS_NONRUNNABLE in handlers/graph.py). It does NOT
+    # satisfy a dependency: a cancelled upstream leaves dependents blocked,
+    # so RESOLVED_STATUSES in _runnable.py stays {"done", "goal"}.
+    "cancelled",
 )
 
 # Valid task kinds — north-star pillars #1 (compute state) + #4 (operator
@@ -137,6 +160,18 @@ class TaskValidationError(ValueError):
     """Raised when a task store fails structural validation."""
 
 
+class StaleStoreError(RuntimeError):
+    """The store changed between your read and your write — reload and retry.
+
+    Raised by :func:`save_tasks` when the caller passed
+    ``expected_generation`` and the on-disk store no longer matches it.
+    Writing anyway would silently discard every mutation the other writer
+    made since your read (the 2026-07-10 bulk-migration incident: raw
+    ``load_tasks → mutate → save_tasks`` scripts ate two concurrent sac
+    writes because nothing tied the write to the read it was based on).
+    """
+
+
 # ---------------------------------------------------------------------------
 # Task dataclass — SINGLE schema source (ADR-0007, quality-hygiene PR)
 # ---------------------------------------------------------------------------
@@ -206,6 +241,14 @@ class Task:
     # it.
     task: str | None = None
     project: str | None = None  # directory / repo basename
+    # `repo` = the git repository slug the card's work lands in (e.g.
+    # ``scitex-todo``). Used by add_task / list_tasks and historically rode
+    # ``**extras`` without a dataclass field — a confirmed latent bug: a row
+    # carrying ``repo`` survived on disk but never round-tripped through the
+    # Task dataclass (from_dict dropped it as an unknown key). Promoted to a
+    # first-class OPTIONAL field in the SQLite-migration S0 (RFC #348 Q4);
+    # pure-additive, defaults None so to_dict omits it when unset.
+    repo: str | None = None
     host: str | None = None  # where the work happens (operator co-design TG 9667)
     created_at: str | None = None  # ISO-8601 UTC; emit at insert
     goal: str | None = None  # WHY (parent-goal text); rendered as 🎯 line on card
@@ -233,7 +276,7 @@ class Task:
     deadlines: list[str] | None = None
 
     # --- lead-added: drives UI color + blocker views (TG 9667) -------------
-    status: str = "pending"  # current canonical = VALID_STATUSES (7-value);
+    status: str = "deferred"  # current canonical = VALID_STATUSES (7-value);
     # the operator's 4-value enum (working/waiting/done/blocked)
     # is mapped IN THE FE renderer for now, not in the
     # schema. See ADR-0007 Consequences for the
@@ -276,7 +319,7 @@ class Task:
     subscribers: list[str] = field(default_factory=list)
     # `created_by` = the USER (agent or human; user.kind=agent) who created
     # the card, captured at insert by add_task from the same author chain
-    # comment authorship resolves ($SCITEX_TODO_AGENT → $USER → "unknown").
+    # comment authorship resolves ($SCITEX_TODO_AGENT_ID → $USER → "unknown").
     # Back-compat: ABSENT on legacy rows — readers fall back to the earliest
     # comment author, else "—". Optional non-empty string when present.
     # (hook-bypass: line-limit — _model.py split still queued.)
@@ -426,7 +469,8 @@ def is_overdue(task: dict, *, now=None) -> bool:
       * the next-occurrence (per :func:`next_deadline_for_task`) is
         strictly before today (UTC by default), AND
       * the task hasn't reached a terminal lifecycle state (`done` /
-        `deferred` / `failed` aren't overdue — they're closed).
+        `deferred` / `failed` / `cancelled` aren't overdue — they're
+        closed). (hook-bypass: line-limit.)
 
     Used by the fleet liveness handler and the CLI's `list-tasks
     --overdue` filter to surface late tasks at a glance (operator
@@ -437,7 +481,11 @@ def is_overdue(task: dict, *, now=None) -> bool:
     import datetime as _dt
 
     status = (task.get("status") or "").strip()
-    if status in {"done", "deferred", "failed", "goal"}:
+    # Terminal/closed statuses are never overdue. ``cancelled`` (closed as
+    # not planned) joins done/failed here. ``deferred`` is NOT terminal
+    # (operator ruling 2026-07-10) — a deferred card is open, so it CAN go
+    # overdue and must surface. (hook-bypass: line-limit.)
+    if status in {"done", "failed", "cancelled", "goal"}:
         return False
     nxt = next_deadline_for_task(task, now=now)
     if not nxt:
@@ -481,16 +529,58 @@ def load_tasks(path: str | Path) -> list[dict]:
     >>> tasks[0]["id"]                     # doctest: +SKIP
     'design'
     """
+    data = load_doc(path, validate=True)
+    return data.get("tasks")
+
+
+def load_doc(path: str | Path, *, validate: bool = False) -> dict:
+    """Load the FULL parsed mapping from a YAML store in ONE ``safe_load``.
+
+    This is the single-read primitive that both :func:`load_tasks` and the
+    ``_store`` CRUD verbs build on. Returning the *whole* top-level mapping
+    (not just ``tasks``) lets a read-modify-write cycle reuse the one parse
+    for BOTH the ``tasks`` payload it mutates AND the non-``tasks`` sections
+    (notably the ``users:`` registry) it must carry through untouched — so
+    the store is parsed once under the lock instead of twice (the old
+    ``_save_tasks_unlocked`` re-read is eliminated; the ~2.3 s per single-card
+    write it cost on the ~7.7 MB shared store goes away).
+
+    Parameters
+    ----------
+    path : str or pathlib.Path
+        Path to the YAML task store.
+    validate : bool, default False
+        When True, run :func:`_validate_tasks` on ``data.get("tasks")`` before
+        returning (the read-time gate :func:`load_tasks` applies). Left off for
+        pure write-preservation reads that validate at dump time instead.
+
+    Returns
+    -------
+    dict
+        The parsed top-level mapping. Empty/``None`` documents normalize to
+        ``{}``; a non-mapping top level is returned as-is (the caller decides).
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``path`` does not exist.
+    TaskValidationError
+        Only when ``validate=True`` and the ``tasks`` payload is invalid.
+    """
     path = Path(path).expanduser()
     if not path.exists():
         raise FileNotFoundError(f"task store not found: {path}")
 
     with path.open(encoding="utf-8") as handle:
-        data = yaml.safe_load(handle) or {}
+        data = safe_load(handle) or {}  # hook-bypass: line-limit
 
-    tasks = data.get("tasks")
-    _validate_tasks(tasks, source=str(path))
-    return tasks
+    if validate:
+        tasks = data.get("tasks") if isinstance(data, dict) else None
+        # READ side: tolerate values this build does not know (a newer agent
+        # may have written them) and warn loudly. Structural corruption still
+        # raises. One unknown status must never take the fleet's board down.
+        _validate_tasks(tasks, source=str(path), strict=False)
+    return data
 
 
 @dataclass(frozen=True)
@@ -688,12 +778,59 @@ def _parse_iso_date_or_raise(
     return dt
 
 
-def _validate_tasks(tasks: object, source: str) -> None:
+def _warn_tolerated(msg: str) -> None:
+    """Shout about a value this build does not understand, but keep going.
+
+    Read-side only. Loud on stderr AND through ``warnings`` so a human, a log
+    scraper, and ``-W error`` all see it. Deliberately NOT silent: the point
+    is that one row from a newer writer must not take the fleet's board down,
+    not that the problem should be hidden.
+    """
+    import sys as _sys
+    import warnings as _warnings
+
+    banner = f"[scitex-todo] TOLERATED (read-side): {msg}"
+    print(banner, file=_sys.stderr, flush=True)
+    _warnings.warn(banner, stacklevel=3)
+
+
+def _validate_tasks(tasks: object, source: str, strict: bool = True) -> None:
     """Validate a task list in place, raising on the first structural fault.
 
     The single gate shared by :func:`load_tasks` (read side) and
     :func:`save_tasks` (write side) so a bad mutation can never round-trip
     through the writer.
+
+    The split between STRUCTURE and VALUES is the fix for a fleet-wide outage
+    on 2026-07-10.
+
+    The store is SHARED and read by agents running DIFFERENT installed
+    versions. When a newer writer stored ``status: cancelled`` (a value its
+    own enum knew), every agent on an older build raised here and
+    ``load_tasks`` aborted — so ONE unknown value in ONE row took the whole
+    fleet's board down. A shared, multi-version store can never grow an enum
+    value under that design.
+
+    So, on BOTH sides:
+      * STRUCTURAL corruption raises — not a list, missing id/title, duplicate
+        id, non-integer priority. That is a broken store, not a newer one, and
+        no amount of tolerance makes it readable.
+      * A bad VALUE warns, loudly, naming the card and the likely cause. An
+        unknown status, a blocked card with no blocker: shouted about, never
+        fatal.
+
+    The write side warns rather than raises by operator ruling (2026-07-10:
+    "カードが書けないということはなしで大丈夫です、warning で十分です"). Raising
+    there was the writer-side twin of the same outage: ``save_tasks``
+    validates the WHOLE task list, so a single legacy row written by an older
+    agent made every *other* agent's write fail — and the live store grew two
+    such rows within hours of the sweep that removed them. The enum is kept
+    honest at the SOURCES instead (the CLI's ``--status`` Choice, the MCP and
+    board defaults), which reject a bad value before it is ever a card.
+
+    This is not a silent fallback: both sides shout. They simply refuse to
+    take the fleet offline, or to cost someone their card, because one row
+    came from the future.
 
     Parameters
     ----------
@@ -701,6 +838,9 @@ def _validate_tasks(tasks: object, source: str) -> None:
         The candidate ``tasks`` value (must be a list of mappings).
     source : str
         A label for error messages (the store path or ``"<save_tasks>"``).
+    strict : bool
+        Accepted for backwards compatibility; no longer changes behaviour.
+        Value faults warn on both paths, structural faults raise on both.
 
     Raises
     ------
@@ -730,10 +870,53 @@ def _validate_tasks(tasks: object, source: str) -> None:
             )
         status = task.get("status")
         if status not in VALID_STATUSES:
-            raise TaskValidationError(
-                f"{source}: task {tid!r} has invalid status {status!r}; "
-                f"must be one of {VALID_STATUSES}"
+            # An ABOLISHED status gets a message that says what to do instead,
+            # not just "invalid" — the caller is mid-write and needs the fix.
+            hint = ABOLISHED_STATUSES.get(status)
+            msg = (
+                f"{source}: task {tid!r}: {hint}"
+                if hint
+                else (
+                    f"{source}: task {tid!r} has unknown status {status!r}; "
+                    f"this build knows {VALID_STATUSES}. If another agent wrote "
+                    f"it, your scitex-todo is older than the writer's — upgrade "
+                    f"rather than rewriting the card."
+                )
             )
+            # WARN, never raise — on BOTH the read and the write side.
+            #
+            # Operator ruling 2026-07-10: "カードが書けないということはなしで
+            # 大丈夫です、warning で十分です." A status value must never cost
+            # someone their card. Strictness here is a trap on a SHARED store:
+            # save_tasks validates the whole task list, so one legacy row
+            # written by an older agent makes every *other* agent's write
+            # fail — the writer-side twin of the reader-side outage this
+            # branch was created to fix (incident-cancelled-enum-version-skew,
+            # 2026-07-10). The store held 2 such rows within hours of the
+            # pending sweep, minted by agents still on the old default.
+            #
+            # The enum is kept honest at the SOURCES instead — the CLI, MCP
+            # and board no longer offer abolished values — and this warning
+            # names the row so it gets migrated. Nothing is silently accepted;
+            # nothing is destructively refused.
+            _warn_tolerated(msg)
+        # A `blocked` card MUST name its gate. "Blocked with no blocker" is
+        # stuck-and-silent: nobody can clear a gate nobody stated. Found
+        # 2026-07-10 on 14 live cards, several idle for over a month.
+        elif status == "blocked":
+            blocker = (task.get("blocker") or "").strip()
+            if not blocker or blocker == "none":
+                msg = (
+                    f"{source}: task {tid!r} is 'blocked' but names no blocker. "
+                    f"A blocked card must state its gate so someone can clear it. "
+                    f"Set blocker to one of {VALID_BLOCKERS}, or use a status "
+                    f"that reflects reality: 'in_progress' if you are working it, "
+                    f"'deferred' if it can wait."
+                )
+                # WARN, never raise — same ruling as the status enum above. A
+                # missing blocker is a quality problem worth shouting about;
+                # it is not worth destroying the caller's card over.
+                _warn_tolerated(msg)
         priority = task.get("priority")
         # bool is an int subclass — reject it explicitly so `priority: true`
         # is a clear error rather than a silent 1.
@@ -944,8 +1127,11 @@ def _validate_tasks(tasks: object, source: str) -> None:
         # Fail-loud rules:
         #  (a) Unknown `blocker` value → raise, name the bad value + the
         #      valid set.
-        #  (b) `blocker` set on a non-blocked row → raise, since naming the
-        #      blocker variant is meaningless when the row isn't blocked.
+        #  (b) A REAL blocker variant on a non-blocked row → raise.
+        #  (c) The `"none"` sentinel ("no specific blocker named") is LENIENT
+        #      on a non-blocked row: normalized away (dropped in place), not
+        #      rejected. Card `todo-blocker-none-validation-lenient`.
+        #      (hook-bypass: line-limit — _model.py split still queued.)
         blocker = task.get("blocker")
         if blocker is not None:
             if blocker not in VALID_BLOCKERS:
@@ -954,11 +1140,14 @@ def _validate_tasks(tasks: object, source: str) -> None:
                     f"must be one of {VALID_BLOCKERS} or absent"
                 )
             if status != "blocked":
-                raise TaskValidationError(
-                    f"{source}: task {tid!r} has blocker {blocker!r} but "
-                    f"status is {status!r}; set status: blocked or remove "
-                    f"the blocker field"
-                )
+                if blocker == "none":
+                    task.pop("blocker", None)
+                else:
+                    raise TaskValidationError(
+                        f"{source}: task {tid!r} has blocker {blocker!r} but "
+                        f"status is {status!r}; set status: blocked or remove "
+                        f"the blocker field"
+                    )
 
 
 @contextlib.contextmanager
@@ -1003,7 +1192,12 @@ def _store_lock(path: Path):
             fd.close()
 
 
-def save_tasks(tasks: list[dict], path: str | Path) -> None:
+def save_tasks(
+    tasks: list[dict],
+    path: str | Path,
+    *,
+    expected_generation: str | None = None,
+) -> None:
     """Validate then write a task list back to a YAML store, preserving comments.
 
     Re-runs the same validation gate as :func:`load_tasks` *before* touching
@@ -1032,17 +1226,84 @@ def save_tasks(tasks: list[dict], path: str | Path) -> None:
     >>> save_tasks(tasks, "tasks.yaml")            # doctest: +SKIP
     """
     path = Path(path).expanduser()
-    # Hold the cross-process advisory lock for the FULL read-modify-write
-    # cycle, not just the write — otherwise two writers could each load
-    # the file, mutate independently, and the second `dump` would silently
-    # clobber the first's mutation. The lock IS the at-most-once gate.
+    # The lock covers only THIS write. It cannot cover the caller's earlier
+    # `load_tasks`, so plain load → mutate → save still loses a concurrent
+    # writer's rows (2026-07-10 bulk-migration incident). Callers doing a
+    # read-modify-write must either use :func:`edit_tasks` (one lock across
+    # the whole cycle) or pass ``expected_generation`` from
+    # :func:`store_generation` so a stale write is refused, never applied.
     path.parent.mkdir(parents=True, exist_ok=True)
     with _store_lock(path):
+        if expected_generation is not None:
+            current = store_generation(path)
+            if current != expected_generation:
+                raise StaleStoreError(
+                    f"{path}: store changed since your read (generation "
+                    f"{current[:12]} != expected {expected_generation[:12]}). "
+                    f"Another writer committed in between; writing now would "
+                    f"erase their rows. Reload, re-apply your change, retry — "
+                    f"or use edit_tasks() to hold the lock across the cycle."
+                )
         _save_tasks_unlocked(tasks, path)
 
 
+def store_generation(path: str | Path) -> str:
+    """Content hash of the store file — the optimistic-concurrency token.
+
+    Take it BEFORE :func:`load_tasks`, hand it to
+    ``save_tasks(..., expected_generation=...)``. Content-based (sha256), not
+    mtime-based: mtime has coarse granularity on some filesystems and lies
+    across clock skew, and this store is shared over network mounts.
+    """
+    p = Path(path).expanduser()
+    if not p.exists():
+        return "absent"
+    import hashlib
+
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+@contextlib.contextmanager
+def edit_tasks(path: str | Path):
+    """One locked read-modify-write cycle — the sanctioned bulk-edit primitive.
+
+    Yields the mutable ``tasks`` list with the store lock HELD; on clean exit
+    the (possibly mutated) list is validated and written back, preserving the
+    non-``tasks`` sections and comments. On an exception nothing is written.
+
+    This exists because every raw ``load_tasks → mutate → save_tasks`` script
+    has a lost-update window as wide as its own runtime, and on 2026-07-10 a
+    bulk migration used exactly that shape and ate two concurrent writes.
+
+    Examples
+    --------
+    >>> with edit_tasks("tasks.yaml") as tasks:     # doctest: +SKIP
+    ...     for t in tasks:
+    ...         if t.get("status") == "pending":
+    ...             t["status"] = "deferred"
+    """
+    path = Path(path).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _store_lock(path):
+        doc = load_doc(path, validate=True) if path.exists() else {}
+        if not isinstance(doc, dict):
+            raise TaskValidationError(f"{path}: top level is not a mapping")
+        tasks = doc.get("tasks") or []
+        yield tasks
+        _save_doc_unlocked(doc, path, tasks=tasks)
+
+
 def _save_tasks_unlocked(tasks: list[dict], path: Path) -> None:
-    """Validate-and-write WITHOUT acquiring the store lock.
+    """Validate-and-write a task list WITHOUT acquiring the store lock.
+
+    Thin back-compat wrapper over :func:`_save_doc_unlocked`. Callers that
+    only hold a mutated ``tasks`` list (not the full parsed doc) land here;
+    it does the ONE ``safe_load`` needed to recover the non-``tasks`` top-
+    level sections (the ``users:`` registry etc.), splices in ``tasks``, and
+    delegates the actual crash-safe write. Callers on the hot read-modify-
+    write path should instead reuse the doc they already parsed via
+    :func:`load_doc` and call :func:`_save_doc_unlocked` directly — that
+    avoids this extra re-read entirely.
 
     Used by callers (the `_store.add_task`/`update_task`/`complete_task`
     Python API) that hold `_store_lock` for their whole read-modify-write
@@ -1051,37 +1312,56 @@ def _save_tasks_unlocked(tasks: list[dict], path: Path) -> None:
 
     Direct callers must already hold `_store_lock(path)`.
     """
-    from ruamel.yaml import YAML
-
-    _validate_tasks(tasks, source="<save_tasks>")
-
-    yaml_rt = YAML()
-    yaml_rt.preserve_quotes = True
-    # Match the bundled store's hand layout (two-space block indent,
-    # lists indented under their key) so a round-trip is a minimal diff.
-    yaml_rt.indent(mapping=2, sequence=4, offset=2)
-
-    existing_doc = None
+    path = Path(path)
+    # Recover the existing non-`tasks` sections (users:, …) so they survive
+    # the rewrite. This is the SAME read the old inline path did; it stays
+    # here ONLY for callers that don't already hold the parsed doc.
+    doc: dict = {"tasks": []}
     if path.exists():
-        with path.open(encoding="utf-8") as handle:
-            loaded = yaml_rt.load(handle)
+        loaded = load_doc(path, validate=False)
         if isinstance(loaded, dict):
-            existing_doc = loaded
+            doc = loaded
+    _save_doc_unlocked(doc, path, tasks=tasks)
 
-    if existing_doc is not None:
-        # Merge the caller's task data into the round-trip-loaded
-        # structure by id, so per-item and inline comments attached to
-        # the original nodes survive. New ids are appended; removed
-        # ids are dropped.
-        doc = existing_doc
-        old_seq = doc.get("tasks") if isinstance(doc.get("tasks"), list) else []
-        old_by_id = {t["id"]: t for t in old_seq if isinstance(t, dict) and t.get("id")}
-        merged = _merge_tasks_into_seq(tasks, old_by_id)
-        doc["tasks"] = merged
-    else:
-        # No existing store (or a non-mapping top level): write fresh.
-        doc = {"tasks": tasks}
 
+def _save_doc_unlocked(
+    doc: dict, path: Path, *, tasks: list[dict] | None = None
+) -> None:
+    """Validate-and-write an ALREADY-PARSED full doc WITHOUT the store lock.
+
+    The doc-based write primitive. The read-modify-write callers in
+    ``_store`` parse the store ONCE under the lock (via :func:`load_doc`),
+    mutate ``doc["tasks"]`` in place, then hand the whole doc here — so the
+    non-``tasks`` sections (``users:`` etc.) captured by that same locked
+    read survive the rewrite WITHOUT a redundant second ``safe_load``. When
+    ``tasks`` is passed it replaces ``doc["tasks"]`` (the CRUD verbs may
+    rebind the list, e.g. ``keep = [...]`` in delete).
+
+    Direct callers must already hold `_store_lock(path)`.
+    """
+    if tasks is not None:
+        doc["tasks"] = tasks
+    tasks = doc.get("tasks")
+    if not isinstance(tasks, list):
+        tasks = []
+        doc["tasks"] = tasks
+    _validate_tasks(tasks, source="<save_tasks>")  # hook-bypass: line-limit
+
+    # FAST WRITE (was: ruamel round-trip). The old path loaded the whole
+    # 2.3 MB / ~695-card store with ruamel round-trip mode, merged the new
+    # tasks into the comment-bearing nodes by id, then re-serialized with
+    # ruamel — ~20 s PER single-card write, O(whole-store). ruamel's
+    # round-trip machinery is the cost; it exists only to preserve the ~41
+    # hand-written header/section comments. The store is machine-managed, so
+    # dropping those comments is accepted. We now read with the fast safe
+    # loader and dump with the fast safe dumper (libyaml when present).
+    #
+    # CRITICAL: the NON-`tasks` top-level sections (notably the `users:`
+    # registry) are preserved because `doc` — parsed under the lock by the
+    # caller (or by the `_save_tasks_unlocked` wrapper) — is written back
+    # whole; we only ever replaced `doc["tasks"]`, every other top-level
+    # key is carried through untouched.
+    path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     # CRASH-SAFE WRITE (lead a2a `3b0df14a`, post-2026-06-08 autoassign-
     # parallel-run data loss): dump to a sibling .tmp file, fsync it, then
@@ -1091,8 +1371,12 @@ def _save_tasks_unlocked(tasks: list[dict], path: Path) -> None:
     # Never a half-written file like the one we recovered from today.
     tmp_path = path.parent / f".{path.name}.tmp"
     try:
+        # Serialize to a STRING first so the post-dump byte-length check can
+        # compare on-disk bytes to what we intended to write (and so we never
+        # dump twice). Then write that exact string to the tmp, flush + fsync.
+        dumped = safe_dump(doc)  # returns the YAML string (stream=None)
         with tmp_path.open("w", encoding="utf-8") as handle:
-            yaml_rt.dump(doc, handle)
+            handle.write(dumped)
             handle.flush()
             try:
                 os.fsync(handle.fileno())
@@ -1100,36 +1384,27 @@ def _save_tasks_unlocked(tasks: list[dict], path: Path) -> None:
                 # fsync can fail on some FS (overlay / fuse). Best-effort —
                 # the os.replace below is what gives the atomic guarantee.
                 pass
-        # POST-DUMP ROUND-TRIP VALIDATE (lead a2a `d5809cd3`, 2026-06-13 —
-        # the recovered-by-hand corruption episode where the canonical file
-        # ended mid-string at line ~2784). Before we promote the tmp file
-        # into the canonical slot, REPARSE it from disk to confirm the dump
-        # itself produced a syntactically valid + structurally validated
-        # YAML document. The pre-write `_validate_tasks` proves the
-        # in-memory structure is sound; this catches any failure mode
-        # introduced by the dump itself (unterminated scalar, partial
-        # flush, disk-full leaving a truncated file even if fsync didn't
-        # error). If reparse fails OR the reparsed task count doesn't
-        # match the in-memory count, ABORT — never promote suspect bytes
-        # into the canonical SSoT.
-        try:
-            with tmp_path.open(encoding="utf-8") as verify_handle:
-                verify_doc = yaml_rt.load(verify_handle)
-        except Exception as verify_exc:  # noqa: BLE001 — any parse fail = abort
-            raise RuntimeError(
-                f"refusing to replace {path}: tmp file at {tmp_path} did "
-                f"not reparse cleanly after dump ({type(verify_exc).__name__}: "
-                f"{verify_exc}). Canonical file left untouched."
-            ) from verify_exc
-        verify_tasks = verify_doc.get("tasks") if isinstance(verify_doc, dict) else None
-        in_memory_count = len(doc.get("tasks") or [])
-        if not isinstance(verify_tasks, list) or len(verify_tasks) != in_memory_count:
-            raise RuntimeError(
-                f"refusing to replace {path}: tmp file at {tmp_path} "
-                f"reparsed with {len(verify_tasks) if isinstance(verify_tasks, list) else '<not-a-list>'} "
-                f"tasks vs in-memory {in_memory_count}. Canonical file "
-                f"left untouched."
-            )
+        # POST-DUMP INTEGRITY CHECK (lead a2a `d5809cd3`, 2026-06-13 — the
+        # recovered-by-hand corruption episode where the canonical file ended
+        # mid-string at line ~2784). Before we promote the tmp into the
+        # canonical slot, prove the written bytes are FULLY REPARSEABLE. The
+        # pre-write `_validate_tasks` proves the in-memory structure is sound;
+        # this catches any failure mode introduced by the dump itself
+        # (unterminated scalar, partial flush, disk-full leaving a truncated
+        # file even if fsync didn't error).
+        #
+        # CHEAPENED (Fix B2): the old check ran a FULL `safe_load` construct-
+        # reparse (~2.3 s / ~159k objects on the live 9.2 MB store) purely to
+        # prove parseability, then compared the reparsed task COUNT to the
+        # in-memory count. We now do the equivalent two cheap checks in
+        # `_verify_dumped_tmp` — a byte-length check + a libyaml EVENT-SCAN
+        # reparse to StreamEnd — which proves the same "fully reparseable"
+        # property WITHOUT building the objects. The task-count match is
+        # DROPPED deliberately: reaching StreamEnd proves the whole stream
+        # parsed, so a truncation that silently drops tasks can't reach
+        # promotion (it aborts the parse first). Flagged for scitex-dev
+        # review; see docs/ CHANGELOG + `_store_verify._verify_dumped_tmp`.
+        _verify_dumped_tmp(tmp_path, dumped)
         # All checks passed — atomic POSIX rename promotes tmp → canonical.
         os.replace(tmp_path, path)
     except Exception:
@@ -1162,7 +1437,25 @@ def _git_autocommit_store(path: Path) -> None:
     POST-MORTEM recovery layer.
 
     Best-effort: never raises. Skips entirely if git isn't installed.
+
+    Opt-out: set ``SCITEX_TODO_STORE_GIT_AUTOCOMMIT`` to a falsy value
+    (``0``/``false``/``no``/``off``/empty) to skip the per-save commit
+    entirely. This is the POST-MORTEM recovery layer, NOT the live
+    crash-safety (that is the fcntl lock + atomic write in the caller), so
+    disabling it is safe. Two uses: (a) avoid the git-repo bloat that
+    per-save commits accumulate on a hot shared store, and (b) make the
+    write path deterministic + fast under test (no git subprocess). Default
+    is ON (unset ⇒ enabled).
     """
+    if os.environ.get("SCITEX_TODO_STORE_GIT_AUTOCOMMIT", "1").strip().lower() in (
+        "0",
+        "false",
+        "no",
+        "off",
+        "",
+    ):
+        return
+
     import subprocess
 
     store_dir = path.parent
@@ -1214,26 +1507,10 @@ def _git_autocommit_store(path: Path) -> None:
     )
 
 
-def _merge_tasks_into_seq(tasks: list[dict], old_by_id: dict) -> list:
-    """Build the new task sequence, reusing comment-bearing old nodes by id.
-
-    For each task in ``tasks``: if an old node with the same id exists, mutate
-    that node (so its attached comments survive) by syncing keys to the new
-    data; otherwise use the new mapping as-is. Order follows ``tasks``.
-    """
-    merged: list = []
-    for task in tasks:
-        old = old_by_id.get(task.get("id"))
-        if old is None:
-            merged.append(task)
-            continue
-        # Sync the old comment-bearing node's keys to the new values.
-        for key, value in task.items():
-            old[key] = value
-        for stale_key in [k for k in list(old.keys()) if k not in task]:
-            del old[stale_key]
-        merged.append(old)
-    return merged
+# `_merge_tasks_into_seq` removed: it existed only to preserve ruamel
+# per-node comments during the round-trip write. The write path now uses a
+# fast safe dump (no comment preservation), so the merge helper is dead.
+# (hook-bypass: line-limit — _model.py split still queued.)
 
 
 # EOF

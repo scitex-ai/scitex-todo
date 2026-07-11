@@ -4,6 +4,633 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-07-11 — feat: abolish `pending`; WIP gate counts work-in-flight only; deferred consumption pipeline; tolerant enum handling; board-UI batch
+
+The fleet-incident release (2026-07-10 night): four operator-directed fixes
+that each bit multiple agents in production, plus the board-UI review batch.
+
+### Changed — status model
+- `pending` is ABOLISHED. It is out of `VALID_STATUSES`; every default (CLI
+  `--status`, MCP `add_task`, board create handler, `Task` dataclass) is now
+  `deferred` — a new card carries a real decision. The CLI Choice and the
+  board handlers reject `pending` at the boundary (HTTP 400 / usage error).
+- `deferred` is NOT terminal (operator ruling: deferred は終了ではない). It is
+  open backlog: it shows in active views, counts as open, and CAN be overdue
+  when it carries a missed deadline. `close` writes `cancelled` (the real
+  "closed as not planned" state) instead of overloading `deferred`.
+- Tolerant enum handling on the SHARED store: an unknown status or a
+  blocker-less `blocked` row WARNS loudly (naming the card and the likely
+  version skew) instead of raising — on both read and write. One newer
+  writer's row can no longer take every older reader's board down (the
+  2026-07-10 fleet outage) or make every other agent's write fail.
+  Structural corruption (missing id/title, duplicate id) still raises.
+
+### Fixed — WIP gate counted backlog, not WIP
+- The add gate excluded only `{done, goal}`, so `deferred`/`failed`/
+  `cancelled` consumed budget forever; after the pending→deferred migration
+  agents were refused at "88 open tasks" and could not even record incidents.
+  Now `WIP_STATUSES = {in_progress}`; the gate fires only when the incoming
+  card is itself `in_progress`. RECORDING (blocked/deferred/goal) is never
+  gated. `OPEN_EXCLUDED_STATUSES` unifies the open predicate that previously
+  existed in two drifted hand-copies.
+
+### Added — deferred consumption pipeline (deferred is debt)
+- `_backlog_triage`: recency-weighted pick-for-action sampling
+  (Efraimidis–Spirakis, without replacement — fresh cards dominate; the
+  backlog must not eat the agent), age-based expiry past 30 days (default
+  outcome cancellation; the owner rescues what they still want), the
+  `deferred_at` age clock (stamped once on entry, never reset by a re-defer)
+  and the `last_triaged_at` re-draw cooldown.
+- `scitex-todo triage [--mine|--agent X] [--json]` — the read-only payload a
+  short-lived twin consumes under its parent's identity; mutation stays with
+  the existing verbs.
+- The 24 h backlog nudge, `runnable`, and `next` now target `deferred`
+  (they still targeted the abolished `pending`, which no card carries — 379
+  deferred cards were ageing in total silence).
+
+### Added — store concurrency (lost-write incident)
+- `edit_tasks(path)`: one locked read-modify-write cycle; writes nothing on
+  exception. The sanctioned bulk-edit primitive.
+- `save_tasks(..., expected_generation=store_generation(path))`: optimistic
+  concurrency — a write based on a stale read raises `StaleStoreError`
+  instead of silently erasing a concurrent writer's rows.
+- `comment_task` stamps `last_activity` — a comment IS activity (cards under
+  active discussion no longer read as abandoned).
+
+### Added — board UI (operator live-review batch)
+- Sticky-note Wall view with per-assignee islands and a derived next-up
+  stack; brand-colored agent avatars; one-shot status-transition glow
+  (compositor-only, with an SVG `drop-shadow` twin); uniform right-click on
+  every view; cursor-offset hover tooltips replacing native `<title>` (which
+  renders under the pointer); Timeline leftmost; Stale view removed; search
+  input at filterbar scale; gzip on `/graph` (4.98 MB → 1.60 MB).
+
+## [0.7.50] - 2026-07-09 — feat: inbox reads/writes default to SQLite (retires the per-poll whole-store parse)
+
+Fleet load incident: every agent's `scitex-todo mcp start` digest-poll (every
+5 s) `safe_load`ed the entire ~9 MB task store just to read ONE recipient's
+inbox — across ~21 agents the fleet's biggest CPU sink (host load ~27). This
+moves the inbox read/write path onto SQLite so a poll is an indexed
+`(recipient, seen)` lookup, never a whole-store parse.
+
+- New `_inbox_sqlite` backend (stdlib `sqlite3`, WAL) at the constitution's
+  runtime-DB path `<store_dir>/runtime/todo.db`. `enqueue` / `poll_inbox` /
+  `ack` mirror the YAML contract exactly (dedup on `(event_type, card_id, ts,
+  actor)`, `supersede`, `unseen_only`, `mark_seen`).
+- SQLite is now the DEFAULT. `SCITEX_TODO_INBOX_BACKEND=yaml` is an explicit
+  break-glass only; an unknown/unset value uses SQLite. No silent fallback — a
+  SQLite error fails loud.
+- Lazy one-time auto-migration: first access copies the YAML `inboxes:` records
+  into the DB (guarded by a `migrated_from_yaml` meta flag), so no unseen
+  notification is lost regardless of restart timing; steady state never reads
+  YAML. Idempotent + reversible (the YAML section is never deleted).
+- CLI: `scitex-todo inbox migrate-to-sqlite` / `inbox info`.
+
+Phase 1 of the YAML→SQLite migration (inboxes only; cards/users/ledger stay on
+YAML for now — Phase 2 covers cards). Complements the S0 shadow store (#349).
+
+## [0.7.49] - 2026-07-08 — feat: S0 shadow SQLite DB + YAML bootstrap (YAML still canonical)
+
+STAGE S0 of the YAML→SQLite migration (design-confirmed by scitex-dev,
+RFC #348). Purely ADDITIVE: an authority-local SHADOW SQLite database is
+created and bootstrapped FROM the current YAML store. The YAML (`tasks.yaml` +
+the `threads.yaml` sidecar) STAYS the CANONICAL source of truth — no CRUD verb,
+MCP tool, or `load_doc`/`_save_doc_unlocked` path reads or writes the DB in S0.
+The shadow DB is incapable of harming the YAML by construction (a separate
+file, never linked into any write path). S1 (dual-write) comes next.
+
+- New `_db.py` adapter — stdlib `sqlite3` only (no scitex-db). `resolve_db_path`
+  follows explicit arg → `$SCITEX_TODO_DB` → `local_state.user_path("todo",
+  "todo.db")`, DELEGATING the user tier to the ecosystem resolver (never a
+  re-rolled project/user precedence — the class of bug behind the 2026-07-06
+  stale-store incident). On connect: WAL, `synchronous=NORMAL`,
+  `busy_timeout=300000`, `foreign_keys=ON`; schema stamped `user_version=1`.
+- Schema: `tasks` (scalar Task fields as columns; `deadlines`/`_log_meta` as
+  JSON TEXT; `group`→`grp`), `task_comments`, `task_edges`, `task_roles`,
+  `users` + `user_names`, `notifications` (index `(recipient_id, seen)`),
+  `messages` (folds the threads sidecar), `schema_meta`, plus the RFC's indexes.
+- New `_db_bootstrap.py` — `import_from_yaml` reads the current YAML via the
+  existing load path and rebuilds every table in one transaction. Idempotent
+  (re-run = same state); opens the YAML READ-ONLY and never writes it back.
+- New `db` CLI noun group: `db path`, `db verify`, `db import --from-yaml`.
+- `repo` promoted to a first-class optional `Task` field + `tasks.repo` column
+  (confirmed latent bug — used by add_task/list_tasks but absent from the
+  dataclass; the ONE additive existing-code change allowed in S0).
+- Adds `scitex_config` (foundational ecosystem lib) as a runtime dependency.
+
+## [0.7.48] - 2026-07-08 — fix: guard the `print-stats` rollup, not just the push
+
+The 0.7.47 single-instance guard (#346) did NOT stop the CPU stacking it was
+meant to prevent. Verified live: two `*/10` notify runs still ran concurrently
+at ~46% and ~30% CPU, and NO "prior run still holds the lock, skipping" log
+fired. Root cause was **call-site placement**: in `_cli/_stats.py` the EXPENSIVE
+work — the per-agent rollup that parses the ~9 MB `tasks.yaml` and aggregates
+all ~930 cards — was computed ABOVE the flock guard (it was shared with the
+plain-read `click.echo(out)` path). The `single_instance(...)` lock wrapped only
+the push at the END. So two overlapping `--notify` ticks BOTH ran the costly
+rollup concurrently (the observed CPU); the lock merely serialized the cheap
+final push, giving zero CPU relief, and since neither tick blocked on the
+other's rollup the "skipping" line never printed.
+
+- **Lock BEFORE the rollup, in notify mode only.** In side-effecting/cron mode
+  (`(notify or nudge_quiet) and by == "agent"`) `print-stats` now acquires the
+  single-instance flock FIRST; if the lock is already held it logs the skip line
+  and returns (exit 0) WITHOUT parsing the store at all. Only when the lock is
+  confirmed acquired does the ENTIRE expensive path (store parse + rollup +
+  notify/push) run — inside the lock. The plain read-only path (no `--notify`)
+  computes its OWN rollup UNGUARDED and echoes the table, exactly as before, so
+  interactive reads are never blocked or skipped. The rollup is factored into a
+  `_rollup(...)` helper called from both branches; nothing expensive runs before
+  the lock is confirmed in notify mode.
+- **`_singleflight.single_instance` / `notify_lock_path` unchanged.** They were
+  correct — only the CALL SITE was wrong. The lockfile still resolves to the
+  same `<store>/runtime/print-stats-notify.lock` across invocations via
+  `_paths.runtime_dir`, so two cron runs contend on one lock.
+- **Regression test asserts ZERO store-loads when the lock is held.** The 0.7.47
+  test only checked the push was skipped — which is why it missed the bug (the
+  push is skipped either way). `test__print_stats_single_instance.py` now spies
+  the real `_stats.load_tasks` (a call-counter wrapping the real parse, no mock)
+  and asserts it is called ZERO times while the lock is held, that it DOES run
+  when the lock is free, and that the unguarded plain-read parses even while the
+  lock is held.
+- **File split.** To keep both under the size budget, the `sync-github` verb
+  moved to `_cli/_sync_github.py`; `_cli/_stats.py` keeps `print-stats` and still
+  registers both. No behavior change to `sync-github`.
+
+Incident: incident-todo-wake-watcher-interval2-spiral-20260708.
+
+## [0.7.47] - 2026-07-08 — fix: single-instance flock on `print-stats --notify` (third store-size daemon)
+
+The managed notify cron runs `scitex-todo print-stats --by agent --notify
+--nudge-quiet` every 10 minutes. `print-stats --by agent` re-derives per-agent
+rollups from all ~930 cards in the ~9 MB `tasks.yaml`; when a single run exceeds
+the 10-min period it OVERLAPS the next cron tick, so runs STACK (observed: 2
+concurrent at ~63% CPU each, heading toward the same saturation as the
+wake-watcher spiral). This is the cron/one-shot analogue of the wake-watcher
+death-spiral PR #344 fixed and the MCP inbox-drain spin #345 fixed — same
+store-size root. The durable cure is archival (separate card); this is the
+stacking guard.
+
+- **Single-instance flock (`_singleflight.py`).** A new small, reusable module
+  mirrors the wake-watcher's process-level lock (#344): a NON-BLOCKING
+  `flock(LOCK_EX | LOCK_NB)` on `<store>/runtime/print-stats-notify.lock`
+  (resolved via `_paths.runtime_dir`, the same resolver the delivery ledger /
+  pidfiles use). Exposed as a `single_instance(...)` context manager +
+  `notify_lock_path(...)` helper so it is unit-testable.
+- **Guard the notify path only.** `print-stats` takes the lock ONLY when
+  `--notify` / `--nudge-quiet` is set (the cron/side-effect path). When the
+  lock is already HELD (a prior run still going) the run LOGS a clear line and
+  EXITS 0 — a skipped nudge tick is fine; the next tick runs. The lock releases
+  on exit and automatically on process death, so a crashed run never wedges it.
+- **Plain reads stay unguarded.** An interactive `print-stats` (no `--notify`)
+  neither takes nor is blocked by the lock — it prints the table read-only and
+  runs freely.
+
+## [0.7.46] - 2026-07-08 — fix: mtime-gate the channel inbox drain (read-side twin of #344)
+
+Each agent's `scitex-todo mcp start` runs a channel poll loop that called
+`drain_once` every 5s **unconditionally**. Every drain calls `recipient_keys` +
+`_inbox.poll_inbox`, both of which `safe_load` the ENTIRE shared store — the
+inbox lives in an `inboxes:` section of the SAME ~9 MB / ~930-card `tasks.yaml`
+as the cards. A ~9 MB parse every 5s per agent × ~7 channel servers on a host =
+~350% sustained CPU (a major contributor to the load-25 baseline and the
+conditions behind the recent wake-watcher saturation incident). This is the
+READ/poll analogue of the every-tick reload spiral PR #344 fixed on the WRITE
+side.
+
+The cure mirrors #344's `WatcherState.mtime` short-circuit:
+
+- **mtime gate (`_channel_drain_state.py`).** The inbox is only ever mutated
+  through a store WRITE, so a new notification cannot appear without the store
+  file's mtime advancing. Before any parse, a drain tick `os.stat`s the store
+  and compares its mtime to the last drained tick; when UNCHANGED it SKIPS the
+  whole drain (no `recipient_keys`, no `poll_inbox`, no parse) — an idle inbox
+  now costs one `stat()` per 5s instead of a full re-parse. The store path is
+  resolved the same way `_inbox.poll_inbox` resolves it
+  (`resolve_tasks_path(store)` for `None`, else the explicit path) so the gate
+  stats the EXACT file that would be parsed.
+- **Fail-safe + first-tick.** The first tick always drains (seeds the mtime);
+  an unresolvable / unstatable store path fails SAFE = drain, so correctness
+  never regresses.
+- **ack-write interaction.** A drain that pushes+acks WRITES the store (flipping
+  records `seen`), bumping the mtime — the next tick drains once more, finds
+  nothing new, records the post-ack mtime, and the tick after that skips. Net:
+  exactly one extra parse after real activity, then a truly quiescent inbox
+  idles at one `stat()` per tick.
+- **Behavior preserved.** When the mtime DID change the drain is unchanged —
+  recipient-key fan-out, unseen read, ack-after-push, `MAX_PUSH_PER_DRAIN` burst
+  cap, and fail-soft all intact.
+
+`_mcp_channel.py` was already over the 512-line file cap; the agent-identity
+resolution (`resolve_agent_id` / `resolve_agent_id_optional`) was extracted to a
+new `_channel_identity.py` (re-exported from `_mcp_channel` — no import breaks)
+to land the change under budget.
+
+## [0.7.45] - 2026-07-08 — fix: prevent the wake-watcher digest death-spiral
+
+`scitex-todo.wake-watcher` (`watch --push --interval 2`, systemd
+`Restart=on-failure`) death-spiraled on ywata-note-win 2026-07-08: the 2s
+interval re-parsed the ~9 MB / ~930-card store faster than a tick finished on a
+slow host, so the watch daemon ran at sustained high CPU while the separate
+10-min `print-stats --by agent --notify` cron piled up unfinished digests on the
+already-saturated box. Load hit 43 on 16 cores; sac-listen OOM-died and several
+agents/builds died before the host was recovered
+(incident-todo-wake-watcher-interval2-spiral-20260708).
+
+Four durable, structural fixes to `_wake_watcher.py` / `_jobs_provider.py` /
+`_cli/_loop.py`:
+
+- **Interval floor + bump.** The wake-watcher JobSpec now uses `--interval 30`
+  (was 2), the `watch` CLI default is 30s, and `clamp_interval()` enforces a
+  **hard 10s floor** — any sub-floor value is clamped up with a loud WARNING
+  naming the incident, so a stray `--interval 2` can never foot-gun the fleet
+  again.
+- **Single-instance lock.** `run_watcher_forever` takes a non-blocking `flock`
+  on a runtime-dir lockfile; a second `watch` process sees the lock held and
+  refuses to start, making two concurrent watchers (overlapping full-store
+  re-parses) structurally impossible. The loop is strictly sequential, so a
+  slow tick delays the next one — it can never launch an overlapping one.
+- **Change-gated push + single parse.** After seeding, a tick whose store mtime
+  is unchanged short-circuits before any parse (one `stat()`, no diff, no push)
+  — a quiet board does no work per interval. When work is needed the store is
+  parsed **once** per tick via `load_doc` (task list + `agents:` registry from
+  the same `safe_load`), replacing the old double full-parse.
+- **Self-throttle.** Push concurrency stays 1 and a slow tick degrades by
+  delaying, never by stacking a second digest.
+
+## [0.7.44] - 2026-07-08 — perf: cheapen the post-dump store-write verify without weakening the corruption guard (Fix B2)
+
+The crash-safe store write (`_save_doc_unlocked`) reparsed the just-dumped tmp
+with a FULL `safe_load` construct-reparse before promoting it — the 2026-06-13
+corruption guard (lead a2a `d5809cd3`, the incident where the canonical file
+ended mid-string). That full construct built ~159k Python objects on the live
+9.2 MB / ~930-card store just to prove the bytes were parseable, and every
+write paid it; bursts convoyed on the flock.
+
+- New `src/scitex_todo/_store_verify.py` `_verify_dumped_tmp(tmp_path, dumped)`
+  keeps the SAME guarantee (the promoted bytes must be FULLY reparseable) but
+  drops the object construction. It does two cheap checks:
+  1. **Byte-length check** — `os.stat(tmp).st_size == len(dumped.encode())`,
+     catching a short / partial / disk-full write.
+  2. **Event-scan reparse** — streams the tmp through the libyaml C parser
+     (`yaml.parse(..., Loader=CSafeLoader)`) consuming events until a
+     `StreamEndEvent` is observed. The C parser raises `yaml.YAMLError` on
+     truncation / unterminated-scalar / malformed docs WITHOUT constructing the
+     document objects; reaching StreamEnd proves the whole byte stream is
+     well-formed end-to-end.
+- `_save_doc_unlocked` now dumps to a STRING once (so the length check has the
+  intended bytes and we never dump twice), writes it, fsyncs, then calls
+  `_verify_dumped_tmp` before `os.replace`. Same crash-safe
+  dump→tmp→fsync→verify→replace flow.
+- The old reparsed-task-COUNT match is DROPPED: reaching `StreamEndEvent` proves
+  the entire stream parsed, so a truncation that silently drops tasks aborts the
+  parse before promotion — the event-scan supersedes the count check. Flagged
+  in-code + here for scitex-dev review.
+- Measured on a synthetic realistic-shape store: the event-scan verify is
+  ~2.4x faster than the full `safe_load` construct-reparse it replaces
+  (e.g. ~3.1 s → ~1.3 s on a ~900-card 1 MB doc; the saving scales with store
+  size). New `tests/scitex_todo/test__store_verify.py` (10 tests) pins the
+  corruption-safety non-negotiables; `test__store_doc_preservation.py` +
+  `test__model.py` regression-green.
+
+## [0.7.43] - 2026-07-08 — fix: collapse the notifyd digest replay-storm (supersede-on-enqueue)
+
+A digest is a full point-in-time snapshot, but notifyd enqueued a fresh one
+every tick without superseding prior unseen digests. A recipient whose channel
+was down piled up dozens of stale digests that all replayed on reconnect (seen
+live: one agent had 53 unseen `reminder` digests spanning 3 days).
+
+- `_inbox.enqueue` gains a `supersede: bool = False` keyword. When `True`, every
+  EXISTING unseen record matching both `event_type` AND `card_id` is removed
+  before the new record is appended — at most ONE pending digest per recipient
+  survives. Seen records (history) and the plain `(type,card,ts,actor)` dedup
+  path are untouched.
+- The reminder engine wires `supersede=True` ONLY at the cumulative owner-digest
+  enqueue (`EVENT_DIGEST` / `(digest)`). Per-card events (escalation,
+  creator_escalation) stay distinct and do NOT supersede.
+- New maintenance verb `scitex-todo notifyd collapse-digests [--json]`
+  (`_inbox_maint.collapse_digests`): one safe locked pass that collapses each
+  recipient's unseen digest backlog to the single newest digest (older ones
+  marked seen, nothing deleted) — clears the already-accumulated fleet backlog.
+- Refactor: extracted the fail-soft dispatch helpers `_safe_resolve` /
+  `_safe_enqueue` into `_reminder_enqueue.py` to keep `_reminders.py` within
+  budget. Public API unchanged.
+
+## [0.7.42] - 2026-07-08 — fix: tolerate a STALE deprecated env var when the current one is valid
+
+Fleet agents still carry a stale ambient `SCITEX_TODO_AGENT` (the pre-0.7.30
+name) baked in by an old sac injector. Until now scitex-todo fail-louded on the
+mere PRESENCE of that old var — even when the current `SCITEX_TODO_AGENT_ID` was
+set and correct. In the unified MCP server that fail-loud was swallowed by
+`resolve_agent_id_optional` → returned `None` → the digest poll loop never
+started, so agents on 0.7.32 with a correct `AGENT_ID` connected (tools worked)
+but never received channel notifications.
+
+### Changed
+
+- `resolve_agent_id` (`_mcp_channel.py`) now makes the CURRENT var WIN: when
+  `arg` / `$SCITEX_TODO_AGENT_ID` yields a valid id it is returned even if the
+  stale `$SCITEX_TODO_AGENT` is also exported — a loud warning is logged and the
+  stale var is ignored (no raise). The fail-loud on the old name fires ONLY when
+  the current var is absent/invalid (a genuine reliance on the renamed-away
+  var). Placeholder / unresolved errors are unchanged. `resolve_agent_id_optional`
+  therefore returns the id (not `None`) when both vars are set, re-enabling the
+  poll loop.
+- Same tolerance applied to the store var in `_paths.py`: a stale
+  `SCITEX_TODO_TASKS` is warn-and-ignored when `SCITEX_TODO_TASKS_YAML_SHARED`
+  is set, and fails loud only when the current var is absent.
+
+## [0.7.41] - 2026-07-07 — feat: operator↔agent direct-message chat view (/chat)
+
+Minimal slice of the DM board pane (card
+fleet-agent-direct-message-board-pane-20260707; scitex-dev DM convention
+spec v1): the operator can message a specific agent from the phone via the
+board, and agents reply through an MCP verb.
+
+### Added
+
+- **`scitex_todo._threads`** — pure DM thread store. Canonical record
+  `{id, thread, from, to, body, ts, read}`; thread id `dm:<a>::<b>` with the
+  peers sorted lexicographically (one thread per pair, both directions;
+  reserved operator name `operator`). Threads live in a SIDECAR
+  `<store_dir>/threads.yaml` next to the resolved `tasks.yaml` with its OWN
+  flock, so chat writes never convoy with card writes; the write mirrors the
+  crash-safe dump→tmp→fsync→reparse-verify→`os.replace` pattern of
+  `_model._save_doc_unlocked`. API: `append_message` / `get_thread` /
+  `list_threads` / `mark_read`.
+- **dm-dispatch** — `append_message` also enqueues an `event_type="dm"`
+  notification into the recipient's EXISTING pull-inbox
+  (`_inbox.enqueue`, keyed via `_users.resolve_user` exactly like
+  `poll_notifications`), so the ≥0.7.32 unified channel server pushes the
+  message into the agent's live session. The `operator` recipient is
+  enqueued too (symmetry; the board reads unread state from the sidecar).
+  Fail-soft: an enqueue failure never loses the persisted thread record.
+- **MCP verbs `dm_send(to, body)` / `dm_list(peer=None, ack=False)`** —
+  agent-side reply + read surface (in `_mcp_skills`; `from` resolves via
+  `resolve_agent_id_optional` with an actionable error when unset; store IO
+  wrapped in `anyio.to_thread.run_sync`).
+- **Board `/chat` view** — mobile-first page (new `chat.html` template +
+  `static/scitex_todo/chat/chat.js`): collapsible agent list (users registry
+  ∪ existing thread peers, unread badges), chronological bubble thread
+  (operator right-aligned), compose box; polls `/dm/thread/<peer>` every 5s
+  and `/dm/threads` every 10s. JSON endpoints `GET /dm/threads`,
+  `GET/POST /dm/thread/<peer>` in `_django/handlers/dm.py` (distinct from
+  the per-card `/chat/<card_id>` comment endpoint).
+
+### Deferred (polish later)
+
+- WebSocket push, markdown rendering, group threads, message search,
+  CLI `dm` verbs, operator-side inbox drain.
+## [0.7.40] - 2026-07-07 — feat: CLI verb-rename pilot (slice 6b) — `list-stale` / `find-card` / `watch-ci`
+
+Pilot migration for the ecosystem CLI-standardization plan (doctrine:
+scitex-dev `general/03_interface/02_cli`).
+
+### Changed
+
+- **`stale-list` → `list-stale`**, **`ci-watch` → `watch-ci`** (§1d grammar:
+  compounds are kebab-case and VERB-FIRST), and **`resolve-card` →
+  `find-card`** (it is a READ — prints ids of cards whose `repo` matches a
+  filter — which is the doctrine `find` verb; `resolve` is also a banned
+  synonym). The old names remain as HIDDEN warn-phase deprecated aliases:
+  they forward all args/options to the canonical command, exit as it does,
+  and print `'<old>' is deprecated — use '<new>' (removed in v0.9)` to
+  stderr once per shell session. They disappear in v0.9 (three-phase
+  ladder, §5).
+- **Root `--help` is now categorized** under the fixed §4a headers (Core /
+  Data & Sync / Service / Diagnostics / Introspection / Shell; the `Other`
+  catch-all is empty), with spec-built help (`CliHelp`) on the root group
+  and on `list-tasks` / `add` / `done` / `close` plus the renamed leaves.
+- The `scitex-todo.ci-watch` JobSpec keeps its registry NAME (systemd/dedupe
+  identity) but its command now invokes the canonical
+  `scitex-todo watch-ci --once`.
+
+### Added
+
+- `src/scitex_todo/_cli/_compat.py` — guarded imports of scitex-dev's
+  `deprecated_alias` + `help_spec` helpers (present on scitex-dev develop,
+  absent from the released 0.21.0; scitex-python#352 precedent) with
+  doctrine-contract fallbacks so warn+forward behavior is identical on
+  every installed scitex-dev release.
+
+### Refactored
+
+- `_cli/_write.py` (pre-existing over the 512-line cap): the `update` verb
+  moved to `_cli/_update.py` — pure move, one-verb-per-file precedent.
+
+## [0.7.39] - 2026-07-07 — chore: channel-notification source label is now `stodo`
+
+### Changed
+
+- **Default `meta.source` label: `scitex-todo-system` → `stodo`.** Per the
+  fleet naming agreement (operator 2026-07-07, card
+  fleet-channel-source-sender-identity-naming-20260707), channel-notification
+  source labels are standardized to SHORT sender-identity names — sac / cct /
+  stodo (`daemon` is reserved for daemon-origin messages). This supersedes the
+  short-lived `scitex-todo-system` default introduced in 0.7.32. Label-only
+  change: `meta.source` is a free attribution label decoupled from routing
+  (replies route via the MCP tool + ids).
+- **Deployed config note:** `.mcp.json` entries that pin the old values
+  (`--name scitex-todo` / `--name scitex-todo-system`, or
+  `SCITEX_TODO_CHANNEL_SOURCE` set to either) should update to `stodo` or
+  simply drop the override and inherit the new default.
+
+## [0.7.34] - 2026-07-05 — fix: harden the channel push path (size cap + first-connect burst cap)
+
+Hardens the `notifications/claude/channel` push surface against the crash class
+behind the 2026-07-02 incident, where 180 solver apptainer containers died on
+boot with `JSON message exceeded maximum buffer size of 1048576 bytes` — an
+oversized scitex-todo channel push overflowed the Claude Agent SDK's 1 MB stdio
+reader.
+
+### Fixed
+
+- **Oversized push body → SDK reader overflow.** `build_channel_params` now caps
+  the pushed `content` body at `MAX_CONTENT_BYTES` (256 KiB, a quarter of the
+  1 MB reader with generous headroom for `meta` + JSON framing). An oversized
+  body is truncated on a UTF-8 char boundary (multibyte-safe) and gets a
+  `[truncated — see card <id> on the board]` pointer so the full text stays
+  reachable. `meta` values are additionally clamped (belt-and-suspenders).
+- **First-connect burst.** `drain_once` now pushes at most `MAX_PUSH_PER_DRAIN`
+  (50) records per call, across all recipient keys combined. A large unseen
+  backlog can no longer flood the session in one tick — the remainder stays
+  unseen and drains on the next ~5 s poll tick, a few dozen at a time. Acks
+  still happen only for records actually pushed.
+
+### Added
+
+- New pure, unit-testable `scitex_todo._channel_guard` module holding the size
+  constants and `_bounded_content` / `_bounded_meta_value` helpers (keeps
+  `_mcp_channel.py` within the module size budget).
+
+### Docs
+
+- Documented the headless lever: with **no** `SCITEX_TODO_AGENT_ID` the unified
+  `scitex-todo mcp start` runs tools-only (no poll loop, zero pushes) — the
+  intended mode for solver / headless capsules that must not receive pushes.
+
+## [0.7.33] - 2026-07-05 — feat: package-level `health` doctor (MCP tool + CLI verb)
+
+A broad store / identity / delivery health check, exposed as BOTH the `health`
+MCP tool and the `scitex-todo health` CLI verb. Motivated by the 0.7.32
+handshake incident: the `channel_drain` check turns that class of "MCP not
+connected" failure into a one-command diagnosis.
+
+### Added
+
+- **`scitex_todo._health.health(...)`** — one pure, never-raising function that
+  returns the cross-package standard report shape
+  `{"package", "ok", "checks":[{name,ok,detail,hint}], "summary"}` (shared
+  verbatim with the sac/cct health tools). Every FAILING check carries an
+  actionable `hint`; a check that errors internally is reported as `ok=false`
+  with the error in its hint rather than raising. Checks: `store_canonical`
+  (resolved store is the canonical user/shared path — not a project shadow —
+  and is readable, writable, and parses with a top-level `tasks` key),
+  `agent_id` (`$SCITEX_TODO_AGENT_ID` resolves to a real value, not
+  blank/`unknown`/an unexpanded `$VAR`), `notifyd_alive` (real pidfile probe of
+  the delivery daemon), `channel_drain` (this agent's unseen vs seen inbox
+  backlog — flags a large unseen pile that was never drained), and
+  `channel_capable` (`scitex_todo._mcp_channel` imports and exposes
+  `_serve`/`_run`).
+- **`health` MCP tool** — registered on the shared FastMCP instance
+  (`scitex_todo._mcp_skills`); returns the JSON report. Distinct from the
+  narrow `mcp doctor` (which only checks the fastmcp install).
+- **`scitex-todo health [--json]` CLI verb** — human-readable report by default,
+  raw JSON with `--json`; exits `0` when all checks pass, else `1` (usable as a
+  shell/CI gate).
+
+## [0.7.32] - 2026-07-04 — fix: channel poll loop no longer starves the MCP handshake
+
+Hotfix for a fleet-wide "scitex-todo MCP not connected" regression introduced
+by the unified server (0.7.31).
+
+### Fixed
+
+- **Unified `mcp start` failed the MCP `initialize` handshake once an agent had
+  an identity set** — every fleet agent showed the `scitex-todo` server as "not
+  connected". Root cause: the inbox poll loop's first drain ran SYNCHRONOUS
+  blocking store IO (`recipient_keys` + `_inbox.poll_inbox`, which lock and
+  parse the whole YAML store) **inline on the asyncio event loop**. That starved
+  the `ServerSession` so it never answered `initialize` before the client timed
+  out. The stall scaled with inbox size, so it surfaced once an inbox reached
+  ~600 entries. `drain_once` now off-loads every blocking store call to a worker
+  thread (`anyio.to_thread.run_sync`); only the push itself runs on the loop, so
+  the handshake (and tool calls) are never blocked. Both tools AND digest push
+  are preserved. Regression tests pin the invariant (drain yields before it
+  touches the store) and the end-to-end handshake with an active poll loop.
+
+### Changed
+
+- **Channel render name is now `scitex-todo-system`** (was `scitex-todo`). The
+  system-pushed notification source (`meta.source`, env
+  `SCITEX_TODO_CHANNEL_SOURCE`, default) is deliberately distinct from the
+  `scitex-todo` agent id so the operator's TUI does not confuse a system digest
+  with a message authored by the scitex-todo agent. Deployed `.mcp.json` entries
+  that pin `SCITEX_TODO_CHANNEL_SOURCE=scitex-todo` must update to
+  `scitex-todo-system` (or drop the key to take the new default).
+
+## [0.7.31] - 2026-07-03 — one unified scitex-todo MCP server (tools + digest push)
+
+The turn-on release for fleet-wide notifications. Together with the 0.7.30
+env-var standardization, this is what the coordinated fleet flip deploys.
+
+### Changed
+
+- **One MCP server instead of two**: `scitex-todo mcp start` now runs a SINGLE
+  server that both serves the card tools AND pushes this agent's digest
+  (`notifications/claude/channel`). Previously the tools server (`mcp start`)
+  and the digest-push server (`mcp channel`) were separate, needing two
+  `.mcp.json` entries. Now one `scitex-todo` entry (`args: ["mcp", "start"]`)
+  does both — matching the one-server-per-project convention.
+  - It reuses FastMCP's underlying low-level server (which has every registered
+    tool) and declares the `claude/channel` capability alongside the tools
+    capability, so no tool behaviour changes.
+  - The agent id is optional: with `SCITEX_TODO_AGENT_ID` set, the digest is
+    pushed; without it, the server serves tools only (a loud warning, never a
+    hard failure on the tools surface).
+  - `--http` transport remains tools-only (HTTP cannot carry the push).
+  - The standalone `scitex-todo mcp channel` verb is retained for
+    back-compatibility.
+
+## [0.7.30] - 2026-07-02 — env-var standardization for fleet-wide notification delivery
+
+Enables the per-agent channel-drain server to be wired fleet-wide (each agent
+receives its own periodic digests + action-hooked card notifications), the
+crucial rail for task-driven fleet coordination. Coordinated with the container
+layer: the env-injection + `.mcp.json` wiring flip in lockstep with this release.
+
+### Changed
+
+- **Env var rename**: the agent-identity var `SCITEX_TODO_AGENT` is renamed to
+  `SCITEX_TODO_AGENT_ID` (encodes that it is an identity). It stamps
+  `created_by`/`updated_by`, keys the channel inbox, and drives the `--mine`
+  filter.
+- **Env var rename**: the task-store override `SCITEX_TODO_TASKS` is renamed to
+  `SCITEX_TODO_TASKS_YAML_SHARED` (encodes the shared-yaml store).
+- **Channel server is fully env-configurable**: `scitex-todo mcp channel` now
+  reads `SCITEX_TODO_CHANNEL_SOURCE` (meta.source, default `scitex-todo`) and
+  `SCITEX_TODO_CHANNEL_INTERVAL` (poll seconds, default `5`), with CLI flags as
+  optional overrides. The `.mcp.json` entry needs zero config args — every
+  parameter is a `SCITEX_TODO_`-prefixed env var.
+
+### Fixed
+
+- **Fail-loud on the deprecated env-var names**: if `SCITEX_TODO_AGENT` or
+  `SCITEX_TODO_TASKS` is still set, resolution raises with an actionable
+  "renamed to …; unset the old var" message instead of silently honouring a
+  stale export that could pin the wrong identity or store.
+
+## [0.7.29] - 2026-07-02 — standalone user-delivery rail, notify/reminder engine, user registry + identity, and the release-pipeline fix
+
+First successful PyPI publish since 0.7.10 — the release pipeline had been
+broken (see Fixed below), so the accumulated work below shipped only now.
+
+### Added
+
+- **Standalone user-delivery rail**: scitex-todo's own notification path —
+  channels + a delivery ledger + an always-on `notifyd` daemon (with a systemd
+  unit) + a standalone MCP channel-notification server. Users-first, with no
+  dependency on scitex-agent-container.
+- **Notify / reminder engine**: nag-until-closed reminders with per-owner
+  digest cadence, an owner allowlist for phased rollout, operator escalation
+  for high-priority stale cards, and liveness-triggered escalation to the card
+  creator when an assignee is unreachable.
+- **User registry + canonical identity resolver**: collapses owner naming
+  drift (host@name aliases) so notifications resolve to the right inbox;
+  assignee liveness surfaced at assign time.
+- **Model**: `cancelled` status (closed-as-not-planned terminal state).
+- **Idle-guard Stop-hook**: blocks going idle while in-progress work is
+  abandoned.
+- **Fleet payload**: surfaces the waiting-on-operator queue (ids + SSOT count).
+
+### Changed
+
+- **Standalone decoupling from scitex-agent-container**: removed the sac
+  listen-daemon HTTP fallback for turn URLs (zero runtime sac coupling) and
+  reworded sibling-system names out of standalone-claim docstrings.
+- **Store performance**: replaced the ruamel round-trip writer with a fast
+  C-backed safe dump; config + reminders sidecar reads use the fast loader.
+- **Board runtime state** now lives under `<store>/runtime/`.
+- **Board v3 UX**: bigger timeline scatters with marquee select + Ctrl/Cmd+C
+  copy + right-click menu; tighter left gutter; timeline edge legend on hover.
+- **CI**: pytest-matrix serialized so one PR can't saturate all three runners.
+
+### Fixed
+
+- **Release pipeline**: the `publish` job declared `permissions: id-token: write`
+  only, which defaults every other scope (including `contents`) to `none`, so
+  `actions/checkout` could not clone the private repo ("Repository not found").
+  Added `contents: read`. This had broken every tagged release since 0.7.10.
+- **Fail-loud on unresolved actor/author** at task creation (no `getuser`
+  fallback); board create-form requires creator/assignee.
+- **Multi-select toolbar** no longer stretches to full column height.
+- **Reminders**: parked-blocked cards excluded from the per-owner nag digest;
+  store resolved before the notifyd reminder sweep.
+- **Channel delivery**: drains producer-matching keys (raw name + resolved
+  user-id); mutation store threaded into card-event emit so notifications
+  actually enqueue.
+- **Board**: falls back to the port-found board when the pidfile is stale.
+
 ## [0.7.28] - 2026-06-26 — board UX (timeline beeswarm/anti-flash, marker copy, user roles) + CI off paid runners
 
 ### Added

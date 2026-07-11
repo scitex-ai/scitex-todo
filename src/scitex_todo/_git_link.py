@@ -212,6 +212,17 @@ def resolve_card_id(branch: str | None, message: str | None = None) -> str | Non
     return extract_card_id_from_message(message)
 
 
+#: The two git mutations the hooks distinguish. ``post-commit`` passes
+#: :data:`TRIGGER_COMMIT`; ``pre-push`` passes :data:`TRIGGER_PUSH`. The
+#: built-in ``push`` handler maps the trigger to the canonical card-event
+#: type it emits (commit → ``committed``, push → ``pushed``). The default
+#: is :data:`TRIGGER_PUSH` so an older producer that doesn't set the field
+#: keeps the historical behaviour (a ``pushed`` event).
+TRIGGER_COMMIT = "commit"
+TRIGGER_PUSH = "push"
+VALID_TRIGGERS = frozenset({TRIGGER_COMMIT, TRIGGER_PUSH})
+
+
 def build_push_event(
     *,
     repo: str,
@@ -220,6 +231,7 @@ def build_push_event(
     author: str | None = None,
     message: str | None = None,
     card_id: str | None = None,
+    trigger: str = TRIGGER_PUSH,
 ) -> dict | None:
     """Assemble a canonical ``push`` event for ``scitex-todo hook push``.
 
@@ -234,7 +246,15 @@ def build_push_event(
     The returned dict is the exact payload the ``push`` verb expects::
 
         {"kind": "push", "repo", "branch", "commit_sha",
-         "author", "message", "card_ids": [<card_id>]}
+         "author", "message", "trigger", "card_ids": [<card_id>]}
+
+    ``trigger`` (``"commit"`` from ``post-commit`` / ``"push"`` from
+    ``pre-push``, default ``"push"``) is carried through so the built-in
+    handler can emit the right canonical card-event type (``committed`` vs
+    ``pushed``). It is ADDITIVE — older consumers that ignore the field see
+    the unchanged ``push`` comment behaviour. An unrecognised value is
+    coerced to :data:`TRIGGER_PUSH` (fail-soft; the field is a hint, never
+    a hard contract).
 
     Examples
     --------
@@ -243,6 +263,11 @@ def build_push_event(
     ...     commit_sha="abc123", author="me", message="msg",
     ... )["card_ids"]
     ['tcfb-p3-git-to-card']
+    >>> build_push_event(
+    ...     repo="owner/repo", branch="feat/some-card",
+    ...     commit_sha="abc123", trigger="commit",
+    ... )["trigger"]
+    'commit'
     >>> build_push_event(
     ...     repo="owner/repo", branch="wip", commit_sha="abc123",
     ... ) is None
@@ -260,6 +285,7 @@ def build_push_event(
         "commit_sha": commit_sha,
         "author": author,
         "message": message,
+        "trigger": trigger if trigger in VALID_TRIGGERS else TRIGGER_PUSH,
         "card_ids": [resolved],
     }
 
@@ -273,10 +299,13 @@ def _main(argv: list[str] | None = None) -> int:
 
     ``python -m scitex_todo._git_link emit-event \\``
         ``--repo R --branch B --sha S [--author A] [--message-file F]``
+        ``[--trigger commit|push]``
         Resolve the card id and print the full canonical push-event JSON to
         stdout (one line). Prints NOTHING when no card id resolves -> the
         shell hook treats empty output as a SOFT skip and never calls the
-        consumer.
+        consumer. ``--trigger`` (default ``push``) tells the consumer
+        whether this came from ``post-commit`` (``commit``) or ``pre-push``
+        (``push``) so it emits the matching canonical card-event type.
 
     Always returns 0 (a parse glitch must never break a commit/push).
     """
@@ -313,6 +342,11 @@ def _main(argv: list[str] | None = None) -> int:
         parser.add_argument("--sha", default="")
         parser.add_argument("--author", default=None)
         parser.add_argument("--message-file", default=None)
+        parser.add_argument(
+            "--trigger",
+            choices=sorted(VALID_TRIGGERS),
+            default=TRIGGER_PUSH,
+        )
         ns = parser.parse_args(rest)
         event = build_push_event(
             repo=ns.repo,
@@ -320,6 +354,7 @@ def _main(argv: list[str] | None = None) -> int:
             commit_sha=ns.sha,
             author=ns.author,
             message=_read(ns.message_file),
+            trigger=ns.trigger,
         )
         if event is not None:
             print(json.dumps(event))
