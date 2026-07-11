@@ -4,6 +4,42 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.3] - 2026-07-11 — fix: the liveness nudges reached NOBODY; they now ride the inbox rail
+
+### Fixed
+- **The fleet-liveness sweep delivered to nobody.** v0.8.2 gave the sweep a scheduled
+  caller — and it then ran every 30 minutes reaching zero agents. Verified against the
+  live daemon:
+
+      liveness sweep: ERR  scitex-todo    32 pending  wire=http  reason=transport-error
+      liveness sweep: ERR  scitex-types    2 pending  wire=http  reason=no-turn-url-configured
+      liveness sweep: ERR  scitex-writer   3 pending  wire=http  reason=no-turn-url-configured
+      liveness sweep: # 0 pending-backlog push(es) sent
+
+  Root cause: two delivery rails exist and the nudge used the wrong one. The digest
+  (which works) enqueues into each recipient's pull-inbox; the nudge instead pushed over
+  the HTTP turn-url rail, which is not provisioned for nearly any agent. Nudges now
+  enqueue on the same inbox rail as the digest, using the same helpers and record shape,
+  so agents' existing drain path picks them up with no change on their side.
+- **A sweep that reaches nobody now SCREAMS.** When every attempted owner fails, the log
+  emits `!! ALERT <kind>: 0 of N attempted nudge(s) delivered — this sweep reached
+  NOBODY`. The old quiet `0 sent` is exactly what let a completely dead sweep ship and
+  look healthy. An all-suppressed sweep does not cry wolf.
+- Summary line now reports `detected / delivered (inbox) / suppressed / failed`.
+
+### Changed
+- `_push` (HTTP turn-url) is kept only as an opt-in secondary echo
+  (`SCITEX_TODO_NUDGE_PUSH=1`). It never counts toward delivery, never arms suppression,
+  and there is no silent fallback between rails in either direction.
+
+### Notes
+- Preserved from 0.8.2: deliver-on-change suppression (fingerprint = the set of stale card
+  ids) with a 24h floor; only a DELIVERED nudge arms suppression; fail-soft per owner;
+  suppressed owners still logged; `(unassigned)` surfaced but not delivered.
+- Verified END-TO-END against the live fleet, not just in tests: after the fix, a
+  `stale-active` nudge was delivered into a running agent's session through the inbox
+  rail. That is the first time the fleet-liveness check has ever reached anyone.
+
 ## [0.8.2] - 2026-07-11 — fix: the fleet-liveness sweep actually runs, and nudges deliver on CHANGE
 
 ### Fixed
