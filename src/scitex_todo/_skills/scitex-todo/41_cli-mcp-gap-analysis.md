@@ -54,7 +54,7 @@ Missing (Task dataclass fields — operator-co-designed surface TG 9667):
 | `--task`            | str                       | The BIG board-card text (distinct from `--title`'s short scannable label).             |
 | `--project`         | str                       | Project / repo basename. Matches the canonical id prefix.                              |
 | `--host`            | str                       | Where the work happens.                                                                |
-| `--agent`           | str                       | Owning agent — forward-compat alias for `--assignee`. `assignee` STAYS the primary linking field today (lead empirical 2026-06-07: `list-tasks --assignee proj-X` filters correctly). `--agent` lands as a CLI alias once the dataclass migration completes. |
+| `--agent`           | str                       | Owning agent — forward-compat alias for `--assignee`. `assignee` STAYS the primary linking field today (lead empirical 2026-06-07: `list-tasks --assignee <agent-id>` filters correctly). `--agent` lands as a CLI alias once the dataclass migration completes. |
 | `--goal`            | str                       | WHY (parent-goal text); rendered as 🎯 line.                                           |
 | `--last-activity`   | ISO-8601                  | Drives card recency color.                                                             |
 | `--blocker`         | closed enum               | One of VALID_BLOCKERS; CLI must reject unknowns (fail-loud parity with `_model`).      |

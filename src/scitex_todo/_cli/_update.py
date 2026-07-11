@@ -37,7 +37,7 @@ from ._write import (
         examples=(
             (
                 "{prog} update my-task --status in_progress --priority 1 "
-                "--agent proj-scitex-todo",
+                "--agent \"$SCITEX_TODO_AGENT_ID\"",
                 "Flip status + reprioritize.",
             ),
         ),

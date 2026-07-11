@@ -4,6 +4,40 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.4] - 2026-07-11 — fix: the MCP instructions taught a DEAD identity; agents saw 3% of their own cards
+
+### Fixed
+- **The board was telling every agent to look in an empty drawer.** The MCP server
+  instructions — read by every agent at session start — hard-coded a dead example:
+
+      "Use list_tasks with a `scope` arg (e.g. 'agent:proj-scitex-todo')"
+
+  There is no `proj-scitex-todo`. Measured against the live store, that taught scope held
+  **2** cards while the real one (`agent:scitex-todo`) held **63**. So an agent that
+  *followed the shipped instructions* saw ~3% of its own work and reasonably concluded the
+  board had nothing for it. Nothing errored; the query simply returned almost nothing.
+  This is a mechanical explanation for the standing complaint that "the fleet ignores the
+  board" — the board was not being ignored, it was lying about where to look.
+- The instructions now interpolate each agent's **resolved** identity
+  (`$SCITEX_TODO_AGENT_ID`). When the identity **cannot** be resolved they say so and tell
+  the agent how to discover its scope, rather than falling back to a hard-coded example. A
+  silently-wrong example is worse than an honest absence — that was the entire bug.
+- The same dead prefix was fixed everywhere it was taught, not just the one line: CLI
+  `--help` examples, docstrings, the shipped skills, the README and the fleet cheatsheet.
+- **`sync-github` was still MINTING cards under the dead `proj-scitex-dev` owner.** Fixing
+  the instructions while a write path kept re-creating the problem would have left the hole
+  open: every card it imported landed under an owner that does not exist, so the real owner
+  never saw it.
+
+### Notes
+- A regression test asserts zero dead-identity examples across the entire MCP surface
+  (instructions + every registered tool description).
+- Data half (applied to the live store, outside this release): 37 cards were stranded under
+  dead `proj-*` scopes — 34 of them scitex-writer's, three still `blocked`, i.e. live work
+  its owner could not see. Migrated after a dry-run and a backup; verified 0 dead scopes and
+  0 dead owners remain. scitex-writer's visible slice went 21 → 55 cards, and its owner
+  confirmed all five newly-visible blocked cards are real.
+
 ## [0.8.3] - 2026-07-11 — fix: the liveness nudges reached NOBODY; they now ride the inbox rail
 
 ### Fixed

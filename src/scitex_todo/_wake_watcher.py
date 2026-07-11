@@ -31,7 +31,7 @@ consumption-loop.md`` for the canonical 7-step loop.
 Agent registry (where to find each peer's a2a port):
 
   A ``agents:`` top-level list in tasks.yaml. Each entry:
-  ``{name: proj-scitex-todo, a2a_port: 41234}``. This static list is
+  ``{name: scitex-todo, a2a_port: 41234}``. This static list is
   scitex-todo's own SSoT for the agent port table — no external
   runtime is consulted.
 

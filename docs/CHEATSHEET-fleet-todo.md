@@ -37,14 +37,14 @@ scitex-todo init-store --shared        # 🟡 PHASE-1
 ```
 
 **Convention for `<your-name>`.** Pick the literal sac peer name (e.g.
-`agent:proj-scitex-todo`, `agent:lead`, `agent:hub-ops`). Humans use
+`agent:scitex-todo`, `agent:lead`, `agent:hub-ops`). Humans use
 `user:operator`, `user:ywatanabe`, etc.
 
 **Scope label conventions** (free-form strings — not enums):
 
 | Prefix          | Use for                                          | Example                          |
 | --------------- | ------------------------------------------------ | -------------------------------- |
-| `agent:<name>`  | The sac peer or single-agent identity            | `agent:proj-scitex-todo`         |
+| `agent:<name>`  | The sac peer or single-agent identity            | `agent:scitex-todo`         |
 | `project:<name>`| A project / repo team                            | `project:scitex-clew`            |
 | `host:<name>`   | **A specific host (cross-host axis — §6)**       | `host:wsl2-dev`, `host:mba-arm64`|
 | `user:<name>`   | A human                                          | `user:operator`                  |
@@ -75,7 +75,7 @@ scitex-todo summary --scope project:scitex-clew   # counts by status for one pro
 ```bash
 # Create a task you intend to do yourself
 scitex-todo add e1-acl-cli "sac ACL fleet-group + grant CLI" \
-    --scope project:sac --assignee agent:proj-scitex-agent-container \
+    --scope project:sac --assignee agent:scitex-agent-container \
     --priority 3 --note "see lead's E1 brief"
 
 # Claim a task from someone else's queue
@@ -119,14 +119,14 @@ The board has drill-down (click a parent card), drag-reorder (changes
 import scitex_todo as todo
 
 # ── read (snapshot, no lock) ────────────────────────────────────
-mine = todo.list_tasks(scope="agent:proj-scitex-todo",        # 🟡 PHASE-1
+mine = todo.list_tasks(scope="agent:scitex-todo",        # 🟡 PHASE-1
                        status="pending")
 counts = todo.summarize_tasks(scope="project:sac")            # 🟡 PHASE-1
 
 # ── write (locked via fcntl.flock around full RMW) ───────────────
 todo.add_task(id="my-task", title="Implement my-task",         # 🟡 PHASE-1
-              scope="agent:proj-scitex-todo",
-              assignee="agent:proj-scitex-todo",
+              scope="agent:scitex-todo",
+              assignee="agent:scitex-todo",
               status="pending", priority=5)
 todo.update_task(task_id="my-task", status="in_progress")      # 🟡 PHASE-1
 todo.complete_task(task_id="my-task")                          # 🟡 PHASE-1
@@ -289,7 +289,7 @@ scitex-todo add memo-buy-milk "Pick up milk" --scope private
 ```bash
 scitex-todo add e1-acl "sac ACL fleet-group + grant CLI" \
     --scope project:sac \
-    --assignee agent:proj-scitex-agent-container \
+    --assignee agent:scitex-agent-container \
     --priority 2 --status pending \
     --note "Brief: ..."
 ```
@@ -398,8 +398,8 @@ Statuses (`VALID_STATUSES`): `goal`, `pending`, `in_progress`, `blocked`,
 ## 10 — Where to file bugs / requests
 
 This package: `https://github.com/ywatanabe1989/scitex-todo`. The
-`proj-scitex-todo` agent owns it. The lead and operator triage feature
+`scitex-todo` agent owns it. The lead and operator triage feature
 requests on the operator-channel; agents file via sac peer-message to
-`proj-scitex-todo`.
+`scitex-todo`.
 
 <!-- EOF -->

@@ -189,14 +189,14 @@ def render_graph_cmd(tasks_path: str | None, output: str, print_mermaid: bool) -
             "filters, matches are AND-composed."
         ),
         examples=(
-            ("{prog} list-tasks --assignee proj-scitex-todo --json", ""),
+            ("{prog} list-tasks --assignee \"$SCITEX_TODO_AGENT_ID\" --json", ""),
             (
                 "{prog} list-tasks --project scitex-todo --status pending "
                 "--status in_progress",
                 "",
             ),
             ("{prog} list-tasks --blocking-me", ""),
-            ("{prog} list-tasks --id-prefix proj-scitex-", ""),
+            ("{prog} list-tasks --id-prefix scitex-", ""),
             ("{prog} list-tasks --blocker __none", "rows with no blocker"),
         ),
     ),

@@ -22,7 +22,7 @@ Configuration
 their turn URLs (any HTTP endpoint that accepts a JSON ``POST``):
 
     SCITEX_TODO_AGENT_TURN_URLS='{
-        "proj-scitex-todo": "https://agents.example/v1/turn/proj-scitex-todo",
+        "scitex-todo": "https://agents.example/v1/turn/scitex-todo",
         "lead": "https://agents.example/v1/turn/lead"
     }'
 

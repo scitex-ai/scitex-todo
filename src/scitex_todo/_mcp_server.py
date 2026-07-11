@@ -7,6 +7,12 @@ Tools follow audit §6 Convention A (``tool_name == python_api_name``); see
 ``help_wait`` / ``help_clear`` cards, ``poll_notifications`` — the standalone
 PULL card-message inbox — and the ``todo_skills_*`` §5 pair).
 
+Two cohesive tool clusters live in sibling modules for this module's line
+budget and register on the SAME ``mcp`` instance (imported at the tail for the
+side effect): :mod:`scitex_todo._mcp_relations` (edges + roles) and
+:mod:`scitex_todo._mcp_skills` (skills, help-wait, DMs, inbox, health). The
+agent-facing instructions text lives in :mod:`scitex_todo._mcp_instructions`.
+
 The task-store tool surface is a thin wrapper around :mod:`scitex_todo._store`
 (the Python API) so MCP / CLI / GUI all share one logic path — §6 Python-API
 parity. JSON-shape parity: every tool returns a JSON-string of the dict /
@@ -37,17 +43,16 @@ except ImportError as _exc:  # pragma: no cover — exercised in the doctor test
     ) from _exc
 
 from . import _store
+from ._channel_identity import resolve_agent_id_optional
+from ._mcp_instructions import build_instructions
 
+# The instructions name THIS agent's OWN scope, interpolated from its resolved
+# identity ($SCITEX_TODO_AGENT_ID) — never a hard-coded example, which is how
+# every agent came to be taught the scope of the long-dead `proj-scitex-todo`.
+# An UNRESOLVED identity names no scope at all; see `_mcp_instructions`.
 mcp = FastMCP(
     name="scitex-todo",
-    instructions=(
-        "scitex-todo: shared YAML task store across agents and hosts. "
-        "Use list_tasks with a `scope` arg (e.g. "
-        "'agent:proj-scitex-todo') to see only your slice. The canonical "
-        "store lives at ~/.scitex/todo/tasks.yaml; precedence is "
-        "explicit > $SCITEX_TODO_TASKS_YAML_SHARED > project (<git-root>/.scitex/todo) > "
-        "user (~/.scitex/todo) > bundled example."
-    ),
+    instructions=build_instructions(resolve_agent_id_optional()),
 )
 
 
@@ -396,34 +401,6 @@ async def comment_task(
 
 
 @mcp.tool()
-async def set_edge(
-    action: str,
-    kind: str,
-    source: str,
-    target: str,
-    tasks_path: str | None = None,
-) -> str:
-    """Add or remove a depends_on / blocks edge between two tasks.
-
-    Args:
-      action: ``"add"`` or ``"remove"``.
-      kind: ``"depends_on"`` or ``"blocks"``.
-      source / target: task ids on the edge.
-    """
-    result = await anyio.to_thread.run_sync(
-        functools.partial(
-            _store.set_edge,
-            tasks_path,
-            action=action,
-            kind=kind,
-            source=source,
-            target=target,
-        )
-    )
-    return json.dumps(result)
-
-
-@mcp.tool()
 async def resolve_task(
     task_id: str,
     actor: str | None = None,
@@ -456,59 +433,6 @@ async def reopen_task(
     return json.dumps(result)
 
 
-@mcp.tool()
-async def set_collaborator(
-    task_id: str,
-    who: str,
-    action: str = "add",
-    tasks_path: str | None = None,
-) -> str:
-    """Add or remove a collaborator on a card (ADR-0009 roles).
-
-    Args:
-      task_id: the card id.
-      who: the agent/human to add or remove.
-      action: ``"add"`` (default) or ``"remove"``.
-
-    Adding a collaborator also subscribes them to the card's feedback
-    (the default — subscribers include collaborators). Removing a
-    collaborator leaves their subscription intact; use ``set_subscriber``
-    with ``action="remove"`` to also stop their notices.
-    """
-    result = await anyio.to_thread.run_sync(
-        functools.partial(
-            _store.set_collaborator, tasks_path, task_id=task_id, who=who, action=action
-        )
-    )
-    return json.dumps(result)
-
-
-@mcp.tool()
-async def set_subscriber(
-    task_id: str,
-    who: str,
-    action: str = "add",
-    tasks_path: str | None = None,
-) -> str:
-    """Subscribe or unsubscribe an agent/human on a card's notify list
-    (ADR-0009 roles).
-
-    Args:
-      task_id: the card id.
-      who: the agent/human to subscribe or unsubscribe.
-      action: ``"add"`` (subscribe, default) or ``"remove"`` (unsubscribe).
-
-    Anyone may unsubscribe — even a collaborator (the "always
-    unsubscribable" rule).
-    """
-    result = await anyio.to_thread.run_sync(
-        functools.partial(
-            _store.set_subscriber, tasks_path, task_id=task_id, who=who, action=action
-        )
-    )
-    return json.dumps(result)
-
-
 #: Canonical list of registered tool names — a constant so the `mcp doctor`
 #: / `mcp list-tools` CLI verbs need not introspect FastMCP's drifting
 #: internal registry. Update when a `@mcp.tool()` is added/removed.
@@ -524,6 +448,8 @@ TOOL_NAMES: tuple[str, ...] = (
     "delete_task",
     "restore_task",
     "comment_task",
+    # The card-RELATIONSHIP cluster (edges + ADR-0009 roles) — registered in
+    # `_mcp_relations` (the split this block used to have queued).
     "set_edge",
     "set_collaborator",
     "set_subscriber",
@@ -542,13 +468,14 @@ TOOL_NAMES: tuple[str, ...] = (
     "todo_skills_list",
     "todo_skills_get",
     # Operator↔agent DMs (threads.yaml sidecar; registered in _mcp_skills).
-    "dm_send",  # hook-bypass: line-limit — _mcp_server split still queued
-    "dm_list",  # hook-bypass: line-limit — _mcp_server split still queued
+    "dm_send",
+    "dm_list",
 )
 
-# Import for the registration side effect: ``_mcp_skills`` (kept separate for
-# this module's line budget) decorates its extra tools onto the shared ``mcp``
+# Imports for the registration side effect: these modules (kept separate for
+# this module's line budget) decorate their tools onto the shared ``mcp``
 # instance, so ``from scitex_todo._mcp_server import mcp`` exposes every tool.
+from . import _mcp_relations  # noqa: E402,F401
 from . import _mcp_skills  # noqa: E402,F401
 
 __all__ = ["TOOL_NAMES", "mcp"]

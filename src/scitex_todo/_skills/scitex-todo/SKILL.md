@@ -40,7 +40,7 @@ The store is resolved in precedence order: explicit `--tasks` →
 ## ⚑ MANDATE — single source of truth (operator + lead, 2026-06-12)
 
 scitex-todo is **THE fleet's single source of truth** for all durable /
-cross-session / cross-agent task tracking. Every agent (proj-* + lead +
+cross-session / cross-agent task tracking. Every agent (workers + lead +
 the operator) writes here; every viewer reads from here. This is the
 binding rule:
 
@@ -148,7 +148,7 @@ The hard rule:
 - **Bulk catch-up is also OK** when an agent realises a batch of
   past PRs was never recorded: `scitex-todo sync-github --since
   <date> -y` walks the agent's recent merged PRs and writes the
-  `pr-<repo>-<num>` done-records in one shot (proj-scitex-todo
+  `pr-<repo>-<num>` done-records in one shot (scitex-todo
   used this as the overnight backfill mechanism, lead a2a
   `fbd15187`).
 
@@ -195,7 +195,7 @@ is more ergonomic — the wire is identical.
 ```bash
 # Register a new task (operator drop / agent self-add).
 scitex-todo add --title "fix CI red on develop" \
-  --project scitex-todo --agent proj-scitex-todo --priority 2
+  --project scitex-todo --agent scitex-todo --priority 2
 
 # Flip status as you work. --add-comment stamps an activity row.
 scitex-todo update todo-pXX --status in_progress \
@@ -207,10 +207,10 @@ scitex-todo update todo-pXX --status done \
 
 # Append a comment without changing any other field (PR #144).
 scitex-todo comment todo-pXX "lead a2a: please rebase before merging" \
-  --author proj-scitex-todo
+  --author scitex-todo
 
 # List the tasks for a project / agent.
-scitex-todo list-tasks --agent proj-scitex-todo
+scitex-todo list-tasks --agent scitex-todo
 scitex-todo list-tasks --status pending --project scitex-todo
 
 # Filter by kind — e.g. hide non-actionable status-tracking cards
@@ -222,7 +222,7 @@ scitex-todo list-tasks --kind status        # status-tracking only
 scitex-todo update todo-pYY --depends-on todo-pXX
 
 # Pick the next runnable task FOR THIS AGENT (single canonical rule).
-SCITEX_TODO_AGENT_ID=proj-scitex-todo \
+SCITEX_TODO_AGENT_ID=scitex-todo \
   scitex-todo next --mine --auto-claim --json
 
 # Push side — wake the owning agent on new/commented/changed tasks.

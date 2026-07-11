@@ -37,7 +37,7 @@ from ._write import _TASKS_OPTION, _emit
         examples=(
             (
                 "{prog} comment my-task 'investigating crash' "
-                "--author agent:proj-scitex-todo",
+                "--author \"$SCITEX_TODO_AGENT_ID\"",
                 "Append a comment as a specific author.",
             ),
         ),
