@@ -19,19 +19,28 @@ from __future__ import annotations
 
 import click
 
+from ._compat import spec_command_kwargs
+
 from .. import _store
 from ._write import _TASKS_OPTION, _emit
 
 
 @click.command(
     "comment",
-    help=(
-        "Append a comment entry to task.comments[] (Gitea-compatible shape).\n\n"
-        "Wraps `_store.comment_task`. The timestamp is auto-stamped UTC by the\n"
-        "store; --author overrides $SCITEX_TODO_AGENT_ID -> $USER precedence.\n\n"
-        "Example:\n"
-        "  scitex-todo comment my-task 'investigating crash' "
-        "--author agent:proj-scitex-todo"
+    **spec_command_kwargs(
+        summary="Append a comment entry to task.comments[] (Gitea-compatible shape).",
+        description=(
+            "Wraps _store.comment_task. The timestamp is auto-stamped "
+            "UTC by the store; --author overrides the "
+            "$SCITEX_TODO_AGENT_ID -> $USER precedence chain.",
+        ),
+        examples=(
+            (
+                "{prog} comment my-task 'investigating crash' "
+                "--author agent:proj-scitex-todo",
+                "Append a comment as a specific author.",
+            ),
+        ),
     ),
 )
 @click.argument("task_id")

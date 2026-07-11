@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import click
 
+from ._compat import spec_command_kwargs, spec_group_kwargs
+
 # Process/pidfile helpers live in the sibling ``_board_proc`` module
 # (extracted to keep this file under the 512-line cap). Re-imported here
 # so existing call sites + tests keep importing them from ``_board``.
@@ -93,17 +95,19 @@ def _board_run_server(
 @click.group(
     "board",
     invoke_without_command=True,
-    help=(
-        "Manage the dependency-graph board (start/stop/restart/status).\n\n"
-        "The ``board`` noun REQUIRES an explicit verb — bare "
-        "``scitex-todo board`` hard-errors with a redirect (operator "
-        "directive TG 13316: noun-verb CLI convention, no bare-noun "
-        "back-compat).\n\n"
-        "Examples:\n"
-        "  scitex-todo board start --port 8051\n"
-        "  scitex-todo board restart\n"
-        "  scitex-todo board status\n"
-        "  scitex-todo board stop"
+    **spec_group_kwargs(
+        summary="Manage the dependency-graph board (start/stop/restart/status).",
+        description=(
+            "The `board` noun REQUIRES an explicit verb — bare `{prog} "
+            "board` hard-errors with a redirect (operator directive TG "
+            "13316: noun-verb CLI convention, no bare-noun back-compat). "
+            "Writes a pidfile at ~/.scitex/todo/board.pid so `stop` / "
+            "`restart` / `status` work reliably from any terminal. "
+            "`board start --help` documents the web extra it requires."
+        ),
+        command_categories=(
+            ("Core", ("start", "stop", "restart", "status")),
+        ),
     ),
 )
 @click.pass_context
@@ -144,13 +148,14 @@ def board_group(ctx: click.Context) -> None:
 
 @board_group.command(
     "start",
-    help=(
-        "Launch the board server (blocking, foreground). Writes a "
-        "pidfile at ~/.scitex/todo/board.pid so other terminals can "
-        "`board stop` / `board restart`. Requires the web extra: "
-        "pip install scitex-todo[web]\n\n"
-        "Example:\n"
-        "  $ scitex-todo board start --port 8051"
+    **spec_command_kwargs(
+        summary="Launch the board server (blocking, foreground).",
+        description=(
+            "Writes a pidfile at ~/.scitex/todo/board.pid so other "
+            "terminals can `board stop` / `board restart`. Requires the "
+            "web extra: pip install scitex-todo[web]."
+        ),
+        examples=(("{prog} board start --port 8051", "Serve on port 8051."),),
     ),
 )
 @click.option(
@@ -221,12 +226,16 @@ def board_start_cmd(
 
 @board_group.command(
     "stop",
-    help=(
-        "Stop the running board (SIGTERM). Uses the pidfile when valid; "
-        "if the pidfile pid is dead/missing, falls back to the (verified) "
-        "board serving on --port and cleans up the stale pidfile.\n\n"
-        "Example:\n"
-        "  $ scitex-todo board stop"
+    **spec_command_kwargs(
+        summary="Stop the running board (SIGTERM).",
+        description=(
+            "Uses the pidfile when valid; if the pidfile pid is "
+            "dead/missing, falls back to the (verified) board serving on "
+            "--port and cleans up the stale pidfile. Waits up to "
+            "--timeout seconds for a graceful exit before escalating to "
+            "SIGKILL."
+        ),
+        examples=(("{prog} board stop", "Stop the running board."),),
     ),
 )
 @click.option(
@@ -335,10 +344,15 @@ def board_stop_cmd(
 
 @board_group.command(
     "restart",
-    help=(
-        "Stop the running board (if any) + start a fresh one. The shape "
-        "the operator + lead need to reload after a card/source change."
-        "\n\nExample:\n  $ scitex-todo board restart"
+    **spec_command_kwargs(
+        summary="Stop the running board (if any) then start a fresh one.",
+        description=(
+            "The shape the operator + lead need to reload after a "
+            "card/source change. Stop is a no-op if nothing is running; "
+            "start then follows the same pidfile contract as `board "
+            "start`."
+        ),
+        examples=(("{prog} board restart", "Reload the board."),),
     ),
 )
 @click.option("--tasks", "tasks_path", default=None, help="Path to tasks.yaml.")
@@ -406,12 +420,17 @@ def board_restart_cmd(
 
 @board_group.command(
     "status",
-    help=(
-        "Print whether the board is running + its pid + the pidfile path. "
-        "If the pidfile is stale/missing but a verified board is serving "
-        "on --port, reports it as running with an 'untracked pidfile' note."
-        "\n\nExample:\n  $ scitex-todo board status\n"
-        "  $ scitex-todo board status --json"
+    **spec_command_kwargs(
+        summary="Print whether the board is running, its pid, and the pidfile path.",
+        description=(
+            "If the pidfile is stale/missing but a verified board is "
+            "serving on --port, reports it as running with an "
+            "'untracked pidfile' note."
+        ),
+        examples=(
+            ("{prog} board status", "Human-readable one-liner."),
+            ("{prog} board status --json", "Structured JSON."),
+        ),
     ),
 )
 @click.option(

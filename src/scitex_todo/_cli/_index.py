@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import click
 
+from ._compat import spec_command_kwargs, spec_group_kwargs
+
 
 def register(main: click.Group) -> None:
     """Attach the ``index`` noun group to the root group."""
@@ -23,10 +25,13 @@ def register(main: click.Group) -> None:
 
 @click.group(
     "index",
-    help=(
-        "Manage the SQLite derived-index "
-        "(~/.scitex/todo/.tasks.index.sqlite).\n\n"
-        "YAML stays authoritative; the index is a rebuildable read cache."
+    **spec_group_kwargs(
+        summary="Manage the SQLite derived-index (rebuildable read cache).",
+        description=(
+            "YAML stays authoritative; ~/.scitex/todo/.tasks.index.sqlite "
+            "is a rebuildable read cache built from it."
+        ),
+        command_categories=(("Core", ("rebuild", "info")),),
     ),
 )
 def index_group() -> None:
@@ -35,12 +40,13 @@ def index_group() -> None:
 
 @index_group.command(
     "rebuild",
-    help=(
-        "Drop + repopulate the SQLite index from the YAML source(s) — "
-        "global store + every discovered per-project lane (PR #137 "
-        "union policy).\n\n"
-        "Example:\n"
-        "  $ scitex-todo index rebuild -y"
+    **spec_command_kwargs(
+        summary="Drop + repopulate the SQLite index from the YAML source(s).",
+        description=(
+            "Rebuilds from the global store + every discovered "
+            "per-project lane (PR #137 union policy)."
+        ),
+        examples=(("{prog} index rebuild -y", "Rebuild now."),),
     ),
 )
 @click.option(
@@ -99,12 +105,12 @@ def index_rebuild_cmd(dry_run: bool, assume_yes: bool) -> None:
 
 @index_group.command(
     "info",
-    help=(
-        "Print one-line / JSON status of the SQLite index "
-        "(row count, last_index_at, schema version, lane count).\n\n"
-        "Example:\n"
-        "  $ scitex-todo index info\n"
-        "  $ scitex-todo index info --json"
+    **spec_command_kwargs(
+        summary="Print row count / last-rebuild time / schema version of the index.",
+        examples=(
+            ("{prog} index info", "Human-readable summary."),
+            ("{prog} index info --json", "Structured JSON."),
+        ),
     ),
 )
 @click.option(

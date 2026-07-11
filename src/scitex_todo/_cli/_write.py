@@ -344,9 +344,15 @@ def done_cmd(task_id, by, as_json, tasks_path) -> None:
 # --------------------------------------------------------------------------- #
 @click.command(
     "summary",
-    help=(
-        "Print counts by status / scope / assignee.\n\n"
-        "Example:\n  scitex-todo summary --json"
+    **spec_command_kwargs(
+        summary="Print task counts by status / scope / assignee.",
+        description=(
+            "Numeric progress report over the resolved store, optionally "
+            "restricted to one scope/assignee before counting."
+        ),
+        examples=(
+            ("{prog} summary --json", "Structured counts."),
+        ),
     ),
 )
 @click.option("--scope", default=None, help="Filter to this scope before counting.")

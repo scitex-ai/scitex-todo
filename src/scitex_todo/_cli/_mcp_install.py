@@ -15,6 +15,8 @@ import pathlib
 
 import click
 
+from ._compat import spec_command_kwargs
+
 _CLI_NAME = "scitex-todo"
 
 
@@ -23,25 +25,27 @@ def attach_install_verbs(mcp_group: click.Group) -> None:
 
     @mcp_group.command(
         "install",
-        help=(
-            "Print or apply the Claude Code MCP install snippet.\n\n"
-            "Without --apply this command PRINTS the JSON snippet for\n"
-            "manual paste-in. With --apply, it MERGES the snippet into\n"
-            "the target ``.mcp.json`` file (default ``~/.mcp.json``),\n"
-            "idempotently — re-running is a no-op when the entry is\n"
-            "already present. Other servers' entries are preserved.\n\n"
-            "Examples:\n\n"
-            "Example (print):\n  scitex-todo mcp install --format raw\n\n"
-            "Example (fleet P3a — write into the user-scope .mcp.json):\n"
-            "  scitex-todo mcp install --apply --dry-run\n"
-            "  scitex-todo mcp install --apply -y\n\n"
-            "Example (project-scope .mcp.json):\n"
-            "  scitex-todo mcp install --apply --to ./.mcp.json\n\n"
-            "Example (fleet host-store pin — P3a wire-up so containerized\n"
-            "agents resolve the shared host tasks.yaml regardless of\n"
-            "$HOME / symlink state):\n"
-            "  scitex-todo mcp install --apply --to to_home/.mcp.json \\\n"
-            "    --env-tasks-path /home/agent/.scitex/todo/tasks.yaml -y"
+        **spec_command_kwargs(
+            summary="Print or apply the Claude Code MCP install snippet.",
+            description=(
+                "Without --apply this command PRINTS the JSON snippet "
+                "for manual paste-in. With --apply, it MERGES the "
+                "snippet into the target .mcp.json file (default "
+                "~/.mcp.json), idempotently — re-running is a no-op "
+                "when the entry is already present. Other servers' "
+                "entries are preserved.",
+            ),
+            examples=(
+                ("{prog} mcp install --format raw", "Print the raw snippet."),
+                ("{prog} mcp install --apply --dry-run", "Preview a user-scope apply."),
+                ("{prog} mcp install --apply -y", "Write into ~/.mcp.json."),
+                ("{prog} mcp install --apply --to ./.mcp.json", "Project-scope .mcp.json."),
+                (
+                    "{prog} mcp install --apply --to to_home/.mcp.json "
+                    "--env-tasks-path /home/agent/.scitex/todo/tasks.yaml -y",
+                    "Fleet host-store pin (P3a).",
+        ),
+            ),
         ),
     )
     @click.option(
@@ -198,17 +202,22 @@ def attach_install_verbs(mcp_group: click.Group) -> None:
 
     @mcp_group.command(
         "install-fleet",
-        help=(
-            "Apply the scitex-todo MCP entry to EVERY agent's "
-            "``to_home/.mcp.json`` under an agents directory.\n\n"
-            "Fleet P3a unblock (lead a2a `1ab212f3`, 2026-06-14). Walks "
-            "``<agents-dir>/*/to_home/.mcp.json`` and runs the idempotent "
-            "merge for each. Files that don't exist yet are CREATED; "
-            "existing files preserve every sibling MCP server entry.\n\n"
-            "Example:\n"
-            "  scitex-todo mcp install-fleet \\\n"
-            "    --agents-dir ~/.dotfiles/src/.scitex/agent-container/agents \\\n"
-            "    --env-tasks-path /home/agent/.scitex/todo/tasks.yaml -y"
+        **spec_command_kwargs(
+            summary="Apply the MCP entry to EVERY agent's to_home/.mcp.json.",
+            description=(
+                "Fleet P3a unblock (lead a2a 1ab212f3, 2026-06-14). Walks "
+                "<agents-dir>/*/to_home/.mcp.json and runs the idempotent "
+                "merge for each. Files that don't exist yet are CREATED; "
+                "existing files preserve every sibling MCP server entry.",
+            ),
+            examples=(
+                (
+                    "{prog} mcp install-fleet "
+                    "--agents-dir ~/.dotfiles/src/.scitex/agent-container/agents "
+                    "--env-tasks-path /home/agent/.scitex/todo/tasks.yaml -y",
+                    "Sweep every agent's to_home/.mcp.json.",
+        ),
+            ),
         ),
     )
     @click.option(

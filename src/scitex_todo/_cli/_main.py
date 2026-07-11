@@ -127,10 +127,20 @@ def main(ctx: click.Context, help_recursive: bool, as_json: bool) -> None:
 # --------------------------------------------------------------------------- #
 @main.command(
     "render-graph",
-    help=(
-        "Render the task dependency graph to a PNG.\n\n"
-        "Example:\n"
-        "  scitex-todo render-graph --tasks ./.scitex/todo/tasks.yaml -o tasks.png"
+    **spec_command_kwargs(
+        summary="Render the task dependency graph to a PNG.",
+        description=(
+            "Builds a mermaid dependency graph (depends_on / blocks "
+            "edges) from the resolved store and renders it to a PNG via "
+            "the mermaid CLI (or --print-mermaid to inspect the source "
+            "without rendering)."
+        ),
+        examples=(
+            (
+                "{prog} render-graph --tasks ./.scitex/todo/tasks.yaml -o tasks.png",
+                "Render the project store to tasks.png.",
+            ),
+        ),
     ),
 )
 @click.option(

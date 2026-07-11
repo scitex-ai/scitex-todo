@@ -14,6 +14,7 @@ from __future__ import annotations
 import click
 
 from .. import _store
+from ._compat import spec_command_kwargs
 from ._write import (
     _BLOCKER_OR_CLEAR,
     _KIND_CHOICE,
@@ -25,14 +26,21 @@ from ._write import (
 
 @click.command(
     "update",
-    help=(
-        "Mutate fields of an existing task by id.\n\n"
-        "Pass an empty string (e.g. --scope '') to CLEAR a field.\n"
-        "--depends-on / --blocks REPLACE the list (repeat the flag per id; "
-        "pass once with '' to clear; +/- delta semantics are a follow-up PR).\n\n"
-        "Example:\n"
-        "  scitex-todo update my-task --status in_progress --priority 1 "
-        "--agent proj-scitex-todo"
+    **spec_command_kwargs(
+        summary="Mutate fields of an existing task by id.",
+        description=(
+            "Pass an empty string (e.g. --scope '') to CLEAR a field. "
+            "--depends-on / --blocks REPLACE the list (repeat the flag "
+            "per id; pass once with '' to clear; +/- delta semantics "
+            "are a follow-up)."
+        ),
+        examples=(
+            (
+                "{prog} update my-task --status in_progress --priority 1 "
+                "--agent proj-scitex-todo",
+                "Flip status + reprioritize.",
+            ),
+        ),
     ),
 )
 @click.argument("task_id")
