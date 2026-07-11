@@ -85,6 +85,13 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           cache-dependency-glob: pyproject.toml
+      # MIRROR the org pytest-matrix reusable workflow's invocation EXACTLY —
+      # including the coverage flags and the package-derived --cov path. Not
+      # cosmetic: a simplified `pytest tests/` here selected a different plugin
+      # set and test order, and test_priority_endpoint_invalidates_cache_for_
+      # second_node failed under it while pytest-matrix was green on the SAME
+      # commit (v0.8.1's first run: 744 passed, 1 failed). Copying a proven
+      # mechanism means copying it, not paraphrasing it.
       - name: Run tests in a uv venv (deps provisioned, not on the bare runner)
         run: |
           set -euo pipefail
@@ -92,7 +99,8 @@ jobs:
           uv pip install --python .venv/bin/python -e ".[all,dev]" \
             || uv pip install --python .venv/bin/python -e ".[dev]" \
             || uv pip install --python .venv/bin/python -e .
-          .venv/bin/python -m pytest tests/
+          PKG=$(basename "$(find src -maxdepth 1 -mindepth 1 -type d ! -name '*.egg-info' | sort | head -1)")
+          .venv/bin/python -m pytest tests/ --cov="src/$PKG" --cov-report=xml --cov-report=term
 
   build:
     needs: test
