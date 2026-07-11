@@ -339,7 +339,8 @@ def _emit_stale_active_nudges(tasks: list[dict], store) -> None:
 
     The detect + per-owner fail-soft delivery lives in
     :func:`scitex_todo._stale_active_nudge.sweep_and_nudge` (keeps the
-    network side out of this near-cap CLI module). It emits BOTH the
+    delivery side — an enqueue into each owner's pull-inbox, the rail the owner
+    digest uses — out of this near-cap CLI module). It emits BOTH the
     stale-active and pending-backlog per-owner lines. Each result line is
     echoed for the cron log — including the owners whose nudge was SUPPRESSED
     as unchanged, so the sweep is never silently doing nothing.
