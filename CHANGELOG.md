@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.1] - 2026-07-11 — fix: the digest wakes an owner on CHANGE, not every sweep; `update --help` renders on click >= 8.2
+
+### Fixed
+- **Digest re-fired every sweep with an identical list.** Observed live: 30
+  identical "Assigned-card digest #N" wake-ups in ~3 h — same cards, only the
+  counter moving — and every agent got them. A signal that repeats unchanged
+  every five minutes teaches its reader to ignore it, and the digest is the
+  one signal that must stay un-ignorable. The owner's wake-up is now skipped
+  while the card set AND each card's status are unchanged since the last
+  DELIVERED digest, with a 24 h floor (`SCITEX_TODO_DIGEST_FLOOR_HOURS`) so a
+  genuinely stuck owner is still nudged daily rather than never. A status flip
+  alone (`in_progress` → `blocked`) re-notifies even when the id set is equal.
+  The digest TICK still advances on the cadence: operator escalation fires
+  after N ticks, so suppressing ticks would have silently disarmed
+  high-priority escalation (the existing escalation test caught exactly that on
+  the first cut). Only the owner-facing enqueue is conditional; escalation and
+  creator-escalation are untouched, and a regression test pins it.
+- **`scitex-todo update --help` crashed on click >= 8.2.** The custom
+  `--blocker` param type's `get_metavar()` predated the `ctx` keyword click now
+  passes, so the help screen died with a `TypeError` and the update syntax was
+  undiscoverable (found by neurovista in production while working around a
+  dropped MCP session).
+
 ## [0.8.0] - 2026-07-11 — feat: abolish `pending`; WIP gate counts work-in-flight only; deferred consumption pipeline; tolerant enum handling; board-UI batch
 
 The fleet-incident release (2026-07-10 night): four operator-directed fixes
