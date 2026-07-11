@@ -52,7 +52,7 @@ from ._write import _TASKS_OPTION, _emit
         examples=(
             (
                 "{prog} close stale-card --reason 'superseded by PR #142' "
-                "--by agent:proj-scitex-todo",
+                "--by \"$SCITEX_TODO_AGENT_ID\"",
                 "",
             ),
         ),

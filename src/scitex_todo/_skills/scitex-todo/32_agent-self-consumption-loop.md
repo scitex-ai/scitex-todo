@@ -1,7 +1,7 @@
 # 32. Agent self-consumption loop
 
 **The board IS your work queue.** Every fleet agent — `lead` and every
-`proj-*` — runs the same loop: on wake, pick the top task from the
+worker — runs the same loop: on wake, pick the top task from the
 board, work it, comment progress, update status, repeat. Local
 TODO/FUTURE files are scratch only (operator + lead 2026-06-12
 doctrine, see SKILL.md MANDATE).
@@ -121,7 +121,7 @@ Agent-registry resolution (where the watcher finds each peer's
 a2a port):
 
 - A top-level `agents:` list in `tasks.yaml`:
-  `[{name: proj-foo, a2a_port: 41234}, ...]`. This static list is
+  `[{name: scitex-todo, a2a_port: 41234}, ...]`. This static list is
   scitex-todo's own SSoT for the agent port table — no external
   runtime is consulted.
 

@@ -17,7 +17,7 @@ tags:
 
 # For consuming agents — adopt `.scitex/todo/` as YOUR task SSoT
 
-You are a fleet agent (a `proj-<something>` SAC peer) **OR the lead**.
+You are a fleet agent (a SAC peer) **OR the lead**.
 The operator has made `.scitex/todo/` the **single canonical home**
 for fleet task state — yours, the lead's, every other agent's, the
 operator's own. This skill tells you exactly what to do.
@@ -51,17 +51,17 @@ scitex-todo --version
 scitex-todo resolve-store                  # prints the resolved path + chain
 
 # 2. Add a smoke task to YOUR slice.
-scitex-todo add proj-<you>-smoke-$(date +%s) \
+scitex-todo add <you>-smoke-$(date +%s) \
     '[P2] smoke: confirm I can write to .scitex/todo' \
-    --scope agent:proj-<you> \
-    --assignee proj-<you> \
+    --scope agent:<you> \
+    --assignee <you> \
     --status pending
 
 # 3. List your slice + confirm the row is there.
-scitex-todo list-tasks --scope agent:proj-<you> --json | jq '.[].id'
+scitex-todo list-tasks --scope agent:<you> --json | jq '.[].id'
 
 # 4. Mark it done.
-scitex-todo done proj-<you>-smoke-<that-stamp> --by proj-<you>
+scitex-todo done <you>-smoke-<that-stamp> --by <you>
 
 # 5. See yourself on the board.
 # Open http://<board-host>:8051/  — your row is visible within 5s.
@@ -157,7 +157,7 @@ The validator REJECTS unknown values in the closed enums below.
 **Required fields:**
 
 - `id` (str, globally unique, kebab-case, **prefix with your project**:
-  e.g. `proj-scitex-todo-fleet-rollout`, `clew-cohort-a-rerun`).
+  e.g. `scitex-todo-fleet-rollout`, `clew-cohort-a-rerun`).
 - `title` (str, short scannable label, ≤ 80 chars).
 - `status` (closed enum below).
 
@@ -175,9 +175,9 @@ blocker on a non-blocked row raises.
 **Recommended fields (operator-co-designed surface, TG 9667):**
 
 - `assignee` (str) — **PRIMARY agent-linking field. Set this to YOUR
-  agent name** (e.g. `proj-scitex-todo`). The lead's empirical
+  agent name** (e.g. `scitex-todo`). The lead's empirical
   dogfood (2026-06-07) confirms `scitex-todo list-tasks --assignee
-  proj-X` filters correctly — this is THE field that lets every
+  <agent-id>` filters correctly — this is THE field that lets every
   consumer (lead, board, you) ask "show me agent X's open tasks."
   Forward-compat: the dataclass also has an `agent` field as the
   operator-co-designed long-term replacement; the migration is
@@ -232,13 +232,13 @@ All paths below resolve to YOUR project tier by default (see
 
 ```bash
 scitex-todo add \
-  proj-scitex-todo-fleet-rollout \
+  scitex-todo-fleet-rollout \
   '[P1] Fleet rollout of scitex-todo skill across agents' \
   --status pending \
-  --scope agent:proj-scitex-todo \
-  --assignee proj-scitex-todo \
+  --scope agent:scitex-todo \
+  --assignee scitex-todo \
   --priority 10 \
-  --note 'See tasks/proj-scitex-todo-fleet-rollout/README.md'
+  --note 'See tasks/scitex-todo-fleet-rollout/README.md'
 ```
 
 > **CLI gap (in flight, see [41_cli-mcp-gap-analysis.md](41_cli-mcp-gap-analysis.md)):**
@@ -256,20 +256,20 @@ Python equivalent:
 from scitex_todo import add_task
 add_task(
     None,                           # tasks_path; None = resolve default
-    id="proj-scitex-todo-fleet-rollout",
+    id="scitex-todo-fleet-rollout",
     title="[P1] Fleet rollout of scitex-todo skill across agents",
     status="pending",
-    scope="agent:proj-scitex-todo",
-    assignee="proj-scitex-todo",
+    scope="agent:scitex-todo",
+    assignee="scitex-todo",
     priority=10,
-    note="See tasks/proj-scitex-todo-fleet-rollout/README.md",
+    note="See tasks/scitex-todo-fleet-rollout/README.md",
 )
 ```
 
 ### LIST — `scitex-todo list-tasks`
 
 ```bash
-scitex-todo list-tasks --scope agent:proj-scitex-todo --json
+scitex-todo list-tasks --scope agent:scitex-todo --json
 ```
 
 Filters today: `--scope` / `--assignee` / `--status` (exact match).
@@ -282,7 +282,7 @@ Use `--json` for machine output.
 ### UPDATE — `scitex-todo update`
 
 ```bash
-scitex-todo update proj-scitex-todo-fleet-rollout \
+scitex-todo update scitex-todo-fleet-rollout \
   --status in_progress \
   --priority 5 \
   --note 'Skill draft pushed PR #N; gap closures next'
@@ -306,12 +306,12 @@ from scitex_todo import _store
 import datetime as _dt
 _store.update_task(
     None,
-    "proj-scitex-todo-fleet-rollout",
+    "scitex-todo-fleet-rollout",
     comments=[
         # ... existing comments preserved by load → append → save_tasks ...
         {
           "ts": _dt.datetime.utcnow().isoformat() + "Z",
-          "author": "proj-scitex-todo",
+          "author": "scitex-todo",
           "text": "Skill draft pushed PR #N; awaiting lead design ACK.",
         },
     ],
@@ -324,7 +324,7 @@ _store.update_task(
 ### COMPLETE — `scitex-todo done`
 
 ```bash
-scitex-todo done proj-scitex-todo-fleet-rollout --by proj-scitex-todo
+scitex-todo done scitex-todo-fleet-rollout --by scitex-todo
 ```
 
 Stamps `_log_meta.completed_at` (UTC ISO-8601) + `completed_by` (the
@@ -338,7 +338,7 @@ MCP: `complete_task`. Python: `scitex_todo.complete_task`.
 There's no `reopen` CLI verb today. Use `update --status pending`:
 
 ```bash
-scitex-todo update proj-scitex-todo-fleet-rollout --status pending
+scitex-todo update scitex-todo-fleet-rollout --status pending
 ```
 
 The web board's `/reopen` HTTP endpoint (PR #61) is operator-facing;
@@ -351,9 +351,9 @@ the CLI parity is on the gap list.
 Whenever a task has substantive context, seed the per-task dir:
 
 ```bash
-mkdir -p tasks/proj-scitex-todo-fleet-rollout
-$EDITOR tasks/proj-scitex-todo-fleet-rollout/README.md   # what / why / how
-$EDITOR tasks/proj-scitex-todo-fleet-rollout/adr.md      # ADR-template decisions
+mkdir -p tasks/scitex-todo-fleet-rollout
+$EDITOR tasks/scitex-todo-fleet-rollout/README.md   # what / why / how
+$EDITOR tasks/scitex-todo-fleet-rollout/adr.md      # ADR-template decisions
 ```
 
 - `README.md` is the **Issue BODY** — free-form markdown. Reference it
@@ -413,7 +413,7 @@ scitex_todo.update_task(
     comments=[
         # existing entries first (load_tasks → preserve)
         {"ts": _dt.datetime.utcnow().isoformat() + "Z",
-         "author": "proj-scitex-todo",
+         "author": "scitex-todo",
          "text": "FYI my fleet-rollout PR will need this; flagged."},
     ],
 )
@@ -463,12 +463,12 @@ The lead can write into a project-local root when it's seeding a
 follow-up for a specific repo's agent (then the worker takes over):
 
 ```bash
-# Lead seeding a task into the proj-scitex-todo project tier:
+# Lead seeding a task into the scitex-todo project tier:
 scitex-todo --tasks ~/proj/scitex-todo/.scitex/todo/tasks.yaml \
-  add proj-scitex-todo-fleet-rollout \
+  add scitex-todo-fleet-rollout \
   '[P0] Fleet rollout of scitex-todo skill across agents' \
-  --scope agent:proj-scitex-todo \
-  --assignee proj-scitex-todo \
+  --scope agent:scitex-todo \
+  --assignee scitex-todo \
   --status pending
 ```
 
@@ -558,7 +558,7 @@ read.
   markdown either.
 - **Don't invent new statuses / kinds / blockers.** The validator
   REJECTS them. If a new value is needed, propose it in `adr.md` for
-  the package owner (`proj-scitex-todo`) to add to the enum.
+  the package owner (`scitex-todo`) to add to the enum.
 
 ---
 

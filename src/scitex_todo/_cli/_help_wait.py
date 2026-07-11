@@ -37,7 +37,7 @@ from ._write import _TASKS_OPTION, _emit
         ),
         examples=(
             (
-                "{prog} help-wait proj-scitex-todo "
+                "{prog} help-wait \"$SCITEX_TODO_AGENT_ID\" "
                 "--question 'merge PR #240 or wait for CI?'",
                 "Raise (or refresh) the waiting card.",
             ),
@@ -77,7 +77,7 @@ def help_wait_cmd(agent, question, host, as_json, tasks_path) -> None:
     **spec_command_kwargs(
         summary="Resolve the help-<agent>-waiting card (status=done + clear blocker).",
         description="No-op (exit 0) if the card does not exist.",
-        examples=(("{prog} help-clear proj-scitex-todo", "Clear the waiting card."),),
+        examples=(("{prog} help-clear \"$SCITEX_TODO_AGENT_ID\"", "Clear the waiting card."),),
     ),
 )
 @click.argument("agent")
