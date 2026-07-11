@@ -4,6 +4,67 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-07-11 — feat: abolish `pending`; WIP gate counts work-in-flight only; deferred consumption pipeline; tolerant enum handling; board-UI batch
+
+The fleet-incident release (2026-07-10 night): four operator-directed fixes
+that each bit multiple agents in production, plus the board-UI review batch.
+
+### Changed — status model
+- `pending` is ABOLISHED. It is out of `VALID_STATUSES`; every default (CLI
+  `--status`, MCP `add_task`, board create handler, `Task` dataclass) is now
+  `deferred` — a new card carries a real decision. The CLI Choice and the
+  board handlers reject `pending` at the boundary (HTTP 400 / usage error).
+- `deferred` is NOT terminal (operator ruling: deferred は終了ではない). It is
+  open backlog: it shows in active views, counts as open, and CAN be overdue
+  when it carries a missed deadline. `close` writes `cancelled` (the real
+  "closed as not planned" state) instead of overloading `deferred`.
+- Tolerant enum handling on the SHARED store: an unknown status or a
+  blocker-less `blocked` row WARNS loudly (naming the card and the likely
+  version skew) instead of raising — on both read and write. One newer
+  writer's row can no longer take every older reader's board down (the
+  2026-07-10 fleet outage) or make every other agent's write fail.
+  Structural corruption (missing id/title, duplicate id) still raises.
+
+### Fixed — WIP gate counted backlog, not WIP
+- The add gate excluded only `{done, goal}`, so `deferred`/`failed`/
+  `cancelled` consumed budget forever; after the pending→deferred migration
+  agents were refused at "88 open tasks" and could not even record incidents.
+  Now `WIP_STATUSES = {in_progress}`; the gate fires only when the incoming
+  card is itself `in_progress`. RECORDING (blocked/deferred/goal) is never
+  gated. `OPEN_EXCLUDED_STATUSES` unifies the open predicate that previously
+  existed in two drifted hand-copies.
+
+### Added — deferred consumption pipeline (deferred is debt)
+- `_backlog_triage`: recency-weighted pick-for-action sampling
+  (Efraimidis–Spirakis, without replacement — fresh cards dominate; the
+  backlog must not eat the agent), age-based expiry past 30 days (default
+  outcome cancellation; the owner rescues what they still want), the
+  `deferred_at` age clock (stamped once on entry, never reset by a re-defer)
+  and the `last_triaged_at` re-draw cooldown.
+- `scitex-todo triage [--mine|--agent X] [--json]` — the read-only payload a
+  short-lived twin consumes under its parent's identity; mutation stays with
+  the existing verbs.
+- The 24 h backlog nudge, `runnable`, and `next` now target `deferred`
+  (they still targeted the abolished `pending`, which no card carries — 379
+  deferred cards were ageing in total silence).
+
+### Added — store concurrency (lost-write incident)
+- `edit_tasks(path)`: one locked read-modify-write cycle; writes nothing on
+  exception. The sanctioned bulk-edit primitive.
+- `save_tasks(..., expected_generation=store_generation(path))`: optimistic
+  concurrency — a write based on a stale read raises `StaleStoreError`
+  instead of silently erasing a concurrent writer's rows.
+- `comment_task` stamps `last_activity` — a comment IS activity (cards under
+  active discussion no longer read as abandoned).
+
+### Added — board UI (operator live-review batch)
+- Sticky-note Wall view with per-assignee islands and a derived next-up
+  stack; brand-colored agent avatars; one-shot status-transition glow
+  (compositor-only, with an SVG `drop-shadow` twin); uniform right-click on
+  every view; cursor-offset hover tooltips replacing native `<title>` (which
+  renders under the pointer); Timeline leftmost; Stale view removed; search
+  input at filterbar scale; gzip on `/graph` (4.98 MB → 1.60 MB).
+
 ## [0.7.50] - 2026-07-09 — feat: inbox reads/writes default to SQLite (retires the per-poll whole-store parse)
 
 Fleet load incident: every agent's `scitex-todo mcp start` digest-poll (every
