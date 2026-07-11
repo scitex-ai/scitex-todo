@@ -6,18 +6,67 @@ No mocks (STX-NM / PA-306): we drive the REAL push wire in dry-run mode
 (``SCITEX_TODO_PUSH_DRY_RUN=1`` → ok=True, no network) and a real
 no-turn-url path (fail-soft). Threshold is pinned via the env so the
 test is independent of wall-clock-relative defaults.
+
+The sweep persists its deliver-on-change state in a sidecar under the store's
+``runtime/`` dir, so every test runs against a REAL but ``tmp_path``-scoped
+store (``_isolated_store``) — never the user's canonical one.
 """
 
 from __future__ import annotations
 
+import contextlib
 import datetime as _dt
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import pytest
+
+from scitex_todo._paths import ENV_TASKS
 from scitex_todo._push import ENV_DRY_RUN
 from scitex_todo._stale_active import (
     ENV_PENDING_NUDGE_HOURS,
     ENV_STALE_ACTIVE_HOURS,
 )
-from scitex_todo._stale_active_nudge import sweep_and_nudge
+from scitex_todo._stale_active_nudge import (
+    ENV_NUDGE_FLOOR_HOURS,
+    KIND_STALE_ACTIVE,
+    load_nudge_state,
+    sweep_and_nudge,
+)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_store(tmp_path, monkeypatch):
+    """Point the store (and therefore the nudge sidecar) at a tmp dir."""
+    store = tmp_path / "tasks.yaml"
+    monkeypatch.setenv(ENV_TASKS, str(store))
+    return store
+
+
+@contextlib.contextmanager
+def _local_receiver():
+    """A REAL local turn-url receiver (no mocks): answers 200, records bodies."""
+    received: list[bytes] = []
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802 — BaseHTTPRequestHandler's contract.
+            length = int(self.headers.get("Content-Length") or 0)
+            received.append(self.rfile.read(length))
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *_args):  # keep the test output clean
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/v1/turn", received
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def _iso_hours_ago(h):
@@ -135,3 +184,109 @@ class TestSweepBothKinds:
         assert "# 0 stale-active push(es) sent" in lines
         assert "# 0 pending-backlog push(es) sent" in lines
         assert "push raised" in joined
+
+    def test_raising_owner_does_not_starve_the_other_owner(self, monkeypatch):
+        # The batch guarantee, on the REAL wire (no mocks): one owner's turn URL
+        # raises (no scheme → urlopen ValueError), the other's points at a real
+        # local receiver that answers 200. The raiser must NOT abort the batch:
+        # the healthy owner is still DELIVERED.
+        monkeypatch.delenv(ENV_DRY_RUN, raising=False)
+        monkeypatch.delenv("SCITEX_TODO_AGENT_TURN_URLS", raising=False)
+        monkeypatch.setenv(ENV_STALE_ACTIVE_HOURS, "2")
+        with _local_receiver() as (url, received):
+            monkeypatch.setenv("SCITEX_TODO_TURN_URL_BADOWNER", "noscheme-url")
+            monkeypatch.setenv("SCITEX_TODO_TURN_URL_GOODOWNER", url)
+            tasks = [_stale("s1", "badowner"), _stale("s2", "goodowner")]
+            lines = sweep_and_nudge(tasks)
+        joined = "\n".join(lines)
+        assert "push raised" in joined
+        assert "# 1 stale-active push(es) sent" in lines
+        assert len(received) == 1
+
+
+class TestDeliverOnChange:
+    """The sweep is SCHEDULED, so an unchanged stale set must not re-push."""
+
+    def test_unchanged_set_is_suppressed_on_second_sweep(self, monkeypatch):
+        monkeypatch.setenv(ENV_DRY_RUN, "1")
+        monkeypatch.setenv(ENV_STALE_ACTIVE_HOURS, "2")
+        tasks = [_stale("a1", "alpha")]
+        assert "# 1 stale-active push(es) sent" in sweep_and_nudge(tasks)
+
+        lines = sweep_and_nudge(tasks)
+        assert "# 0 stale-active push(es) sent" in lines
+        # Suppressed, but NOT silent — the owner is still surfaced with a reason.
+        joined = "\n".join(lines)
+        assert "alpha" in joined and "suppressed" in joined
+
+    def test_added_card_repushes(self, monkeypatch):
+        monkeypatch.setenv(ENV_DRY_RUN, "1")
+        monkeypatch.setenv(ENV_STALE_ACTIVE_HOURS, "2")
+        sweep_and_nudge([_stale("a1", "alpha")])
+        lines = sweep_and_nudge([_stale("a1", "alpha"), _stale("a2", "alpha")])
+        assert "# 1 stale-active push(es) sent" in lines
+
+    def test_removed_card_repushes(self, monkeypatch):
+        monkeypatch.setenv(ENV_DRY_RUN, "1")
+        monkeypatch.setenv(ENV_STALE_ACTIVE_HOURS, "2")
+        sweep_and_nudge([_stale("a1", "alpha"), _stale("a2", "alpha")])
+        lines = sweep_and_nudge([_stale("a1", "alpha")])
+        assert "# 1 stale-active push(es) sent" in lines
+
+    def test_touched_card_leaving_the_bucket_repushes(self, monkeypatch):
+        monkeypatch.setenv(ENV_DRY_RUN, "1")
+        monkeypatch.setenv(ENV_STALE_ACTIVE_HOURS, "2")
+        sweep_and_nudge([_stale("a1", "alpha"), _stale("a2", "alpha")])
+        # a2 is touched → it drops out of the stale bucket → the set CHANGED.
+        lines = sweep_and_nudge([_stale("a1", "alpha"), _fresh("a2", "alpha")])
+        assert "# 1 stale-active push(es) sent" in lines
+
+    def test_owner_state_pruned_when_no_cards_left(self, monkeypatch):
+        monkeypatch.setenv(ENV_DRY_RUN, "1")
+        monkeypatch.setenv(ENV_STALE_ACTIVE_HOURS, "2")
+        sweep_and_nudge([_stale("a1", "alpha")])
+        sweep_and_nudge([_fresh("a1", "alpha")])
+        assert "alpha" not in load_nudge_state()[KIND_STALE_ACTIVE]
+
+    def test_floor_elapsed_repushes_the_unchanged_set(self, monkeypatch):
+        # A genuinely stuck owner must still be nudged once the floor elapses,
+        # even though nothing about their card set changed.
+        monkeypatch.setenv(ENV_DRY_RUN, "1")
+        monkeypatch.setenv(ENV_STALE_ACTIVE_HOURS, "2")
+        monkeypatch.setenv(ENV_NUDGE_FLOOR_HOURS, "24")
+        t0 = _dt.datetime(2026, 7, 11, 9, 0, tzinfo=_dt.timezone.utc)
+        # Timestamp relative to the INJECTED clock, not wall-clock.
+        tasks = [{
+            "id": "a1", "status": "in_progress", "title": "a1", "agent": "alpha",
+            "last_activity": (t0 - _dt.timedelta(hours=10)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
+        }]
+
+        assert "# 1 stale-active push(es) sent" in sweep_and_nudge(tasks, now=t0)
+        mid = t0 + _dt.timedelta(hours=6)
+        assert "# 0 stale-active push(es) sent" in sweep_and_nudge(tasks, now=mid)
+        past = t0 + _dt.timedelta(hours=25)
+        assert "# 1 stale-active push(es) sent" in sweep_and_nudge(tasks, now=past)
+
+    def test_failed_push_is_not_suppressed_next_sweep(self, monkeypatch):
+        # A push that did NOT land must be retried, not treated as delivered.
+        monkeypatch.delenv(ENV_DRY_RUN, raising=False)
+        monkeypatch.delenv("SCITEX_TODO_AGENT_TURN_URLS", raising=False)
+        monkeypatch.setenv(ENV_STALE_ACTIVE_HOURS, "2")
+        tasks = [_stale("a1", "nourlowner")]
+        sweep_and_nudge(tasks)  # ok=False (no-turn-url-configured)
+        assert "nourlowner" not in load_nudge_state()[KIND_STALE_ACTIVE]
+        joined = "\n".join(sweep_and_nudge(tasks))
+        assert "suppressed" not in joined
+
+    def test_pending_backlog_is_suppressed_independently(self, monkeypatch):
+        monkeypatch.setenv(ENV_DRY_RUN, "1")
+        monkeypatch.setenv(ENV_STALE_ACTIVE_HOURS, "2")
+        monkeypatch.setenv(ENV_PENDING_NUDGE_HOURS, "24")
+        tasks = [_stale("s1", "alpha"), _pending("p1", "alpha")]
+        sweep_and_nudge(tasks)
+        # Only the stale-active set changes; the backlog set does not.
+        lines = sweep_and_nudge([*tasks, _stale("s2", "alpha")])
+        assert "# 1 stale-active push(es) sent" in lines
+        assert "# 0 pending-backlog push(es) sent" in lines

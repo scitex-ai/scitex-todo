@@ -80,6 +80,14 @@ def register(main: click.Group) -> None:
     help="Re-surface standing terminal comm-misses every N ticks (throttle; "
     "<=0 disables).",
 )
+@click.option(
+    "--nudge-sweep-minutes",
+    type=float,
+    default=None,
+    help="Cadence (minutes) of the fleet-liveness stale/backlog nudge sweep, "
+    "kept OUT of the hot delivery path (default: 30, or "
+    "$SCITEX_TODO_NUDGE_SWEEP_MINUTES; <=0 disables).",
+)
 @click.pass_context
 def notifyd_group(
     ctx: click.Context,
@@ -87,6 +95,7 @@ def notifyd_group(
     interval: float,
     run_once: bool,
     terminal_report_every: int,
+    nudge_sweep_minutes: float | None,
 ) -> None:
     """The ``notifyd`` group — bare invocation runs the daemon foreground."""
     if ctx.invoked_subcommand is not None:
@@ -128,6 +137,7 @@ def notifyd_group(
             store=tasks_path,
             interval=interval,
             terminal_report_every=terminal_report_every,
+            nudge_sweep_minutes=nudge_sweep_minutes,
         )
     except DaemonAlreadyRunning as exc:
         raise click.ClickException(str(exc)) from exc
