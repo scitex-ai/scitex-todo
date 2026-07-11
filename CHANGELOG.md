@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.5] - 2026-07-12 — fix: `status=""` was a SILENT DELETE; clearing an enum field now deletes the key
+
+### Fixed
+- **`status=""` silently deleted the status, minting a card with no lane.** The MCP layer
+  mapped `"" -> None` for *every* field, so an empty status removed the key behind the
+  store's back. A status-less card has no lane on the board and drops out of every
+  status-filtered view — it does not error, it simply **vanishes**. Enum fields now pass
+  through verbatim and the store owns the rule.
+- **Clearing a blocker with `""` was the one documented way that could not work.** The MCP
+  docstring promises *"pass an empty string to CLEAR a string field"*, but on the store
+  primitive `blocker=""` wrote the literal empty string and the validator then rejected the
+  save:
+
+      TaskValidationError: invalid blocker ''; must be one of
+      ('compute','dependency','dep','operator-decision','agent-wait','none') or absent
+
+  Worse, it failed at SAVE time — after the caller had built a mutation it believed valid —
+  so in a bulk script it aborted the **whole batch**. Now `""` on an enum field means
+  DELETE-THE-KEY, consumed in the update path before the lock is taken, so a doomed
+  mutation never acquires it and `""` never reaches the validator as a value.
+- The CLI could not clear `kind` at all (strict `click.Choice` rejected `''` at parse
+  time), so the documented contract had no CLI form. Added, mirroring the blocker flag.
+
+### Decisions
+- `blocker` — **clearable** (`""` or whitespace-only deletes the key).
+- `kind` — **clearable**; an absent `kind` already means `task`, so clearing is meaningful.
+- `status` — **NOT clearable, refused loudly.** A card's status is its *decision*, not an
+  optional label — the same reasoning that abolished `pending`. `status=""` now raises,
+  naming the reason and the valid set, rather than being silently swallowed.
+
+### Notes
+- The validator is untouched: `blocker="banana"` still raises. The guard refusing
+  `status: done` while a blocker is still set is untouched and pinned by a regression test —
+  a done-but-blocked row is incoherent and that guard is correct.
+
 ## [0.8.4] - 2026-07-11 — fix: the MCP instructions taught a DEAD identity; agents saw 3% of their own cards
 
 ### Fixed
