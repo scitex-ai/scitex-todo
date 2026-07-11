@@ -69,7 +69,13 @@ from ._reminder_bodies import (
     _digest_body,
     _escalation_body,
 )
-from ._reminder_enqueue import _iso, _safe_enqueue, _safe_resolve
+from ._reminder_enqueue import (
+    _digest_fingerprint,
+    _floor_minutes,
+    _iso,
+    _safe_enqueue,
+    _safe_resolve,
+)
 from ._reminder_liveness import _card_creator, _owner_liveness
 from ._stale_active import detect_pending_backlog, detect_stale_active
 from ._throughput import _now_utc, _parse_iso
@@ -399,19 +405,44 @@ def sweep_reminders(
             owner_state[owner] = entry
             continue
 
-        owner_key = _safe_resolve(resolve_key, owner)
-        body = _digest_body(cards, count + 1)
-        # The digest is a CUMULATIVE snapshot — supersede any unseen predecessor
-        # so a channel-down owner never accumulates a replay-storm of stale
-        # digests. Per-card escalations below stay distinct (supersede=False).
-        if _safe_enqueue(
-            enqueue, owner_key, EVENT_DIGEST, DIGEST_CARD_ID, body, cur, store,
-            supersede=True,
-        ):
-            count += 1
-            entry["count"] = count
-            entry["last_at"] = _iso(cur)
-            digested.append(owner)
+        # The owner is DUE. The digest TICK still advances — escalation fires
+        # after N ticks, so suppressing ticks would silently disarm the
+        # operator escalation below (this bit me: the escalation tests caught
+        # it). Only the DELIVERY is conditional.
+        count += 1
+        entry["count"] = count
+        entry["last_at"] = _iso(cur)
+
+        # DELIVER ON CHANGE. Re-sending an identical digest wakes the owner for
+        # zero new information; observed live 2026-07-11: 26 identical digests
+        # in ~2h, same card list, only the counter moving. That trains an agent
+        # to ignore the digest — the one signal that must stay un-ignorable. So
+        # the wake-up is skipped while the card set (and each card's status) is
+        # unchanged, UNTIL the floor elapses: a genuinely stuck owner is still
+        # nudged, daily instead of every few minutes.
+        # NOTE: suppression must NOT `continue` — the operator escalation below
+        # lives in this same iteration, and skipping it would silence the very
+        # signal that matters most. Only the digest ENQUEUE is skipped.
+        fingerprint = _digest_fingerprint(cards)
+        suppress = fingerprint == entry.get("fingerprint") and not _due(
+            entry.get("delivered_at"), cur, interval_minutes=_floor_minutes()
+        )
+        if suppress:
+            skipped.append(owner)
+        else:
+            owner_key = _safe_resolve(resolve_key, owner)
+            body = _digest_body(cards, count)
+            # The digest is a CUMULATIVE snapshot — supersede any unseen
+            # predecessor so a channel-down owner never accumulates a
+            # replay-storm of stale digests. Per-card escalations below stay
+            # distinct (supersede=False).
+            if _safe_enqueue(
+                enqueue, owner_key, EVENT_DIGEST, DIGEST_CARD_ID, body, cur, store,
+                supersede=True,
+            ):
+                entry["fingerprint"] = fingerprint
+                entry["delivered_at"] = _iso(cur)
+                digested.append(owner)
         owner_state[owner] = entry
 
         # Escalate to the OPERATOR each high-priority card that survived enough

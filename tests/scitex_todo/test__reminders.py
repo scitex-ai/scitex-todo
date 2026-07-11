@@ -182,16 +182,73 @@ def test_sweep_does_not_renag_before_interval(tmp_path):
     assert len(rec.calls) == 1
 
 
-def test_sweep_renags_after_interval_elapses(tmp_path):
+def test_sweep_renags_after_interval_when_content_changed(tmp_path):
+    """The interval GATES a re-nag; changed content is what TRIGGERS one.
+
+    (Before 2026-07-11 the elapsed interval alone re-sent an identical digest;
+    see test_unchanged_digest_is_suppressed_until_the_floor.)
+    """
     store = tmp_path / "tasks.yaml"
     rec = _EnqueueRecorder()
     tasks = [_t(id="c1", owner="alice", hours_ago=10.0)]
     kw = dict(store=store, enqueue=rec, resolve_key=_resolver({}), interval_minutes=5.0)
 
     sweep_reminders(tasks, now=_NOW, **kw)
-    out2 = sweep_reminders(tasks, now=_NOW + _dt.timedelta(minutes=6), **kw)
+    # A second stale card appears — the digest's content genuinely changed.
+    tasks2 = tasks + [_t(id="c2", owner="alice", hours_ago=10.0)]
+    out2 = sweep_reminders(tasks2, now=_NOW + _dt.timedelta(minutes=6), **kw)
 
     assert out2["digested"] == ["alice"]
+    assert len(rec.calls) == 2
+
+
+def test_unchanged_digest_is_suppressed_until_the_floor(tmp_path):
+    """An identical digest must NOT re-wake the owner every interval.
+
+    Observed live 2026-07-11: 26 identical digests in ~2h — same card list,
+    only the counter moving. That trains an agent to ignore the digest, which
+    is the one signal that must stay un-ignorable.
+    """
+    store = tmp_path / "tasks.yaml"
+    rec = _EnqueueRecorder()
+    tasks = [_t(id="c1", owner="alice", hours_ago=10.0)]
+    kw = dict(store=store, enqueue=rec, resolve_key=_resolver({}), interval_minutes=5.0)
+
+    sweep_reminders(tasks, now=_NOW, **kw)
+    # Many intervals pass; nothing about the owner's cards changes.
+    for minutes in (6, 12, 60, 300):
+        out = sweep_reminders(tasks, now=_NOW + _dt.timedelta(minutes=minutes), **kw)
+        assert out["digested"] == []
+        assert out["skipped"] == ["alice"]
+    assert len(rec.calls) == 1
+
+
+def test_unchanged_digest_still_fires_once_past_the_floor(tmp_path):
+    """Suppression is not silence — a stuck owner is still nudged daily."""
+    store = tmp_path / "tasks.yaml"
+    rec = _EnqueueRecorder()
+    tasks = [_t(id="c1", owner="alice", hours_ago=10.0)]
+    kw = dict(store=store, enqueue=rec, resolve_key=_resolver({}), interval_minutes=5.0)
+
+    sweep_reminders(tasks, now=_NOW, **kw)
+    out = sweep_reminders(tasks, now=_NOW + _dt.timedelta(hours=25), **kw)
+
+    assert out["digested"] == ["alice"]
+    assert len(rec.calls) == 2
+
+
+def test_status_change_alone_retriggers_the_digest(tmp_path):
+    """Same card ids, different state — the owner must hear about it."""
+    store = tmp_path / "tasks.yaml"
+    rec = _EnqueueRecorder()
+    kw = dict(store=store, enqueue=rec, resolve_key=_resolver({}), interval_minutes=5.0)
+
+    tasks = [_t(id="c1", owner="alice", hours_ago=10.0, status="in_progress")]
+    sweep_reminders(tasks, now=_NOW, **kw)
+    tasks2 = [_t(id="c1", owner="alice", hours_ago=10.0, status="blocked")]
+    out = sweep_reminders(tasks2, now=_NOW + _dt.timedelta(minutes=6), **kw)
+
+    assert out["digested"] == ["alice"]
     assert len(rec.calls) == 2
 
 
@@ -203,8 +260,12 @@ def test_default_interval_is_five_minutes(tmp_path):
     kw = dict(store=store, enqueue=rec, resolve_key=_resolver({}))
 
     sweep_reminders(tasks, now=_NOW, **kw)
-    early = sweep_reminders(tasks, now=_NOW + _dt.timedelta(minutes=4), **kw)
-    late = sweep_reminders(tasks, now=_NOW + _dt.timedelta(minutes=6), **kw)
+    # Content changes each time, so ONLY the cadence gate is under test here
+    # (an unchanged digest is suppressed on purpose — see the deliver-on-change
+    # tests above).
+    grown = tasks + [_t(id="c2", owner="alice", hours_ago=10.0)]
+    early = sweep_reminders(grown, now=_NOW + _dt.timedelta(minutes=4), **kw)
+    late = sweep_reminders(grown, now=_NOW + _dt.timedelta(minutes=6), **kw)
 
     assert early["digested"] == []   # 4 min < 5 min default
     assert late["digested"] == ["alice"]  # 6 min ≥ 5 min default
@@ -220,7 +281,9 @@ def test_card_level_override_tightens_owner_cadence(tmp_path):
 
     sweep_reminders(tasks, now=_NOW, **kw)
     # 90 s later: under 5 min default, but over the card's 1 min override → due.
-    out2 = sweep_reminders(tasks, now=_NOW + _dt.timedelta(seconds=90), **kw)
+    # (Content grows so the cadence gate, not deliver-on-change, is under test.)
+    grown = tasks + [_t(id="c2", owner="alice", hours_ago=10.0)]
+    out2 = sweep_reminders(grown, now=_NOW + _dt.timedelta(seconds=90), **kw)
 
     assert out2["digested"] == ["alice"]
     assert len(rec.calls) == 2
@@ -238,7 +301,8 @@ def test_config_interval_knob_is_honored(tmp_path, monkeypatch):
     kw = dict(store=store, enqueue=rec, resolve_key=_resolver({}))
 
     sweep_reminders(tasks, now=_NOW, **kw)
-    out2 = sweep_reminders(tasks, now=_NOW + _dt.timedelta(minutes=3), **kw)
+    grown = tasks + [_t(id="c2", owner="alice", hours_ago=10.0)]
+    out2 = sweep_reminders(grown, now=_NOW + _dt.timedelta(minutes=3), **kw)
 
     assert out2["digested"] == ["alice"]  # 3 min ≥ configured 2 min
 
@@ -688,3 +752,29 @@ def test_liveness_path_does_not_disturb_operator_escalation(tmp_path):
 
 
 # EOF
+
+
+def test_escalation_still_fires_while_the_digest_is_suppressed(tmp_path):
+    """Suppressing the OWNER's digest must never silence the OPERATOR escalation.
+
+    The first cut of deliver-on-change `continue`d past the escalation block,
+    so a high-priority card could rot forever with nobody told. The digest tick
+    advances on the cadence; only the owner-facing enqueue is conditional.
+    """
+    store = tmp_path / "tasks.yaml"
+    rec = _EnqueueRecorder()
+    tasks = [_t(id="c1", owner="alice", hours_ago=50.0, priority=0)]
+    kw = dict(
+        store=store, enqueue=rec, resolve_key=_resolver({"operator": "u_op"}),
+        operator="operator", escalate_after=2, escalate_priority=1,
+        interval_minutes=5.0,
+    )
+
+    sweep_reminders(tasks, now=_NOW, **kw)
+    # Content is UNCHANGED, so the owner digest is suppressed on this sweep...
+    out2 = sweep_reminders(tasks, now=_NOW + _dt.timedelta(minutes=6), **kw)
+
+    assert out2["digested"] == []          # owner not re-woken
+    assert out2["skipped"] == ["alice"]
+    assert out2["escalated"] == ["c1"]     # ...but the operator IS told
+    assert len(_escalations(rec)) == 1

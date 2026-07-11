@@ -12,11 +12,43 @@ skipped — never aborting the whole notifyd sweep.
 from __future__ import annotations
 
 import datetime as _dt
+import hashlib
 import logging
+import os
 from pathlib import Path
 from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
+
+#: How long an UNCHANGED digest stays suppressed before it is re-sent anyway.
+#: The floor exists so an owner who is simply stuck still gets nudged; without
+#: it, deliver-on-change would go silent forever on a frozen backlog.
+ENV_DIGEST_FLOOR_HOURS = "SCITEX_TODO_DIGEST_FLOOR_HOURS"
+DEFAULT_DIGEST_FLOOR_HOURS = 24.0
+
+
+def _floor_minutes() -> float:
+    """Suppression floor for an unchanged digest, in minutes (env-overridable)."""
+    raw = os.environ.get(ENV_DIGEST_FLOOR_HOURS)
+    try:
+        hours = float(raw) if raw is not None else DEFAULT_DIGEST_FLOOR_HOURS
+    except (TypeError, ValueError):
+        hours = DEFAULT_DIGEST_FLOOR_HOURS
+    return hours * 60.0
+
+
+def _digest_fingerprint(cards) -> str:
+    """Identity of a digest's CONTENT — the card set and each card's status.
+
+    Deliberately excludes the attempt counter and the rendered ages: both tick
+    on their own, and including them would make every digest look "changed",
+    defeating the suppression. Status IS included, so a card moving
+    in_progress -> blocked re-notifies even when the id set is unchanged.
+    """
+    parts = sorted(
+        f"{getattr(c, 'id', '')}:{getattr(c, 'status', '')}" for c in cards
+    )
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 
 
 def _iso(now: _dt.datetime) -> str:
@@ -74,6 +106,14 @@ def _safe_enqueue(
         return False
 
 
-__all__ = ["_iso", "_safe_enqueue", "_safe_resolve"]
+__all__ = [
+    "_iso",
+    "_safe_enqueue",
+    "_safe_resolve",
+    "_digest_fingerprint",
+    "_floor_minutes",
+    "ENV_DIGEST_FLOOR_HOURS",
+    "DEFAULT_DIGEST_FLOOR_HOURS",
+]
 
 # EOF
