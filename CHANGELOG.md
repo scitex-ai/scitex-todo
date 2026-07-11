@@ -4,6 +4,38 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.2] - 2026-07-11 — fix: the fleet-liveness sweep actually runs, and nudges deliver on CHANGE
+
+### Fixed
+- **Nobody was checking whether agents were still working.** `sweep_and_nudge()`
+  detects owners whose `in_progress` cards have gone untouched past a threshold
+  and nudges that owner — but its only caller was the interactive `stats` CLI.
+  It was pulled out of notifyd's loop when the store-lock convoy was fixed and
+  never given another home, so in practice an idle agent was never nudged.
+  notifyd now schedules the sweep on its own low cadence: outside the 60 s
+  delivery path, detect-and-enqueue only, holding no store lock across it (a
+  lock-holding sweep in that loop is what caused the convoy), and fail-soft, so
+  a raising sweep can never kill delivery.
+- **The sweep could not safely be scheduled as it stood.** `_deliver_per_owner()`
+  pushed unconditionally — no fingerprint, no dedupe. With 30 owners currently
+  stale, cronning it would have sent ~30 identical nudges every hour forever:
+  the same desensitizing spam removed from the digest in 0.8.1. Nudges now
+  deliver on CHANGE. Per `(owner, kind)` state persists `{fingerprint,
+  delivered_at}`; the fingerprint is the *set* of stale card ids — order
+  independent, and deliberately excluding wall-clock age, which would change
+  every sweep and defeat suppression entirely.
+
+### Added
+- `SCITEX_TODO_NUDGE_FLOOR_HOURS` (default `24.0`) — an unchanged nudge is
+  re-sent anyway once the floor elapses, so a genuinely stuck agent is still
+  nudged daily. Mirrors the existing `SCITEX_TODO_DIGEST_FLOOR_HOURS`.
+
+### Notes
+- Only a **delivered** nudge arms the suppression; a failed push does not, so a
+  broken delivery wire cannot silently mute an agent forever.
+- Suppressed owners are still logged, so `stats` shows who was skipped and why.
+  Silent suppression is how a sweep loses its readers' trust.
+
 ## [0.8.1] - 2026-07-11 — fix: the digest wakes an owner on CHANGE, not every sweep; `update --help` renders on click >= 8.2
 
 ### Fixed
