@@ -12,9 +12,11 @@ tick but are not delivery:
 * :func:`_run_stale_nudge_sweep` — on its OWN, much slower cadence
   (:data:`ENV_NUDGE_SWEEP_MINUTES`): the fleet-liveness sweep
   (:func:`scitex_todo._stale_active_nudge.sweep_and_nudge`). It scans the whole
-  store and pushes on the turn-url wire, so it has no business in the 60 s
-  delivery path. Until this landed the sweep had NO scheduled caller at all
-  (only the interactive ``print-stats`` verb), so idle owners were never nudged.
+  store, so it has no business in the 60 s delivery path. Until this landed the
+  sweep had NO scheduled caller at all (only the interactive ``print-stats``
+  verb), so idle owners were never nudged. Like the reminder sweep it ENQUEUES
+  into each owner's pull-inbox (it used to push on the turn-url wire, which is
+  unprovisioned for nearly every agent — so once scheduled it reached NOBODY).
 
 Both READ the store and release it — no lock is held across a sweep (a
 lock-holding sweep in this loop is what produced the store-lock convoy) — and

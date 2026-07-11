@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Stale-active + pending-backlog nudge delivery — the network side.
+"""Stale-active + pending-backlog nudge delivery — the enqueue side.
 
 Pairs with the pure detectors in :mod:`scitex_todo._stale_active`:
 that module decides WHICH cards are stale-active / pending-backlog and
 groups them by owner; THIS module delivers a concise per-owner nudge
-over the SAME push wire ``--notify`` uses
-(:func:`scitex_todo._push.deliver`). One sweep emits up to two distinct
-per-owner lines:
+over the SAME rail the owner DIGEST uses — the standalone per-recipient
+PULL-INBOX (:func:`scitex_todo._inbox.enqueue`, wrapped by
+:func:`scitex_todo._reminder_enqueue._safe_enqueue`). One sweep emits up to
+two distinct per-owner lines:
 
 * ``stale-active`` (kind="stale-active"): "close/update the in_progress
   / blocked work you said you were doing".
@@ -17,10 +18,32 @@ per-owner lines:
 Both ride the SAME ``*/10`` ``--nudge-quiet`` cron — no new cron is
 added — and both are fail-soft per owner.
 
+WHY THE INBOX RAIL (the 2026-07-12 fix)
+---------------------------------------
+The nudge originally pushed on the turn-url wire
+(:func:`scitex_todo._push.deliver`). That wire is NOT provisioned for
+almost any agent, and a containerized agent cannot be POSTed to at all —
+so once the sweep was actually scheduled inside notifyd (v0.8.2) it
+delivered to NOBODY::
+
+    notifyd liveness sweep: ERR  scitex-todo    32 pending  wire=http  reason=transport-error
+    notifyd liveness sweep: ERR  scitex-types    2 pending  wire=http  reason=no-turn-url-configured
+    notifyd liveness sweep: # 0 pending-backlog push(es) sent
+
+The DIGEST (:mod:`scitex_todo._reminders`) has always used the rail that
+works: it ENQUEUES into the recipient's per-agent pull-inbox, which every
+agent already drains. The nudge now uses the SAME path, the SAME helpers
+(:func:`~scitex_todo._reminder_enqueue._safe_resolve` /
+:func:`~scitex_todo._reminder_enqueue._safe_enqueue`) and the SAME record
+shape, so an agent's existing drain picks nudges up with no change on its
+side. The turn-url push survives ONLY as an explicitly OPT-IN, strictly
+SECONDARY echo (:data:`ENV_NUDGE_PUSH`) for a host-reachable receiver; it
+is never a fallback and never decides whether a nudge counted as delivered.
+
 Why a separate module (not inline in ``_cli/_stats.py``): ``_stats.py``
 is at the line cap. Keeping the delivery loop here also keeps the pure
-detector free of any ``_push`` / network import so it stays unit-testable
-with plain list-of-dicts inputs.
+detector free of any delivery import so it stays unit-testable with plain
+list-of-dicts inputs.
 
 Behaviour (rides the existing ``*/10`` ``--nudge-quiet`` cron):
 
@@ -30,11 +53,13 @@ Behaviour (rides the existing ``*/10`` ``--nudge-quiet`` cron):
   suppress the most important nudges. Detection is purely time-based
   (``last_activity`` recency) — liveness is a separate concern owned by
   the wake-watcher / mesh.
-* Fail-soft per owner. A delivery failure (bad turn URL, transport error,
-  even an unexpected raise) for one owner is recorded and the sweep
-  continues — one bad owner never breaks the batch.
-* Short timeout. Reuses :data:`scitex_todo._push.NOTIFY_TIMEOUT_S` so a
-  slow receiver can't stall the cron tick.
+* Fail-soft per owner. A delivery failure (a bad recipient, an unwritable
+  store, even an unexpected raise) for one owner is LOGGED as an error and
+  the sweep continues — one bad owner never breaks the batch.
+* FAIL LOUD. A failed owner is an ``ERR`` line AND a ``logger.error``; a
+  sweep where every ATTEMPTED owner failed emits an unmissable ``!! ALERT``
+  line (``reached NOBODY``). A quiet "0 sent" is exactly what let the
+  turn-url rail ship broken.
 * DELIVER ON CHANGE. The sweep is scheduled (the notifyd low-cadence tick
   as well as the ``*/10`` cron), and re-pushing an IDENTICAL nudge on every
   tick is how a signal becomes noise — the same pathology the digest path
@@ -60,7 +85,7 @@ import logging
 import os
 from pathlib import Path
 
-from ._reminder_enqueue import _iso
+from ._reminder_enqueue import _iso, _safe_enqueue, _safe_resolve
 from ._stale_active import (
     detect_pending_backlog,
     detect_stale_active,
@@ -72,6 +97,14 @@ from ._throughput import _now_utc, _parse_iso
 logger = logging.getLogger(__name__)
 
 ENV_EMIT_HOOK = "SCITEX_TODO_STALE_ACTIVE_EMIT_HOOK"
+
+#: OPT-IN secondary echo of each nudge on the turn-url push wire
+#: (:func:`scitex_todo._push.deliver`) — for the rare host-reachable receiver
+#: that wants an out-of-band ping. Set to ``1`` to enable. It is an ACCELERATOR,
+#: never a rail: the inbox enqueue is always attempted and is the ONLY thing
+#: that decides delivered/failed (and therefore the suppression). There is NO
+#: fallback between the two rails in either direction.
+ENV_NUDGE_PUSH = "SCITEX_TODO_NUDGE_PUSH"
 
 #: Sidecar holding the per-(owner, kind) deliver-on-change state. A SIBLING of
 #: the reminder sidecar in the store's ``runtime/`` dir — deliberately its own
@@ -87,8 +120,21 @@ NUDGE_SIDECAR_NAME = "nudges.yaml"
 ENV_NUDGE_FLOOR_HOURS = "SCITEX_TODO_NUDGE_FLOOR_HOURS"
 DEFAULT_NUDGE_FLOOR_HOURS = 24.0
 
+#: Inbox ``event_type`` per kind (the inbox dedup discriminator + the drain's
+#: display key). Same shape as :data:`scitex_todo._reminders.EVENT_DIGEST`.
 KIND_STALE_ACTIVE = "stale-active"
 KIND_PENDING_BACKLOG = "pending-backlog"
+
+#: Synthetic ``card_id`` per kind — a nudge is ABOUT many cards, not one
+#: (mirrors :data:`scitex_todo._reminders.DIGEST_CARD_ID`). Distinct per kind so
+#: the ``supersede`` replace only ever collapses an owner's unseen nudge of the
+#: SAME kind: a nudge is a cumulative point-in-time snapshot, so a fresh one
+#: strictly replaces its unseen predecessor and an owner whose drain is down
+#: never accumulates a replay-storm.
+NUDGE_CARD_ID = {
+    KIND_STALE_ACTIVE: "(stale-active)",
+    KIND_PENDING_BACKLOG: "(pending-backlog)",
+}
 
 
 def _floor_minutes() -> float:
@@ -183,6 +229,27 @@ def save_nudge_state(
         logger.warning("stale-nudge: cannot write %s: %s", path, exc)
 
 
+def _push_echo(owner: str, body: str, *, kind: str, lines: list[str]) -> None:
+    """OPT-IN secondary echo on the turn-url wire (:data:`ENV_NUDGE_PUSH`).
+
+    Strictly cosmetic relative to the inbox enqueue: the result is SURFACED but
+    never counted, never arms the suppression, and never substitutes for a
+    failed enqueue (no silent fallback between rails). Fully guarded — a dead
+    receiver must not disturb the sweep.
+    """
+    from ._push import NOTIFY_TIMEOUT_S, deliver
+
+    try:
+        result = deliver(owner, body, kind=kind, timeout=NOTIFY_TIMEOUT_S)
+    except Exception as exc:  # noqa: BLE001 — the echo is best-effort.
+        lines.append(f"  ~   {owner:30}  push echo raised: {exc}")
+        return
+    lines.append(
+        f"  ~   {owner:30}  push echo ok={bool(result.get('ok'))} "
+        f"wire={result.get('wire')} reason={result.get('reason')}"
+    )
+
+
 def _deliver_per_owner(
     by_owner: dict,
     *,
@@ -192,38 +259,47 @@ def _deliver_per_owner(
     lines: list[str],
     state: dict[str, dict],
     now: _dt.datetime,
-) -> int:
+    store: str | Path | None,
+    enqueue,
+    resolve_key,
+) -> dict[str, int]:
     """Deliver one per-owner nudge of ``kind`` for each owner bucket.
 
-    Shared loop for both the stale-active and pending-backlog sweeps:
-    fail-soft per owner (a raise is logged + surfaced, never aborts the
-    batch), short timeout, ``(unassigned)`` surfaced but not pushed.
-    Returns the count of successful pushes.
+    Shared loop for both the stale-active and pending-backlog sweeps. Delivery
+    is an ENQUEUE into the owner's pull-inbox — the rail the digest already
+    uses and every agent already drains (see the module docstring). Fail-soft
+    per owner (a failed/raising enqueue is logged as an ERROR and surfaced,
+    never aborts the batch); ``(unassigned)`` is surfaced but not delivered.
+
+    Returns ``{"detected", "delivered", "failed", "suppressed"}`` so the caller
+    can scream when an entire sweep reached nobody.
 
     ``body_fn(owner, cards)`` composes the nudge body; ``label`` is the
     short noun used in the log lines (e.g. "stale" / "pending").
 
     ``state`` is this KIND's slice of the sidecar (``{owner: {fingerprint,
-    delivered_at}}``), mutated in place: the push is SKIPPED (but still
+    delivered_at}}``), mutated in place: the enqueue is SKIPPED (but still
     logged) while the owner's stale card set is unchanged and the floor has
-    not elapsed. Only the push is conditional — every owner is still visited,
-    fingerprinted, and surfaced.
+    not elapsed. Only the enqueue is conditional — every owner is still
+    visited, fingerprinted, and surfaced.
     """
-    from ._push import NOTIFY_TIMEOUT_S, deliver
-
-    pushed = 0
+    card_id = NUDGE_CARD_ID[kind]
+    echo = os.environ.get(ENV_NUDGE_PUSH) == "1"
+    counts = {"detected": 0, "delivered": 0, "failed": 0, "suppressed": 0}
     for owner, cards in sorted(by_owner.items()):
         if owner == "(unassigned)":
-            # No turn URL exists for the unassigned bucket; surface the
-            # gap but don't attempt a push.
+            # No inbox exists for the unassigned bucket; surface the gap but
+            # don't attempt a delivery.
             lines.append(
                 f"  -  {owner:30}  {len(cards)} {label} (no owner)"
             )
             continue
+        counts["detected"] += 1
         entry = state.get(owner) or {}
         fingerprint = _nudge_fingerprint(kind, cards)
         unchanged = fingerprint == entry.get("fingerprint")
         if unchanged and not _floor_elapsed(entry.get("delivered_at"), now):
+            counts["suppressed"] += 1
             lines.append(
                 f"  ..  {owner:30}  {len(cards)} {label}  suppressed "
                 f"(unchanged since {entry.get('delivered_at')}; "
@@ -231,27 +307,37 @@ def _deliver_per_owner(
             )
         else:
             body = body_fn(owner, cards)
-            try:
-                result = deliver(owner, body, kind=kind, timeout=NOTIFY_TIMEOUT_S)
-            except Exception as exc:  # noqa: BLE001 — fail-soft per owner.
-                logger.warning(
-                    "[scitex-todo._stale_active_nudge] %s push to %s raised: %s",
-                    kind, owner, exc,
-                )
-                lines.append(f"  x  {owner:30}  {kind} push raised: {exc}")
-                result = {}
-            else:
-                ok_label = "OK " if result.get("ok") else "ERR"
-                lines.append(
-                    f"  {ok_label}  {owner:30}  {len(cards)} {label}  "
-                    f"wire={result.get('wire')}  reason={result.get('reason')}"
-                )
-            if result.get("ok"):
-                # Only a DELIVERED nudge arms the suppression — a failed push
-                # must be retried on the next sweep, not silently swallowed.
-                pushed += 1
+            recipient = _safe_resolve(resolve_key, owner)
+            # ``supersede``: a nudge is a cumulative snapshot, so a fresh one
+            # replaces its unseen predecessor (exactly like the owner digest).
+            delivered = _safe_enqueue(
+                enqueue, recipient, kind, card_id, body, now, store,
+                supersede=True,
+            )
+            if delivered:
+                # Only a DELIVERED nudge arms the suppression — a failed
+                # enqueue must be retried next sweep, not silently swallowed.
+                counts["delivered"] += 1
                 entry["fingerprint"] = fingerprint
                 entry["delivered_at"] = _iso(now)
+                lines.append(
+                    f"  OK  {owner:30}  {len(cards)} {label}  "
+                    f"wire=inbox  inbox={recipient}"
+                )
+            else:
+                counts["failed"] += 1
+                logger.error(
+                    "[scitex-todo._stale_active_nudge] %s nudge for %s was NOT "
+                    "delivered: inbox enqueue to %r failed — this owner will "
+                    "NOT see their %d %s card(s)",
+                    kind, owner, recipient, len(cards), label,
+                )
+                lines.append(
+                    f"  ERR {owner:30}  {len(cards)} {label}  "
+                    f"wire=inbox  inbox={recipient}  reason=enqueue-failed"
+                )
+            if echo:
+                _push_echo(owner, body, kind=kind, lines=lines)
         if entry:
             state[owner] = entry
         else:
@@ -260,11 +346,36 @@ def _deliver_per_owner(
             state.pop(owner, None)
 
     # Prune owners who no longer have cards of this kind: the nudge STOPS when
-    # the work is closed/touched, and a future stall re-pushes immediately.
+    # the work is closed/touched, and a future stall re-delivers immediately.
     for owner in list(state):
         if owner not in by_owner:
             del state[owner]
-    return pushed
+    return counts
+
+
+def _summary_lines(kind: str, counts: dict[str, int]) -> list[str]:
+    """Per-kind summary — and an unmissable ALERT when nobody was reached.
+
+    A quiet ``# 0 push(es) sent`` is what let a totally-dead rail ship (every
+    owner ERR, zero delivered, one bland summary line). So: when at least one
+    owner was ATTEMPTED and EVERY attempt failed, the sweep says so in capitals
+    and at ``logger.error``. Zero delivered because everyone was SUPPRESSED is
+    the healthy steady state and is NOT an alert.
+    """
+    out = [
+        f"# {kind}: {counts['detected']} owner(s) detected, "
+        f"{counts['delivered']} delivered (inbox), "
+        f"{counts['suppressed']} suppressed, {counts['failed']} failed"
+    ]
+    attempted = counts["delivered"] + counts["failed"]
+    if attempted and not counts["delivered"]:
+        msg = (
+            f"!! ALERT {kind}: 0 of {attempted} attempted nudge(s) delivered — "
+            f"this sweep reached NOBODY (every owner's inbox enqueue failed)"
+        )
+        logger.error("[scitex-todo._stale_active_nudge] %s", msg)
+        out.append(f"# {msg}")
+    return out
 
 
 def sweep_and_nudge(
@@ -272,13 +383,23 @@ def sweep_and_nudge(
     *,
     store: str | Path | None = None,
     now: _dt.datetime | None = None,
+    enqueue=None,
+    resolve_key=None,
 ) -> list[str]:
     """Detect stale-active + pending-backlog cards; nudge each owner.
 
     Returns a list of human-readable log lines (per owner per kind plus
-    per-kind summaries) so the caller (the CLI / cron) can echo them.
-    Never raises: every per-owner delivery is guarded so the whole sweep
-    is fail-soft — one bad owner (or one bad kind) never breaks the rest.
+    per-kind summaries, including an ``!! ALERT`` line when a kind reached
+    nobody) so the caller (notifyd / the CLI cron) can echo them. Never raises:
+    every per-owner delivery is guarded so the whole sweep is fail-soft — one
+    bad owner (or one bad kind) never breaks the rest.
+
+    Delivery is an ENQUEUE into each owner's pull-inbox — the rail the owner
+    DIGEST already uses (:mod:`scitex_todo._reminders`) and every agent already
+    drains. ``enqueue`` (default :func:`scitex_todo._inbox.enqueue`) and
+    ``resolve_key`` (default the producer/dispatch resolver
+    :func:`scitex_todo._notify._resolver._resolve_name_to_id`) are injectable
+    seams, mirroring :func:`scitex_todo._reminders.sweep_reminders`.
 
     DELIVER ON CHANGE: an owner whose stale card set is identical to the last
     DELIVERED one is skipped (and logged as suppressed) until
@@ -288,9 +409,17 @@ def sweep_and_nudge(
     cur = now or _now_utc()
     state = load_nudge_state(store)
 
+    if enqueue is None:
+        from ._inbox import enqueue as enqueue  # type: ignore[no-redef]
+    if resolve_key is None:
+        from ._notify._resolver import _resolve_name_to_id
+
+        def resolve_key(name: str) -> str:  # type: ignore[misc]
+            return _resolve_name_to_id(name, store=store)
+
     by_owner = detect_stale_active(tasks, now=cur)
     lines: list[str] = []
-    pushed = _deliver_per_owner(
+    counts = _deliver_per_owner(
         by_owner,
         kind=KIND_STALE_ACTIVE,
         label="stale",
@@ -298,16 +427,19 @@ def sweep_and_nudge(
         lines=lines,
         state=state[KIND_STALE_ACTIVE],
         now=cur,
+        store=store,
+        enqueue=enqueue,
+        resolve_key=resolve_key,
     )
 
     if os.environ.get(ENV_EMIT_HOOK) == "1":
         _emit_hook(by_owner, lines)
 
-    lines.append(f"# {pushed} stale-active push(es) sent")
+    lines.extend(_summary_lines(KIND_STALE_ACTIVE, counts))
 
     # Pending-backlog sweep — distinct status set, threshold, and wording.
     by_owner_pending = detect_pending_backlog(tasks, now=cur)
-    pushed_pending = _deliver_per_owner(
+    counts_pending = _deliver_per_owner(
         by_owner_pending,
         kind=KIND_PENDING_BACKLOG,
         label="pending",
@@ -315,8 +447,11 @@ def sweep_and_nudge(
         lines=lines,
         state=state[KIND_PENDING_BACKLOG],
         now=cur,
+        store=store,
+        enqueue=enqueue,
+        resolve_key=resolve_key,
     )
-    lines.append(f"# {pushed_pending} pending-backlog push(es) sent")
+    lines.extend(_summary_lines(KIND_PENDING_BACKLOG, counts_pending))
 
     save_nudge_state(state, store)
     return lines
@@ -350,8 +485,10 @@ def _emit_hook(by_owner: dict, lines: list[str]) -> None:
 __all__ = [
     "ENV_EMIT_HOOK",
     "ENV_NUDGE_FLOOR_HOURS",
+    "ENV_NUDGE_PUSH",
     "DEFAULT_NUDGE_FLOOR_HOURS",
     "NUDGE_SIDECAR_NAME",
+    "NUDGE_CARD_ID",
     "KIND_STALE_ACTIVE",
     "KIND_PENDING_BACKLOG",
     "load_nudge_state",
