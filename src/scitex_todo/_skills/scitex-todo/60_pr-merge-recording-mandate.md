@@ -98,7 +98,7 @@ scitex-todo sync-github --since 2026-06-13T00:00Z -y
 
 This walks the agent's recent merged PRs (per the agent's GitHub
 identity) and writes the missing `pr-<repo>-<num>` done-records in
-one transaction. proj-scitex-todo used this overnight as the backfill
+one transaction. scitex-todo used this overnight as the backfill
 mechanism after the reconciliation pass surfaced the gap (lead a2a
 `fbd15187`).
 

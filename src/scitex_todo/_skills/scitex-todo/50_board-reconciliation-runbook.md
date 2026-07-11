@@ -1,7 +1,7 @@
 # Board Reconciliation Runbook — Canonical Verbs
 
-**Audience:** every fleet agent (proj-scitex-*, hub, journal, ripple-wm, dev, agent-container, lead, …).
-**Owner:** proj-scitex-todo.
+**Audience:** every fleet agent (scitex-* workers, hub, journal, ripple-wm, dev, agent-container, lead, …).
+**Owner:** scitex-todo.
 **First landed:** 2026-06-13 (operator directive via lead).
 
 ## Why this exists
@@ -130,7 +130,7 @@ diff <(jq -S . /tmp/my-cards-before.json) <(jq -S . /tmp/my-cards-after.json) | 
 
 ## 6. STALE candidates for OPERATOR review
 
-The operator (not agents) decides which orphaned cards to archive. proj-scitex-todo generates a periodic **stale-candidates list** at:
+The operator (not agents) decides which orphaned cards to archive. scitex-todo generates a periodic **stale-candidates list** at:
 
 ```
 ~/.scitex/todo/STALE_CARDS_FOR_REVIEW.md
@@ -144,8 +144,8 @@ Format: per-project tables, oldest-first, `id | title | age | reasons`. Agents d
 
 Regenerate the list:
 ```sh
-# proj-scitex-todo refreshes this on operator demand. To trigger from any agent:
-# (a2a "regen stale list" to proj-scitex-todo) — there's no scheduled cron yet.
+# scitex-todo refreshes this on operator demand. To trigger from any agent:
+# (a2a "regen stale list" to scitex-todo) — there's no scheduled cron yet.
 ```
 
 A future PR will wrap the generator in a `scitex-todo list-stale [--days 14]` CLI verb. Tracked as an in-board card.
@@ -213,6 +213,6 @@ Lead-driven coordination (broadcast-rollout shape): the lead a2a's every agent w
 - Skill bundle refresh: PR #149.
 - Recurring stale-review board panel: PR #153 (backend `/stale` + `/archive`) + PR #154 (FE 🧹 Stale layout + Archive button).
 - Fleet MCP enabler: PR #155 (`mcp install --apply`).
-- Stale-list generator: ad-hoc Python at `proj-scitex-todo` (CLI verb is a follow-up).
+- Stale-list generator: ad-hoc Python at `scitex-todo` (CLI verb is a follow-up).
 
 End-of-file.

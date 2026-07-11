@@ -256,7 +256,7 @@ def _build_fleet(tasks: list[dict], *, now=None) -> list[dict]:
     yellow-light "active", everything else "idle".
 
     Per-agent fields:
-      name                    the agent's id (e.g. proj-paper-scitex-clew)
+      name                    the agent's id (e.g. scitex-clew)
       status                  one of the five above
       current_task            title of the agent's most-urgent task
       current_task_id         id of the same

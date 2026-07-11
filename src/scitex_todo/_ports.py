@@ -212,7 +212,7 @@ class LivenessPort(Protocol):
         .. code-block:: python
 
             {
-                "name": "proj-scitex-todo",
+                "name": "scitex-todo",
                 "host": "ywata-note-win",
                 "status": "running" | "idle" | "working" | "stopped" | "unreachable",
                 "heartbeat": "<ISO-8601 UTC of last heartbeat>",

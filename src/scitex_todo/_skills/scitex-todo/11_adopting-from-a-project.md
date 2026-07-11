@@ -52,7 +52,7 @@ scitex-todo add \
     --title "Cohort A rerun #50" \
     --status in_progress \
     --project paper-scitex-clew \
-    --agent proj-paper-scitex-clew \
+    --agent scitex-clew \
     --task "PAC SLE multi-lane GPU compute: a100 lane #38 of 50"
 ```
 
@@ -68,7 +68,7 @@ add_task(
     title="Cohort A rerun #50",
     status="in_progress",
     project="paper-scitex-clew",
-    agent="proj-paper-scitex-clew",
+    agent="scitex-clew",
     task="PAC SLE multi-lane GPU compute: a100 lane #38 of 50",
 )
 ```
@@ -83,7 +83,7 @@ add_task(
   title="Cohort A rerun #50",
   status="in_progress",
   project="paper-scitex-clew",
-  agent="proj-paper-scitex-clew",
+  agent="scitex-clew",
   task="PAC SLE multi-lane GPU compute: a100 lane #38 of 50"
 )
 ```
@@ -131,7 +131,7 @@ scitex-todo add \
     --kind decision \
     --blocker operator-decision \
     --project paper-scitex-clew \
-    --agent proj-paper-scitex-clew \
+    --agent scitex-clew \
     --task "decide: clew (a)/(b) inline-DAG depth — awaiting operator" \
     --goal "DAG visualization for clew claim-tracing"
 ```

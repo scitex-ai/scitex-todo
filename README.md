@@ -282,7 +282,7 @@ scitex-todo list-tasks --json             # resolved tasks, machine-readable
 
 # communication surfaces
 scitex-todo mcp start                     # MCP CRUD server (stdio)
-scitex-todo mcp channel --agent proj-scitex-todo   # push inbox → Claude
+scitex-todo mcp channel --agent scitex-todo   # push inbox → Claude
 scitex-todo notifyd --interval 120        # reminders + delivery daemon
 scitex-todo board start --port 8051       # kanban / timeline GUI
 ```

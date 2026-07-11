@@ -32,7 +32,7 @@ wire is live.
 ## ⚑ Mandate (binding)
 
 1. **All durable todos go through the scitex-todo MCP.** Every
-   `proj-*` agent, the lead, and the operator write to the same
+   every worker agent, the lead, and the operator write to the same
    `~/.scitex/todo/tasks.yaml` via the wire below. There is **one**
    shared store; there are **no** parallel formats.
 
@@ -85,8 +85,8 @@ a soft default.
 
 | Var | Required? | Value | Effect |
 |---|---|---|---|
-| `SCITEX_TODO_AGENT_ID` | **YES** | `proj-<your-peer-name>` | Stamps every write's `_log_meta.created_by` / `updated_by`. The board's "by agent" lens, throughput stats, and notify routing all key off this. |
-| `SCITEX_TODO_SCOPE` | recommended | `agent:proj-<your-peer-name>` | Default scope for `list_tasks` / `summarize_tasks` so the agent sees its own slice by default. Pass `scope=""` to opt out per-call. |
+| `SCITEX_TODO_AGENT_ID` | **YES** | `<your-peer-name>` | Stamps every write's `_log_meta.created_by` / `updated_by`. The board's "by agent" lens, throughput stats, and notify routing all key off this. |
+| `SCITEX_TODO_SCOPE` | recommended | `agent:<your-peer-name>` | Default scope for `list_tasks` / `summarize_tasks` so the agent sees its own slice by default. Pass `scope=""` to opt out per-call. |
 | `SCITEX_TODO_TASKS_YAML_SHARED` | only if non-default | Absolute path to `tasks.yaml` | Pins the store. Default resolution chain (explicit → env → project → user → bundled) usually picks the right one without this. |
 
 For agent-container's `to_home/_base/.mcp.json` rollout, the per-agent
@@ -145,18 +145,18 @@ scitex-todo mcp doctor
 # (PR #64 would add `add_comment` as #16; deferred — CLI parity reached via PR #144)
 
 # 2. The MCP wire reaches the live store.
-SCITEX_TODO_AGENT_ID=proj-<you> scitex-todo list-tasks --by-agent --json | head
+SCITEX_TODO_AGENT_ID=<you> scitex-todo list-tasks --by-agent --json | head
 
 # 3. The agent can write.
-SCITEX_TODO_AGENT_ID=proj-<you> scitex-todo add \
-    proj-<you>-mcp-smoke-$(date +%s) \
+SCITEX_TODO_AGENT_ID=<you> scitex-todo add \
+    <you>-mcp-smoke-$(date +%s) \
     '[P2] smoke: confirm MCP wire' \
-    --scope agent:proj-<you> \
-    --assignee proj-<you> \
-    --agent proj-<you>
+    --scope agent:<you> \
+    --assignee <you> \
+    --agent <you>
 
 # 4. Tear it down.
-SCITEX_TODO_AGENT_ID=proj-<you> scitex-todo done proj-<you>-mcp-smoke-<stamp>
+SCITEX_TODO_AGENT_ID=<you> scitex-todo done <you>-mcp-smoke-<stamp>
 ```
 
 Pass all four = wire is live. Any failure: post the exact command +
@@ -169,7 +169,7 @@ full stderr to your lead via a2a, then stop. Do NOT retry-loop.
 | `mcp doctor` → "fastmcp: MISSING" | `[mcp]` extra not installed | `pip install -U 'scitex-todo[mcp]>=0.7.1'` |
 | Writes land but `_log_meta.created_by` is unset / wrong | `SCITEX_TODO_AGENT_ID` missing or stale in the agent's env | Set it BEFORE the MCP server boots; restart the harness. |
 | `mcp doctor` → "tools: 0" | FastMCP version skew | Bump fastmcp to ≥ 3.0; rebuild the venv. |
-| `list_tasks` returns the whole store, not your slice | `SCITEX_TODO_SCOPE` unset | Export `SCITEX_TODO_SCOPE=agent:proj-<you>`. |
+| `list_tasks` returns the whole store, not your slice | `SCITEX_TODO_SCOPE` unset | Export `SCITEX_TODO_SCOPE=agent:<you>`. |
 | Your `SCITEX_TODO_TASKS_YAML_SHARED` points at a stale file | precedence chain picked an earlier tier | `scitex-todo resolve-store` prints the resolved path + the chain. |
 
 ## Cross-references

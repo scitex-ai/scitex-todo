@@ -117,7 +117,7 @@ def _emit(payload, *, as_json: bool, human: str) -> None:
         examples=(
             (
                 "{prog} add my-task 'Implement my-task' "
-                "--agent proj-scitex-todo --project scitex-todo",
+                "--agent \"$SCITEX_TODO_AGENT_ID\" --project scitex-todo",
                 "",
             ),
         ),
@@ -312,7 +312,7 @@ def add_cmd(
             "re-doneing a `done` task keeps the original stamp."
         ),
         examples=(
-            ("{prog} done my-task --by agent:proj-scitex-todo", ""),
+            ("{prog} done my-task --by \"$SCITEX_TODO_AGENT_ID\"", ""),
         ),
     ),
 )

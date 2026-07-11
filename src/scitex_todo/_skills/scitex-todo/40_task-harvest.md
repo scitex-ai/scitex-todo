@@ -156,7 +156,7 @@ a sweep) writes the blocker + the dependency into the YAML:
   depends_on:
     - sif-build-202606         # the upstream item this blocker points at
   comments:
-    - author: proj-paper-scitex-clew
+    - author: scitex-clew
       ts: 2026-06-07T22:14:00Z
       text: "Blocked on sif-build-202606 — base SIF rebuild needed before re-run."
 ```
@@ -257,7 +257,7 @@ All escalation flows through the lead:
 
 | Role  | Reads                       | Writes                                                          |
 | ----- | --------------------------- | --------------------------------------------------------------- |
-| Agent | own project's tasks (filter `agent: proj-<self>`) | own tasks' status + `comments[]`; a2a lead when reporting a new blocker. |
+| Agent | own project's tasks (filter `agent: <self>`) | own tasks' status + `comments[]`; a2a lead when reporting a new blocker. |
 | Lead  | the whole board             | every task during sweeps; a2a each owning agent with ESCALATE notices. |
 | Operator | the board UI + the lead's daily summary | resolves `user-pending` / `operator-decision` blockers via the "BLOCKING YOU" panel. |
 
@@ -370,10 +370,10 @@ After a sweep, the lead sends three kinds of a2a messages:
 
 ### 1. To each owning agent — ESCALATE
 
-For every RUNNABLE task owned by `agent: proj-<name>`:
+For every RUNNABLE task owned by `agent: <name>`:
 
 ```
-[ESCALATE proj-scitex-todo] task-id "Title" — RUNNABLE, no blocker.
+[ESCALATE scitex-todo] task-id "Title" — RUNNABLE, no blocker.
    You can do this now. Report PR # / a2a / comment when picked up.
 ```
 
@@ -436,10 +436,10 @@ filters to the **highest-priority N** per agent (e.g. top 3 per owning
 agent) to avoid flooding inboxes, then a2a-dispatches:
 
 ```
-→ proj-paper-scitex-clew: 3 ESCALATE messages (incl. sle-pac-fanout)
-→ proj-neurovista:        3 ESCALATE messages (incl. onsets-pull)
-→ proj-scitex-dev:        3 ESCALATE messages
-→ proj-scitex-hub:        3 ESCALATE messages
+→ scitex-clew: 3 ESCALATE messages (incl. sle-pac-fanout)
+→ neurovista:        3 ESCALATE messages (incl. onsets-pull)
+→ scitex-dev:        3 ESCALATE messages
+→ scitex-hub:        3 ESCALATE messages
 → ...
 ```
 

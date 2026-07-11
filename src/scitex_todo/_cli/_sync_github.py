@@ -186,12 +186,15 @@ def sync_github_cmd(
                     title=title,
                     status="done",
                     project="scitex-dev",
-                    agent="proj-scitex-dev",
+                    # The owner must be a LIVE identity. Writing the dead
+                    # `proj-` prefix here filed the card under an agent that
+                    # does not exist, so its real owner never saw it.
+                    agent="scitex-dev",
                     # add_task now REQUIRES a resolvable creator (no silent
                     # blank/"unknown"). This sync verb is a housekeeping
                     # importer, so it stamps itself as the creator.
                     created_by="sync-github",
-                    note=("Consolidated record of the proj-scitex-dev L1-L5 "
+                    note=("Consolidated record of the scitex-dev L1-L5 "
                           "CI-speedup template apply wave merged "
                           f"{target_since}. Individual PRs:\n{links}"),
                 )
