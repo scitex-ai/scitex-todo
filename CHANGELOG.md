@@ -4,6 +4,46 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.6] - 2026-07-12 — fix: the WIP gate refused to let an agent record a P0; deadlines documented honestly
+
+### Fixed
+- **The board REFUSED to let an agent record a P0 incident.** The operator escalated a
+  fleet-wide config/state-loss hazard; scitex-hub went to card it and the WIP gate said:
+
+      WIP gate refuses add: scitex-hub already has 40 open tasks (>= 2 × limit 20).
+      Close existing tasks before adding more.
+
+  They had to bury the incident as a comment on an unrelated card — the worst outcome for
+  the one class of card that most needs to be findable. A WIP cap is a **throughput-shaping**
+  device and it was sitting on the **emergency-recording** path. "Your board is untidy" must
+  never mean "you may not record that production is on fire."
+  Worse, the old message created a **perverse incentive**: under outage pressure the cheapest
+  way past the gate is to *close cards you have not finished*. A cap that pressures agents to
+  falsify card state during an emergency is worse than no cap.
+- **`priority <= 1` (P0/P1) is now never gated.** No flag to remember mid-outage — filing an
+  incident simply works. Keyed on priority, deliberately *not* on a new `kind` enum value:
+  adding an enum value would brick every agent still on a pre-0.8.0 reader, which is exactly
+  the 2026-07-10 fleet outage this project already lived through.
+- **The bypass is STAMPED, not silent.** A card admitted over the cap carries a
+  `kind: wip-override` audit comment (the agent's WIP count and the limit), written inside the
+  same locked insert. Abuse is self-reporting — and it makes priority inflation *measurable*
+  rather than invisible. A silent bypass would be its own silent-absence bug.
+- **The refusal message now names the emergency path** and says explicitly: *do not close
+  cards you have not finished to get past this gate.*
+
+### Changed
+- **Deadlines are documented honestly.** A deadline drives no notification — nothing in the
+  delivery surface (`_reminders`, `_stale_active`, `_stale_active_nudge`, `_delivery/*`) reads
+  it. And a **recurring** deadline is never even *overdue*: the repeater always rolls the next
+  occurrence into the future, so `is_overdue()` can never fire for one. A recurring deadline
+  therefore reaches **neither** rail. This is now stated in all seven places deadlines appear —
+  including the org export, which emits `DEADLINE:` lines into org-agenda (a real reminder
+  engine) and so invited precisely the wrong inference. Pinned by a behavioural test: the
+  sweeps produce byte-identical output with and without a deadline, plus a structural guard
+  that fails if any delivery module ever starts reading one.
+- If you want to be nudged: keep the card open and owned. The stale-active and backlog sweeps
+  nudge on **real neglect**, which for an ongoing responsibility is the better signal anyway.
+
 ## [0.8.5] - 2026-07-12 — fix: `status=""` was a SILENT DELETE; clearing an enum field now deletes the key
 
 ### Fixed
