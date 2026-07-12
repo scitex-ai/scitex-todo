@@ -45,6 +45,14 @@ except ImportError as _exc:  # pragma: no cover — exercised in the doctor test
 from . import _store
 from ._channel_identity import resolve_agent_id_optional
 from ._mcp_instructions import build_instructions
+from ._store_enums import CLEARABLE_ENUM_FIELDS, UNCLEARABLE_ENUM_FIELDS
+
+# Closed-enum fields — the store owns what `""` means on each of them, so
+# this surface must NOT pre-translate them (see `update_task` below).
+# Sourced from `_store_enums` rather than re-listed, so the two cannot drift.
+_ENUM_FIELDS: frozenset[str] = frozenset(
+    CLEARABLE_ENUM_FIELDS + UNCLEARABLE_ENUM_FIELDS
+)
 
 # The instructions name THIS agent's OWN scope, interpolated from its resolved
 # identity ($SCITEX_TODO_AGENT_ID) — never a hard-coded example, which is how
@@ -194,6 +202,13 @@ async def update_task(
     untouched. Closed-enum values (``status`` / ``kind`` / ``blocker``)
     are gated by the writer's validator.
 
+    The ``""``-clears rule holds for the CLOSED-ENUM fields too:
+    ``blocker=""`` DELETES the blocker key (it does not write ``""``, which
+    the validator would reject, and it is not the same as ``blocker="none"``
+    — a legal enum member that leaves the key PRESENT). Same for ``kind=""``.
+    The one exception is ``status``, which cannot be cleared — every card
+    must carry a decision — so ``status=""`` raises with the valid set.
+
     ``deadline`` / ``deadlines`` / ``scheduled`` follow the same P4
     schema as ``add_task``. Pass an empty string to CLEAR ``deadline`` /
     ``scheduled``; pass an empty list to CLEAR ``deadlines``. The pair
@@ -229,7 +244,16 @@ async def update_task(
     ):
         if value is None:
             continue
-        fields[key] = None if value == "" else value
+        # Closed-enum fields go through VERBATIM — the store owns the
+        # ""-clears rule for them (`blocker`/`kind`: delete the key;
+        # `status`: refuse loudly, a card must carry a decision). Mapping
+        # "" -> None HERE would have deleted `status` behind the store's
+        # back, silently producing a status-less card. Free-text fields
+        # keep the local translation: "" = clear.
+        if key in _ENUM_FIELDS:
+            fields[key] = value
+        else:
+            fields[key] = None if value == "" else value
     # List fields: ``None`` = leave untouched (filtered above);
     # empty list = clear; non-empty list = replace.
     if depends_on is not None:

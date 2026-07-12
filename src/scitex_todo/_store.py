@@ -80,6 +80,7 @@ from ._model import (
     save_tasks,
 )
 from ._paths import resolve_tasks_path
+from ._store_enums import resolve_enum_clears as _resolve_enum_clears
 
 #: Env var name an agent sets to scope its default `list_tasks` / `summary`
 #: view. The CLI's `--scope` flag overrides this; pass `scope=""` in the
@@ -373,6 +374,13 @@ def add_task(
         On duplicate id or any other structural fault — `save_tasks`
         re-runs the full validation gate before touching disk.
     """
+    # Same ONE rule as `update_task` (the sibling write path): a `""` on a
+    # closed-enum field is a clear, so the key is simply NOT written on
+    # insert — rather than written as `""` for the validator to reject. A
+    # `status=""` is refused loudly (a card cannot be born status-less).
+    _enum_in = _resolve_enum_clears({"status": status, **extras}, source="add_task")
+    status = _enum_in.pop("status")
+    extras = _enum_in
     resolved = _resolved_store(store)
     resolved.parent.mkdir(parents=True, exist_ok=True)
     # FAIL-LOUD on a missing/blank OWNER (operator mandate 2026-06-26,
@@ -550,15 +558,36 @@ def update_task(
     scope" = `update_task(..., scope=None)`). To leave a field untouched,
     just omit it.
 
+    ONE clear rule, closed enums included: an empty string ``""`` on a
+    CLOSED-ENUM field (``blocker`` / ``kind``) also DELETES the key — it is
+    a delete instruction, consumed here, never written as a value. This is
+    what the MCP/CLI surfaces have always promised ("pass '' to CLEAR");
+    previously ``""`` was written literally and the validator rejected the
+    save, so the documented way to clear a blocker was the one way that
+    could not work. The validator is NOT weakened: a genuinely invalid
+    value (``blocker="banana"``) still raises.
+
+    ``status`` is the exception and CANNOT be cleared — every card must
+    carry a decision. ``status=""`` raises with the reason and the valid
+    set rather than silently dropping the request. See `_store_enums`.
+
     Raises
     ------
     TaskNotFoundError
         If no task matches ``task_id``.
     TaskValidationError
-        If the resulting mutation is structurally invalid.
+        If the resulting mutation is structurally invalid, or if ``status``
+        was passed the ``""`` clear-sentinel (status cannot be cleared).
     """
     if not task_id:
         raise TypeError("update_task() requires a non-empty task_id")
+    # `""` on a CLOSED-ENUM field is a DELETE INSTRUCTION, consumed HERE —
+    # it must never reach the validator as a value (see _store_enums: the
+    # documented "pass '' to clear" contract used to be the one way that
+    # could NOT clear a blocker, and it failed at SAVE time, aborting whole
+    # bulk batches). `status` is refused loudly instead: it cannot be
+    # cleared. Done BEFORE the lock so a doomed mutation never takes it.
+    fields = _resolve_enum_clears(fields, source="update_task")
     resolved = _resolved_store(store)
     result: dict | None = None
     transitioned_to_done = False
