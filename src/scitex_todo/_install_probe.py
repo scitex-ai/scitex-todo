@@ -197,6 +197,33 @@ def _find_source_root(module_file: Path) -> Path | None:
     return None
 
 
+def _find_dist_infos(module_file: Path, dist: str) -> list[Path]:
+    """Every ``.dist-info`` directory for ``dist`` beside the installed package.
+
+    More than one means the version is a COIN TOSS: ``importlib.metadata`` returns
+    whichever it happens to find first, and that may not describe the code that is
+    actually there. pip leaves these behind on some upgrade paths (observed
+    2026-07-12: a 0.7.50 fossil left sitting next to a fresh 0.9.0).
+
+    Returns ``[]`` when the layout cannot be inspected — and callers must treat
+    that as "could not check", never as "there is only one".
+    """
+    # <site-packages>/<pkg>/__init__.py  ->  <site-packages>
+    site_dir = module_file.parent.parent
+    # PEP 503/427: `-` and `.` in the dist name become `_` in the directory name.
+    normalized = dist.replace("-", "_").replace(".", "_")
+    try:
+        return [
+            p
+            for p in site_dir.iterdir()
+            if p.is_dir()
+            and p.name.endswith(".dist-info")
+            and p.name.split("-", 1)[0].replace(".", "_") == normalized
+        ]
+    except OSError:
+        return []
+
+
 def _classify(module_file: Path) -> str:
     """wheel (under site-packages) vs editable (a source tree elsewhere)."""
     parts = set(module_file.parts)
@@ -299,7 +326,48 @@ def probe_install(
         return probe
 
     if probe.kind == KIND_WHEEL:
-        # The code lives under site-packages, so it arrived WITH this metadata.
+        # A wheel install USUALLY means "the metadata arrived with the code beside
+        # it, so it can be trusted". That was this module's original assumption —
+        # and it is FALSE whenever pip leaves MORE THAN ONE .dist-info behind.
+        #
+        # Found 2026-07-12, by this probe FAILING on the first live install it was
+        # pointed at. Upgrading scitex-todo 0.7.50 -> 0.9.0 in the agent venv left
+        # BOTH directories in place:
+        #     scitex_todo-0.9.0.dist-info/    (real, from the upgrade)
+        #     scitex_todo-0.7.50.dist-info/   (orphaned fossil)
+        # `importlib.metadata` picked the FOSSIL, and this function then declared
+        # `trustworthy=True, code_version=0.7.50` — BOTH WRONG — while the code on
+        # disk was 0.9.0. The probe built to catch lying installs BLESSED one.
+        #
+        # Only the `features` symbol probe told the truth. Hence this check: with
+        # two dist-infos the version is AMBIGUOUS, and an ambiguous version is not
+        # a trustworthy one. "I cannot tell which of these is real" must never
+        # render as "it is fine" — the rule this module already claimed to follow.
+        dist_infos = _find_dist_infos(mod_path, dist)
+        if len(dist_infos) > 1:
+            found = ", ".join(sorted(p.name for p in dist_infos))
+            probe.honest = False
+            probe.code_version = None  # genuinely unknown from metadata alone
+            probe.detail = (
+                f"AMBIGUOUS METADATA: {len(dist_infos)} .dist-info directories for "
+                f"{dist} sit side by side ({found}). importlib.metadata picked "
+                f"{probe.metadata_version}, but that is a COIN TOSS — the version "
+                f"string cannot be trusted, and the code on disk may be any of them."
+            )
+            probe.hint = (
+                f"pip left a stale .dist-info behind after an upgrade. The code is "
+                f"almost certainly the NEWEST one; the older directory is an "
+                f"orphaned fossil that will keep poisoning every version check on "
+                f"this box.\n"
+                f"    1. Confirm WHICH code is really there with a symbol probe "
+                f"(the `features` argument) — never with the version.\n"
+                f"    2. Then delete the stale directory:\n"
+                f"       rm -rf <site-packages>/{sorted(p.name for p in dist_infos)[0]}\n"
+                f"    3. Re-probe; the version should now agree with the code."
+            )
+            return probe
+
+        # Exactly one .dist-info: the metadata really does describe the code beside it.
         probe.code_version = probe.metadata_version
         probe.honest = True
         probe.detail = (
