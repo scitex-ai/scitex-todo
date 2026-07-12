@@ -43,7 +43,7 @@ _COMMAND_CATEGORIES = (
         ),
     ),
     ("Data & Sync", ("db", "sync-github", "sync-store", "deliver")),
-    ("Service", ("board", "mcp", "notifyd", "watch", "watch-ci")),
+    ("Service", ("board", "gui", "mcp", "notifyd", "watch", "watch-ci")),
     ("Diagnostics", ("blocked", "print-stats", "health", "resolve-store")),
     ("Introspection", ("list-python-apis", "skills")),
     ("Shell", ("install-shell-completion", "print-shell-completion")),
