@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Tolerant-read / strict-write validation for the task store.
-
-Extracted from ``_model.py`` — see GITIGNORED/REFACTORING.md. Pure move.
-"""
+"""Tolerant-read / strict-write validation. Pure move from ``_model``."""
 
 from __future__ import annotations
+
 import contextlib
 import fcntl
 import os
 from pathlib import Path
+
 from ._yaml import safe_dump, safe_load  # hook-bypass: line-limit
 from ._store_verify import _verify_dumped_tmp  # hook-bypass: line-limit
-
-from ._task import TaskValidationError
+from ._task import (
+    ABOLISHED_STATUSES,
+    VALID_BLOCKERS,
+    VALID_KINDS,
+    VALID_STATUSES,
+    TaskValidationError,
+    _BLOCKER_ALIASES,
+)
+from ._deadlines import _parse_deadline_or_raise
 
 def _warn_tolerated(msg: str) -> None:
     """Shout about a value this build does not understand, but keep going.
@@ -399,8 +405,3 @@ def _validate_tasks(tasks: object, source: str, strict: bool = True) -> None:
 # Imported at the BOTTOM, after everything ``_store_write`` needs from this module
 # (StaleStoreError, _validate_tasks, load_doc) is defined. A top-of-file import
 # would be circular.
-# NOTE: the `_store_write` re-export that used to sit here belongs to `_model`,
-# not to validation — it is part of `_model`'s public surface (43 test files and
-# the fleet do `from scitex_todo._model import save_tasks`). It moved back to
-# `_model.py` during the split; leaving it here would have silently broken every
-# one of those imports while all four modules still compiled cleanly.

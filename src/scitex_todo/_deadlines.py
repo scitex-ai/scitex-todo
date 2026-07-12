@@ -2,41 +2,41 @@
 # -*- coding: utf-8 -*-
 """Deadlines, repeaters, and the ``overdue`` predicate.
 
-Extracted from ``_model.py`` — see GITIGNORED/REFACTORING.md.
-
 TIMEZONE RULE (the 2026-07-12 blank-board incident): a bare-date deadline
-(``2026-07-20``) parses NAIVE, while the fleet/board callers pass a tz-AWARE
-UTC ``now``. Comparing them raises ``TypeError: can't compare offset-naive
-and offset-aware datetimes``, which 500'd ``/graph`` and rendered the
-operator's board blank. Every datetime that can meet another datetime here
-is normalised through :func:`_as_aware_utc` FIRST. A naive value is read as
-UTC — the same rule the rest of the codebase uses when parsing timestamps.
+parses NAIVE while board/fleet callers pass a tz-AWARE UTC ``now``. Comparing
+them raises ``TypeError: can't compare offset-naive and offset-aware
+datetimes`` — which 500'd ``/graph`` and rendered the board blank. Every
+datetime that can MEET another goes through :func:`_as_aware_utc` first.
+
+It normalises for the COMPARISON only. Callers get back exactly the kind of
+datetime they always did — silently switching the return type to tz-aware
+would be a contract change dressed up as a bug fix.
 """
 
 from __future__ import annotations
+
 import contextlib
 import fcntl
 import os
 from pathlib import Path
+
 from ._yaml import safe_dump, safe_load  # hook-bypass: line-limit
 from ._store_verify import _verify_dumped_tmp  # hook-bypass: line-limit
-
 from dataclasses import dataclass
 
-from ._task import TaskValidationError  # noqa: F401  (used by parsers)
+from ._task import TaskValidationError
 
 
 def _as_aware_utc(dt):
-    """Return ``dt`` as a tz-AWARE datetime, reading a naive value as UTC.
+    """Return ``dt`` as tz-AWARE, reading a naive value as UTC.
 
-    The single normalisation point for this module. Two datetimes only ever
-    get compared (or ``min()``-ed) after passing through here, because mixing
-    naive and aware raises TypeError — which is exactly how the board went
-    blank on 2026-07-12.
+    The single normalisation point for this module. Used ONLY to make two
+    datetimes comparable — it never changes what a caller receives back, which
+    would be a silent contract change for every existing consumer.
     """
     import datetime as _dt
 
-    if dt is None or not isinstance(dt, _dt.datetime):
+    if not isinstance(dt, _dt.datetime):
         return dt
     if dt.tzinfo is None:
         return dt.replace(tzinfo=_dt.timezone.utc)
@@ -91,18 +91,16 @@ def next_deadline_for_task(task: dict, *, now=None) -> str | None:
             candidates.append(picked)
     if not candidates:
         return None
-    return min(candidates).date().isoformat()
+    # THE SECOND INSTANCE of the blank-board bug, and it has never fired only
+    # because no card yet carries BOTH a recurring and a bare deadline. `min()`
+    # over a mix of naive and aware datetimes raises the SAME TypeError that
+    # 500'd /graph. Compare on normalised copies; the values themselves are
+    # untouched, and the output is a bare date either way.
+    return min(candidates, key=_as_aware_utc).date().isoformat()
 
 
 def _pick_next_dt(value, *, now=None):
-    """Parse + (if recurring) advance to the next occurrence.
-
-    ALWAYS returns a tz-aware datetime (naive read as UTC). Callers put these
-    into one list and ``min()`` it — and ``min()`` over a mix of naive and
-    aware datetimes raises the SAME TypeError that blanked the board. Fixing
-    only the comparison inside ``next_occurrence`` would have left this second
-    instance of the identical bug live, waiting for a card with two deadlines.
-    """
+    """Parse + (if recurring) advance to the next occurrence."""
     if value is None:
         return None
     try:
@@ -112,8 +110,8 @@ def _pick_next_dt(value, *, now=None):
     except TaskValidationError:
         return None
     if repeater is None:
-        return _as_aware_utc(dt)
-    return _as_aware_utc(repeater.next_occurrence(dt, now=now))
+        return dt
+    return repeater.next_occurrence(dt, now=now)
 
 
 def is_overdue(task: dict, *, now=None) -> bool:
@@ -223,25 +221,28 @@ class Repeater:
             ``catchup=True``, skip ALL missed occurrences in one jump.
             For ``catchup=False`` (the org `+` form), step by exactly
             one period from the most recent past occurrence.
+
+        ``base`` and ``now`` are compared on tz-normalised COPIES. They arrive
+        mismatched in practice — a bare-date deadline parses NAIVE while the
+        board/fleet callers pass a tz-AWARE UTC ``now`` — and comparing them
+        raised ``TypeError: can't compare offset-naive and offset-aware
+        datetimes``, which 500'd ``/graph`` and blanked the operator's board
+        on 2026-07-12. The RETURNED value keeps ``base``'s original awareness:
+        handing callers a tz-aware datetime where they have always received a
+        naive one would be a contract change smuggled in as a bug fix.
         """
         import datetime as _dt
 
         if now is None:
-            now = _dt.datetime.now(tz=_dt.timezone.utc)
-        # Both sides through the same gate — see the module docstring. `base`
-        # is naive whenever the deadline was written as a bare date, and `now`
-        # is tz-aware whenever a board/fleet caller supplied it. This compare
-        # is the line that 500'd /graph and blanked the board.
-        base = _as_aware_utc(base)
-        now = _as_aware_utc(now)
-        if base >= now:
+            now = _dt.datetime.now()
+        if _as_aware_utc(base) >= _as_aware_utc(now):
             return base
         # Add one period repeatedly until >= now. Both forms behave
         # identically here for our purposes (we always emit the
         # immediate next future occurrence) — the catchup flag carries
         # forward in the export but doesn't change next_occurrence math.
         current = base
-        while current < now:
+        while _as_aware_utc(current) < _as_aware_utc(now):
             current = _add_period(current, self.n, self.unit)
         return current
 
