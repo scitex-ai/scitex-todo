@@ -1,0 +1,33 @@
+# scitex-cards configuration knobs.
+#
+# Resolved across two scopes and LAYERED (user is the base, project overrides
+# it key-by-key):
+#   1. user:     ~/.scitex/todo/config.yaml      (or $SCITEX_DIR/todo/config.yaml)
+#   2. project:  <git-root>/.scitex/todo/config.yaml
+#
+# Copy this file to one of those locations and edit. A missing file just means
+# "use the built-in defaults". The running notifyd re-reads it each tick, so
+# changes take effect without a restart.
+
+reminders:
+  # Flat re-nudge cadence (minutes): an owner who still holds open assigned
+  # cards is re-sent their digest this often. Default 5.
+  interval_minutes: 5
+
+  # A high-priority card still stale after this many digests to its owner also
+  # escalates to the operator (once per stale streak). Default 3.
+  escalate_after: 3
+
+  # priority <= this counts as "high priority" for escalation (lower = higher
+  # priority). Default 1.
+  escalate_priority: 1
+
+  # Optional phased-rollout allowlist: when set, ONLY these owners are nagged.
+  # Empty / omitted = nag every owner. (The SCITEX_TODO_REMINDER_OWNERS env var
+  # overrides this when present.)
+  # owners:
+  #   - scitex-cards
+
+# A single card can override the cadence just for itself by setting
+# `reminder_interval_minutes: <n>` on the card in tasks.yaml — the tightest of
+# an owner's cards' intervals drives that owner's digest.

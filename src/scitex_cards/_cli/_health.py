@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""CLI verb ``scitex-cards health`` — the package-level health doctor.
+
+A BROAD store / identity / delivery health check (distinct from
+``scitex-cards mcp doctor``, which only checks the fastmcp install). Thin
+wrapper over :func:`scitex_cards._health.health`: it prints a human-readable
+report by default, or the raw standard-shape JSON with ``--json``.
+
+Exit code mirrors health: ``0`` when every check is ok, ``1`` otherwise — so
+``scitex-cards health`` is usable as a shell gate / CI probe.
+"""
+
+from __future__ import annotations
+
+import json
+
+import click
+
+
+def register(main: click.Group) -> None:
+    """Attach the ``health`` verb to the root group."""
+    main.add_command(health_cmd)
+
+
+@click.command(
+    "health",
+    help=(
+        "Run the scitex-cards health doctor: store / agent-id / notifyd / "
+        "channel checks.\n\n"
+        "Broader than `mcp doctor` (which only checks the fastmcp install): "
+        "verifies the resolved task store is canonical + readable/writable, "
+        "the agent id resolves, the notifyd delivery daemon is alive, this "
+        "agent's channel inbox is draining, and the channel server is present. "
+        "Exit 0 when all checks pass, else 1.\n\n"
+        "Examples:\n"
+        "  scitex-cards health\n"
+        "  scitex-cards health --json"
+    ),
+)
+@click.option(
+    "--tasks",
+    "tasks_path",
+    default=None,
+    help="Path to tasks.yaml (default: project -> user -> bundled example, "
+    "or $SCITEX_TODO_TASKS_YAML_SHARED).",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Emit the raw standard-shape JSON report.",
+)
+def health_cmd(tasks_path: str | None, as_json: bool) -> None:
+    """Print the health report (human or JSON) and exit non-zero if unhealthy."""
+    from .._health import health
+
+    report = health(store=tasks_path)
+    if as_json:
+        click.echo(json.dumps(report))
+        raise SystemExit(0 if report["ok"] else 1)
+
+    status = "OK" if report["ok"] else "UNHEALTHY"
+    click.echo(f"# scitex-cards health: {status} — {report['summary']}")
+    for check in report["checks"]:
+        mark = "ok  " if check["ok"] else "FAIL"
+        click.echo(f"[{mark}] {check['name']}: {check['detail']}")
+        if check["hint"]:
+            click.echo(f"        hint: {check['hint']}")
+    raise SystemExit(0 if report["ok"] else 1)
+
+
+# EOF

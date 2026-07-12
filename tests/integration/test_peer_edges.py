@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Per-edge INTEGRATION + DEGRADATION tests for scitex-todo's OPTIONAL peers.
+"""Per-edge INTEGRATION + DEGRADATION tests for scitex-cards's OPTIONAL peers.
 
-scitex-todo's Django board (``scitex_todo._django``) wires into two *optional*
+scitex-cards's Django board (``scitex_cards._django``) wires into two *optional*
 sibling SciTeX packages. Both edges are guarded in source so a lean
-``pip install scitex-todo`` (no ``[web]``/``[dev]`` extras) still works:
+``pip install scitex-cards`` (no ``[web]``/``[dev]`` extras) still works:
 
 Edge 1 — ``scitex-app`` (``_django/apps.py``)
     ``ScitexTodoConfig`` inherits ``scitex_app._django.ScitexAppConfig`` when
@@ -64,7 +64,7 @@ def _configure_django_once():
     import django
     from django.conf import settings
 
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "scitex_todo._django.settings")
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "scitex_cards._django.settings")
     if not settings.configured:
         django.setup()
 
@@ -79,7 +79,7 @@ def test_board_appconfig_subclasses_scitex_app_when_present():
     """With scitex-app installed, the board AppConfig is a ScitexAppConfig."""
     # Arrange
     scitex_app_django = pytest.importorskip("scitex_app._django")
-    from scitex_todo._django.apps import ScitexTodoConfig
+    from scitex_cards._django.apps import ScitexTodoConfig
 
     # Act
     is_subclass = issubclass(ScitexTodoConfig, scitex_app_django.ScitexAppConfig)
@@ -92,19 +92,19 @@ def test_board_appconfig_subclasses_scitex_app_when_present():
 # ---------------------------------------------------------------------------
 @pytest.fixture
 def scitex_app_absent():
-    """Reload ``scitex_todo._django.apps`` with scitex-app made unimportable.
+    """Reload ``scitex_cards._django.apps`` with scitex-app made unimportable.
 
     Hermetic and reversible:
       1. snapshot the whole ``sys.modules`` so teardown restores it exactly;
       2. evict ``scitex_app`` (+ submodules) and the consumer module
-         (``scitex_todo._django.apps``), then shadow ``scitex_app`` with
+         (``scitex_cards._django.apps``), then shadow ``scitex_app`` with
          ``None`` so a fresh ``import scitex_app`` raises ImportError;
       3. reload the consumer so it re-runs its ``try/except ImportError``
          guard under the missing peer.
 
     Yields the freshly reloaded ``apps`` module.
     """
-    import scitex_todo._django.apps  # noqa: F401 (ensure importable first)
+    import scitex_cards._django.apps  # noqa: F401 (ensure importable first)
 
     snapshot = dict(sys.modules)
 
@@ -112,13 +112,13 @@ def scitex_app_absent():
         return (
             name == "scitex_app"
             or name.startswith("scitex_app.")
-            or name == "scitex_todo._django.apps"
+            or name == "scitex_cards._django.apps"
         )
 
     for name in [n for n in list(sys.modules) if _evict(n)]:
         del sys.modules[name]
     sys.modules["scitex_app"] = None  # type: ignore[assignment]
-    reloaded = importlib.import_module("scitex_todo._django.apps")
+    reloaded = importlib.import_module("scitex_cards._django.apps")
 
     try:
         yield reloaded
@@ -160,7 +160,7 @@ def test_board_appconfig_keeps_board_label_without_scitex_app(scitex_app_absent)
     # Act
     label = config.label
     # Assert
-    assert label == "scitex_todo_board"
+    assert label == "scitex_cards_board"
 
 
 # ===========================================================================
@@ -176,8 +176,8 @@ def settings_with_scitex_ui_present():
     _configure_django_once()
 
     snapshot = dict(sys.modules)
-    sys.modules.pop("scitex_todo._django.settings", None)
-    reloaded = importlib.import_module("scitex_todo._django.settings")
+    sys.modules.pop("scitex_cards._django.settings", None)
+    reloaded = importlib.import_module("scitex_cards._django.settings")
 
     try:
         yield reloaded
@@ -245,10 +245,10 @@ def settings_with_scitex_ui_context_processors_absent():
     original_path = list(scitex_ui.__path__)
 
     sys.modules.pop("scitex_ui.context_processors", None)
-    sys.modules.pop("scitex_todo._django.settings", None)
+    sys.modules.pop("scitex_cards._django.settings", None)
     scitex_ui.__path__[:] = []  # make the submodule undiscoverable
     try:
-        reloaded = importlib.import_module("scitex_todo._django.settings")
+        reloaded = importlib.import_module("scitex_cards._django.settings")
         yield reloaded
     finally:
         scitex_ui.__path__[:] = original_path

@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "scitex-todo"
+name = "scitex-cards"
 version = "0.9.3"
 description = "Canonical YAML task store with pluggable adapters (mermaid dependency graphs)"
 readme = "README.md"
@@ -60,36 +60,48 @@ web = [
 ]
 mcp = [
     # FastMCP is the canonical SciTeX MCP SDK (general skill §1). The MCP
-    # tools live in `scitex_todo._mcp_server`; the CLI `mcp` subgroup
+    # tools live in `scitex_cards._mcp_server`; the CLI `mcp` subgroup
     # guards the import so the rest of the package keeps working without
     # this extra installed.
     "fastmcp>=2.0",
 ]
 all = [
-    "scitex-todo[dev,docs,mcp,web]",
+    "scitex-cards[dev,docs,mcp,web]",
 ]
 
+# BOTH console scripts resolve to the canonical `scitex_cards` CLI. The legacy
+# `scitex-todo` binary MUST keep working: the agent fleet invokes it today, and
+# breaking it would cut every agent off from the task board.
 [project.scripts]
-scitex-todo = "scitex_todo._cli:main"
+scitex-cards = "scitex_cards._cli:main"
+scitex-todo = "scitex_cards._cli:main"
 
+# The GitHub repository is STILL named scitex-todo — these URLs are deliberately
+# NOT renamed.
 [project.urls]
 Homepage = "https://github.com/ywatanabe1989/scitex-todo"
 Repository = "https://github.com/ywatanabe1989/scitex-todo"
 Issues = "https://github.com/ywatanabe1989/scitex-todo/issues"
 Documentation = "https://scitex-todo.readthedocs.io"
 
+# Both the NEW and the LEGACY key are registered under every scitex_dev group:
+# a consumer that looks the package up by its old name still resolves. Both
+# point at the canonical `scitex_cards` module.
 [project.entry-points."scitex_dev.docs"]
-scitex-todo = "scitex_todo"
+scitex-cards = "scitex_cards"
+scitex-todo = "scitex_cards"
 
 [project.entry-points."scitex_dev.skills"]
-scitex-todo = "scitex_todo"
+scitex-cards = "scitex_cards"
+scitex-todo = "scitex_cards"
 
 # Federated scheduled-job aggregation. scitex-dev `ecosystem up`
 # discovers this entry point and brings the declared JobSpec(s) up
 # via `systemctl --user` (kind="service" / "timer") or the managed
-# crontab block (kind="cron"). See src/scitex_todo/_jobs_provider.py.
+# crontab block (kind="cron"). See src/scitex_cards/_jobs_provider.py.
 [project.entry-points."scitex_dev.jobs"]
-scitex-todo = "scitex_todo._jobs_provider:provide_jobs"
+scitex-cards = "scitex_cards._jobs_provider:provide_jobs"
+scitex-todo = "scitex_cards._jobs_provider:provide_jobs"
 
 # Hook-consumer entry-point contract (lead a2a `6fff33d6` +
 # `fbffb879`, 2026-06-14, operator-mandated). External producers
@@ -112,30 +124,43 @@ scitex-todo = "scitex_todo._jobs_provider:provide_jobs"
 # `scitex_agent_container.*` group — scitex-todo's delivery rail is
 # fully independent of sac (ZERO sac imports). See
 # src/scitex_todo/_delivery/_registry.py.
-[project.entry-points."scitex_todo.delivery_channels"]
-log = "scitex_todo._delivery._channels.log:LogChannel"
-telegram = "scitex_todo._delivery._channels.telegram:TelegramChannel"
+# Registered under BOTH group names. `scitex_cards.*` is canonical; the
+# `scitex_todo.*` groups are kept alive so EXTERNAL producers that already
+# register their plugins against the old group name still load (the loaders in
+# `_delivery/_registry.py` and `_hooks.py` scan both groups and de-duplicate).
+[project.entry-points."scitex_cards.delivery_channels"]
+log = "scitex_cards._delivery._channels.log:LogChannel"
+telegram = "scitex_cards._delivery._channels.telegram:TelegramChannel"
 
-[project.entry-points."scitex_todo.hooks"]
-# scitex-todo's built-in handler is invoked DIRECTLY by
+[project.entry-points."scitex_todo.delivery_channels"]
+log = "scitex_cards._delivery._channels.log:LogChannel"
+telegram = "scitex_cards._delivery._channels.telegram:TelegramChannel"
+
+[project.entry-points."scitex_cards.hooks"]
+# scitex-cards' built-in handler is invoked DIRECTLY by
 # dispatch_event (not via the plugin loop). External producers add
 # their plugins under this group in their own pyproject.toml.
 
+[project.entry-points."scitex_todo.hooks"]
+# Legacy group name — still scanned by the dispatcher.
+
 [tool.hatch.build.targets.wheel]
-packages = ["src/scitex_todo"]
+# The canonical package PLUS the backward-compat shim. `scitex_todo` must ship
+# in the wheel: the entire agent fleet still does `import scitex_todo`.
+packages = ["src/scitex_cards", "src/scitex_todo"]
 # Bundle the Django app's non-Python assets (manifest, templates, built
-# frontend) into the wheel so `scitex-todo board` works from a pip install.
+# frontend) into the wheel so `scitex-cards board` works from a pip install.
 artifacts = [
-    "src/scitex_todo/_django/manifest.json",
-    "src/scitex_todo/_django/templates/**/*",
-    "src/scitex_todo/_django/static/**/*",
+    "src/scitex_cards/_django/manifest.json",
+    "src/scitex_cards/_django/templates/**/*",
+    "src/scitex_cards/_django/static/**/*",
     # Agent-facing skills + bundled example store — read at runtime by
-    # `scitex-todo skills get/install` and `bundled_example()`.
-    "src/scitex_todo/_skills/**/*",
-    "src/scitex_todo/examples/*.yaml",
+    # `scitex-cards skills get/install` and `bundled_example()`.
+    "src/scitex_cards/_skills/**/*",
+    "src/scitex_cards/examples/*.yaml",
     # Pre-built Sphinx HTML served in-wheel by scitex-cloud (PS-121);
     # refreshed by the docs workflow on main/develop pushes.
-    "src/scitex_todo/_sphinx_html/**/*",
+    "src/scitex_cards/_sphinx_html/**/*",
 ]
 
 [tool.pytest.ini_options]
@@ -144,7 +169,7 @@ addopts = "-x -q"
 
 [tool.coverage.run]
 parallel = true
-source = ["scitex_todo"]
+source = ["scitex_cards"]
 concurrency = ["multiprocessing", "thread"]
 
 [tool.ruff]
