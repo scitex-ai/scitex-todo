@@ -406,4 +406,116 @@ def test_import_does_not_modify_source_yaml(store):
     assert store["threads_path"].read_bytes() == threads_before
 
 
+# --------------------------------------------------------------------------- #
+# PERF REGRESSION: the REBUILD must not pay for `OR REPLACE`                  #
+# --------------------------------------------------------------------------- #
+# `INSERT OR REPLACE INTO tasks` cost 4,592 us/row against 110 us/row for a plain
+# INSERT — 42x, and 6.3 s of the rebuild's 7.3 s (live store, 1,370 cards).
+# `tasks` is a parent with ON DELETE CASCADE children, so under
+# `PRAGMA foreign_keys=ON` a REPLACE runs the full cascade/FK machinery on every
+# row — to resolve a conflict `_rebuild_from_doc` has already made IMPOSSIBLE by
+# deleting every row first. Asserts the MECHANISM, not a wall-clock number, so it
+# cannot flake on a busy box.
+def _sql_trace(conn, fn):
+    seen: list[str] = []
+    conn.set_trace_callback(seen.append)
+    try:
+        fn()
+    finally:
+        conn.set_trace_callback(None)
+    return seen
+
+
+def test_rebuild_inserts_tasks_without_or_replace(store):
+    doc = _model.load_doc(store["tasks_path"], validate=False)
+    conn = _db.connect(store["db_path"])
+    _db.init_schema(conn)
+
+    def _go():
+        conn.execute("BEGIN IMMEDIATE")
+        _db_bootstrap._rebuild_from_doc(conn, doc)
+        conn.commit()
+
+    seen = _sql_trace(conn, _go)
+    conn.close()
+
+    into_tasks = [s for s in seen if "INTO tasks" in s]
+    assert into_tasks, "expected the rebuild to insert into `tasks`"
+    offenders = [s for s in into_tasks if "OR REPLACE" in s.upper()]
+    assert not offenders, (
+        "the rebuild must use a plain INSERT — it deletes every row first, so "
+        "`INSERT OR REPLACE` only buys per-row FK cascade checks (42x slower). "
+        f"Offending SQL: {offenders[0]!r}"
+    )
+
+
+# ...but the DEFAULT must stay REPLACE, because the incremental mirror upserts a
+# changed card WITHOUT dropping its `tasks` row first. A plain INSERT there would
+# raise `UNIQUE constraint failed: tasks.id` on every card update.
+def test_insert_tasks_defaults_to_upsert_over_a_live_row(store):
+    conn = _db.connect(store["db_path"])
+    _db.init_schema(conn)
+    conn.execute("BEGIN IMMEDIATE")
+    _db_bootstrap._insert_tasks(conn, [{"id": "c9", "title": "v1", "status": "todo"}])
+    # Same id again, row still present — this is the incremental mirror's shape.
+    _db_bootstrap._insert_tasks(conn, [{"id": "c9", "title": "v2", "status": "done"}])
+    conn.commit()
+
+    rows = conn.execute("SELECT id, title, status FROM tasks WHERE id='c9'").fetchall()
+    conn.close()
+    assert [tuple(r) for r in rows] == [("c9", "v2", "done")]
+
+
+# --------------------------------------------------------------------------- #
+# ...and a plain INSERT must still tolerate a duplicate id, LAST-WINS          #
+# --------------------------------------------------------------------------- #
+# Last-wins is exactly what `OR REPLACE` used to give us; it is now done in
+# Python (`_dedupe_last_wins`) so the SQL can stay plain. A duplicate id is a
+# real data bug, so it is also logged LOUD rather than silently absorbed.
+def test_duplicate_task_id_keeps_last_occurrence_and_logs(tmp_path, caplog):
+    tasks_path = tmp_path / "tasks.yaml"
+    _write_yaml(
+        tasks_path,
+        {
+            "tasks": [
+                {
+                    "id": "dup",
+                    "title": "FIRST",
+                    "status": "todo",
+                    "comments": [{"author": "a", "ts": "t", "text": "old"}],
+                },
+                {"id": "keep", "title": "Untouched", "status": "done"},
+                {
+                    "id": "dup",
+                    "title": "SECOND",
+                    "status": "done",
+                    "comments": [{"author": "b", "ts": "t", "text": "new"}],
+                },
+            ]
+        },
+    )
+    db_path = tmp_path / "todo.db"
+
+    with caplog.at_level("ERROR"):
+        summary = _db_bootstrap.import_from_yaml(
+            tasks_path=tasks_path, db_path=db_path
+        )
+
+    conn = sqlite3.connect(db_path)
+    rows = conn.execute("SELECT id, title, status FROM tasks ORDER BY id").fetchall()
+    comments = conn.execute(
+        "SELECT task_id, text FROM task_comments ORDER BY task_id"
+    ).fetchall()
+    conn.close()
+
+    # The duplicate collapses to ONE row — the LAST one — and does not raise.
+    assert rows == [("dup", "SECOND", "done"), ("keep", "Untouched", "done")]
+    assert summary["tasks"] == 2
+    # Only the winner's comments survive (`OR REPLACE` used to append BOTH cards').
+    assert comments == [("dup", "new")]
+    # And the data bug is surfaced, not swallowed.
+    assert "dup" in caplog.text
+    assert "DUPLICATE CARD ID" in caplog.text
+
+
 # EOF
