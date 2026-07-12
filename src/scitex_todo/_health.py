@@ -168,55 +168,27 @@ def _check_agent_id(agent_id: str | None) -> dict[str, Any]:
 
 
 def _check_notifyd_alive(store: str | Path | None) -> dict[str, Any]:
-    """Check the notifyd delivery daemon via its pidfile (real liveness probe).
+    """Check the notifyd delivery daemon via its pidfile — NAMESPACE-AGNOSTIC.
 
-    The daemon stamps ``<store_dir>/runtime/notifyd.pid`` and holds an flock for
-    its lifetime. We read the pid and probe it with ``os.kill(pid, 0)``. Absent
-    pidfile ⇒ not running (actionable). A pid that no longer exists ⇒ stale
-    pidfile (actionable). A genuinely undeterminable state degrades to ``ok``.
+    The daemon stamps ``<store_dir>/runtime/notifyd.pid``, holds an flock for
+    its lifetime, and REWRITES the file every tick (a heartbeat).
+
+    The pid alone is not a portable liveness signal: notifyd runs on the bare
+    host while fleet agents run in CONTAINERS that share the store by
+    bind-mount, and **a pid is only meaningful inside the PID namespace that
+    issued it**. Probing a foreign pid with ``os.kill`` raises
+    ``ProcessLookupError`` and used to be reported as a stale pidfile — a
+    permanent FALSE failure on a perfectly healthy daemon, which is worse than
+    no check at all (it teaches the reader to ignore the channel).
+
+    So: same namespace ⇒ probe the pid (sharpest signal, still fail-loud).
+    Different namespace ⇒ judge by HEARTBEAT FRESHNESS and never by the pid.
+    See :mod:`scitex_todo._delivery._pidfile` for the verdict logic.
     """
     from ._delivery._daemon import pidfile_path
+    from ._delivery._pidfile import assess_liveness
 
-    pidfile = pidfile_path(store)
-    start_hint = (
-        "notifyd is not running — start it: `scitex-todo notifyd` (foreground), "
-        "or install the systemd user unit: `scitex-todo notifyd install-unit`"
-    )
-    if not pidfile.exists():
-        return {"ok": False, "detail": "no notifyd pidfile", "hint": start_hint}
-    text = pidfile.read_text(encoding="utf-8").strip()
-    try:
-        pid = int(text.split()[0])
-    except (ValueError, IndexError):
-        # Can't determine — degrade gracefully rather than a false failure.
-        return {
-            "ok": True,
-            "detail": f"notifyd pidfile {pidfile} is unparseable — could not "
-            "determine liveness",
-            "hint": None,
-        }
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return {
-            "ok": False,
-            "detail": f"stale notifyd pidfile: pid {pid} is not running",
-            "hint": start_hint,
-        }
-    except PermissionError:
-        # Process exists but owned by another user — it IS alive.
-        return {
-            "ok": True,
-            "detail": f"notifyd alive (pid {pid}, owned by another user)",
-            "hint": None,
-        }
-    except OSError as exc:
-        return {
-            "ok": True,
-            "detail": f"could not determine notifyd liveness ({exc})",
-            "hint": None,
-        }
-    return {"ok": True, "detail": f"notifyd alive (pid {pid})", "hint": None}
+    return assess_liveness(pidfile_path(store))
 
 
 def _check_channel_drain(
