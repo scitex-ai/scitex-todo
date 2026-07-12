@@ -47,6 +47,14 @@ class Command(BaseCommand):
             help="Server port (default: 8051).",
         )
         parser.add_argument(
+            "--host",
+            default="127.0.0.1",
+            help="Bind address (default: 127.0.0.1). The board is "
+            "UNAUTHENTICATED and serves every agent's cards — binding it "
+            "off loopback exposes the whole store, so a wider bind must be "
+            "asked for explicitly.",
+        )
+        parser.add_argument(
             "--no-browser",
             action="store_true",
             help="Don't open a browser automatically.",
@@ -70,7 +78,8 @@ class Command(BaseCommand):
         # precedence documented in ``scitex-todo --help`` ("an explicit
         # --tasks path, then $SCITEX_TODO_TASKS_YAML_SHARED, then the project store, ...").
         _apply_tasks_env(tasks)
-        url = f"http://127.0.0.1:{port}/"
+        host = options.get("host") or "127.0.0.1"
+        url = f"http://{host}:{port}/"
         if tasks:
             url += f"?store={tasks}"
 
@@ -84,7 +93,7 @@ class Command(BaseCommand):
 
         from django.core.management import call_command
 
-        call_command("runserver", f"127.0.0.1:{port}", "--noreload")
+        call_command("runserver", f"{host}:{port}", "--noreload")
 
 
 # EOF
