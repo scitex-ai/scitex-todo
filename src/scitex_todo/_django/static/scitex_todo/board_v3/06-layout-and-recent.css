@@ -1,14 +1,13 @@
-/* board_v3 — Layout switcher + Recent sort visuals + Table/Graph
- * layouts + NEW badge.
+/* board_v3 — Layout switcher + recent-count pill + NEW badge + the
+ * mermaid Graph wrap.
  *
- * Lead design ruling 2026-06-12 (operator TG 12461): the board has
- * two orthogonal axes — LAYOUT (Graph | Column | Table, sit in the
- * filterbar) and TIME (Recent sort mode in the Sort dropdown). This
- * file owns the visuals for both: segment buttons, recent-count
- * pill, NEW badge, the flat Table view, and the mermaid Graph wrap.
+ * LAYOUT axis: Timeline | Wall | Graph. Column (kanban) + Table (flat
+ * rows) were removed 2026-07-13 (operator: "Column, Table view がいらない
+ * です、削除してください") — the `.tbl*` + `[data-layout="table"]` rules that
+ * lived here went with them.
  *
- * Sibling files: 01-filterbar.css (filterbar grid), 02-card.css
- * (per-card kanban visuals).
+ * Sibling files: 01-filterbar.css (filterbar grid), 09-timeline.css,
+ * 11-sticky-wall.css.
  */
 
 /* === LAYOUT switcher (segmented control in the filterbar) =============== */
@@ -106,119 +105,6 @@
   box-shadow: 0 0 6px 1px rgba(255, 193, 7, 0.45);
 }
 
-/* === TABLE layout (flat rows view) ===================================== */
-/* When `#columns` carries data-layout="table" we suppress the flex strip
- * styling from 01-filterbar.css so the table can flow normally. */
-.columns[data-layout="table"] {
-  display: block;
-  overflow-y: auto;
-  overflow-x: auto;
-  padding: 12px;
-}
-.tbl-wrap {
-  width: 100%;
-  overflow-x: auto;
-}
-.tbl {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.88rem;
-  background: var(--col-bg);
-}
-.tbl thead th {
-  position: sticky;
-  top: 0;
-  background: var(--col-bg);
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  text-align: left;
-  padding: 8px 10px;
-  border-bottom: 2px solid var(--border);
-  z-index: 1;
-}
-.tbl tbody td {
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
-  vertical-align: top;
-}
-.tbl tbody tr.tbl-row {
-  cursor: pointer;
-  transition: background 80ms ease;
-}
-.tbl tbody tr.tbl-row:hover {
-  background: rgba(109, 76, 173, 0.1);
-}
-.tbl-row--working td.tbl-status {
-  color: var(--green);
-}
-.tbl-row--waiting td.tbl-status {
-  color: var(--amber);
-}
-.tbl-row--blocked td.tbl-status {
-  color: var(--red);
-}
-.tbl-row--done td.tbl-status {
-  color: var(--grey);
-}
-.tbl td.tbl-title {
-  font-weight: 600;
-  color: #fff;
-  max-width: 640px;
-}
-.tbl td.tbl-project {
-  color: var(--text-muted);
-  font-family: ui-monospace, monospace;
-  font-size: 0.78rem;
-}
-.tbl td.tbl-prio {
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-.tbl td.tbl-last {
-  color: var(--text-muted);
-  font-family: ui-monospace, monospace;
-  font-size: 0.72rem;
-  white-space: nowrap;
-}
-.tbl-status-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  margin-right: 6px;
-  vertical-align: 1px;
-}
-.tbl-status-dot--working {
-  background: var(--green);
-}
-.tbl-status-dot--waiting {
-  background: var(--amber);
-}
-.tbl-status-dot--blocked {
-  background: var(--red);
-}
-.tbl-status-dot--done {
-  background: var(--grey);
-}
-.tbl-blocker {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 7px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.04);
-}
-.tbl-blocker--operator-decision {
-  border-color: var(--gold);
-  color: var(--gold);
-  background: rgba(255, 193, 7, 0.1);
-  font-weight: 700;
-}
-
 /* === GRAPH layout (mermaid canvas) ===================================== */
 .columns[data-layout="graph"] {
   display: block;
@@ -229,6 +115,10 @@
   width: 100%;
 }
 .graph-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   color: var(--text-muted);
   font-size: 0.78rem;
   font-style: italic;
@@ -237,12 +127,50 @@
   border: 1px dashed var(--border);
   border-radius: 6px;
 }
-.graph-wrap .mermaid {
+/* Fit / 1:1 toggle — the operator asked for the diagram to come up at a
+ * usable SIZE ("サイズも調整して表示される", 2026-07-13). Default is FIT. */
+.graph-fit-btn {
+  flex: 0 0 auto;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-style: normal;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-muted);
+}
+.graph-fit-btn:hover {
+  color: var(--text);
+  border-color: var(--purple, #7c5cbf);
+}
+/* The SVG host. mermaid emits the diagram at its NATURAL px size (plus a
+ * viewBox) because it is rendered OFF-DOM, where no container width exists
+ * to fit against. So the scaling happens here:
+ *   .graph-wrap--fit  -> width:100%, height:auto  (shrink to the panel;
+ *                        the viewBox keeps the aspect ratio, so nothing is
+ *                        squashed and nothing is clipped)
+ *   default (1:1)     -> natural size, the host scrolls
+ * A wide dependency map at 1:1 is unreadable in a 1400 px panel; a tall one
+ * fitted to width is unreadable too — hence the toggle rather than a
+ * one-size-fits-all rule. */
+.graph-canvas {
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 18px;
   overflow: auto;
+  max-height: calc(100vh - 220px);
+}
+.graph-wrap--fit .graph-canvas svg {
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+}
+.graph-canvas--loading {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 28px 18px;
 }
 /* Empty-state for the Graph layout — fires when the filtered scope
  * has no depends_on / blocks / parent edges among the visible cards.

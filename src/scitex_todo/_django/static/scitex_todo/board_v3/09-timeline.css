@@ -104,10 +104,25 @@
 }
 .tl-lane-bg {
   fill: transparent;
+  transition: fill 90ms ease;
 }
 .tl-lane-bg--even {
   fill: var(--card-bg, #1a1f29);
   opacity: 0.4;
+}
+/* ── ROW HOVER (operator 2026-07-13: "マウスホバーに合わせてその行をハイライト
+   する visual feedback … その行の scatter だけ半径が大きくなるとかもいいと思い
+   ます") — both: the lane lights up AND its dots grow. Class-only, toggled by
+   13-timeline-hover.js on one delegated mouseover; the raster is never
+   rebuilt, so this stays smooth on a live-updating chart. `r` is an SVG
+   geometry property, so CSS can animate it. */
+.tl-lane-bg--hover {
+  fill: var(--purple, #7c5cbf);
+  opacity: 0.16;
+}
+.tl-dot--lanehover {
+  r: 10;
+  stroke-width: 2;
 }
 .tl-lane-label {
   fill: var(--text, #e0e6f0);
@@ -115,12 +130,16 @@
   font-weight: 600;
 }
 
-/* ── per-agent avatar (lane-label icon, "By Agent" raster only) ────────
+/* ── per-agent avatar (lane-label icon + the Wall's agent tiles) ───────
    Operator 2026-07-10 (todo-board-agent-icons-status-rings-20260710):
-   tracing left across the raster to find the owning agent is slow. The
-   ring reuses the SAME --status-stroke-<s> tokens as .tl-dot / the status
-   legend above, so it reads consistently everywhere on the board. Markup
-   emitted by timeline.js via window.STX.agentAvatar (10-agent-avatar.js). */
+   tracing left across the raster to find the owning agent is slow, so each
+   agent lane carries its fleet icon. Markup emitted via window.STX.agentAvatar
+   (10-agent-avatar.js).
+
+   The STATUS RING around the icon was REMOVED 2026-07-13 (operator: "エージェント
+   アイコンの周りが何を表すのかよくわかりませんでした … 状態マーカはなくして良い") —
+   its `.tl-avatar-ring*` rules are gone with it. Status still reads off the
+   dots, the cards and the legend, which is where anyone looks for it. */
 .tl-avatar-bg {
   stroke: var(--col-bg, #131820);
   stroke-width: 1.5;
@@ -137,35 +156,6 @@
 .tl-avatar-text--sm {
   font-size: 6px;
   letter-spacing: -0.02em;
-}
-.tl-avatar-ring {
-  fill: none;
-  stroke-width: 2.5;
-}
-.tl-avatar-ring--goal {
-  stroke: var(--status-stroke-goal);
-}
-.tl-avatar-ring--done {
-  stroke: var(--status-stroke-done);
-}
-.tl-avatar-ring--in_progress {
-  stroke: var(--status-stroke-in_progress);
-}
-.tl-avatar-ring--blocked {
-  stroke: var(--status-stroke-blocked);
-}
-.tl-avatar-ring--pending {
-  stroke: var(--status-stroke-pending);
-}
-.tl-avatar-ring--deferred {
-  stroke: var(--status-stroke-deferred);
-}
-.tl-avatar-ring--failed {
-  stroke: var(--status-stroke-failed);
-}
-.tl-avatar-ring--none {
-  stroke: var(--text-muted, #8a96a8);
-  opacity: 0.5;
 }
 .tl-edge {
   stroke-width: 1.4;

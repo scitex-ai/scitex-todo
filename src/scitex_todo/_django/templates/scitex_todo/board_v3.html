@@ -46,7 +46,7 @@
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/05-responsive.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/06-layout-and-recent.css' %}">
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/07-toolbar-groups.css' %}">
-<link rel="stylesheet" href="{% static 'scitex_todo/board_v3/08-time-grouping.css' %}">{# 08-time-grouping.css: bucket headers TODAY/WEEK/MONTH/OLDER for Group-by-time (a2a `ff1441d7`) #}
+<link rel="stylesheet" href="{% static 'scitex_todo/board_v3/13-details-pane.css' %}">{# 13-details-pane.css: right-hand Details column (filters + legend-aligned stats), scitex-writer convention #}
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/09-timeline.css' %}">{# 09-timeline.css: Timeline layout — raster + per-task simple cards (operator TODO 2026-06-17) #}
 <link rel="stylesheet" href="{% static 'scitex_todo/board_v3/11-sticky-wall.css' %}">{# 11-sticky-wall.css: Wall layout (notes + islands) + the shared .stx-flash status-transition glow #}
 {# combobox.css (loaded below the page-CSS so its specificity sits ON TOP if needed) #}
@@ -112,6 +112,12 @@
   listener, so every current and future view inherits it.
 {% endcomment %}
 <script defer src="{% static 'scitex_todo/board_v3/12-hover-tip.js' %}"></script>
+{% comment %}
+  13-timeline-hover.js — row-hover feedback for the Timeline raster (hovered
+  lane highlights + its scatter dots grow). One delegated listener on #columns;
+  class-toggle only, so a hover never rebuilds the raster. Operator 2026-07-13.
+{% endcomment %}
+<script defer src="{% static 'scitex_todo/board_v3/13-timeline-hover.js' %}"></script>
 {% comment %}
   timelineGate.js — anti-flash change-detection gate for the Timeline raster.
   MUST load BEFORE timeline.js: publishes window.STX.timelineGate (rasterSig +
@@ -199,7 +205,7 @@
   {% endcomment %}
   <div class="filterbar">
     <div class="fb-left">
-      <h1>scitex-todo
+      <h1>SciTeX Cards
         <span class="small">v{{ scitex_todo_version|default:"?" }}</span></h1>
       <span class="small"><span class="live-dot"></span>LIVE</span>
     </div>
@@ -223,71 +229,7 @@
         <ul class="search-suggest" id="search-suggest" role="listbox"
             aria-label="Search suggestions" hidden></ul>
       </span>
-      <!-- P2 (lead brief 2026-06-12) — filter-UX collapse. Six filter
-           dropdowns live inside a single "🔧 Filters (N active)" popover.
-           Moved into the SEARCH/FILTER center group (board UI overhaul
-           part 2) so query-narrowing controls cluster. -->
-      <details id="filt-popover-wrap" class="filt-popover">
-      <summary id="filt-popover-summary"
-               title="Open filter popover (project / host / status / blocker / agent / date)">
-        🔧 Filters <span id="filt-active-count">(0)</span> ▾
-      </summary>
-      <div class="filt-popover-body">
-        <div class="filt-popover-row">
-          <label for="f-project">Project</label>
-          <select id="f-project"><option value="">All projects</option></select>
-        </div>
-        <div class="filt-popover-row">
-          <label for="f-host">Host</label>
-          <select id="f-host"><option value="">All hosts</option></select>
-        </div>
-        <div class="filt-popover-row">
-          <label for="f-status">Status</label>
-          <select id="f-status"><option value="">All statuses</option></select>
-        </div>
-        <div class="filt-popover-row">
-          <label for="f-blocker">Blocker</label>
-          <select id="f-blocker"><option value="">All blockers</option></select>
-        </div>
-        <div class="filt-popover-row">
-          <label for="f-agent">Assignee</label>
-          <select id="f-agent"><option value="">All assignees</option></select>
-        </div>
-        <div class="filt-popover-row">
-          <label for="f-date">Date</label>
-          <select id="f-date"
-                  title="Filter by date proximity (operator TG 440/442)">
-            <option value="">All dates</option>
-            <option value="overdue">📅 overdue</option>
-            <option value="today">📅 today</option>
-            <option value="7d">📅 within 7 days</option>
-            <option value="30d">📅 within 30 days</option>
-            <option value="undated">no date in title</option>
-          </select>
-        </div>
-        <!-- Show-done toggle (operator direct request, lead a2a
-             `b9d135c1ea8348dea80f027ba66a0079` 2026-06-12). DEFAULT
-             OFF — `status: done` cards are hidden from every layout
-             (Column / Graph / Table / Calendar). Persisted in
-             localStorage["scitex-todo:show-done"]. The hidden-done
-             count surfaces in the popover row label so the operator
-             can't think "where did my done cards go". -->
-        <div class="filt-popover-row filt-popover-row--toggle">
-          <label for="f-showdone" class="filt-popover-toggle-label">
-            <input type="checkbox" id="f-showdone"
-                   onchange="onShowDoneChange(event)">
-            <span>Show <code>done</code> tasks
-              <span id="f-showdone-count" class="filt-popover-count">(0 hidden)</span></span>
-          </label>
-        </div>
-        <div class="filt-popover-actions">
-          <button type="button" class="filt-popover-clear"
-                  onclick="clearAllFilters()"
-                  title="Reset all filters in this popover">Clear all</button>
-        </div>
-      </div>
-    </details>
-    </div>{# end .fb-center / SEARCH-FILTER group #}
+    </div>{# end .fb-center / SEARCH group #}
 
     <div class="fb-right">
     {% comment %} board UI overhaul part 2 (2026-06-14, operator complaint via lead
@@ -313,27 +255,33 @@
          is "sort by deadline" (pairs with the P4 deadline schema landing
          later). For now the operator can sort by deadline (parsed from
          title), priority rank, status, project, last-activity. -->
-    <!-- LAYOUT AXIS (lead design ruling 2026-06-12, operator TG 12461)
-         — the board renders the SAME data in one of three orthogonal
-         layouts. Column is the kanban kept from v0.5.5; Table is a
-         flat sortable rows view; Graph is the dependency / blocker
-         graph (mermaid SVG, fed from /graph). Recent is NOT a layout
-         — it's a sort mode below that applies across all layouts. -->
-    <!-- Order: Timeline FIRST (operator 2026-07-10, card
-         todo-board-remove-stale-view-timeline-first-20260710 — "Timeline
-         view 本丸なので一番左に"). The Stale layout button was removed on the
-         same card ("Stale view 要らない"); its render path + /stale
-         endpoint stay (shared code), only the layout is unreachable.
-         Default view is still Column (the --on button) — changing the
-         default is an OPEN question on the card, not decided. -->
+    <!-- LAYOUT AXIS — the board renders the SAME data in one of three
+         orthogonal layouts: Timeline (time raster), Wall (sticky notes),
+         Graph (dependency map, mermaid SVG).
+
+         Column (kanban) + Table (flat rows) were REMOVED 2026-07-13
+         (operator TG: "Column, Table view がいらないです、削除してください").
+         Their renderers, chrome (pin / drag-reorder / column ctx-menu /
+         per-card checkboxes) and the controls that only drove them (Sort,
+         Group, Group-by-time, bulk-select toolbar, project-column hide)
+         went with them — every one of those acted on column CARDS, which
+         no longer exist. The Stale layout was removed the same way on
+         2026-07-10.
+
+         Timeline is FIRST *and* the DEFAULT (operator 2026-07-10 —
+         "Timeline view 本丸なので一番左に"; Column used to be the default,
+         so the boot path + onLayoutChange() coerce any stored
+         column/table/stale value to timeline — otherwise an operator whose
+         localStorage still said "column" would land on a BLANK board). -->
     <span class="filt-layout"
-          title="Switch layout: Timeline (time raster) | Graph (dep map) | Column (kanban) | Table (rows)">
+          title="Switch layout: Timeline (time raster) | Wall (sticky notes) | Graph (dep map)">
       <label class="filt-layout-label">Layout</label>
       <div class="filt-layout-seg" role="radiogroup" aria-label="Layout mode">
-        <button type="button" class="filt-layout-btn" id="f-layout-timeline"
+        <button type="button" class="filt-layout-btn filt-layout-btn--on"
+                id="f-layout-timeline"
                 data-layout="timeline" onclick="onLayoutChange('timeline')"
-                role="radio" aria-checked="false"
-                title="Timeline — time raster by agent/project, or a per-task simple list (day/week/month windows)">⏱ Timeline</button>
+                role="radio" aria-checked="true"
+                title="Timeline — time raster by agent/project, or a per-task simple list (day/week/month windows) — default">⏱ Timeline</button>
         <button type="button" class="filt-layout-btn" id="f-layout-wall"
                 data-layout="wall" onclick="onLayoutChange('wall')"
                 role="radio" aria-checked="false"
@@ -342,108 +290,9 @@
                 data-layout="graph" onclick="onLayoutChange('graph')"
                 role="radio" aria-checked="false"
                 title="Dependency / blocker graph (mermaid)">📊 Graph</button>
-        <button type="button" class="filt-layout-btn filt-layout-btn--on"
-                id="f-layout-column" data-layout="column"
-                onclick="onLayoutChange('column')"
-                role="radio" aria-checked="true"
-                title="Project columns (kanban) — default">📋 Column</button>
-        <button type="button" class="filt-layout-btn" id="f-layout-table"
-                data-layout="table" onclick="onLayoutChange('table')"
-                role="radio" aria-checked="false"
-                title="Flat rows view">📑 Table</button>
       </div>
-    </span>
-    <span class="filt-sort">
-      <label for="f-sort">Sort</label>
-      <select id="f-sort" title="Sort cards within each column (Recent applies across all layouts and adds NEW badges to <24h cards). Time-based sorts (last activity / created / completed) honor the operator's TIME-BASED VIEW request — lead a2a `ff1441d7`, 2026-06-14."
-              onchange="onSortChange(event)">
-        <option value="default">default (date-aware)</option>
-        <option value="recent">Recent (newest first) 🆕</option>
-        <option value="deadline">deadline (soonest first)</option>
-        <option value="priority">priority rank (#1 first)</option>
-        <option value="status">status</option>
-        <option value="project">project name</option>
-        <option value="last_activity">last activity (newest)</option>
-        <option value="created_at">created (newest first)</option>
-        <option value="completed_at">completed (newest first)</option>
-        <option value="title">title (A→Z)</option>
-      </select>
-    </span>
-    {% comment %}
-      Group-by-time toggle (operator-asked TIME-BASED VIEW — lead a2a
-      `ff1441d7`, 2026-06-14). When ON, the column layout walks each
-      project's visible cards and inserts collapsible bucket headers
-      (TODAY / THIS WEEK / THIS MONTH / OLDER) keyed on `last_activity`.
-      Default OFF — back-compat with the existing flat column view.
-      State persists in localStorage["scitex-todo:group-by-time"].
-      Lives in the existing VIEW group next to Sort so the operator's
-      time controls cluster (board UI overhaul part 2, PR #173).
-    {% endcomment %}
-    <span class="filt-groupby-time">
-      <label class="stx-todo-group-by-time-label"
-             title="Group cards by last_activity bucket (TODAY / WEEK / MONTH / OLDER) within each column">
-        <input type="checkbox" id="stx-toggle-group-by-time"
-               onchange="onGroupByTimeChange(event)">
-        <span>Group by time</span>
-      </label>
-    </span>
-    <!-- P10 (lead a2a 2026-06-12) — group-by toggle. Off = today's flat
-         column view. On = columns cluster under group headers (define
-         clusters via the new `groups:` top-level in tasks.yaml). Empty
-         when the store has no `groups:` (back-compat). -->
-    <span class="filt-groupby">
-      <label for="f-groupby">Group</label>
-      <select id="f-groupby" title="Cluster columns by project group"
-              onchange="onGroupByChange(event)">
-        <option value="off">off (flat)</option>
-        <option value="on">by project group</option>
-      </select>
     </span>
     </div>{# end VIEW group #}
-
-    <span class="stx-todo-filterbar__divider" aria-hidden="true"></span>
-
-    <div class="stx-todo-filterbar__group stx-todo-filterbar__group--status"
-         role="group" aria-label="Status controls — new-task badge, reload, visibility">
-    <!-- 🆕 N new in 24h — visible counter that lights up regardless of
-         the selected sort. Operator TG 12461 (parity with /legacy's
-         Recent tab) — surfaces "how many came in since yesterday" at
-         a glance. Click to set Sort = Recent. -->
-    <span class="filt-recent-count" id="recent-count-pill"
-          title="Click to switch Sort to Recent (newest first)"
-          onclick="setSortRecent()" style="display:none">
-      <span id="recent-count-value">0</span> new/24h
-    </span>
-    <button id="reload" class="reload-btn" onclick="loadGraph()">Reload</button>
-    <!-- Project-hide — per-project COLUMN hide (operator TG 344
-         "プロジェクトの crud/hide"). Soft, client-side, localStorage-
-         backed; mirror the per-card hide pattern below so hidden
-         projects survive reload. -->
-    <details id="proj-hide-wrap" class="proj-hide">
-      <summary id="proj-hide-summary" title="Hide entire project columns from view">
-        🙈 hide project (<span id="proj-hidden-count">0</span>)
-      </summary>
-      <div id="proj-hide-list" class="proj-hide-list">
-        <div class="proj-hide-empty">No projects loaded yet.</div>
-      </div>
-    </details>
-    <button id="t-block" class="toggle-block" onclick="toggleBlockingMe(event)">
-      🚧 blocking me
-    </button>
-    <!-- Hidden-cards dropdown (operator TG 381): replaces the simple
-         "show hidden" toggle. Lists every hidden card by title +
-         project with a one-click un-hide button. Last row is the
-         "show hidden in place" toggle (the legacy behavior) for users
-         who'd rather reveal everything than un-hide one by one. -->
-    <details id="hidden-wrap" class="hidden-list">
-      <summary id="hidden-summary" title="Hidden cards — click to expand">
-        👁 hidden (<span id="hidden-count">0</span>)
-      </summary>
-      <div id="hidden-list-panel" class="hidden-list-panel">
-        <div class="hidden-list-empty">No hidden cards.</div>
-      </div>
-    </details>
-    </div>{# end STATUS group #}
 
     <span class="stx-todo-filterbar__divider" aria-hidden="true"></span>
 
@@ -503,69 +352,16 @@
 
   {% comment %}
     BLOCKING-YOU 360 px aside REMOVED (P12, lead a2a 2026-06-12). The
-    "right-end giant lane" the operator photographed is now a normal
-    project column synthesized client-side as the `user` lane (see
-    USER_LANE_KEY in _renderColumnView): every task with
-    `status === "blocked" && blocker === "operator-decision"` shows up
-    in a column titled `user` at normal width, with normal drag-reorder
-    / pin / column-context-menu. Tasks still live in their REAL project
-    column too; the user lane is a render-time aggregation, not a
-    schema change. The mobile `#by-fab` drawer toggle is removed with
-    the aside; the "🚧 blocking me" filterbar toggle (#t-block) still
-    works because it's a filter, not a drawer.
-
-    NB: PR #108 inadvertently left the aside HTML + `#block-rows`
-    placeholder in place while removing the JS that populated it —
-    operator saw "loading…" forever in the right sidebar. This commit
-    finishes the job.
+    operator-decision queue was folded into the Column layout's synthetic
+    `user` lane — which itself went away with the Column layout on
+    2026-07-13. The "🚧 blocking me" filterbar toggle (#t-block) is the
+    surviving entry point: it's a FILTER, so it narrows whichever layout
+    is active (Timeline / Wall / Graph).
   {% endcomment %}
 
   <div class="main">
-    <!-- Multi-select board toolbar (PR(h) Stage 1, board card
-         todo-multiselect-batch-ops, lead a2a 1ebc792c). Always rendered
-         but visually quiet at zero selection (the Status dropdown is
-         disabled until at least one card is checked). Bulk status change
-         is the v1 op; the other 4 bulk ops (project re-assign / agent
-         re-assign / bulk nudge / bulk hide) are follow-up PRs.
-         (hook-bypass: line-limit.) -->
-    <div id="board-toolbar" class="board-toolbar"
-         role="region" aria-label="Multi-select bulk actions">
-      <label class="board-toolbar-all">
-        <input type="checkbox" id="board-toolbar-select-all"
-               aria-label="Select or clear all visible cards"
-               onchange="toggleSelectAll(this.checked)" />
-        select all
-      </label>
-      <span class="board-toolbar-sep">·</span>
-      <span class="board-toolbar-count-label">selected:
-        <span id="board-toolbar-count">0</span>
-      </span>
-      <span class="board-toolbar-sep">·</span>
-      <label for="board-toolbar-status" class="board-toolbar-status-label">Status</label>
-      <select id="board-toolbar-status"
-              title="Set status on every selected card"
-              aria-label="Bulk status change"
-              disabled
-              onchange="bulkSetStatus(this.value); this.value='';">
-        <option value="">— change to… —</option>
-        {# `pending` abolished 2026-07-10; writing it now fails validation. #}
-        <option value="in_progress">in_progress</option>
-        <option value="blocked">blocked</option>
-        <option value="done">done</option>
-        <option value="deferred">deferred</option>
-        <option value="failed">failed</option>
-        <option value="goal">goal</option>
-      </select>
-      <button type="button" id="board-toolbar-clear"
-              class="board-toolbar-clear"
-              disabled
-              onclick="clearMultiselect()">clear</button>
-      <!-- TODO(PR-h+1): project-reassign / agent-reassign / nudge / hide. -->
-    </div>
-    <!-- P10 (lead a2a 2026-06-12) — spans_all groups (e.g. "lead") render
-         as a thin banner here, above the columns grid. Empty by default
-         (no groups, or no spans_all groups). -->
-    <div id="group-spans-all" class="group-strip" style="display:none"></div>
+    <div class="board-area">
+
     <!-- Empty-state banner (operator TG12911, lead a2a `ffa6c606`) — when
          the active filters narrow the visible set to 0 cards, surface an
          explicit "0 matches" line + a one-click "Clear filters" so a
@@ -585,6 +381,148 @@
     <div class="columns" id="columns">
       <div class="loading">loading…</div>
     </div>
+    </div>{# end .board-area #}
+
+    {% comment %}
+      RIGHT-HAND DETAILS COLUMN (operator TG 2026-07-13: "右の方に details
+      カラムを作ってそこにもっと使いやすい形でのフィルタを用意すればよい" +
+      "Legend と対応させて Details の方に Stats を用意して、可視化してください。
+      タイムスケールも分けられるようにして … (d/w/m)").
+
+      Convention borrowed from scitex-writer's Details pane (aside +
+      accordion sections + localStorage open-set) so the two products look
+      like one system rather than two bespoke boards.
+
+      The three sections are exactly the things that used to shout from the
+      header: STATS (incl. the "N new/24h" counter), FILTERS (the six
+      dropdowns from the old popover, plus show-done + blocking-me as
+      ordinary filter rows) and HIDDEN cards.
+    {% endcomment %}
+    <aside class="details-pane stx-shell-sidebar" id="details-panel"
+           aria-label="Details">
+      {% comment %}
+        The pane itself is scitex-ui's `.stx-shell-sidebar` — the SAME
+        workspace-pane primitive Writer / Scholar / Console use (shell CSS
+        css/shell/stx-shell-sidebar.css, already linked by the standalone
+        shell this template extends). We get its 50 px `__header`, its
+        scrolling `__content`, and its "smart" `.collapsed` state (pane
+        shrinks to --ui-collapsed-pane-width and the header rotates into a
+        vertical icon+label strip) for free. `.details-pane` in
+        13-details-pane.css carries ONLY the overrides the component's own
+        docs ask for: dock it to the RIGHT (border-left) and give it a
+        board-appropriate width.
+      {% endcomment %}
+      <div class="stx-shell-sidebar__header">
+        <h5><span aria-hidden="true">📊</span> Details</h5>
+        {# shown only when collapsed — the shell's vertical icon+label strip #}
+        <span class="stx-shell-sidebar__title">
+          <i aria-hidden="true">📊</i><span>Details</span>
+        </span>
+        <button type="button" class="stx-shell-sidebar__toggle"
+                id="details-toggle" onclick="toggleDetailsPane()"
+                aria-expanded="true" aria-controls="details-panel"
+                title="Collapse / expand the Details column">›</button>
+      </div>
+      <div class="stx-shell-sidebar__content details-body">
+
+        <div class="details-section open" data-id="stats">
+          <button type="button" class="details-section-toggle"
+                  onclick="toggleDetailsSection('stats')">
+            <span class="details-section-title">Stats</span>
+            <span class="details-chevron" aria-hidden="true">▸</span>
+          </button>
+          <div class="details-section-body" id="details-stats-body">
+            {% comment %}
+              TIMESCALE — the SAME d/w/m window the Timeline raster uses
+              (timeline.js `WINDOWS = {1d:24, 1w:168, 1m:720}` hours, stored
+              under localStorage["scitex-todo:tl-window"]). Clicking here
+              calls the timeline's own setTimelineWindow(), so there is ONE
+              definition of "week" on the board, not two that can drift.
+            {% endcomment %}
+            <div class="details-scale" role="group" aria-label="Stats timescale">
+              <button type="button" class="details-scale-btn" data-win="1d"
+                      onclick="setBoardWindow('1d')" title="Last 24 hours">D</button>
+              <button type="button" class="details-scale-btn" data-win="1w"
+                      onclick="setBoardWindow('1w')" title="Last 7 days">W</button>
+              <button type="button" class="details-scale-btn" data-win="1m"
+                      onclick="setBoardWindow('1m')" title="Last 30 days">M</button>
+            </div>
+            <div id="details-stats"></div>
+          </div>
+        </div>
+
+        <div class="details-section open" data-id="filters">
+          <button type="button" class="details-section-toggle"
+                  onclick="toggleDetailsSection('filters')">
+            <span class="details-section-title">Filters</span>
+            <span class="details-filter-count" id="filt-active-count">(0)</span>
+            <span class="details-chevron" aria-hidden="true">▸</span>
+          </button>
+          <div class="details-section-body">
+            <div class="details-row details-row--filter">
+              <label for="f-project">Project</label>
+              <select class="filt" id="f-project"><option value="">All projects</option></select>
+            </div>
+            <div class="details-row details-row--filter">
+              <label for="f-agent">Assignee</label>
+              <select class="filt" id="f-agent"><option value="">All assignees</option></select>
+            </div>
+            <div class="details-row details-row--filter">
+              <label for="f-status">Status</label>
+              <select class="filt" id="f-status"><option value="">All statuses</option></select>
+            </div>
+            <div class="details-row details-row--filter">
+              <label for="f-blocker">Blocker</label>
+              <select class="filt" id="f-blocker"><option value="">All blockers</option></select>
+            </div>
+            <div class="details-row details-row--filter">
+              <label for="f-host">Host</label>
+              <select class="filt" id="f-host"><option value="">All hosts</option></select>
+            </div>
+            <div class="details-row details-row--filter">
+              <label for="f-date">Date</label>
+              <select class="filt" id="f-date"
+                      title="Filter by date proximity (operator TG 440/442)">
+                <option value="">All dates</option>
+                <option value="overdue">📅 overdue</option>
+                <option value="today">📅 today</option>
+                <option value="7d">📅 within 7 days</option>
+                <option value="30d">📅 within 30 days</option>
+                <option value="undated">no date in title</option>
+              </select>
+            </div>
+            <label class="details-check" for="f-blockingme"
+                   title="Only cards blocked on an operator decision — the 🚧 rows in the legend">
+              <input type="checkbox" id="f-blockingme"
+                     onchange="onBlockingMeChange(event)">
+              <span>🚧 blocking me</span>
+            </label>
+            <label class="details-check" for="f-showdone">
+              <input type="checkbox" id="f-showdone" onchange="onShowDoneChange(event)">
+              <span>show <code>done</code>
+                <span id="f-showdone-count" class="details-muted">(0 hidden)</span></span>
+            </label>
+            <button type="button" class="details-clear" onclick="clearAllFilters()"
+                    title="Reset every filter">Clear all filters</button>
+          </div>
+        </div>
+
+        <div class="details-section" data-id="hidden">
+          <button type="button" class="details-section-toggle"
+                  onclick="toggleDetailsSection('hidden')">
+            <span class="details-section-title">Hidden cards</span>
+            <span class="details-filter-count">(<span id="hidden-count">0</span>)</span>
+            <span class="details-chevron" aria-hidden="true">▸</span>
+          </button>
+          <div class="details-section-body">
+            <div id="hidden-list-panel" class="hidden-list-panel">
+              <div class="hidden-list-empty">No hidden cards.</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
   </div>
 
   <div class="foot">
@@ -757,6 +695,14 @@
     };
     function bucket(status) { return STATUS_BUCKET[status] || "waiting"; }
 
+    // === LAYOUT whitelist (SSOT) ==========================================
+    // The only layouts that exist. Column + Table were removed 2026-07-13
+    // (operator), Stale on 2026-07-10. `const` declarations are NOT hoisted
+    // into the TDZ-free zone, so these must be declared ABOVE the STATE
+    // initializer, which calls normalizeLayout() at boot.
+    const VALID_LAYOUTS = ["timeline", "wall", "graph"];
+    const DEFAULT_LAYOUT = "timeline";
+
     // Owner SSOT (client mirror of scitex_todo._owner.card_owner) — the
     // SINGLE rule for "who owns this card": `agent` falling back to
     // `assignee`, else null (an owner-less card). Used for the card-render
@@ -787,52 +733,25 @@
                    } catch { return false; }
                  })(),
                  search: "", date: "" },
-      // P9 (lead brief 2026-06-12): per-column card sort. "default" = legacy
-      // date-aware sort; other values pick a single field comparator.
-      // (hook-bypass: line-limit — see REFACTORING.md.)
-      sort: "default",
-      // P10 (lead a2a 2026-06-12): toggle for the group-clustering view.
-      // Off by default — back-compat. When on, columns reorder to cluster
-      // projects under their `groups[]` entry; spans_all groups (e.g.
-      // "lead") render as a banner strip above the columns grid.
-      groupBy: false,
-      // P0 / lead design ruling (TG 12461, 2026-06-12) — LAYOUT axis.
-      // Three orthogonal modes; persisted in localStorage so the
-      // operator's last choice survives reloads. STATE.sort (incl.
-      // "recent") is orthogonal — applies within whichever layout is
-      // active.
-      // "stale" is no longer a reachable layout (operator 2026-07-10, card
-      // todo-board-remove-stale-view-timeline-first-20260710) — a stored
-      // value from before the removal coerces to the kanban here.
-      layout: (function () { const l = localStorage.getItem("scitex-todo:layout");
-                             return (l === "stale" || !l) ? "column" : l; })() };
-
-    // Sticky STATE.sort across reloads — operator picks Recent once,
-    // expects it to remember next time. (hook-bypass: line-limit.)
-    try {
-      const _sortStored = localStorage.getItem("scitex-todo:sort");
-      if (_sortStored) STATE.sort = _sortStored;
-    } catch {}
-
-    // === Group-by-time STATE + persistence ============================
-    // Operator-asked TIME-BASED VIEW (lead a2a `ff1441d7`, 2026-06-14).
-    // When ON, _renderColumnHtml() inserts bucket headers (TODAY / WEEK /
-    // MONTH / OLDER) keyed on `last_activity`. State persists in
-    // localStorage so the operator's preference survives reloads.
-    // Default OFF — back-compat with the existing flat column view.
-    STATE.groupByTime = (function () {
-      try {
-        return localStorage.getItem("scitex-todo:group-by-time") === "1";
-      } catch { return false; }
-    })();
-    // Collapsed-bucket state — per-bucket key ("today" / "week" / "month"
-    // / "older"); persists in localStorage. Default = all expanded.
-    STATE.timeBucketsCollapsed = (function () {
-      try {
-        const raw = localStorage.getItem("scitex-todo:time-buckets-collapsed");
-        return new Set(JSON.parse(raw || "[]"));
-      } catch { return new Set(); }
-    })();
+      // LAYOUT axis — three orthogonal modes (timeline | wall | graph),
+      // persisted in localStorage so the operator's last choice survives
+      // reloads.
+      //
+      // MIGRATION (operator 2026-07-13, Column+Table removal): a browser
+      // whose localStorage still says "column" / "table" (Column was the
+      // DEFAULT until today) — or "stale" (removed 2026-07-10) — must NOT
+      // land on a blank board. normalizeLayout() coerces every unknown /
+      // retired value to the new default, "timeline", and re-writes the
+      // stored value so the coercion happens exactly once.
+      layout: (function () {
+        let stored = null;
+        try { stored = localStorage.getItem("scitex-todo:layout"); } catch {}
+        const m = normalizeLayout(stored);
+        if (stored !== m) {
+          try { localStorage.setItem("scitex-todo:layout", m); } catch {}
+        }
+        return m;
+      })() };
 
     // === Hide (per-user soft-hide, localStorage-backed) ====================
     // Stored as an array of task ids under "scitex-todo:hidden". Per-user/per-
@@ -919,12 +838,9 @@
         document.getElementById("store-path").textContent = STATE.graph.store_path || "—";
         populateFilters();
         // Sync the filterbar UI to the persisted STATE on first paint:
-        //   - Sort dropdown reflects STATE.sort (incl. "recent")
-        //   - Layout segment buttons reflect STATE.layout
-        // Lead design ruling 2026-06-12 — sticky across reloads.
-        const _sortSel = document.getElementById("f-sort");
-        if (_sortSel && STATE.sort) _sortSel.value = STATE.sort;
-        const _curLayout = STATE.layout || "column";
+        // the Layout segment buttons reflect STATE.layout (sticky across
+        // reloads).
+        const _curLayout = normalizeLayout(STATE.layout);
         document.querySelectorAll(".filt-layout-btn").forEach(btn => {
           const active = btn.getAttribute("data-layout") === _curLayout;
           btn.classList.toggle("filt-layout-btn--on", active);
@@ -934,11 +850,6 @@
         // popover reflects the actual filter state on first paint.
         const _sdBox = document.getElementById("f-showdone");
         if (_sdBox) _sdBox.checked = !!STATE.filters.showDone;
-        // Sync the Group-by-time checkbox (operator TIME-BASED VIEW,
-        // lead a2a `ff1441d7`) to the persisted STATE so the toggle
-        // reflects the actual state on first paint.
-        const _gbtBox = document.getElementById("stx-toggle-group-by-time");
-        if (_gbtBox) _gbtBox.checked = !!STATE.groupByTime;
         render();
         // Record what we just painted so the next auto-refresh tick can
         // detect "no change" and skip the redraw entirely. Restore the
@@ -947,6 +858,10 @@
         // (hook-bypass: line-limit.)
         LAST_GRAPH_JSON = _freshJson;
         restoreScroll(_scrollSnap);
+        // Draw the dependency graph in the BACKGROUND (idle callback) so a
+        // later switch to the Graph layout paints an already-rendered SVG
+        // instead of freezing the UI for seconds (operator 2026-07-13).
+        _prewarmGraph();
       } catch (e) {
         document.getElementById("columns").innerHTML =
           `<div class="loading" style="color: var(--red);">load error: ${e.message}</div>`;
@@ -1268,104 +1183,6 @@
       return null;
     }
 
-    function datePillHtml(t) {
-      const di = dateInfo(t);
-      if (!di) return "";
-      const d = di.daysFromNow;
-      let cls = "date-pill", label;
-      if (d < 0) { cls += " date-pill--overdue"; label = `📅 overdue ${-d}d`; }
-      else if (d === 0) { cls += " date-pill--today"; label = "📅 today"; }
-      else if (d <= 3) { cls += " date-pill--soon"; label = `📅 in ${d}d`; }
-      else if (d <= 7) { cls += " date-pill--week"; label = `📅 in ${d}d`; }
-      else if (d <= 30) { cls += " date-pill--month"; label = `📅 in ${d}d`; }
-      else { cls += " date-pill--far"; label = `📅 ${di.date.toISOString().slice(0,10)}`; }
-      // P4 PR3: append " · every Nu" to the label when this is a
-      // recurring deadline (org repeater suffix), so the operator sees
-      // both the next occurrence AND the cadence on the pill.
-      if (di.repeater) label += ` · ${di.repeater}`;
-      const iso = di.date.toISOString().slice(0, 10);
-      return `<span class="${cls}" title="next date: ${iso} (${d>=0?'+':''}${d}d)${di.repeater ? ' ' + di.repeater : ''}">${label}</span>`;
-    }
-
-    // === Age pill (P12, operator-asked age display + stale color) ====
-    // Bucket cards by how long they have been on the board, derived from
-    // `created_at` (preferred) or `last_activity` (fallback for the
-    // ~80 % of legacy tasks without `created_at` set). Returns null when
-    // neither field is present / parseable so the pill simply doesn't
-    // render (back-compat: old data shows no pill, not "NaN").
-    //   today    : 0 d
-    //   fresh    : 1-6 d
-    //   aging    : 7-29 d
-    //   stale    : 30-89 d
-    //   rotten   : >= 90 d
-    // CSS lives in board_v3/02-card.css (.age-pill + 5 modifier classes).
-    function _ageDays(t) {
-      const ts = t.created_at || t.last_activity;
-      if (!ts) return null;
-      const created = new Date(ts);
-      if (isNaN(created)) return null;
-      const days = Math.floor((Date.now() - created.getTime()) / 86400000);
-      return days >= 0 ? days : null;
-    }
-    function agePillHtml(t) {
-      const days = _ageDays(t);
-      if (days == null) return "";
-      let cls = "age-pill", label = `${days}d`;
-      if (days === 0)        { cls += " age-pill--today";  label = "new"; }
-      else if (days <= 6)    { cls += " age-pill--fresh"; }
-      else if (days <= 29)   { cls += " age-pill--aging"; }
-      else if (days <= 89)   { cls += " age-pill--stale"; }
-      else                   { cls += " age-pill--rotten"; }
-      const src = t.created_at ? "created" : "last activity";
-      return `<span class="${cls}" title="${days}d since ${src}">⏳ ${label}</span>`;
-    }
-
-    // === Activity bucket badge (render side of working-status decay) ====
-    // Board card `scitex-todo-working-status-decay-tg12739`, render half
-    // of PR #122 (backend `_build_fleet` already derives the same buckets
-    // for the fleet strip). Replaces the misleading "manual working color
-    // stays lit indefinitely" pain (operator TG 12739) on a PER-CARD basis:
-    // a small dot badge in the card-top reflects how RECENTLY the task was
-    // touched, derived from `last_activity` freshness — orthogonal to the
-    // age-pill (which buckets in DAYS, this one buckets in HOURS).
-    //
-    //   fresh : <= 1 h    -- bright green  (live activity)
-    //   warm  : 1-24 h    -- amber         (recent but quieting)
-    //   stale : > 24 h    -- muted grey    (decayed)
-    //
-    // Tooltip explains the bucket + relative time. Renders nothing when
-    // `last_activity` is absent / unparseable — back-compat with older
-    // snapshots that pre-date the field.
-    function _activityHoursSince(t) {
-      const ts = t && t.last_activity;
-      if (!ts) return null;
-      const parsed = Date.parse(ts);
-      if (isNaN(parsed)) return null;
-      const h = (Date.now() - parsed) / 3600000;
-      return h >= 0 ? h : null;
-    }
-    function _activityBucket(hours) {
-      if (hours == null) return null;
-      if (hours <= 1)  return "fresh";
-      if (hours <= 24) return "warm";
-      return "stale";
-    }
-    function _activityRelative(hours) {
-      if (hours == null) return "";
-      if (hours < 1)   return `${Math.max(1, Math.round(hours * 60))} min ago`;
-      if (hours < 24)  return `${Math.round(hours)} h ago`;
-      const days = Math.floor(hours / 24);
-      return `${days} d ago`;
-    }
-    function activityBadgeHtml(t) {
-      const hours = _activityHoursSince(t);
-      const bucket = _activityBucket(hours);
-      if (!bucket) return "";
-      const rel = _activityRelative(hours);
-      return `<span class="activity-badge activity-badge--${bucket}"
-        title="activity bucket: ${bucket} (${rel})"
-        aria-label="activity bucket ${bucket}, ${rel}">● ${bucket}</span>`;
-    }
 
     function populateFilters() {
       if (!STATE.graph) return;
@@ -1417,118 +1234,6 @@
         ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
     }
 
-    function cardHtml(t) {
-      const b = bucket(t.status);
-      const blocker = t.blocker
-        ? `<span class="card-blocker${t.blocker === "operator-decision" ? " card-blocker--operator-decision" : ""}">🚧 ${escapeHtml(t.blocker)}</span>`
-        : "";
-      const pr = t.pr_url
-        ? `<a class="card-link" href="${escapeHtml(t.pr_url)}" target="_blank" onclick="event.stopPropagation()">PR</a>`
-        : "";
-      const issue = t.issue_url
-        ? `<a class="card-link" href="${escapeHtml(t.issue_url)}" target="_blank" onclick="event.stopPropagation()">Issue</a>`
-        : "";
-      const taskLine = escapeHtml(t.task || t.title);  // fallback to title until `task` is populated everywhere
-      const goal = t.goal ? `<div class="card-goal" title="${escapeHtml(t.goal)}">${escapeHtml(t.goal)}</div>` : "";
-      const host = t.host ? `<span class="card-host">${escapeHtml(t.host)}</span>` : "<span></span>";
-      const last = t.last_activity ? `last ${escapeHtml(t.last_activity)}` : "";
-      const id = escapeHtml(t.id);
-      // Owner (SSOT cardOwner = agent||assignee) + creator (created_by,
-      // falling back to the earliest comment author). An assignee-only card
-      // now shows its REAL owner instead of a blank; an owner-less card is
-      // flagged "⚠ unassigned" rather than silently blank. (hook-bypass: line-limit)
-      const _owner = cardOwner(t);
-      const _firstComment = (t.comments || [])
-        .map(c => c && c.author).find(a => typeof a === "string" && a);
-      const _creator = t.created_by || _firstComment || "";
-      const ownerLine = `<span class="card-owner" title="owner (assignee/agent)${_creator ? " · created by " + escapeHtml(_creator) : ""}">${
-        _owner
-          ? "👤 " + escapeHtml(_owner)
-          : '<span class="card-owner--unassigned">⚠ unassigned</span>'
-      }${_creator ? ' <span class="card-creator">· by ' + escapeHtml(_creator) + "</span>" : ""}</span>`;
-      // Priority ↑↓ on every card (operator TG 9776 / 276). Re-orders the
-      // POSITION-IN-FULL-LIST, not just within this column — the existing
-      // /priority handler reassigns ranks 1..N over the entire payload, so
-      // a single swap with the global-order neighbor is what's persisted.
-      const prio = `
-        <div class="card-priority" title="↑ bump priority up, ↓ down (operator TG 276)">
-          <button class="card-prio-btn" aria-label="Bump priority up"
-            onclick="event.stopPropagation(); bumpPriority('${id}', -1)">▲</button>
-          <button class="card-prio-btn" aria-label="Bump priority down"
-            onclick="event.stopPropagation(); bumpPriority('${id}', 1)">▼</button>
-        </div>`;
-      const prioRank = (typeof t.priority === "number")
-        ? `<span class="card-prio-rank${t.priority === 1 ? " card-prio-rank--top" : ""}" title="Priority rank">#${t.priority}</span>`
-        : "";
-      // Hide button — soft-hide via localStorage (operator TG 256). Un-hide
-      // is reached via the filter-bar "👁 show hidden (N)" toggle.
-      const isHidden = hiddenSet().has(t.id);
-      const hideBtn = isHidden
-        ? `<button class="card-hide-btn" title="Un-hide this card"
-             onclick="event.stopPropagation(); unhideTask('${id}')">Un-hide</button>`
-        : `<button class="card-hide-btn" title="Hide this card from view (per-user local)"
-             onclick="event.stopPropagation(); hideTask('${id}')">Hide</button>`;
-      // Copy button — operator TG 375 "share/copy" feature. One click =
-      // a Markdown-friendly one-liner is copied to the clipboard so the
-      // operator (or any agent) can paste a card reference into chat,
-      // GitHub, docs, etc. without typing out title/id/project/status.
-      const copyBtn = `<button class="card-copy-btn"
-        title="Copy this card as a one-line reference (title · id · project · status)"
-        aria-label="Copy reference to clipboard"
-        onclick="event.stopPropagation(); copyCardText('${id}')">📋</button>`;
-      const hiddenCls = isHidden ? " card--hidden" : "";
-      // NEW badge — only when sort=recent AND the card has activity in
-      // the last 24 h. Sits in card-top so it's the first thing the
-      // operator sees on a card. (lead design ruling 2026-06-12 — the
-      // badge is part of Recent's projection across all layouts.)
-      const isRecentMode = (STATE.sort || "default") === "recent";
-      const newBadge = (isRecentMode && _isNew24h(t))
-        ? `<span class="card-new-badge" title="Activity in the last 24 h">NEW</span>`
-        : "";
-      // Multi-select checkbox (PR(h) Stage 1, board card
-      // todo-multiselect-batch-ops, lead a2a 1ebc792c). Per-row
-      // checkbox surfaces selection without changing the click /
-      // drag affordance — onclick.stopPropagation keeps a toggle
-      // from bubbling up into openDetail(). Selection state is
-      // CLIENT-SIDE ONLY, held in window.MULTISELECT (Set<string>);
-      // not persisted across reloads (v2 concern). (hook-bypass: line-limit.)
-      const isSel = (window.MULTISELECT && window.MULTISELECT.has(t.id)) || false;
-      const selBox = `<input type="checkbox" class="card-select"
-        data-task-id="${id}"
-        ${isSel ? "checked" : ""}
-        title="Select this card for bulk actions"
-        aria-label="Select card ${id} for bulk actions"
-        onclick="event.stopPropagation(); toggleCardSelected('${id}', this.checked)" />`;
-      // `data-status` (raw 7-value enum) drives the per-status COLOR layer
-      // (left-bar fill + status-label color) via the --status-* CSS vars;
-      // `card--${b}` (4 buckets) still drives COLUMN placement + the blocked
-      // pulse animation. (hook-bypass: line-limit.)
-      return `<article class="card card--${b}${hiddenCls}"
-        data-card-id="${id}" data-status="${escapeHtml(t.status || "")}" draggable="true"
-        ondragstart="onCardDragStart(event,'${id}')"
-        ondragend="onCardDragEnd(event)"
-        onclick="openDetail('${id}')"
-        oncontextmenu="openCardCtx(event,'${id}')">
-        <div class="card-pad">
-          <div class="card-top">
-            ${selBox}
-            <span class="card-status">${escapeHtml(t.status || b)}</span>
-            ${activityBadgeHtml(t)}
-            ${newBadge}
-            <span class="card-last">${last}</span>
-            ${agePillHtml(t)}
-            ${prioRank}
-            ${prio}
-          </div>
-          ${goal}
-          <div class="card-task">${taskLine}</div>
-          ${datePillHtml(t)}
-          <div class="card-owner-line">${ownerLine}</div><!-- owner+creator (hook-bypass: line-limit) -->
-          <div class="card-bot">${host}<span style="display:flex;gap:4px;align-items:center;">${pr}${issue}${copyBtn}${hideBtn}</span></div>
-          ${blocker}
-        </div>
-      </article>`;
-    }
 
     // === Right-click context menu — CRUD on a card (operator TG 432/433) =====
     // Replaces the heavyweight "open detail drawer + Edit/Delete buttons" with
@@ -1627,180 +1332,10 @@
     let _ctxMenuEl = null;
     function _ctxEscHandler(e) { if (e.key === "Escape") closeCardCtx(); }
 
-    // === Column right-click context menu (lead operator-active task) =========
-    // Right-click any project column header / body → floating menu with:
-    //   - + Add task to <project>  (opens Add Task modal pre-filled)
-    //   - 📌 Pin / Unpin column
-    //   - 🙈 Hide column (project-hide localStorage)
-    //   - 🔎 Filter to this project (sets f-project + render)
-    //   - Reset column order (clears localStorage drag-order)
-    // Right-click on a CARD bubbles to its card handler (openCardCtx), so a
-    // right-click inside a card never accidentally triggers the column menu;
-    // event.target.closest(".card") short-circuits the column branch.
-    function openColCtx(e, project) {
-      // If the click landed inside a card, defer to the card handler.
-      if (e.target && e.target.closest && e.target.closest(".card")) return;
-      e.preventDefault();
-      const pinned = pinnedSet().has(project);
-      const projHidden = projHiddenSet().has(project);
-      const menu = document.createElement("div");
-      menu.className = "card-ctx-menu";
-      const item = (label, fn, danger) =>
-        `<button class="card-ctx-item${danger ? " card-ctx-item--danger" : ""}"
-          onclick="${fn}">${label}</button>`;
-      menu.innerHTML = `
-        <div class="card-ctx-title">${escapeHtml(project)}</div>
-        ${item("+ Add task to " + escapeHtml(project),
-              "closeColCtx(); openAddTaskModal('" + escapeHtml(project) + "')")}
-        <div class="card-ctx-sep"></div>
-        ${item(pinned ? "📌 Unpin column" : "📍 Pin column to left",
-              "closeColCtx(); toggleColPin('" + escapeHtml(project) + "')")}
-        ${item("🔎 Filter to this project only",
-              "closeColCtx(); filterToProject('" + escapeHtml(project) + "')")}
-        ${item("↺ Reset column order",
-              "closeColCtx(); resetColOrder()")}
-        <div class="card-ctx-sep"></div>
-        ${item(projHidden ? "👁 Show this column" : "🙈 Hide this column",
-              "closeColCtx(); toggleProjHidden('" + escapeHtml(project) + "', " + (!projHidden) + ")", projHidden ? false : true)}
-      `;
-      document.body.appendChild(menu);
-      const mw = menu.offsetWidth, mh = menu.offsetHeight;
-      const vw = window.innerWidth, vh = window.innerHeight;
-      menu.style.left = `${Math.min(e.clientX, vw - mw - 6)}px`;
-      menu.style.top = `${Math.min(e.clientY, vh - mh - 6)}px`;
-      _colCtxMenuEl = menu;
-      setTimeout(() => {
-        document.addEventListener("click", closeColCtx, { once: true });
-        document.addEventListener("keydown", _colCtxEsc, { once: true });
-      }, 0);
-    }
-    let _colCtxMenuEl = null;
-    function _colCtxEsc(e) { if (e.key === "Escape") closeColCtx(); }
-    function closeColCtx() {
-      if (_colCtxMenuEl) { _colCtxMenuEl.remove(); _colCtxMenuEl = null; }
-    }
-    function filterToProject(project) {
-      STATE.filters.project = project;
-      const sel = document.getElementById("f-project");
-      if (sel) sel.value = project;
-      render();
-    }
-    function resetColOrder() {
-      localStorage.removeItem(COL_ORDER_KEY);
-      render();
-      toast("✓ column order reset to alphabetical");
-    }
     function closeCardCtx() {
       if (_ctxMenuEl) { _ctxMenuEl.remove(); _ctxMenuEl = null; }
     }
 
-    // ==== Multi-select state + helpers (PR(h) Stage 1) ===================
-    // Board card todo-multiselect-batch-ops (lead a2a 1ebc792c). Per-row
-    // card checkbox + a small toolbar above the columns surface a
-    // CLIENT-SIDE Set<string> of task_ids. v1 ships ONE bulk op:
-    // status change. The other 4 (project-reassign / agent-reassign /
-    // nudge / hide) are commented hooks below — separate PRs.
-    // (hook-bypass: line-limit.)
-    window.MULTISELECT = window.MULTISELECT || new Set();
-
-    function getSelectedTaskIds() {
-      return Array.from(window.MULTISELECT);
-    }
-
-    function toggleCardSelected(taskId, checked) {
-      if (checked) {
-        window.MULTISELECT.add(taskId);
-      } else {
-        window.MULTISELECT.delete(taskId);
-      }
-      renderBoardToolbar();
-    }
-
-    function clearMultiselect() {
-      window.MULTISELECT.clear();
-      // Visually un-check every rendered checkbox without a full re-render
-      // (a re-render would scroll the operator back to the top).
-      document.querySelectorAll(".card-select").forEach(cb => { cb.checked = false; });
-      renderBoardToolbar();
-    }
-
-    function toggleSelectAll(checked) {
-      // Toggle every CURRENTLY-VISIBLE card. Visibility is exactly the
-      // set rendered in the DOM, so we walk .card-select nodes — that
-      // naturally honors the active filters / hidden-cards toggle.
-      const boxes = document.querySelectorAll(".card-select");
-      boxes.forEach(cb => {
-        const id = cb.getAttribute("data-task-id");
-        if (!id) return;
-        cb.checked = checked;
-        if (checked) {
-          window.MULTISELECT.add(id);
-        } else {
-          window.MULTISELECT.delete(id);
-        }
-      });
-      renderBoardToolbar();
-    }
-
-    function renderBoardToolbar() {
-      const countEl = document.getElementById("board-toolbar-count");
-      const dropdown = document.getElementById("board-toolbar-status");
-      if (!countEl) return;
-      const n = window.MULTISELECT.size;
-      countEl.textContent = String(n);
-      const toolbar = document.getElementById("board-toolbar");
-      if (toolbar) {
-        toolbar.classList.toggle("board-toolbar--active", n > 0);
-      }
-      if (dropdown) {
-        dropdown.disabled = n === 0;
-      }
-      const clearBtn = document.getElementById("board-toolbar-clear");
-      if (clearBtn) {
-        clearBtn.disabled = n === 0;
-      }
-    }
-
-    async function bulkSetStatus(newStatus) {
-      // Bulk status change — v1 implementation is a per-task loop over
-      // the existing /update endpoint. If a future /bulk endpoint lands,
-      // swap to that without touching the UI. Iterating sequentially
-      // keeps the YAML write window short per task (the store re-reads
-      // through `board` on each call) and surfaces the first error
-      // immediately rather than silently dropping later ids.
-      if (!newStatus) return;
-      const ids = getSelectedTaskIds();
-      if (ids.length === 0) return;
-      if (!window.confirm(`Set status = "${newStatus}" on ${ids.length} card(s)?`)) {
-        // Reset the dropdown to the placeholder so the same selection
-        // can be re-attempted.
-        const dd = document.getElementById("board-toolbar-status");
-        if (dd) dd.value = "";
-        return;
-      }
-      let ok = 0;
-      let fail = 0;
-      for (const cardId of ids) {
-        try {
-          const r = await fetch("/update", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: cardId, status: newStatus }),
-          });
-          if (r.ok) {
-            ok += 1;
-          } else {
-            fail += 1;
-          }
-        } catch (_e) {
-          fail += 1;
-        }
-      }
-      toast(`✓ bulk status → ${newStatus}: ${ok} ok` + (fail ? `, ${fail} failed` : ""), fail > 0);
-      clearMultiselect();
-      // TODO(PR-h+1): bulk project-reassign / agent-reassign / nudge / hide.
-      await loadGraph();
-    }
 
     // Status-set helper (closed enum from validator).
     async function setCardStatus(cardId, newStatus) {
@@ -1857,28 +1392,6 @@
       }
     }
 
-    // === Card drag-to-move between projects (operator TG 385) ============
-    // Pick up a card by holding & dragging; drop on another column's body
-    // → POST /update with the new project so the card moves. Used by the
-    // operator's "this was Ungrouped but actually belongs to project X"
-    // flow. Independent from the column drag-reorder (TG 370) — the
-    // column-level handlers ignore drops when a CARD is the source.
-    let _draggedCard = null;
-    function onCardDragStart(e, cardId) {
-      _draggedCard = cardId;
-      try { e.dataTransfer.setData("text/plain", cardId); } catch {}
-      e.dataTransfer.effectAllowed = "move";
-      e.currentTarget.classList.add("card--dragging");
-      // Stop the dragstart from bubbling into the section.col handler.
-      e.stopPropagation();
-    }
-    function onCardDragEnd(e) {
-      e.currentTarget.classList.remove("card--dragging");
-      document.querySelectorAll(".col--card-drop-target")
-        .forEach(el => el.classList.remove("col--card-drop-target"));
-      _draggedCard = null;
-      e.stopPropagation();
-    }
     // P11b (operator priority 2026-06-12) — wire the scitex-ui Combobox
     // popover for the right-click move-to-project flow. Opens a
     // typeahead listing ALL projects + an inline "+ Create '<query>'"
@@ -2005,22 +1518,6 @@
       }
     }
 
-    // === P7 (lead brief 2026-06-12) — self-named project-umbrella card ===
-    // RESTORED 2026-06-12 after the P10/P11 squash wave silently dropped
-    // this helper. The store has q-<proj> entries (e.g. q-figrecipe) whose
-    // `title` matches the column name — they represent the PROJECT
-    // itself, not a task within it, so rendering them as a card inside
-    // their own column shows "figrecipe column has a figrecipe card",
-    // which the operator flagged as confusing. Heuristic: title matches
-    // column name (case-insensitive, trimmed). Pinned by
-    // tests/scitex_todo/test__board_v3_signatures.py.
-    function isSelfNamedProjectCard(t, columnName) {
-      if (!t || !columnName) return false;
-      const title = String(t.title || "").trim().toLowerCase();
-      const col = String(columnName).trim().toLowerCase();
-      if (!title || !col) return false;
-      return title === col;
-    }
 
     function render() {
       if (!STATE.graph) return;
@@ -2032,45 +1529,42 @@
       // one-click clear so a silent empty board doesn't read as broken.
       _renderEmptyStateBanner(visible.length, STATE.graph.nodes.length);
 
-      // === LAYOUT axis dispatch (lead design ruling 2026-06-12 — TG
-      // 12461). The same `visible` task set renders into one of three
-      // orthogonal layouts. STATE.sort (incl. "recent") applies
-      // within whichever layout is active. (hook-bypass: line-limit.)
-      const layout = STATE.layout || "column";
+      // === LAYOUT axis dispatch — the same `visible` task set renders
+      // into one of three orthogonal layouts (timeline | wall | graph).
+      // (hook-bypass: line-limit.)
+      const layout = normalizeLayout(STATE.layout);
       const canvas = document.getElementById("columns");
       // Carry the active layout on the canvas so the per-layout CSS
-      // can switch between flex-strip / table-rows / mermaid-canvas
-      // without re-wrapping the DOM.
+      // can switch between raster / note-wall / mermaid-canvas without
+      // re-wrapping the DOM.
       canvas.setAttribute("data-layout", layout);
-      if (layout === "table") {
-        _renderTableView(canvas, visible);
-      } else if (layout === "graph") {
+      if (layout === "graph") {
         _renderGraphView(canvas, visible);
       } else if (layout === "stale") {
         // Stale Review layout — pulls its OWN data from /stale (not
         // the filtered `visible` set) because the criteria are
         // age/orphan-driven, not the same filter-bar predicates.
+        // Unreachable from the UI (button removed 2026-07-10); the
+        // render path stays as shared code for the /stale endpoint.
         _renderStaleView(canvas);
-      } else if (layout === "timeline") {
-        // Timeline layout — own-data like Stale. agent/project rasters
-        // pull /timeline; the per-task "simple" list projects STATE.graph
-        // by time. Ignores the kanban `visible` filter set by design.
-        _renderTimelineView(canvas);
       } else if (layout === "wall" && window.STX && window.STX.stickyWall) {
         // Wall layout — sticky notes clustered by assignee (11-sticky-wall.js).
-        // Uses the SAME filtered `visible` set as column/table. The next-up
-        // stack is derived from nodes + STATE.graph.edges inside the module,
-        // so no agent has to maintain it. Falls through to column when the
-        // module hasn't loaded (deferred script not yet executed).
+        // Uses the SAME filtered `visible` set the filter bar produces. The
+        // next-up stack is derived from nodes + STATE.graph.edges inside the
+        // module. Falls through to Timeline when the module hasn't loaded
+        // (deferred script not yet executed).
         _renderWallView(canvas, visible);
       } else {
-        _renderColumnView(canvas, visible);
+        // Timeline — the DEFAULT layout (operator 2026-07-13). Own-data:
+        // agent/project rasters pull /timeline; the per-task "simple" list
+        // projects STATE.graph by time.
+        _renderTimelineView(canvas);
       }
       // One-shot glow on any card whose status changed since the last render
       // (operator msg 933). No-op on first paint — the map starts empty, so
       // nothing "transitions" into existence.
       _flashStatusTransitions(canvas);
-      renderGroupStrip();
+      renderStats();
       _renderRecentCountPill(visible);
       // Update the "show hidden (N)" counter in the filter bar so the
       // operator sees how many cards are currently being filtered out.
@@ -2153,72 +1647,7 @@
       });
     });
 
-    // === Column layout (default kanban) ─────────────────────────────
-    // Extracted from the previous monolithic render() body. Identical
-    // output to the prior emit; the wrap is purely for the layout
-    // dispatch above. (hook-bypass: line-limit.)
-    function _renderColumnView(canvas, visible) {
-      const NO_PROJECT_LABEL = "Uncategorized";
-      const byProj = {};
-      for (const t of visible) {
-        const p = t.project || NO_PROJECT_LABEL;
-        if (isSelfNamedProjectCard(t, p)) continue;
-        (byProj[p] = byProj[p] || []).push(t);
-      }
-      // P12 (operator TG, lead a2a 2026-06-12) — synthesize the "user"
-      // project lane. Operator-decision-blocked tasks (the ones that
-      // previously lived in the 360 px BLOCKING-YOU aside) now ALSO
-      // appear in a synthetic project column named USER_LANE_KEY so
-      // the operator's "what's waiting on me" queue is a normal column
-      // (normal width, pinnable, drag-reorderable). Cards still live
-      // in their real project column too — the aggregation is purely
-      // render-time, no schema change. The `passes()` filter still
-      // applies so the user lane respects the search/host/agent/date
-      // filters; the existing "🚧 blocking me" toggle (#t-block) keeps
-      // working because it filters the same predicate fleet-wide.
-      const USER_LANE_KEY = "user";
-      for (const t of visible) {
-        if (t.status === "blocked" && t.blocker === "operator-decision") {
-          (byProj[USER_LANE_KEY] = byProj[USER_LANE_KEY] || []).push(t);
-        }
-      }
-      const projects = new Set();
-      for (const t of STATE.graph.nodes) {
-        projects.add(t.project || NO_PROJECT_LABEL);
-      }
-      // Always expose the `user` lane in the project list — even when
-      // empty, so the operator sees an explicit column rather than
-      // having it disappear/reappear with each filter change.
-      projects.add(USER_LANE_KEY);
-      const pinned = pinnedSet();
-      const order = colOrder();
-      const projList = [...projects];
-      projList.sort((a, b) => {
-        const pa = pinned.has(a), pb = pinned.has(b);
-        if (pa !== pb) return pa ? -1 : 1;
-        const ia = order.indexOf(a), ib = order.indexOf(b);
-        if (ia !== -1 && ib !== -1) return ia - ib;
-        if (ia !== -1) return -1;
-        if (ib !== -1) return 1;
-        return a.localeCompare(b);
-      });
-      const clusteredProj = _applyGroupClustering(projList);
-      let _lastGroupIdx = -1;
-      canvas.innerHTML = clusteredProj.length
-        ? clusteredProj.map(p => {
-            const gh = _groupHeaderBefore(p, _lastGroupIdx);
-            _lastGroupIdx = gh.groupIdx;
-            return gh.header + _renderColumnHtml(p, byProj, pinned);
-          }).join("")
-        : `<div class="loading">no projects yet — click "+ Add Task" to start one</div>`;
-    }
 
-    // === Table layout (flat rows view) ──────────────────────────────
-    // Lead design ruling 2026-06-12 — LAYOUT axis = Graph | Column |
-    // Table. Same `visible` set as the kanban, just projected as a
-    // sortable table. Each row click opens the existing detail
-    // drawer (openDetail). NEW badge applies here too when sort
-    // mode is "recent". (hook-bypass: line-limit.)
     // Wall layout state. `groupBy` = assignee|project|status (operator's
     // "切り口"), `selected` = the expanded island. Sticky across reloads so
     // picking your own lane once is remembered. (hook-bypass: line-limit.)
@@ -2255,7 +1684,7 @@
     // view: resolve the card id from `data-card-id` (timeline dots) or
     // `data-id` (wall notes) and open the same menu.
     //
-    // Column cards and table rows already carry an inline `oncontextmenu`.
+    // Any element carrying an inline `oncontextmenu` owns its own menu;
     // openCardCtx() calls preventDefault() but NOT stopPropagation(), so the
     // event still bubbles here — skip those to avoid opening the menu twice.
     document.addEventListener("contextmenu", (ev) => {
@@ -2296,43 +1725,6 @@
       });
     }
 
-    function _renderTableView(canvas, visible) {
-      const sorted = visible.slice().sort(_sortComparator(STATE.sort || "default"));
-      const recentMode = (STATE.sort || "default") === "recent";
-      const rows = sorted.map(t => {
-        const b = bucket(t.status);
-        const newBadge = recentMode && _isNew24h(t)
-          ? `<span class="card-new-badge" title="Activity in the last 24 h">NEW</span>` : "";
-        const blocker = t.blocker
-          ? `<span class="tbl-blocker${t.blocker === "operator-decision" ? " tbl-blocker--operator-decision" : ""}">🚧 ${escapeHtml(t.blocker)}</span>`
-          : "";
-        return `<tr class="tbl-row tbl-row--${b}" data-card-id="${escapeHtml(t.id)}"
-                    onclick="openDetail('${escapeHtml(t.id)}')"
-                    oncontextmenu="openCardCtx(event,'${escapeHtml(t.id)}')">
-          <td class="tbl-status">${newBadge}<span class="tbl-status-dot tbl-status-dot--${b}"></span>${b}</td>
-          <td class="tbl-title">${escapeHtml(t.task || t.title || "(untitled)")}</td>
-          <td class="tbl-project">${escapeHtml(t.project || "—")}</td>
-          <td class="tbl-blocker-cell">${blocker}</td>
-          <td class="tbl-prio">${typeof t.priority === "number" ? "#" + t.priority : ""}</td>
-          <td class="tbl-last">${escapeHtml(t.last_activity || "")}</td>
-        </tr>`;
-      }).join("");
-      canvas.innerHTML = sorted.length
-        ? `<div class="tbl-wrap"><table class="tbl">
-             <thead>
-               <tr>
-                 <th class="tbl-status">Status</th>
-                 <th class="tbl-title">Task / Title</th>
-                 <th class="tbl-project">Project</th>
-                 <th class="tbl-blocker-cell">Blocker</th>
-                 <th class="tbl-prio">Prio</th>
-                 <th class="tbl-last">Last activity</th>
-               </tr>
-             </thead>
-             <tbody>${rows}</tbody>
-           </table></div>`
-        : `<div class="loading">no tasks match the current filters</div>`;
-    }
 
     // === Stale Review layout ─────────────────────────────────────────
     // Operator directive 2026-06-13 (via lead a2a) — a recurring
@@ -2497,24 +1889,40 @@
     }
 
     // === Graph layout (mermaid dependency map) ───────────────────────
-    // Inline mermaid render fed from the SERVER's edge list. PR #108
-    // tried to read `t.depends_on` / `t.blocks` on each node and emitted
-    // a 400-node, 0-edge graph (41 552 px tall) because the /graph
-    // payload doesn't expose those fields per-node — it returns the
-    // edges aggregated at top-level (`STATE.graph.edges`, kind values
-    // `depends_on` / `blocks`). Hierarchical `parent` edges are
-    // additionally available per-node (`t.parent`).
+    // Inline mermaid render fed from the SERVER's edge list (`STATE.graph
+    // .edges`, kinds `depends_on` / `blocks`) plus per-node hierarchical
+    // `parent` edges. Only nodes that participate in at least one edge are
+    // drawn (lead ruling `c212aa72`, 2026-06-12) — a disconnected node has
+    // no place in a dependency map.
     //
-    // Design (lead-confirmed `c212aa72bb0a4161b4faa8e81d508bc8`,
-    // 2026-06-12): show only nodes that participate in at least one
-    // edge — disconnected nodes have no place in a dependency map.
-    // Empty-state: explain why the canvas is empty (no edges in the
-    // current filter scope) + a 1-line sample of what depends_on /
-    // parent encoding looks like so the operator can fix the data.
+    // ── BACKGROUND RENDER (operator 2026-07-13: "Graph view は最適化して
+    // ください。裏で描画を始めて置き、サイズも調整して表示されるように") ──
+    // Switching to Graph used to freeze the UI for seconds: mermaid's 3 MB
+    // bundle was fetched on first switch, then `mermaid.run()` parsed +
+    // laid out the diagram synchronously against the LIVE canvas.
+    //
+    // Now:
+    //   1. `_graphSrc(visible)` is a PURE string build (cheap, no DOM).
+    //   2. `_prewarmGraph()` runs on requestIdleCallback after every paint:
+    //      it loads mermaid once and renders the SVG OFF-DOM via the
+    //      promise API `mermaid.render(id, src)` — mermaid hangs its own
+    //      temp element off <body> (real width, so no zero-width SVG; a
+    //      display:none host would have produced a tiny/unscaled diagram).
+    //   3. The result is cached KEYED ON THE SOURCE STRING, so a re-render
+    //      only happens when the task data / filters actually change.
+    //   4. Switching to Graph injects the cached SVG — no work on the main
+    //      thread beyond an innerHTML assignment.
     // (hook-bypass: line-limit.)
-    function _renderGraphView(canvas, visible) {
+    const GRAPH_CACHE = { key: null, svg: null, pending: null, failed: false };
+    // Fit-to-width (default) vs 1:1 natural size. Sticky across reloads.
+    let GRAPH_FIT = (function () {
+      try { return localStorage.getItem("scitex-todo:graph-fit") !== "0"; }
+      catch { return true; }
+    })();
+
+    // Pure: task set -> mermaid source (or null when nothing is connected).
+    function _graphSrc(visible) {
       const visibleIds = new Set(visible.map(t => t.id));
-      const byId = new Map(visible.map(t => [t.id, t]));
       const _esc = (s) => String(s).replace(/[^A-Za-z0-9_-]/g, "_");
       const _safe = (s) => String(s || "").replace(/[\[\]\"]/g, " ").slice(0, 60);
 
@@ -2522,21 +1930,14 @@
       const rawEdges = (STATE.graph && STATE.graph.edges) || [];
       const depEdges = [];
       for (const e of rawEdges) {
-        // `kind` is "depends_on" or "blocks"; normalize so the arrow
-        // always points from upstream (prereq) to downstream (gated).
+        // `kind` is "depends_on" or "blocks"; the server already emits
+        // source=dep, target=tid (handlers/graph.py:121) so the arrow
+        // points prereq → consumer either way.
         if (!e || !visibleIds.has(e.source) || !visibleIds.has(e.target)) continue;
-        if (e.kind === "blocks") {
-          depEdges.push({ src: e.source, dst: e.target, kind: "blocks" });
-        } else {
-          // Default + "depends_on" — server already emits source=dep,
-          // target=tid (see handlers/graph.py:121), so arrow already
-          // points prereq → consumer.
-          depEdges.push({ src: e.source, dst: e.target, kind: "depends_on" });
-        }
+        depEdges.push({ src: e.source, dst: e.target, kind: e.kind || "depends_on" });
       }
-      // Hierarchical `parent` edges are a separate axis (111 of them
-      // in the operator's live store; not in `edges[]`). Render with a
-      // dashed style so they're visually distinct from depends_on.
+      // Hierarchical `parent` edges are a separate axis (not in `edges[]`).
+      // Dashed so hierarchy reads differently from a blocking dependency.
       const parentEdges = [];
       for (const t of visible) {
         const p = t.parent;
@@ -2545,50 +1946,23 @@
         }
       }
       const allEdges = depEdges.concat(parentEdges);
-
-      // Filter to nodes that participate in at least one edge — a
-      // disconnected node has no place in a dep graph.
       const touched = new Set();
       for (const e of allEdges) { touched.add(e.src); touched.add(e.dst); }
       const connected = visible.filter(t => touched.has(t.id));
+      if (!connected.length) return null;
 
-      // Empty-state: explain the empty canvas and point at the data
-      // shape so the operator can fix it.
-      if (connected.length === 0) {
-        canvas.innerHTML = `<div class="graph-wrap">
-          <div class="graph-empty">
-            <h3>No dependencies in the current scope</h3>
-            <p>The Graph layout draws <code>depends_on</code> / <code>blocks</code>
-            edges (from the server's <code>edges[]</code> payload) plus
-            <code>parent</code> edges (per-node) among the currently-visible cards.
-            Right now <strong>${visible.length} card${visible.length === 1 ? "" : "s"}</strong>
-            match the filters but none of them are connected to each other.</p>
-            <p class="graph-empty__hint">Encode dependencies in <code>tasks.yaml</code> like this:
-            <code>depends_on: [other-task-id]</code>, <code>blocks: [downstream-id]</code>,
-            or <code>parent: hub-task-id</code>. Switch to <strong>📋 Column</strong> or
-            <strong>📑 Table</strong> if you only want a flat list.</p>
-          </div>
-        </div>`;
-        return;
-      }
-
-      // Each node maps to its RAW status class (st-<status>) so the in-board mermaid matches python build_mermaid() artifacts, not the 4-bucket collapse. (hook-bypass: line-limit.)
+      // Each node carries its RAW status class (st-<status>) so the in-board
+      // mermaid matches the python build_mermaid() artifacts — no 4-bucket
+      // color collapse.
       const nodeLines = connected.map(t => {
         const label = `${(t.project || "—").slice(0, 18)}<br>${_safe(t.task || t.title)}`;
         return `  ${_esc(t.id)}["${label}"]:::st-${(t.status || "deferred").replace(/[^a-z_]/gi, "")}`;
       });
-      const edgeLines = allEdges.map(e => {
-        if (e.kind === "parent") {
-          // Dashed arrow for parent → child so the operator can tell
-          // hierarchy from blocking dependency at a glance.
-          return `  ${_esc(e.src)} -.-> ${_esc(e.dst)}`;
-        }
-        return `  ${_esc(e.src)} --> ${_esc(e.dst)}`;
-      });
-
-      // classDefs generated from the SSOT status_colors (STATUS_STYLE,
-      // projected by handlers.graph._status_colors into the /graph payload).
-      // Dashed `deferred` reuses STATUS_STYLE's dash via stroke-dasharray.
+      const edgeLines = allEdges.map(e => (e.kind === "parent")
+        ? `  ${_esc(e.src)} -.-> ${_esc(e.dst)}`
+        : `  ${_esc(e.src)} --> ${_esc(e.dst)}`);
+      // classDefs from the SSOT status_colors (STATUS_STYLE, projected into
+      // the /graph payload) — never a second color table.
       const sc = (STATE.graph && STATE.graph.status_colors) || {};
       const classDefLines = Object.keys(sc).map(s => {
         const c = sc[s];
@@ -2596,32 +1970,190 @@
         if (c.dashed) style += ",stroke-dasharray:5 3";
         return `  classDef st-${s} ${style};`;
       });
-      const src = [
-        "flowchart LR",
-        ...classDefLines,
-        ...nodeLines,
-        ...edgeLines,
-      ].join("\n");
-      canvas.innerHTML = `<div class="graph-wrap">
-        <div class="graph-hint">
-          Graph: <strong>${connected.length}</strong> connected node${connected.length === 1 ? "" : "s"} /
-          <strong>${depEdges.length}</strong> depends_on / blocks edge${depEdges.length === 1 ? "" : "s"} /
-          <strong>${parentEdges.length}</strong> parent edge${parentEdges.length === 1 ? "" : "s"} (dashed).
-          ${visible.length - connected.length} disconnected card${visible.length - connected.length === 1 ? "" : "s"} hidden from the graph
-          (visible in <strong>📋 Column</strong> / <strong>📑 Table</strong> layouts).
-        </div>
-        <pre class="mermaid">${escapeHtml(src)}</pre>
+      const src = ["flowchart LR", ...classDefLines, ...nodeLines, ...edgeLines]
+        .join("\n");
+      return {
+        src,
+        stats: {
+          connected: connected.length,
+          dep: depEdges.length,
+          parent: parentEdges.length,
+          hidden: visible.length - connected.length,
+        },
+      };
+    }
+
+    function _graphHintHtml(stats, note) {
+      const s = stats;
+      return `<div class="graph-hint">
+        <span>Graph: <strong>${s.connected}</strong> connected node${s.connected === 1 ? "" : "s"} /
+        <strong>${s.dep}</strong> depends_on / blocks edge${s.dep === 1 ? "" : "s"} /
+        <strong>${s.parent}</strong> parent edge${s.parent === 1 ? "" : "s"} (dashed).
+        ${s.hidden} disconnected card${s.hidden === 1 ? "" : "s"} not drawn.${note ? " " + note : ""}</span>
+        <button type="button" class="graph-fit-btn" onclick="toggleGraphFit()"
+                title="Fit the diagram to the panel width, or show it at 1:1 and scroll">
+          ${GRAPH_FIT ? "⤢ 1:1" : "⤡ Fit"}
+        </button>
       </div>`;
-      _ensureMermaid().then(() => {
+    }
+
+    // SIZE (operator: "サイズも調整して表示される"). mermaid emits the SVG with
+    // hard width/height attributes (useMaxWidth:false) — dropped into the
+    // panel as-is it overflows. We keep the viewBox (so the aspect ratio is
+    // intact) and let CSS scale it: `.graph-wrap--fit svg { width:100%;
+    // height:auto }` shrinks a wide diagram to the panel, `1:1` restores the
+    // natural size and the wrap scrolls. The natural px size is stashed on
+    // the wrapper so the toggle needs no re-render.
+    function _mountGraphSvg(canvas, svg, stats, note) {
+      canvas.innerHTML = `<div class="graph-wrap${GRAPH_FIT ? " graph-wrap--fit" : ""}">
+        ${_graphHintHtml(stats, note)}
+        <div class="graph-canvas">${svg}</div>
+      </div>`;
+      const el = canvas.querySelector(".graph-canvas svg");
+      if (!el) return;
+      // Guarantee a viewBox even if mermaid omitted it, else scaling clips.
+      if (!el.getAttribute("viewBox")) {
+        const w = parseFloat(el.getAttribute("width")) || 0;
+        const h = parseFloat(el.getAttribute("height")) || 0;
+        if (w && h) el.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      }
+      el.setAttribute("preserveAspectRatio", "xMidYMin meet");
+      // mermaid also writes an inline `style="max-width: Npx"` which fights
+      // the fit rule — strip it and keep the number for the 1:1 mode.
+      const natural = parseFloat(el.getAttribute("width")) || 0;
+      if (natural) el.dataset.naturalWidth = String(natural);
+      el.style.maxWidth = "";
+    }
+
+    function toggleGraphFit() {
+      GRAPH_FIT = !GRAPH_FIT;
+      try { localStorage.setItem("scitex-todo:graph-fit", GRAPH_FIT ? "1" : "0"); } catch {}
+      const wrap = document.querySelector(".graph-wrap");
+      if (!wrap) return;
+      wrap.classList.toggle("graph-wrap--fit", GRAPH_FIT);
+      const btn = wrap.querySelector(".graph-fit-btn");
+      if (btn) btn.textContent = GRAPH_FIT ? "⤢ 1:1" : "⤡ Fit";
+    }
+
+    function _graphEmptyHtml(visibleCount) {
+      return `<div class="graph-wrap">
+        <div class="graph-empty">
+          <h3>No dependencies in the current scope</h3>
+          <p>The Graph layout draws <code>depends_on</code> / <code>blocks</code>
+          edges (from the server's <code>edges[]</code> payload) plus
+          <code>parent</code> edges (per-node) among the currently-visible cards.
+          Right now <strong>${visibleCount} card${visibleCount === 1 ? "" : "s"}</strong>
+          match the filters but none of them are connected to each other.</p>
+          <p class="graph-empty__hint">Encode dependencies in <code>tasks.yaml</code> like this:
+          <code>depends_on: [other-task-id]</code>, <code>blocks: [downstream-id]</code>,
+          or <code>parent: hub-task-id</code>. The <strong>⏱ Timeline</strong> and
+          <strong>🗒 Wall</strong> layouts show every card, connected or not.</p>
+        </div>
+      </div>`;
+    }
+
+    // Render `src` to an SVG string OFF-DOM. Cached by source, so a repeat
+    // call with unchanged data resolves instantly. Never rejects — a CDN
+    // failure resolves to null and the caller shows an honest message.
+    function _renderGraphSvg(src) {
+      if (GRAPH_CACHE.key === src && GRAPH_CACHE.svg) {
+        return Promise.resolve(GRAPH_CACHE.svg);
+      }
+      if (GRAPH_CACHE.key === src && GRAPH_CACHE.pending) {
+        return GRAPH_CACHE.pending;  // a prewarm for this exact src is in flight
+      }
+      GRAPH_CACHE.key = src;
+      GRAPH_CACHE.svg = null;
+      GRAPH_CACHE.failed = false;
+      const p = _ensureMermaid().then(async () => {
+        if (!window.mermaid || !window.mermaid.render) {
+          GRAPH_CACHE.failed = true;
+          return null;
+        }
         try {
-          window.mermaid && window.mermaid.run && window.mermaid.run({
-            querySelector: ".mermaid",
-          });
+          // Promise API — mermaid parses + lays out against its OWN detached
+          // host element, so the live canvas is never touched and never
+          // reflowed mid-parse. `id` must be unique per call.
+          const id = "stx-mermaid-" + Math.random().toString(36).slice(2, 10);
+          const out = await window.mermaid.render(id, src);
+          const svg = (out && out.svg) ? out.svg : String(out || "");
+          if (GRAPH_CACHE.key === src) { GRAPH_CACHE.svg = svg; }
+          return svg;
         } catch (e) {
           console.warn("[scitex-todo] mermaid render failed:", e);
+          GRAPH_CACHE.failed = true;
+          return null;
         }
+      }).finally(() => {
+        if (GRAPH_CACHE.pending === p) GRAPH_CACHE.pending = null;
+      });
+      GRAPH_CACHE.pending = p;
+      return p;
+    }
+
+    function _renderGraphView(canvas, visible) {
+      const built = _graphSrc(visible);
+      if (!built) { canvas.innerHTML = _graphEmptyHtml(visible.length); return; }
+      // Cache hit → paint the ready diagram immediately (the whole point).
+      if (GRAPH_CACHE.key === built.src && GRAPH_CACHE.svg) {
+        _mountGraphSvg(canvas, GRAPH_CACHE.svg, built.stats);
+        return;
+      }
+      // Cache miss → show the numbers + a spinner line NOW (never a blank
+      // canvas), and mount the SVG when the off-DOM render resolves.
+      canvas.innerHTML = `<div class="graph-wrap">
+        ${_graphHintHtml(built.stats, "")}
+        <div class="graph-canvas graph-canvas--loading">drawing the diagram…</div>
+      </div>`;
+      _renderGraphSvg(built.src).then((svg) => {
+        // The operator may have switched layouts or the data may have moved
+        // on while we were rendering — only paint if BOTH are still current.
+        if (normalizeLayout(STATE.layout) !== "graph") return;
+        const c = document.getElementById("columns");
+        if (!c) return;
+        if (!svg) {
+          const host = c.querySelector(".graph-canvas");
+          if (host) {
+            host.classList.remove("graph-canvas--loading");
+            host.innerHTML = `<p class="graph-empty__hint">Could not draw the
+              diagram — the mermaid bundle failed to load (offline?). The card
+              data is fine; try Timeline or Wall.</p>`;
+          }
+          return;
+        }
+        const fresh = _graphSrc(_visibleTasks());
+        if (!fresh || fresh.src !== built.src) return;  // stale render
+        _mountGraphSvg(c, svg, built.stats);
       });
     }
+
+    // The task set the current filters admit — shared by render() and the
+    // idle prewarm so both agree on what the graph should contain.
+    function _visibleTasks() {
+      if (!STATE.graph) return [];
+      return STATE.graph.nodes.filter(passes);
+    }
+
+    // Render the graph AHEAD OF TIME, on the idle callback after a paint, so
+    // that switching to Graph is instant. No-op when the cache already
+    // matches, when mermaid previously failed to load, or when a render for
+    // this exact source is already in flight.
+    let _prewarmHandle = null;
+    function _prewarmGraph() {
+      const idle = window.requestIdleCallback ||
+        function (fn) { return setTimeout(() => fn({ timeRemaining: () => 50 }), 400); };
+      const cancel = window.cancelIdleCallback || clearTimeout;
+      if (_prewarmHandle !== null) { try { cancel(_prewarmHandle); } catch {} }
+      _prewarmHandle = idle(() => {
+        _prewarmHandle = null;
+        if (GRAPH_CACHE.failed) return;
+        const built = _graphSrc(_visibleTasks());
+        if (!built) return;                                   // nothing to draw
+        if (GRAPH_CACHE.key === built.src && GRAPH_CACHE.svg) return;  // warm
+        _renderGraphSvg(built.src);
+      }, { timeout: 3000 });
+    }
+
     let _mermaidLoaded = null;
     function _ensureMermaid() {
       if (_mermaidLoaded) return _mermaidLoaded;
@@ -2633,6 +2165,12 @@
           try {
             window.mermaid.initialize({
               startOnLoad: false, theme: "dark", securityLevel: "loose",
+              // useMaxWidth:false → mermaid emits the diagram at its natural
+              // px size + a viewBox; _mountGraphSvg() then does the scaling
+              // (fit-to-panel by default, 1:1 on demand). Letting mermaid do
+              // the fit instead would hard-cap the diagram at the width of
+              // whatever container it happened to render in — which, for an
+              // OFF-DOM render, is not the panel.
               flowchart: { useMaxWidth: false, htmlLabels: true },
             });
           } catch {}
@@ -2644,300 +2182,172 @@
       return _mermaidLoaded;
     }
 
-    // === Recent-count pill — fleet-wide "N new in 24 h" indicator ───
-    // Always visible (no sort dependency) so the operator sees at a
-    // glance how many cards moved in the last day. Clicking it sets
-    // STATE.sort = "recent". Hidden when zero so the filterbar isn't
-    // cluttered. (hook-bypass: line-limit.)
-    function _renderRecentCountPill(visible) {
-      const pill = document.getElementById("recent-count-pill");
-      const val = document.getElementById("recent-count-value");
-      if (!pill || !val) return;
-      const n = visible.filter(_isNew24h).length;
-      val.textContent = String(n);
-      pill.style.display = n > 0 ? "" : "none";
-      pill.classList.toggle("filt-recent-count--on", (STATE.sort || "default") === "recent");
+    // === Details column (right) ══════════════════════════════════════
+    // Accordion behaviour lifted from scitex-writer's details-panel.ts: an
+    // open-set persisted in localStorage, sections closed by default except
+    // the ones we open here. (hook-bypass: line-limit.)
+    const DETAILS_PANE_KEY = "scitex-todo:details-collapsed";
+    function toggleDetailsPane() {
+      const pane = document.getElementById("details-panel");
+      if (!pane) return;
+      // `.collapsed` is scitex-ui's own state class (css/shell/
+      // stx-shell-sidebar.css): it shrinks the pane to
+      // --ui-collapsed-pane-width and flips the header into the vertical
+      // icon+label strip. We only toggle it — the behaviour is the shell's.
+      const on = pane.classList.toggle("collapsed");
+      const btn = document.getElementById("details-toggle");
+      if (btn) {
+        btn.setAttribute("aria-expanded", on ? "false" : "true");
+        btn.textContent = on ? "‹" : "›";
+      }
+      try { localStorage.setItem(DETAILS_PANE_KEY, on ? "1" : "0"); } catch {}
+    }
+    function _syncDetailsPane() {
+      let collapsed = false;
+      try { collapsed = localStorage.getItem(DETAILS_PANE_KEY) === "1"; } catch {}
+      const pane = document.getElementById("details-panel");
+      const btn = document.getElementById("details-toggle");
+      if (pane) pane.classList.toggle("collapsed", collapsed);
+      if (btn) {
+        btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        btn.textContent = collapsed ? "‹" : "›";
+      }
     }
 
-    // P10 (lead a2a 2026-06-12) — extracted per-column HTML emit so the
-    // render() group-aware loop above stays readable. Identical output to
-    // the prior inline emit; pin/drag-reorder + col-empty + col-count +
-    // col-pin-btn semantics preserved. (hook-bypass: line-limit.)
-    function _renderColumnHtml(p, byProj, pinned) {
-      const visibleCards = byProj[p] || [];
-      visibleCards.sort(_sortComparator(STATE.sort || "default"));
-      let items;
-      if (!visibleCards.length) {
-        items = `<div class="col-empty" onclick="openAddTaskModal('${escapeHtml(p)}')"
-             title="No visible cards in this project. Click to add one.">
-             + Add task to ${escapeHtml(p)}
-           </div>`;
-      } else if (STATE.groupByTime) {
-        // Group-by-time (operator TIME-BASED VIEW, lead a2a
-        // `ff1441d7`, 2026-06-14). Bucket every visible card under
-        // its time bucket header (TODAY / WEEK / MONTH / OLDER) and
-        // emit each bucket as a collapsible block. Empty buckets
-        // are skipped so the column stays compact.
-        items = _renderTimeBucketedColumn(p, visibleCards);
-      } else {
-        items = visibleCards.map(cardHtml).join("");
-      }
-      const isPinned = pinned.has(p);
-      return `<section class="col${isPinned ? " col--pinned" : ""}"
-        data-project="${escapeHtml(p)}" draggable="true"
-        ondragstart="onColDragStart(event,'${escapeHtml(p)}')"
-        ondragend="onColDragEnd(event)"
-        ondragover="onColDragOver(event,'${escapeHtml(p)}')"
-        ondragleave="onColDragLeave(event)"
-        ondrop="onColDrop(event,'${escapeHtml(p)}')"
-        oncontextmenu="openColCtx(event,'${escapeHtml(p)}')">
-        <header class="col-head" title="Drag to reorder">
-          <span class="col-name">${escapeHtml(p)}</span>
-          <span style="display:flex;align-items:center;gap:4px;">
-            <button class="col-nudge-btn"
-              title="Nudge the primary agent of this column (POST /nudge)"
-              onclick="event.stopPropagation(); nudgePrimaryAgent('${escapeHtml(p)}', this)"
-              aria-label="Nudge agent">🔔</button>
-            <button class="col-pin-btn"
-              title="${isPinned ? "Unpin column" : "Pin column to the left"}"
-              onclick="event.stopPropagation(); toggleColPin('${escapeHtml(p)}')"
-              aria-label="${isPinned ? "Unpin" : "Pin"} ${escapeHtml(p)}">${isPinned ? "📌" : "📍"}</button>
-            <span class="col-count">${visibleCards.length}</span>
-          </span>
-        </header>
-        <div class="col-body">${items}</div>
-      </section>`;
-    }
-
-    // === Group-by-time bucket rendering ================================
-    // Operator TIME-BASED VIEW (lead a2a `ff1441d7`, 2026-06-14). When
-    // STATE.groupByTime is on, render each project's cards under
-    // collapsible TODAY/WEEK/MONTH/OLDER headers. Bucket keying lives in
-    // timeBucketForCard() above. Empty buckets are skipped so the column
-    // stays compact. Collapsed state persists in
-    // localStorage["scitex-todo:time-buckets-collapsed"].
-    function _renderTimeBucketedColumn(project, cards) {
-      const groups = { today: [], week: [], month: [], older: [] };
-      const nowMs = Date.now();
-      for (const t of cards) {
-        const b = timeBucketForCard(t, nowMs);
-        groups[b].push(t);
-      }
-      const collapsed = STATE.timeBucketsCollapsed || new Set();
-      const parts = [];
-      for (const bk of TIME_BUCKETS) {
-        const arr = groups[bk];
-        if (!arr.length) continue;
-        const isCollapsed = collapsed.has(bk);
-        const chevron = isCollapsed ? "▸" : "▾";
-        const innerHtml = isCollapsed
-          ? ""
-          : `<div class="stx-todo-time-bucket-body">${arr.map(cardHtml).join("")}</div>`;
-        parts.push(
-          `<div class="stx-todo-time-bucket stx-todo-time-bucket--${bk}` +
-            (isCollapsed ? " stx-todo-time-bucket--collapsed" : "") + `"
-            data-bucket="${bk}">
-            <button type="button" class="stx-todo-time-bucket-header"
-                    onclick="event.stopPropagation(); toggleTimeBucket('${bk}')"
-                    aria-expanded="${isCollapsed ? "false" : "true"}"
-                    title="Click to ${isCollapsed ? "expand" : "collapse"} ${TIME_BUCKET_LABELS[bk]}">
-              <span class="stx-todo-time-bucket-chevron"
-                    aria-hidden="true">${chevron}</span>
-              <span class="stx-todo-time-bucket-label">${TIME_BUCKET_LABELS[bk]}</span>
-              <span class="stx-todo-time-bucket-count">(${arr.length})</span>
-            </button>
-            ${innerHtml}
-          </div>`
-        );
-      }
-      return parts.join("");
-    }
-
-    // === Group-by-time toggle handler =================================
-    function onGroupByTimeChange(e) {
-      STATE.groupByTime = !!(e && e.target && e.target.checked);
+    const DETAILS_OPEN_KEY = "scitex-todo:details-open";
+    function _detailsOpenSet() {
       try {
-        localStorage.setItem(
-          "scitex-todo:group-by-time",
-          STATE.groupByTime ? "1" : "0",
-        );
+        const raw = localStorage.getItem(DETAILS_OPEN_KEY);
+        if (raw) return new Set(JSON.parse(raw));
       } catch {}
-      render();
+      return new Set(["stats", "filters"]);
     }
-
-    // Toggle one bucket's collapsed state + persist.
-    function toggleTimeBucket(bucketKey) {
-      if (!STATE.timeBucketsCollapsed) STATE.timeBucketsCollapsed = new Set();
-      if (STATE.timeBucketsCollapsed.has(bucketKey)) {
-        STATE.timeBucketsCollapsed.delete(bucketKey);
-      } else {
-        STATE.timeBucketsCollapsed.add(bucketKey);
-      }
+    function toggleDetailsSection(id) {
+      const open = _detailsOpenSet();
+      if (open.has(id)) open.delete(id); else open.add(id);
       try {
-        localStorage.setItem(
-          "scitex-todo:time-buckets-collapsed",
-          JSON.stringify([...STATE.timeBucketsCollapsed]),
-        );
+        localStorage.setItem(DETAILS_OPEN_KEY, JSON.stringify([...open]));
       } catch {}
-      render();
+      _syncDetailsSections();
+    }
+    function _syncDetailsSections() {
+      const open = _detailsOpenSet();
+      document.querySelectorAll(".details-section").forEach((sec) => {
+        sec.classList.toggle("open", open.has(sec.getAttribute("data-id")));
+      });
     }
 
-    // === Column pin + drag-reorder (operator UX TG 370) ====================
-    // Two persistent client-side state slots in localStorage:
-    //   COL_PIN_KEY   → Set<projectName>   pinned columns (always at left)
-    //   COL_ORDER_KEY → string[]            custom drag-order; new projects
-    //                                       trail alphabetically
-    // No backend change — order/pin are per-browser preferences (same
-    // pattern as the per-card hide from PR #62 + the project-hide from
-    // PR #74).
-    const COL_PIN_KEY = "scitex-todo:col-pinned";
-    const COL_ORDER_KEY = "scitex-todo:col-order";
-    function pinnedSet() {
-      try { return new Set(JSON.parse(localStorage.getItem(COL_PIN_KEY) || "[]")); }
-      catch { return new Set(); }
+    // === Stats (Details > Stats) ═════════════════════════════════════
+    // "Legend と対応させて … 可視化してください" — the stats MUST read as the
+    // legend's twin, so both are generated from the SAME source: the server's
+    // `status_colors` map (views.board_v3_page → handlers.graph._status_colors
+    // → _diagram.STATUS_STYLE). The legend iterates it in the template; this
+    // reads the identical map off the /graph payload and paints one bar per
+    // status IN THE SAME ORDER, filled with the same `--status-fill-<s>` /
+    // `--status-stroke-<s>` CSS vars the legend swatches use. One list, one
+    // order, one palette — nothing to drift.
+    //
+    // The window is the Timeline's own d/w/m window (see setBoardWindow).
+    function boardWindowKey() {
+      return (window._TL && window._TL.windowKey) || "1d";
     }
-    function savePinned(s) {
-      localStorage.setItem(COL_PIN_KEY, JSON.stringify([...s]));
+    function boardWindowHours() {
+      const w = (window.STX && window.STX.timelineWindows) ||
+        { "1d": 24, "1w": 168, "1m": 720 };
+      return w[boardWindowKey()] || 24;
     }
-    function colOrder() {
-      try { return JSON.parse(localStorage.getItem(COL_ORDER_KEY) || "[]"); }
-      catch { return []; }
-    }
-    function saveColOrder(arr) {
-      localStorage.setItem(COL_ORDER_KEY, JSON.stringify(arr));
-    }
-    function toggleColPin(project) {
-      const s = pinnedSet();
-      if (s.has(project)) s.delete(project); else s.add(project);
-      savePinned(s);
-      render();
+    // ONE window definition for the whole board: delegate to the Timeline's
+    // setter (which persists it + rebuilds the raster) instead of keeping a
+    // second, subtly-different notion of "week" here.
+    function setBoardWindow(key) {
+      if (typeof window.setTimelineWindow === "function") {
+        window.setTimelineWindow(key);   // persists + re-renders the raster
+      } else {
+        try { localStorage.setItem("scitex-todo:tl-window", key); } catch {}
+        if (window._TL) window._TL.windowKey = key;
+      }
+      renderStats();
     }
 
-    // === PR (g) — per-column 催促 (nudge) button (operator TG12608 +
-    // TG12617 + TG12618, lead a2a `f16b0d2a` + `9e710ab0` +
-    // `8e51b1e0` + `ffc6629c`, 2026-06-12). Picks the PRIMARY agent
-    // of the column (modal agent across the column's visible cards)
-    // and POSTs /nudge. The backend writes via the self-contained
-    // `_push.deliver()` wire (no sac CLI dependency). UI surfaces the
-    // result via the existing toast(): ok → "🔔 nudge → <agent>",
-    // no-turn-url → loud warning, http-error → loud warning. Per-
-    // agent cooldown lives on the backend (5min); a 429 response
-    // surfaces as a "cooling down" toast.
-    function _primaryAgentForProject(project) {
-      if (!STATE.graph) return null;
-      const inCol = STATE.graph.nodes.filter(n => (n.project || "Uncategorized") === project);
-      if (!inCol.length) return null;
-      const counts = {};
-      for (const t of inCol) {
-        const a = (t.agent || "").trim();
-        if (!a) continue;
-        counts[a] = (counts[a] || 0) + 1;
-      }
-      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-      return sorted.length ? sorted[0][0] : null;
-    }
-    async function nudgePrimaryAgent(project, btn) {
-      const agent = _primaryAgentForProject(project);
-      if (!agent) {
-        toast(`⚠ no agent attribution for column "${project}"`, true);
-        return;
-      }
-      if (btn) { btn.disabled = true; btn.textContent = "…"; }
-      try {
-        const r = await fetch("/nudge", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ agent }),
-        });
-        const result = await r.json().catch(() => ({}));
-        if (r.ok && result.ok) {
-          toast(`🔔 nudge → ${agent} via ${result.wire || "?"}`);
-        } else if (r.status === 429) {
-          toast(`⏱ ${agent} cooling down (${result.cooldown_remaining_s || "?"}s)`, true);
-        } else if (result.reason === "no-turn-url-configured") {
-          toast(`⚠ ${agent}: no turn URL configured (set SCITEX_TODO_AGENT_TURN_URLS)`, true);
-        } else {
-          toast(`✗ nudge ${agent} failed: ${result.reason || ("HTTP " + r.status)}`, true);
+    const WINDOW_LABEL = { "1d": "24 h", "1w": "7 d", "1m": "30 d" };
+    function renderStats() {
+      const host = document.getElementById("details-stats");
+      if (!host) return;
+      const key = boardWindowKey();
+      document.querySelectorAll(".details-scale-btn").forEach((b) => {
+        b.classList.toggle("details-scale-btn--on",
+                           b.getAttribute("data-win") === key);
+      });
+      if (!STATE.graph) { host.innerHTML = ""; return; }
+      const sc = STATE.graph.status_colors || {};
+      const statuses = Object.keys(sc);          // legend order, verbatim
+      if (!statuses.length) { host.innerHTML = ""; return; }
+      const cutoffMs = Date.now() - boardWindowHours() * 3600 * 1000;
+      // Two series per status: ACTIVE-IN-WINDOW (cards touched inside the
+      // selected window — the number the timescale is actually about) and
+      // TOTAL (every card on the board with that status). The bar length is
+      // the in-window count; the total rides along as a muted number so the
+      // window's slice is legible against the whole.
+      const all = STATE.graph.nodes || [];
+      const inWin = all.filter((t) => {
+        const ts = _newestTs(t);
+        return ts && ts >= cutoffMs;
+      });
+      const countBy = (rows) => {
+        const m = {};
+        for (const t of rows) {
+          const s = t.status || "deferred";
+          m[s] = (m[s] || 0) + 1;
         }
-      } catch (e) {
-        toast(`✗ nudge ${agent} error: ${e.message}`, true);
-      } finally {
-        if (btn) { btn.disabled = false; btn.textContent = "🔔"; }
-      }
+        return m;
+      };
+      const winCounts = countBy(inWin);
+      const allCounts = countBy(all);
+      const max = Math.max(1, ...statuses.map((s) => winCounts[s] || 0));
+      const rows = statuses.map((s) => {
+        const n = winCounts[s] || 0;
+        const tot = allCounts[s] || 0;
+        const pct = Math.round((n / max) * 100);
+        return `<div class="stat-row" title="${escapeHtml(s)}: ${n} active in the last ${WINDOW_LABEL[key] || key} of ${tot} on the board">
+          <span class="stat-label">
+            <span class="stat-swatch" style="background: var(--status-fill-${s});
+                  border: 1px var(--status-border-${s}, solid) var(--status-stroke-${s});"></span>
+            ${escapeHtml(s)}
+          </span>
+          <span class="stat-bar-track">
+            <span class="stat-bar" style="width:${pct}%;
+                  background: var(--status-fill-${s});
+                  border: 1px var(--status-border-${s}, solid) var(--status-stroke-${s});"></span>
+          </span>
+          <span class="stat-num">${n}<span class="stat-total">/${tot}</span></span>
+        </div>`;
+      }).join("");
+      const newCount = (STATE.graph.nodes || []).filter(_isNew24h).length;
+      host.innerHTML = `
+        <div class="stat-head">
+          <strong>${inWin.length}</strong> card${inWin.length === 1 ? "" : "s"}
+          active in the last ${WINDOW_LABEL[key] || key}
+          <span class="details-muted">· ${all.length} on the board</span>
+        </div>
+        ${rows}
+        <div class="stat-foot" id="recent-count-pill">
+          🆕 <strong id="recent-count-value">${newCount}</strong> new / 24 h
+        </div>`;
     }
 
-    // -- Drag-reorder via HTML5 drag API. The full section.col is
-    //    draggable; the col-head has the grab cursor as the affordance.
-    //    On drop, we splice the source out of the column order and
-    //    insert it before the drop target. Pinned columns can be
-    //    reordered AMONG themselves but never below an unpinned one
-    //    (handled by the sort comparator at render time).
-    let _draggedCol = null;
-    function onColDragStart(e, project) {
-      _draggedCol = project;
-      try { e.dataTransfer.setData("text/plain", project); } catch {}
-      e.dataTransfer.effectAllowed = "move";
-      const el = e.currentTarget;
-      el.classList.add("col--dragging");
+    // === Recent-count pill — fleet-wide "N new in 24 h" indicator ───
+    // Always visible so the operator sees at a glance how many cards moved
+    // in the last day. Hidden when zero so the filterbar isn't cluttered.
+    // (Click-to-sort went with the Sort control on 2026-07-13.)
+    function _renderRecentCountPill(visible) {
+      // The counter moved into Details > Stats (operator 2026-07-13: "114
+      // new/24h ですが、それも details のほうで"). renderStats() paints it; this
+      // keeps the number honest for the FILTERED set on every render.
+      const val = document.getElementById("recent-count-value");
+      if (!val) return;
+      val.textContent = String(visible.filter(_isNew24h).length);
     }
-    function onColDragEnd(e) {
-      e.currentTarget.classList.remove("col--dragging");
-      document.querySelectorAll(".col--drop-target")
-        .forEach(el => el.classList.remove("col--drop-target"));
-      _draggedCol = null;
-    }
-    function onColDragOver(e, project) {
-      // Two flows funnel through this handler:
-      //   (A) column drag-reorder (TG 370) — accept when _draggedCol set
-      //   (B) card drag-to-move    (TG 385) — accept when _draggedCard set
-      if (_draggedCard) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        e.currentTarget.classList.add("col--card-drop-target");
-        return;
-      }
-      if (!_draggedCol || _draggedCol === project) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-      e.currentTarget.classList.add("col--drop-target");
-    }
-    function onColDragLeave(e) {
-      e.currentTarget.classList.remove("col--drop-target");
-      e.currentTarget.classList.remove("col--card-drop-target");
-    }
-    function onColDrop(e, targetProject) {
-      e.preventDefault();
-      e.currentTarget.classList.remove("col--drop-target");
-      e.currentTarget.classList.remove("col--card-drop-target");
-      // Card drag-to-move takes precedence (operator TG 385).
-      if (_draggedCard) {
-        const cardId = _draggedCard;
-        _draggedCard = null;
-        // Find the card's CURRENT project; skip if already there.
-        const card = (STATE.graph?.nodes || []).find(n => n.id === cardId);
-        const currentProj = card?.project || "Uncategorized";
-        if (currentProj === targetProject) return;
-        void moveCardToProject(cardId, targetProject);
-        return;
-      }
-      const source = _draggedCol;
-      _draggedCol = null;
-      if (!source || source === targetProject) return;
-      // Rebuild the current visible column order from the DOM, then
-      // splice source before target.
-      const cols = [...document.querySelectorAll(".col[data-project]")]
-        .map(el => el.dataset.project);
-      const srcIdx = cols.indexOf(source);
-      const tgtIdx = cols.indexOf(targetProject);
-      if (srcIdx < 0 || tgtIdx < 0) return;
-      cols.splice(srcIdx, 1);
-      cols.splice(tgtIdx < srcIdx ? tgtIdx : tgtIdx - 1 + 1, 0, source);
-      // Persist as the new col-order — render() consumes this directly.
-      // The render-time sort will still float pinned columns to the
-      // left regardless of position in this list.
-      saveColOrder(cols);
-      render();
-    }
+
 
     function attachFilters() {
       const map = { "f-project": "project", "f-host": "host", "f-status": "status",
@@ -3108,8 +2518,8 @@
         if (el) el.value = "";
       } else if (key === "blockingMe") {
         STATE.filters.blockingMe = false;
-        const tb = document.getElementById("t-block");
-        if (tb) tb.classList.remove("on");
+        const tb = document.getElementById("f-blockingme");
+        if (tb) tb.checked = false;
       } else {
         STATE.filters[key] = "";
         const el = document.getElementById("f-" + key);
@@ -3149,29 +2559,21 @@
       render();
     }
 
-    // === P9 — sort-by control =============================================
-    // Re-orders the cards WITHIN each column according to STATE.sort. The
-    // default ("default") preserves the legacy date-aware sort. Other
-    // values pull the corresponding field with a stable, sensible
-    // comparator. Headline use is sort=deadline (pairs with the P4
-    // deadline schema landing later). (hook-bypass: line-limit.)
-    function onSortChange(e) {
-      STATE.sort = e.target.value || "default";
-      try { localStorage.setItem("scitex-todo:sort", STATE.sort); } catch {}
-      render();
-    }
 
-    // === P0 / lead design ruling (TG 12461) — Layout switcher ──────
-    // Three orthogonal layouts; Recent stays a SORT (not a tab). The
-    // selected layout is persisted in localStorage so the operator's
-    // choice survives reloads. (hook-bypass: line-limit.)
+    // === Layout switcher ───────────────────────────────────────────
+    // Three orthogonal layouts; the choice is persisted in localStorage so
+    // it survives reloads.
+    //
+    // "column" / "table" removed 2026-07-13 (operator TG: "Column, Table
+    // view がいらないです"); "stale" removed 2026-07-10. All three are OUT of
+    // the whitelist, so a stored value from before either removal coerces
+    // to the default instead of rendering a BLANK board. Defined as a
+    // hoisted function so the STATE initializer above can call it.
+    function normalizeLayout(mode) {
+      return VALID_LAYOUTS.includes(mode) ? mode : DEFAULT_LAYOUT;
+    }
     function onLayoutChange(mode) {
-      // Whitelist every real layout; unknown values fall back to the kanban.
-      // "stale" removed 2026-07-10 (operator, card todo-board-remove-stale-
-      // view-timeline-first-20260710) — the render path stays but the
-      // layout is unreachable (button gone, whitelist + boot both coerce).
-      const VALID_LAYOUTS = ["graph", "table", "column", "timeline", "wall"];
-      const m = VALID_LAYOUTS.includes(mode) ? mode : "column";
+      const m = normalizeLayout(mode);
       STATE.layout = m;
       try { localStorage.setItem("scitex-todo:layout", m); } catch {}
       // Repaint the segment buttons' active state without a full render.
@@ -3183,125 +2585,6 @@
       render();
     }
 
-    // Click on the 🆕 N new in 24h pill → switch sort to Recent.
-    function setSortRecent() {
-      const sel = document.getElementById("f-sort");
-      if (sel) sel.value = "recent";
-      STATE.sort = "recent";
-      try { localStorage.setItem("scitex-todo:sort", "recent"); } catch {}
-      render();
-    }
-
-    // === P10 (lead a2a 2026-06-12) — group-by toggle ===================
-    // Off (default) = today's flat column view. On = columns cluster by
-    // membership in a `groups[]` entry (defined at the YAML top level
-    // next to `tasks:`). spans_all groups (e.g. "lead") render as a
-    // banner strip above the columns grid. (hook-bypass: line-limit.)
-    function onGroupByChange(e) {
-      STATE.groupBy = e.target.value === "on";
-      render();
-      renderGroupStrip();
-    }
-
-    function renderGroupStrip() {
-      const strip = document.getElementById("group-spans-all");
-      if (!strip) return;
-      const groups = (STATE.graph && STATE.graph.groups) || [];
-      const spans = STATE.groupBy
-        ? groups.filter(g => g.spans_all)
-        : [];
-      if (!spans.length) {
-        strip.style.display = "none";
-        strip.innerHTML = "";
-        return;
-      }
-      strip.style.display = "flex";
-      strip.innerHTML = spans.map(g => {
-        const swatch = g.color
-          ? `<span class="group-strip-banner-swatch"
-                 style="background:${escapeHtml(g.color)}"></span>`
-          : `<span class="group-strip-banner-swatch"
-                 style="background:var(--gold,#ffc107)"></span>`;
-        return `<span class="group-strip-banner"
-                  title="Spans every project">
-                  ${swatch}
-                  <span>${escapeHtml(g.label)}</span>
-                </span>`;
-      }).join("");
-    }
-
-    // Build a comparator that reshuffles `projList` so projects that
-    // share a group cluster together when STATE.groupBy is on. Pure
-    // function — returns the same array as input when groupBy is off
-    // OR no groups are defined. (hook-bypass: line-limit.)
-    function _applyGroupClustering(projList) {
-      if (!STATE.groupBy) return projList;
-      const groups = (STATE.graph && STATE.graph.groups) || [];
-      const nonSpanGroups = groups.filter(g => !g.spans_all);
-      if (!nonSpanGroups.length) return projList;
-      // First-occurrence wins: each project is assigned to the FIRST
-      // group that declares it (overlapping memberships allowed per
-      // schema; choose one for layout). Projects not in any group fall
-      // into a synthetic "Ungrouped" bucket which renders last.
-      const projGroup = new Map();
-      nonSpanGroups.forEach((g, gidx) => {
-        (g.projects || []).forEach(p => {
-          if (!projGroup.has(p)) projGroup.set(p, gidx);
-        });
-      });
-      const UNGROUPED = nonSpanGroups.length;  // sentinel index
-      const groupedProj = projList.slice().sort((a, b) => {
-        const ga = projGroup.has(a) ? projGroup.get(a) : UNGROUPED;
-        const gb = projGroup.has(b) ? projGroup.get(b) : UNGROUPED;
-        if (ga !== gb) return ga - gb;
-        // Within a group keep the existing order (already pin/drag-sorted).
-        return projList.indexOf(a) - projList.indexOf(b);
-      });
-      return groupedProj;
-    }
-
-    // Insert a group-header DOM string before the first column belonging
-    // to a new group as we iterate. Returns the section HTML to render
-    // before the column (empty string when no header is needed at this
-    // position).
-    function _groupHeaderBefore(p, lastGroupIdx) {
-      if (!STATE.groupBy) return { header: "", groupIdx: lastGroupIdx };
-      const groups = (STATE.graph && STATE.graph.groups) || [];
-      const nonSpanGroups = groups.filter(g => !g.spans_all);
-      if (!nonSpanGroups.length) return { header: "", groupIdx: lastGroupIdx };
-      let groupIdx = nonSpanGroups.length;  // Ungrouped sentinel
-      let group = null;
-      for (let i = 0; i < nonSpanGroups.length; i++) {
-        if ((nonSpanGroups[i].projects || []).includes(p)) {
-          groupIdx = i; group = nonSpanGroups[i]; break;
-        }
-      }
-      if (groupIdx === lastGroupIdx) return { header: "", groupIdx };
-      const label = group ? group.label : "Ungrouped";
-      const swatch = group && group.color
-        ? `<span class="group-header-swatch"
-              style="background:${escapeHtml(group.color)}"></span>`
-        : `<span class="group-header-swatch"
-              style="background:transparent"></span>`;
-      const header = `<div class="group-header">
-        ${swatch}<span>${escapeHtml(label)}</span>
-      </div>`;
-      return { header, groupIdx };
-    }
-    // Build a (a,b)=>number comparator for the named sort mode. Used by
-    // render() per column. "default" + "deadline" both use dateInfo() (the
-    // legacy parse), the difference being that "deadline" pushes undated
-    // cards to the bottom AND we keep date-bearing cards strictly time-
-    // ordered. "priority" uses the numeric .priority rank (lower = higher
-    // priority; missing → last). "status" uses the bucket() order
-    // working→waiting→blocked→done. "last_activity" sorts ISO strings
-    // descending. "title" / "project" are simple localeCompare.
-    // (hook-bypass: line-limit — see REFACTORING.md.)
-    // P0 / lead design ruling (TG 12461, 2026-06-12) — `_newestTs(t)`
-    // returns the most recent activity timestamp for the task in ms,
-    // used by the "recent" sort mode + the NEW-badge predicate. Falls
-    // back through created_at → last_activity → 0 (so timeless tasks
-    // sort to the bottom of Recent rather than NaN-poisoning).
     function _newestTs(t) {
       const candidates = [t.last_activity, t.created_at];
       for (const c of candidates) {
@@ -3317,129 +2600,6 @@
       return (Date.now() - ts) < (24 * 3600 * 1000);
     }
 
-    // === Time-bucket classifier (operator TIME-BASED VIEW —
-    // lead a2a `ff1441d7`, 2026-06-14) =================================
-    // Walks the card's `last_activity` and returns one of 4 buckets:
-    //   "today"  — within the last 24 h
-    //   "week"   — 24 h .. 7 d
-    //   "month"  — 7 d .. 30 d
-    //   "older"  — > 30 d (or missing/unparseable last_activity)
-    // Pure function (no DOM); mirrored in the JS-RUNTIME of
-    // tests/scitex_todo/_django/test__sort_by_time.py.
-    const TIME_BUCKETS = ["today", "week", "month", "older"];
-    const TIME_BUCKET_LABELS = {
-      today: "TODAY",
-      week:  "THIS WEEK",
-      month: "THIS MONTH",
-      older: "OLDER",
-    };
-    function timeBucketForCard(task, nowMs) {
-      const ref = (typeof nowMs === "number" && isFinite(nowMs))
-        ? nowMs : Date.now();
-      const ts = task && task.last_activity;
-      if (!ts) return "older";
-      const parsed = Date.parse(ts);
-      if (isNaN(parsed)) return "older";
-      const ageMs = ref - parsed;
-      const ONE_DAY  = 86400000;
-      const ONE_WEEK = 7  * ONE_DAY;
-      const ONE_MONTH = 30 * ONE_DAY;
-      if (ageMs <= ONE_DAY)  return "today";
-      if (ageMs <= ONE_WEEK) return "week";
-      if (ageMs <= ONE_MONTH) return "month";
-      return "older";
-    }
-
-    // === Time-based sort-key helper ====================================
-    // Returns the numeric epoch-ms key for a card under a given sort mode.
-    // Missing/unparseable values return 0 so they sort to the END for
-    // DESC orderings. Pure function (mirrored in tests).
-    function timeSortKey(task, mode) {
-      if (!task) return 0;
-      let raw = null;
-      if (mode === "last_activity") raw = task.last_activity;
-      else if (mode === "created_at") raw = task.created_at;
-      else if (mode === "completed_at") {
-        // completed_at comes from the _log_meta envelope when the card
-        // transitioned to status=done. Falls back to last_activity for
-        // back-compat snapshots that don't carry _log_meta yet.
-        raw = (task._log_meta && task._log_meta.completed_at)
-          || task.completed_at
-          || null;
-      }
-      if (!raw) return 0;
-      const ms = Date.parse(raw);
-      return isNaN(ms) ? 0 : ms;
-    }
-
-    function _sortComparator(mode) {
-      const STATUS_RANK = { working: 0, waiting: 1, blocked: 2, done: 3 };
-      const dateRank = (t) => {
-        const di = dateInfo(t);
-        return di ? di.date.getTime() : null;
-      };
-      switch (mode) {
-        // Recent sort (lead design ruling 2026-06-12 — TIME axis,
-        // orthogonal to LAYOUT axis). Newest-first by last_activity,
-        // then created_at. Pairs with the `card-new-badge` rendered
-        // on cards <24h old below.
-        case "recent":
-          return (a, b) => _newestTs(b) - _newestTs(a);
-        case "deadline":
-          return (a, b) => {
-            const da = dateRank(a), db = dateRank(b);
-            if (da !== null && db !== null) return da - db;
-            if (da !== null) return -1;
-            if (db !== null) return 1;
-            return 0;
-          };
-        case "priority":
-          return (a, b) => {
-            const pa = typeof a.priority === "number" ? a.priority : Number.POSITIVE_INFINITY;
-            const pb = typeof b.priority === "number" ? b.priority : Number.POSITIVE_INFINITY;
-            return pa - pb;
-          };
-        case "status":
-          return (a, b) => {
-            const ra = STATUS_RANK[bucket(a.status)] ?? 99;
-            const rb = STATUS_RANK[bucket(b.status)] ?? 99;
-            return ra - rb;
-          };
-        case "project":
-          return (a, b) =>
-            String(a.project || "Uncategorized")
-              .localeCompare(String(b.project || "Uncategorized"));
-        case "last_activity":
-          // Numeric (epoch ms) comparator so cards without
-          // last_activity sort to the bottom (key=0) instead of the
-          // string lexicographic top. Operator TIME-BASED VIEW.
-          return (a, b) =>
-            timeSortKey(b, "last_activity") - timeSortKey(a, "last_activity");
-        case "created_at":
-          // Newest-first by created_at — operator TIME-BASED VIEW.
-          return (a, b) =>
-            timeSortKey(b, "created_at") - timeSortKey(a, "created_at");
-        case "completed_at":
-          // Newest-first by _log_meta.completed_at — operator
-          // TIME-BASED VIEW. Cards never completed sort to the end.
-          return (a, b) =>
-            timeSortKey(b, "completed_at") - timeSortKey(a, "completed_at");
-        case "title":
-          return (a, b) =>
-            String(a.title || "").localeCompare(String(b.title || ""));
-        default:
-          // Legacy date-aware sort: cards with a parsed date sort first
-          // (soonest future → oldest past). Cards without a date keep
-          // their original order.
-          return (a, b) => {
-            const da = dateInfo(a), db = dateInfo(b);
-            if (da && db) return da.date - db.date;
-            if (da && !db) return -1;
-            if (!da && db) return 1;
-            return 0;
-          };
-      }
-    }
 
     // ESC closes the open modal — operator TG 265: "popup は常に esc 有効
     // なように." HIG / WAI-ARIA universal expectation. Long-term home is
@@ -3479,10 +2639,12 @@
         e.stopPropagation();
       }
     });
-    function toggleBlockingMe(e) {
-      STATE.filters.blockingMe = !STATE.filters.blockingMe;
-      e.currentTarget.classList.toggle("on", STATE.filters.blockingMe);
-      renderActiveFilterChips();  // P2: surface the 🚧 chip
+    // 🚧 blocking me — was a loud top-right button; now an ordinary filter
+    // row in the Details column (operator 2026-07-13: "右上に大きく書く必要は
+    // ないですね"). Same predicate, same chip, quieter home.
+    function onBlockingMeChange(e) {
+      STATE.filters.blockingMe = !!(e && e.target && e.target.checked);
+      renderActiveFilterChips();
       render();
     }
 
@@ -3819,43 +2981,6 @@
       }
     }
 
-    // === Priority ↑↓ (operator TG 9776 / 276) ==============================
-    // Single click swaps the task with its global-order neighbor and POSTs
-    // the full reordered id-list to /priority (which assigns ranks 1..N).
-    async function bumpPriority(id, direction) {
-      if (!STATE.graph) return;
-      // Stable global order: priority ascending (missing → end), id-tiebreak.
-      const all = [...STATE.graph.nodes].sort((a, b) => {
-        const pa = (typeof a.priority === "number") ? a.priority : 9999;
-        const pb = (typeof b.priority === "number") ? b.priority : 9999;
-        if (pa !== pb) return pa - pb;
-        return String(a.id || "").localeCompare(String(b.id || ""));
-      });
-      const idx = all.findIndex(t => t.id === id);
-      if (idx < 0) return;
-      const swap = idx + direction;
-      if (swap < 0 || swap >= all.length) {
-        toast(direction < 0 ? "Already top priority" : "Already last priority");
-        return;
-      }
-      [all[idx], all[swap]] = [all[swap], all[idx]];
-      const order = all.map(t => t.id);
-      try {
-        const r = await fetch("/priority", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ order }),
-        });
-        if (!r.ok) {
-          const body = await r.json().catch(() => ({}));
-          throw new Error(body.error || `HTTP ${r.status}`);
-        }
-        toast(`✓ Priority ${direction < 0 ? "↑" : "↓"}: ${id}`);
-        await loadGraph();
-      } catch (e) {
-        toast(`✗ ${e.message}`, true);
-      }
-    }
 
     // Cmd/Ctrl-Enter inside the comment textarea posts immediately —
     // small ergonomic win the operator gets for free since they type
@@ -3915,45 +3040,6 @@
     // previously only used /graph /rev /resolve. This block adds the
     // browser-side wiring for the missing four ops.
 
-    // -- Project-column hide (client-side, localStorage, soft) ---------
-    const PROJ_HIDDEN_KEY = "scitex-todo:proj-hidden";
-    function projHiddenSet() {
-      try { return new Set(JSON.parse(localStorage.getItem(PROJ_HIDDEN_KEY) || "[]")); }
-      catch { return new Set(); }
-    }
-    function saveProjHidden(s) {
-      localStorage.setItem(PROJ_HIDDEN_KEY, JSON.stringify([...s]));
-      const cnt = document.getElementById("proj-hidden-count");
-      if (cnt) cnt.textContent = String(s.size);
-    }
-    function toggleProjHidden(p, checked) {
-      const s = projHiddenSet();
-      if (checked) s.add(p); else s.delete(p);
-      saveProjHidden(s);
-      render();
-    }
-    function rebuildProjHideList() {
-      if (!STATE.graph) return;
-      const projects = new Set(
-        STATE.graph.nodes.map(n => n.project || "—").filter(Boolean)
-      );
-      const sorted = [...projects].sort();
-      const hidden = projHiddenSet();
-      const list = document.getElementById("proj-hide-list");
-      if (!list) return;
-      if (sorted.length === 0) {
-        list.innerHTML = `<div class="proj-hide-empty">No projects loaded yet.</div>`;
-      } else {
-        list.innerHTML = sorted.map(p => `
-          <label class="proj-hide-row" title="Hide column for project ${escapeHtml(p)}">
-            <input type="checkbox" ${hidden.has(p) ? "checked" : ""}
-                   onchange="toggleProjHidden('${escapeHtml(p)}', this.checked)">
-            <span>${escapeHtml(p)}</span>
-          </label>
-        `).join("");
-      }
-      saveProjHidden(hidden);  // refresh count
-    }
 
     // -- Add Task modal -----------------------------------------------------
     function openAddTaskModal(presetProject) {
@@ -4157,26 +3243,12 @@
     const _origRender = render;
     render = function() {
       _origRender();
-      rebuildProjHideList();
-      // Hide entire columns for projects in the hidden set.
-      const hidden = projHiddenSet();
-      document.querySelectorAll(".col").forEach(col => {
-        const nameEl = col.querySelector(".col-name");
-        if (!nameEl) return;
-        const name = nameEl.textContent.trim();
-        col.classList.toggle("col--proj-hidden", hidden.has(name));
-      });
       // Hidden-cards dropdown (operator TG 381) — repaint the list +
-      // the headerlabel count on every render so a new hide / un-hide
-      // shows up immediately.
+      // the header label count on every render so a new hide / un-hide
+      // shows up immediately. (The project-COLUMN hide that used to run
+      // here went with the Column layout on 2026-07-13.)
       rebuildHiddenList();
     };
-
-    // ── Mobile responsive helpers ─────────────────────────────────────
-    // (was: toggleByDrawer / updateByFabBadge for the BLOCKING-YOU
-    // 360 px aside — removed in P12 along with the aside; the
-    // operator-decision queue is now the synthesized `user` column in
-    // `_renderColumnView`.)
 
     // Touch long-press → context menu (operator TG 459/460). Native
     // contextmenu isn't reliably fired on iOS, so we open it via a
@@ -4335,6 +3407,9 @@
     }
     attachSearchKeyboardLauncher();
 
+    _syncDetailsPane();
+    _syncDetailsSections();
+    renderStats();
     attachFilters();
     loadGraph();
     setInterval(autoRefreshTick, 5000);

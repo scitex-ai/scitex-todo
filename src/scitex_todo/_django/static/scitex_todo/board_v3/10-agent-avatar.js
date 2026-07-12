@@ -1,13 +1,20 @@
-/* 10-agent-avatar.js — per-agent lane-label avatar (initials + status ring)
- * for the Timeline "By Agent" raster (timeline.js).
+/* 10-agent-avatar.js — per-agent lane-label avatar (brand icon / initials)
+ * for the Timeline "By Agent" raster (timeline.js) and the Wall's agent
+ * tiles (11-sticky-wall.js).
  *
  * Operator 2026-07-10 (todo-board-agent-icons-status-rings-20260710):
  * tracing left across the raster lane-by-lane to find the owning agent is
- * slow. This gives each agent lane a small circular icon — 2-letter
- * initials on a deterministic hash-derived hue — ringed in the SAME
- * --status-stroke-<s> tokens the dots/cards/legend already use (see
- * 09-timeline.css / 02-card.css), so ring colour reads consistently
- * everywhere on the board.
+ * slow. This gives each agent lane a small circular icon — the fleet brand
+ * colour + short label, or 2-letter initials on a deterministic hash-derived
+ * hue for agents outside the brand map.
+ *
+ * STATUS RING REMOVED 2026-07-13 (operator: "エージェントアイコンの周りが何を
+ * 表すのかよくわかりませんでした。エージェントアイコンの周りの状態マーカはなくして
+ * 良いかなと思います"). The ring encoded the status of the lane's most recently
+ * STARTED event — a fact that is already right there in the lane's own dots,
+ * and one nobody could read off a ring. `avatarSvg()` keeps its `status`
+ * parameter (call sites are unchanged, and laneStatusMap() is still exported
+ * for anything else that wants the derivation) but no longer draws it.
  *
  * Pure (no DOM reads, no fetch) — node-testable, same shape as the sibling
  * timelinePack.js / timelineGeo.js. Published on window.STX.agentAvatar;
@@ -82,11 +89,10 @@
     return s.slice(0, 2).toUpperCase() || "?";
   }
 
-  // <g> with a status-coloured ring circle + hash-hued fill circle +
-  // centred initials text. `status` may be null/undefined (no events in
-  // the window) — renders the muted "--none" ring in that case.
-  function avatarSvg(cx, cy, r, id, status) {
-    var ringCls = "tl-avatar-ring--" + (status ? String(status) : "none");
+  // <g> with a hash-hued (or brand-coloured) fill circle + centred label.
+  // `status` is accepted but IGNORED since 2026-07-13 — see the file header:
+  // the status ring around the icon was unreadable, so it is not drawn.
+  function avatarSvg(cx, cy, r, id, status) {  // eslint-disable-line no-unused-vars
     // Brand-mapped agents render with their fleet colour + short label (the
     // identity the operator already knows from the Telegram avatars);
     // unknown agents keep the deterministic hash-hue + initials fallback.
@@ -97,15 +103,6 @@
       "tl-avatar-text" + (label.length > 3 ? " tl-avatar-text--sm" : "");
     return (
       '<g class="tl-avatar">' +
-      '<circle class="tl-avatar-ring ' +
-      ringCls +
-      '" cx="' +
-      cx +
-      '" cy="' +
-      cy +
-      '" r="' +
-      (r + 3) +
-      '"></circle>' +
       '<circle class="tl-avatar-bg" cx="' +
       cx +
       '" cy="' +
