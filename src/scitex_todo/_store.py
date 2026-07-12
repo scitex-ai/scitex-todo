@@ -454,43 +454,17 @@ def add_task(
         doc, tasks = _read_write_doc(resolved, missing_ok=True)
         # WIP-validation gate (operator standing direction via lead a2a
         # `d99b8de6839d46e586e4ee692f43c1d9` + ``5acfbb5d0db44db8a7fa4f70c399d539``,
-        # 2026-06-12). WARN to stderr at the limit, HARD REFUSE at 2x.
-        #
-        # The gate bounds work STARTED, never work RECORDED. It fires only
-        # when the incoming card is itself ``in_progress``, and it counts only
-        # the agent's other ``in_progress`` cards. Filing a card as blocked /
-        # deferred / goal — writing down a thing that exists — is always
-        # allowed. The inverse jammed the board shut on 2026-07-10: the gate
-        # counted every non-{done,goal} card, so after the pending→deferred
-        # migration agents could not even record the incident they were in.
-        # A gate that stops you from writing down a fire is not a WIP limit.
-        #
-        # Direct YAML hand-edits bypass this gate by design (CLI/MCP
-        # path enforcement only — operator wants the CLI/MCP path made
-        # fat so hand-edits are unnecessary, not policed).
-        agent_for_wip = new.get("agent")
-        if agent_for_wip and new.get("status") in _wip_statuses():
-            from ._throughput import evaluate_wip
+        # 2026-06-12). WARN to stderr at the limit, HARD REFUSE at 2x — EXCEPT
+        # for the emergency band (``priority <= 1``), which is never gated and
+        # is stamped with an audit comment when it lands over the cap. The whole
+        # policy — thresholds, exemption, refusal text, audit stamp — lives in
+        # ``_store_wip`` so it is readable in one screen; this is the same
+        # focused-sibling pattern as ``_store_enums`` / ``_store_verify``.
+        # See that module's header for the 2026-07-12 P0 the exemption closes.
+        # (hook-bypass: line-limit)
+        from ._store_wip import enforce_wip_gate
 
-            rep = evaluate_wip(tasks, agent_for_wip)
-            if rep is not None and rep.is_refuse:
-                raise TaskValidationError(
-                    f"WIP gate refuses add: {rep.agent} already has "
-                    f"{rep.wip_count} tasks in_progress (>= 2 × limit "
-                    f"{rep.limit}). Finish or park one before starting "
-                    f"another — or file this card as deferred/blocked, "
-                    f"which is never gated. See SCITEX_TODO_WIP_LIMIT env."
-                )
-            if rep is not None and rep.is_warn:
-                import sys
-
-                print(
-                    f"WARN: WIP gate — {rep.agent} now has "
-                    f"{rep.wip_count + 1} tasks in_progress (limit "
-                    f"{rep.limit}). Completion is not keeping up with "
-                    f"starts; finish existing before starting more.",
-                    file=sys.stderr,
-                )
+        enforce_wip_gate(new, tasks, now_iso=_stamp)
         tasks.append(new)
         _save_doc_unlocked(doc, resolved, tasks=tasks)
     # C5: emit a canonical `created` card-event AFTER the card is durably
@@ -538,7 +512,12 @@ def _stamp_deferred_at(task: dict, prior_status: str | None) -> None:
 
 def _wip_statuses() -> frozenset[str]:
     """Re-export from ``_throughput`` so the gate's predicate stays a single
-    source of truth. WIP is work in flight — ``in_progress`` — not backlog."""
+    source of truth. WIP is work in flight — ``in_progress`` — not backlog.
+
+    The add path no longer calls this (``_store_wip.enforce_wip_gate`` reads
+    ``WIP_STATUSES`` straight from ``_throughput``); kept for out-of-tree
+    importers. (hook-bypass: line-limit)
+    """
     from ._throughput import WIP_STATUSES
 
     return WIP_STATUSES
