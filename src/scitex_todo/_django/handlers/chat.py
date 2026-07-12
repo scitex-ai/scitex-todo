@@ -139,11 +139,13 @@ def chat_view(request: HttpRequest, card_id: str) -> HttpResponse:
             status=405,
         )
 
-    from ..._model import load_tasks
-    from ..._paths import resolve_tasks_path
+    # Cached board read — a bare load_tasks re-parses the whole 5 MB store on
+    # every request (1.22 s live). See handlers/timeline.py for the numbers.
+    from ..services import get_board
 
-    path = resolve_tasks_path(None)
-    tasks = load_tasks(path)
+    board = get_board()
+    path = board.store_path
+    tasks = board.tasks
     task = _find_task(tasks, card_id)
     if task is None:
         return JsonResponse(

@@ -78,13 +78,15 @@ def fleet_timing_view(request: HttpRequest) -> HttpResponse:
             status=405,
         )
 
-    from scitex_todo._model import load_tasks
-    from scitex_todo._paths import resolve_tasks_path
-
     window_days = _parse_window_days(request.GET.get("window_days"))
 
-    path = resolve_tasks_path(None)
-    tasks = load_tasks(path)
+    # Cached board read — a bare load_tasks re-parses the whole 5 MB store on
+    # every poll (1.22 s live). See handlers/timeline.py for the measurement.
+    from ...services import get_board
+
+    board = get_board()
+    path = board.store_path
+    tasks = board.tasks
 
     payload = compute_timing(tasks, window_days=window_days)
     return JsonResponse(payload, json_dumps_params={"default": str})
