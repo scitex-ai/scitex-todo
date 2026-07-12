@@ -261,3 +261,115 @@ def test_features_interrogate_the_LOADED_module_not_the_disk(fake_pkg, monkeypat
     # can tell us. This is the finding: a passing disk check is NOT a healthy
     # process, and the remedy here is a RESTART, not an upgrade.
     assert p.features["post_upgrade"] is False
+
+
+# --------------------------------------------------------------------------
+# THE PROBE'S OWN BLIND SPOT — found by the probe FAILING on a live install.
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def wheel_pkg_with_two_distinfos(tmp_path, monkeypatch):
+    """A site-packages layout with TWO .dist-info dirs for one package.
+
+    The exact shape observed on 2026-07-12: upgrading 0.7.50 -> 0.9.0 in the agent
+    venv left the old dist-info sitting next to the new one.
+    """
+    site = tmp_path / "site-packages"
+    pkg = site / "wheelpkg"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("NEW_SYMBOL = True\n", encoding="utf-8")
+    (site / "wheelpkg-0.9.0.dist-info").mkdir()
+    (site / "wheelpkg-0.7.50.dist-info").mkdir()  # the orphaned fossil
+    monkeypatch.syspath_prepend(str(site))
+    yield site
+    sys.modules.pop("wheelpkg", None)
+
+
+def test_two_distinfos_make_the_version_UNTRUSTWORTHY(
+    wheel_pkg_with_two_distinfos, monkeypatch
+):
+    """The bug this probe SHIPPED with, and which it failed to catch on itself.
+
+    A wheel install "usually" means the metadata arrived with the code beside it —
+    so the original code set trustworthy=True and code_version=<metadata>. With TWO
+    dist-infos that is a COIN TOSS: importlib.metadata returns whichever it finds
+    first, which on the live box was the 0.7.50 FOSSIL while the code was 0.9.0.
+
+    The probe reported trustworthy=True and code_version=0.7.50. Both wrong. It
+    blessed a lying install — the precise failure it exists to prevent.
+    """
+    # metadata picks the FOSSIL, exactly as it did live
+    monkeypatch.setattr(
+        "scitex_todo._install_probe._md.version", lambda dist: "0.7.50"
+    )
+
+    p = probe_install("wheelpkg")
+
+    assert p.kind == KIND_WHEEL
+    assert p.trustworthy is False, "an AMBIGUOUS version must never be trusted"
+
+
+def test_two_distinfos_refuse_to_guess_a_code_version(
+    wheel_pkg_with_two_distinfos, monkeypatch
+):
+    """"I cannot tell which is real" must not render as a confident number."""
+    monkeypatch.setattr(
+        "scitex_todo._install_probe._md.version", lambda dist: "0.7.50"
+    )
+
+    p = probe_install("wheelpkg")
+
+    assert p.code_version is None
+
+
+def test_two_distinfos_name_both_and_the_repair(
+    wheel_pkg_with_two_distinfos, monkeypatch
+):
+    monkeypatch.setattr(
+        "scitex_todo._install_probe._md.version", lambda dist: "0.7.50"
+    )
+
+    p = probe_install("wheelpkg")
+
+    assert "AMBIGUOUS" in p.detail
+    assert "0.9.0" in p.detail and "0.7.50" in p.detail
+    assert "rm -rf" in (p.hint or "")  # names the actual repair
+
+
+def test_the_symbol_probe_still_tells_the_truth_when_the_version_cannot(
+    wheel_pkg_with_two_distinfos, monkeypatch
+):
+    """The content check is what saved the content checker.
+
+    On the live box, `features` correctly reported the new symbols PRESENT while
+    the version string still said 0.7.50. That is the whole argument for symbol
+    probing over version reading, demonstrated against the probe's own bug.
+    """
+    monkeypatch.setattr(
+        "scitex_todo._install_probe._md.version", lambda dist: "0.7.50"
+    )
+
+    p = probe_install("wheelpkg", features={"new": "wheelpkg:NEW_SYMBOL"})
+
+    assert p.features["new"] is True  # the CODE is new, whatever the version claims
+
+
+def test_a_single_distinfo_is_still_trustworthy(tmp_path, monkeypatch):
+    """The fix must not make every wheel install suspect — only ambiguous ones."""
+    site = tmp_path / "site-packages"
+    pkg = site / "solopkg"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("X = 1\n", encoding="utf-8")
+    (site / "solopkg-1.0.0.dist-info").mkdir()
+    monkeypatch.syspath_prepend(str(site))
+    monkeypatch.setattr(
+        "scitex_todo._install_probe._md.version", lambda dist: "1.0.0"
+    )
+
+    try:
+        p = probe_install("solopkg")
+        assert p.trustworthy is True
+        assert p.code_version == "1.0.0"
+    finally:
+        sys.modules.pop("solopkg", None)
