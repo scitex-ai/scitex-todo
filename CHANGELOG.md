@@ -4,6 +4,45 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.6] - 2026-07-13 — fix: health called a LIVE daemon dead, and the one recovery path it offered could not start
+
+### Fixed
+- **`health` reported the notify daemon DEAD while it was running and ticking.** The check read
+  the pid from the pidfile and probed it with `os.kill(pid, 0)`. But notifyd runs on the HOST
+  while agents run in CONTAINERS — same bind-mounted store, **different PID namespace**. The
+  host's pid does not exist in the container's `/proc`, so the probe raised
+  `ProcessLookupError` and the check reported "stale pidfile: pid N is not running",
+  confidently, and permanently.
+
+  **A pid is only meaningful inside the namespace that issued it.** The check was drawing a
+  conclusion from a number it had no standing to interpret. Liveness across that boundary is
+  now judged by **freshness, not identity**: notifyd re-stamps its pidfile every tick with
+  `pid_ns` / `boot_id` / `host` / `interval` / `heartbeat`; the check probes the pid only when
+  the pidfile came from *this* PID namespace, and otherwise judges by heartbeat age (3× the
+  recorded interval, 60s floor). An undeterminable state now degrades to a truthful non-verdict
+  instead of a false failure.
+
+  (Hostname would NOT have worked as the discriminator — Apptainer shares the UTS namespace, so
+  the container's hostname is *identical* to the host's. Only the PID namespace distinguishes
+  them.)
+
+  **Fail-loud is preserved deliberately**: a *local* daemon whose pid is gone still reports DEAD
+  even with a fresh heartbeat. Freshness must not paper over a corpse we can actually see.
+
+- **The systemd unit template could not start.** `scitex-todo notifyd install-unit` emitted
+  `ExecStart=scitex-todo notifyd` — a bare command. systemd does not use your login PATH, and
+  the console script lives in a venv, so the unit died with `status=203/EXEC`. The one durable
+  recovery path the tool offered was itself broken. `ExecStart` is now resolved to an absolute
+  path at generation time, and generation **raises** rather than writing a unit that is
+  guaranteed not to start.
+
+### CI
+- **A parked workflow was manufacturing a red X on every push.** It was disabled with `on: {}`,
+  which GitHub does not read as "disabled" — it treats a workflow with no valid trigger as a
+  *broken file*, and created a zero-job run on every push to every branch, failing each in 0s.
+  A check that is always red is not a signal; it teaches everyone that red means "that's just
+  the broken one". Parked properly with `workflow_dispatch:`.
+
 ## [0.9.5] - 2026-07-13 — perf: a card write no longer drags the whole board through SQLite
 
 Two fixes to the dual-write mirror. Together they take the mirror from **more than half of a
