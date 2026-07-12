@@ -30,12 +30,15 @@ Field mapping (see :mod:`scitex_todo._db` for the schema rationale):
 from __future__ import annotations
 
 import json
+import logging
 import secrets
 import sqlite3
 from pathlib import Path
 
 from ._db import SCHEMA_VERSION, connect, init_schema, resolve_db_path
 from ._paths import resolve_tasks_path
+
+logger = logging.getLogger(__name__)
 
 #: (column, yaml-key) pairs for the scalar ``tasks`` columns. ``group`` maps to
 #: the ``grp`` column (SQL reserved word); ``deadlines`` / ``_log_meta`` /
@@ -121,7 +124,72 @@ def _load_threads(store_path: Path) -> dict[str, list[dict]]:
     return _threads._load_threads(tpath)
 
 
-def _insert_tasks(conn: sqlite3.Connection, tasks: list) -> dict[str, int]:
+def _dedupe_last_wins(tasks: list) -> list[tuple[int, dict]]:
+    """``(row_order, card)`` pairs, duplicate ids collapsed — LAST occurrence wins.
+
+    The semantics ``INSERT OR REPLACE`` gave us for free, hoisted into Python so the
+    SQL can be a plain ``INSERT`` (see :func:`_insert_tasks` — that word cost 42x).
+    A duplicate card id is a DATA BUG, not routine: REPLACE absorbed it silently
+    (and still appended BOTH copies' comments). Same winner, said out loud.
+    """
+    by_id: dict[str, tuple[int, dict]] = {}
+    ordered: list[tuple[int, dict]] = []
+    dupes: list[str] = []
+    for order, row in enumerate(tasks):
+        if not isinstance(row, dict):
+            continue
+        tid = row.get("id")
+        if isinstance(tid, str) and tid:
+            if tid in by_id:
+                dupes.append(tid)
+            by_id[tid] = (order, row)
+        else:
+            ordered.append((order, row))
+    if dupes:
+        logger.error(
+            "!! DUPLICATE CARD ID(S) IN THE CANONICAL STORE: %s. The mirror keeps "
+            "the LAST occurrence of each (the same row `INSERT OR REPLACE` would "
+            "have kept), but the YAML itself is inconsistent and should be "
+            "repaired — two cards cannot share an id.",
+            ", ".join(sorted(set(dupes))),
+        )
+    ordered.extend(by_id.values())
+    ordered.sort(key=lambda pair: pair[0])
+    return ordered
+
+
+def _insert_tasks(
+    conn: sqlite3.Connection, tasks: list, *, replace: bool = True
+) -> dict[str, int]:
+    """Insert every card + its children.
+
+    ``replace`` picks the conflict clause, and it is worth 42x — MEASURED on the
+    live 1,370-card store (2026-07-13)::
+
+        INSERT OR REPLACE INTO tasks , FK ON : 4,592 us/row  -> 6.3 s for the store
+        INSERT           INTO tasks , FK ON  :   110 us/row  -> 0.15 s
+
+    ``tasks`` is a PARENT of ``task_comments`` / ``task_edges`` / ``task_roles``
+    (``ON DELETE CASCADE``), so under ``PRAGMA foreign_keys=ON`` a REPLACE — a DELETE
+    plus an INSERT — runs the whole cascade/FK-check machinery FOR EVERY ROW. The
+    control group is next door: ``task_comments`` already uses a plain INSERT and FK
+    enforcement costs it NOTHING (150 vs 149 us/row, FK on vs off). It is
+    REPLACE-**on-a-parent** that is expensive, not foreign keys. (``PRAGMA
+    defer_foreign_keys=ON`` does NOT help — measured SLOWER. Do not reach for it.)
+
+    So the clause is a PRECONDITION, not a style choice, and the callers differ:
+
+    * ``replace=False`` — caller ALREADY DELETED these rows, so a conflict is
+      impossible and REPLACE is pure waste. :func:`_rebuild_from_doc` clears every
+      table first; this is its 42x.
+    * ``replace=True`` (DEFAULT, the SAFE one) — caller is UPSERTING over rows that
+      may still be present (the incremental mirror re-writes one changed card
+      without dropping its ``tasks`` row). A plain INSERT would raise ``UNIQUE
+      constraint failed: tasks.id`` there, so REPLACE is load-bearing.
+
+    Duplicate ids are collapsed by :func:`_dedupe_last_wins` (last-wins — the winner
+    REPLACE would have picked), so ``replace=False`` cannot conflict with itself.
+    """
     counts = {"tasks": 0, "comments": 0, "edges": 0, "roles": 0}
     cols = [c for c, _ in _TASK_SCALAR_COLS] + [
         "deadlines_json",
@@ -129,13 +197,9 @@ def _insert_tasks(conn: sqlite3.Connection, tasks: list) -> dict[str, int]:
         "row_order",
     ]
     placeholders = ", ".join("?" for _ in cols)
-    insert_sql = (
-        f"INSERT OR REPLACE INTO tasks ({', '.join(cols)}) "
-        f"VALUES ({placeholders})"
-    )
-    for order, row in enumerate(tasks):
-        if not isinstance(row, dict):
-            continue
+    verb = "INSERT OR REPLACE" if replace else "INSERT"
+    insert_sql = f"{verb} INTO tasks ({', '.join(cols)}) VALUES ({placeholders})"
+    for order, row in _dedupe_last_wins(tasks):
         values = [row.get(ykey) for _, ykey in _TASK_SCALAR_COLS]
         values.append(_json_or_none(row.get("deadlines")))
         values.append(_json_or_none(row.get("_log_meta")))
@@ -341,7 +405,12 @@ def _rebuild_from_doc(
 
     summary: dict = {}
     tasks = doc.get("tasks") if isinstance(doc, dict) else None
-    summary.update(_insert_tasks(conn, tasks if isinstance(tasks, list) else []))
+    # replace=False: every row was just DELETEd above, so a conflict is impossible
+    # and REPLACE would only buy SQLite's per-row FK-cascade check — which was 6.3 s
+    # of this rebuild's 7.3 s. See _insert_tasks.
+    summary.update(
+        _insert_tasks(conn, tasks if isinstance(tasks, list) else [], replace=False)
+    )
     summary.update(_insert_users(conn, doc.get("users")))
     summary["notifications"] = _insert_notifications(conn, doc.get("inboxes"))
     if threads is not None:
@@ -407,9 +476,8 @@ def mirror_doc(doc: dict, db_path: str | Path | None = None) -> dict:
     interleave with another writer, and needs no lock of its own.
 
     Takes the doc IN MEMORY on purpose: the caller already parsed it under the
-    lock, and re-reading ``tasks.yaml`` from disk to get it back would cost
-    another ~11 s parse (MEASURED, 1,257 cards) — doubling the very stall this
-    migration exists to remove.
+    lock, and re-reading ``tasks.yaml`` from disk to get it back would cost another
+    full parse (~1.0-1.7 s, MEASURED on 1,370 cards) inside the critical section.
 
     Rebuilds the doc-derived tables in ONE transaction and leaves ``messages``
     (owned by the threads sidecar) untouched.

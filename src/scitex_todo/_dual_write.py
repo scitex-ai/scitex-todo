@@ -2,34 +2,48 @@
 # -*- coding: utf-8 -*-
 """S1 DUAL-WRITE — mirror every card write into SQLite, YAML still canonical.
 
-WHY THIS EXISTS — THE NUMBER (measured on the live store, 1,257 cards, 2026-07-12)
----------------------------------------------------------------------------------
-    full YAML rewrite  : 11,176 ms   <- THE COST OF EVERY CARD WRITE, TODAY
-    full SQLite rebuild:  1,243 ms   <- what this module adds
-    ONE row update     :      4.71 ms  <- what S2 buys
+WHY THIS EXISTS — THE NUMBERS (measured end-to-end, live store, 2026-07-13)
+--------------------------------------------------------------------------
+    ONE uncontended card write : 16.31 s   <- what the operator actually waits on
+        of which, this mirror  :  8.69 s   <- MORE THAN HALF
+    ONE SQLite row update      :  4.71 ms  <- what S2 buys
 
-**Every card write takes ELEVEN SECONDS while holding a fleet-wide lock.**
+**A card write takes SIXTEEN SECONDS while holding a fleet-wide lock**, and a
+16-second critical section serialises every other writer: two agents means the
+second waits 32 s, ten means the last waits 160 s. A single comment waiting ~4
+minutes (2026-07-11) is exactly what that predicts. The lock is not at fault — the
+lock is correct. What we DO while holding it is at fault.
 
-That is the whole convoy, explained, with no theory left over: two agents writing
-means the second waits 11 s; ten means the last waits 110 s. A single comment
-waiting ~4 minutes (2026-07-11) is exactly what this predicts. The lock is not at
-fault — the lock is correct. What we DO while holding it is at fault.
+So this migration is not a performance nicety. The store is already broken, and
+SQLite is the repair: it collapses the CRITICAL SECTION, which is what kills the
+convoy. It was never about the YAML serialiser (that is ~1.7 s, about 10%).
 
-So this migration is not a performance nicety. **The store is already broken, and
-SQLite is the repair**: 11,176 ms -> 4.71 ms, a 2,375x reduction.
+WHAT THE EARLIER VERSION OF THIS DOCSTRING GOT WRONG — READ THIS BEFORE TRUSTING A NUMBER
+-----------------------------------------------------------------------------------------
+It said: "full YAML rewrite 11,176 ms; the mirror's full rebuild is NINE TIMES
+FASTER than the YAML rewrite beside it; dual-write costs +11%; it is effectively
+free." **Every one of those numbers was real, and the conclusion was still wrong.**
 
-THE DESIGN QUESTION MEASUREMENT SETTLED
----------------------------------------
+  * The 11,176 ms measured ``save_tasks`` IN ISOLATION — not the write path a card
+    actually takes. It was a true measurement of one COMPONENT, quoted as the cost
+    of the SYSTEM.
+  * "+11%, effectively free" used a CONTENDED denominator (105 s, taken while the
+    measurer's own writes were draining). Against the real 16.3 s write, the mirror
+    is 8.7 s — it MORE THAN DOUBLES a card write. Not free: the largest single
+    item in it.
+
+The discipline that would have caught both: MEASURE THE PATH THE USER IS WAITING
+ON, END TO END, AND STATE THE DENOMINATOR.
+
+THE FULL REBUILD IS STILL O(n), AND STILL THE NEXT THING TO FIX
+--------------------------------------------------------------
 The write chokepoint (:func:`scitex_todo._model._save_doc_unlocked`) receives the
-WHOLE doc — it does not know which card changed. So a mirror must rebuild all
-1,257 rows on every write: O(n), the very thing we are escaping. I expected that
-to make the convoy WORSE, and planned a row-diffing engine to avoid it.
-
-That was wrong, and only measuring showed it: **SQLite's full rebuild (1.2 s) is
-NINE TIMES FASTER than the YAML rewrite (11.2 s) it sits beside.** Dual-write
-costs +11% on top of an already-catastrophic 11 s. It is effectively free — and a
-full rebuild is far simpler, and far safer, than a diff engine I would have had to
-get exactly right on the fleet's critical store.
+WHOLE doc and does not know which card changed, so this mirror rebuilds every row
+on every write. That rebuild is now ~1.4 s (it was ~7.3 s until the ``INSERT OR
+REPLACE`` blunder documented in :func:`scitex_todo._db_bootstrap._insert_tasks` was
+removed — a 5x cut for one word of SQL), but O(n) still GROWS with the board. The
+mirror must become INCREMENTAL — upsert the one changed card — and that is tracked
+as work in its own right, ahead of the S2 read-cutover.
 
 THE THREE RULES THIS MODULE ENFORCES
 ------------------------------------
