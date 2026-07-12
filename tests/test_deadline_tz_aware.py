@@ -41,9 +41,27 @@ def test_next_occurrence_naive_base_aware_now_does_not_raise():
     assert r.next_occurrence(NAIVE_BASE, now=AWARE) is not None
 
 
+def _aware(d):
+    """Read a naive datetime as UTC — what the module does internally.
+
+    The assertions below need this for the same reason the code does: the
+    RETURN value keeps `base`'s original awareness (naive in, naive out — that
+    contract is deliberate), so a bare `result >= AWARE` in the test would raise
+    the very TypeError this file exists to prevent. CI caught exactly that.
+    """
+    return d.replace(tzinfo=dt.timezone.utc) if d.tzinfo is None else d
+
+
 def test_next_occurrence_returns_a_future_occurrence():
     r = Repeater(n=1, unit="w", catchup=False)
-    assert r.next_occurrence(NAIVE_BASE, now=AWARE) >= AWARE
+    assert _aware(r.next_occurrence(NAIVE_BASE, now=AWARE)) >= AWARE
+
+
+def test_next_occurrence_preserves_the_naive_return_contract():
+    """Naive in, naive out. Silently returning tz-aware values would be a
+    contract change for every existing caller, dressed up as a bug fix."""
+    r = Repeater(n=1, unit="w", catchup=False)
+    assert r.next_occurrence(NAIVE_BASE, now=AWARE).tzinfo is None
 
 
 def test_is_overdue_with_aware_now_does_not_raise():
@@ -82,4 +100,4 @@ def test_a_done_card_is_never_overdue():
 @pytest.mark.parametrize("unit", ["d", "w", "m", "y"])
 def test_every_repeater_unit_survives_an_aware_now(unit):
     r = Repeater(n=1, unit=unit, catchup=False)
-    assert r.next_occurrence(NAIVE_BASE, now=AWARE) >= AWARE
+    assert _aware(r.next_occurrence(NAIVE_BASE, now=AWARE)) >= AWARE
