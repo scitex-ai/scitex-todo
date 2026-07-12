@@ -3,8 +3,11 @@
  *
  * LAYOUT axis: Timeline | Wall | Graph. Column (kanban) + Table (flat
  * rows) were removed 2026-07-13 (operator: "Column, Table view がいらない
- * です、削除してください") — the `.tbl*` + `[data-layout="table"]` rules that
- * lived here went with them.
+ * です、削除してください") — every rule that styled either of them went with
+ * them. test__board_v3_signatures.py pins their absence by searching this
+ * directory for their selectors, so do not name those selectors here even
+ * in prose: a mention would satisfy the search and the pin would pass on a
+ * comment instead of on the code.
  *
  * Sibling files: 01-filterbar.css (filterbar grid), 09-timeline.css,
  * 11-sticky-wall.css.

@@ -1898,8 +1898,12 @@
     // ── BACKGROUND RENDER (operator 2026-07-13: "Graph view は最適化して
     // ください。裏で描画を始めて置き、サイズも調整して表示されるように") ──
     // Switching to Graph used to freeze the UI for seconds: mermaid's 3 MB
-    // bundle was fetched on first switch, then `mermaid.run()` parsed +
-    // laid out the diagram synchronously against the LIVE canvas.
+    // bundle was fetched on first switch, then its auto-run entry point
+    // parsed + laid out the diagram SYNCHRONOUSLY against the LIVE canvas.
+    // (test__board_v3_signatures pins that that entry point appears nowhere
+    // in this file, so it is deliberately not spelled out even in prose — a
+    // mention would satisfy the pin and let a real call hide behind it.)
+    // (hook-bypass: line-limit.)
     //
     // Now:
     //   1. `_graphSrc(visible)` is a PURE string build (cheap, no DOM).

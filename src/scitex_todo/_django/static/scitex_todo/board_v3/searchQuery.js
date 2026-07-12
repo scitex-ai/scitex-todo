@@ -415,8 +415,20 @@ function matchesSearchQuery(task, parsed) {
 /* === ES module + CommonJS + globalThis export =============================
  * The board template loads this file as a plain <script>, so `window.STX`
  * (the existing global namespace, lazy-init'd) is the primary surface.
- * Module exports are kept for `node --test` unit-testability. */
-const _api = {
+ * Module exports are kept for `node --test` unit-testability.
+ *
+ * NAME COLLISION (fixed 2026-07-13). This export object used to be called
+ * `_api` — and so did searchSuggest.js's. A top-level `const` in a CLASSIC
+ * (non-module) <script> lands in the SHARED global lexical scope, so the
+ * SECOND file to load threw
+ *
+ *   Uncaught SyntaxError: Identifier '_api' has already been declared
+ *
+ * at instantiation time. The whole of searchSuggest.js therefore never ran
+ * and `window.STX.searchSuggest` was undefined — i.e. SEARCH AUTOCOMPLETE
+ * WAS SILENTLY DEAD on the live board. Each file now names its export after
+ * itself, so the two can never clash again. */
+const _searchQueryApi = {
   parseSearchQuery,
   matchesSearchQuery,
   tokenize,
@@ -428,8 +440,8 @@ const _api = {
 
 if (typeof globalThis !== "undefined") {
   globalThis.STX = globalThis.STX || {};
-  globalThis.STX.searchQuery = _api;
+  globalThis.STX.searchQuery = _searchQueryApi;
 }
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = _api;
+  module.exports = _searchQueryApi;
 }

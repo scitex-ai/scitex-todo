@@ -336,7 +336,12 @@ function computeSuggestions(query, cursorPos, dataSource) {
   return valueSuggestions(tok.qualifierKey, tok.token, dataSource);
 }
 
-const _api = {
+/* Named after this file, NOT `_api` — see the long note in searchQuery.js.
+ * Both files used to declare a top-level `const _api`, which in classic
+ * <script> scope is one shared global lexical binding: the second script to
+ * load threw "Identifier '_api' has already been declared" and never ran, so
+ * search autocomplete was dead on the live board. (Fixed 2026-07-13.) */
+const _searchSuggestApi = {
   tokenAtCursor,
   keySuggestions,
   valueSuggestions,
@@ -348,8 +353,8 @@ const _api = {
 
 if (typeof globalThis !== "undefined") {
   globalThis.STX = globalThis.STX || {};
-  globalThis.STX.searchSuggest = _api;
+  globalThis.STX.searchSuggest = _searchSuggestApi;
 }
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = _api;
+  module.exports = _searchSuggestApi;
 }

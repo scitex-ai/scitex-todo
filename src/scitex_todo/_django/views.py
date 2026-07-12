@@ -52,7 +52,10 @@ def board_page(request):
         try:
             html = render_to_string(
                 "scitex_todo/standalone.html",
-                {"app_name": "scitex-todo", "app_label": "SciTeX Todo Board"},
+                # DISPLAY string only (operator TG 2026-07-13). ``app_name``
+                # stays ``scitex-todo`` — it keys the shell's static/asset
+                # namespace, not the product name the operator reads.
+                {"app_name": "scitex-todo", "app_label": "SciTeX Cards"},
                 request=request,
             )
             return HttpResponse(html)
@@ -215,7 +218,7 @@ def _static_graph_page(request) -> str:
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>SciTeX Todo Board</title>
+<title>SciTeX Cards</title>
 <style>
   body {{ font-family: -apple-system, system-ui, sans-serif; background: #1e1e2e;
     color: #e0e0e0; margin: 0; padding: 24px; }}
