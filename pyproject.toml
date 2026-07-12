@@ -71,6 +71,21 @@ all = [
 
 [project.scripts]
 scitex-todo = "scitex_todo._cli:main"
+# `scitex-cards` is the name the operator is moving to (it matches scitex-hub's
+# "Cards" surface). Shipping the BINARY first, ahead of the full rename, is the
+# cheap half of the bridge: same entry point, second name, zero behaviour change.
+#
+# It is NOT sufficient on its own. His startup loop
+# (~/.bash.d/secrets/010_scitex/03_gui.src) does:
+#
+#     dir="$HOME/proj/$pkg";              [ ! -d "$dir" ] && skip
+#     bin="$HOME/proj/$pkg/.venv/bin/$pkg"; [ -x "$bin" ] && "$bin" gui serve &
+#
+# so it ALSO needs ~/proj/scitex-cards to exist as a directory. This entry point
+# provides the `.venv/bin/scitex-cards` half; the directory half is a symlink (or
+# the real rename). Read the script before assuming an alias alone lights it up —
+# it does not.
+scitex-cards = "scitex_todo._cli:main"
 
 [project.urls]
 Homepage = "https://github.com/ywatanabe1989/scitex-todo"
