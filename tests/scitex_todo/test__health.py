@@ -10,7 +10,13 @@ YAML store, real :mod:`scitex_todo._inbox` enqueues, and explicit ``store`` /
 
 from __future__ import annotations
 
+import datetime as _dt
+import os
+import subprocess
+import sys
+
 from scitex_todo import _inbox
+from scitex_todo._delivery._pidfile import local_identity
 from scitex_todo._health import UNSEEN_BACKLOG_THRESHOLD, health
 
 
@@ -212,6 +218,94 @@ def test_channel_capable_ok(tmp_path):
     c = _check(report, "channel_capable")
     assert c["ok"] is True
     assert c["hint"] is None
+
+
+# --------------------------------------------------------------------------- #
+# notifyd_alive — liveness must survive a PID-namespace boundary              #
+# --------------------------------------------------------------------------- #
+def _stamp_pidfile(store, pid, *, identity, heartbeat):
+    """Write a REAL notifyd pidfile where the health check will look for it."""
+    from scitex_todo._delivery._daemon import pidfile_path
+    from scitex_todo._delivery._pidfile import render
+
+    path = pidfile_path(store)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        render(pid, interval=120.0, now=heartbeat, identity=identity),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _elsewhere():
+    """Identity of a DIFFERENT PID namespace (the bare host, seen from a container)."""
+    mine = local_identity()
+    return {
+        "host": mine["host"],  # apptainer shares the UTS ns — same name!
+        "boot_id": mine["boot_id"],
+        "pid_ns": "pid:[4026531836]-the-host",
+        "container": "0",
+    }
+
+
+def _dead_pid():
+    proc = subprocess.Popen([sys.executable, "-c", "pass"])
+    proc.wait()
+    return proc.pid
+
+
+def test_notifyd_alive_for_a_fresh_daemon_in_another_namespace(tmp_path):
+    """THE regression: a healthy host daemon must not be declared dead in a container.
+
+    The pid in the shared pidfile is unresolvable here (it belongs to another PID
+    namespace), but its heartbeat is fresh — health must report ALIVE.
+    """
+    store = _healthy_store(tmp_path)
+    _stamp_pidfile(
+        store,
+        _dead_pid(),  # not a pid we can resolve — it is not ours to interpret
+        identity=_elsewhere(),
+        heartbeat=_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(seconds=20),
+    )
+
+    c = _check(health(store=store, agent_id="agent-x"), "notifyd_alive")
+
+    assert c["ok"] is True, c["detail"]
+    assert c["hint"] is None
+
+
+def test_notifyd_dead_when_a_foreign_daemon_stopped_ticking(tmp_path):
+    """Fail-loud preserved across the boundary: a stale heartbeat is a real death."""
+    store = _healthy_store(tmp_path)
+    _stamp_pidfile(
+        store,
+        os.getpid(),  # ALIVE here — proves the pid is not what decided
+        identity=_elsewhere(),
+        heartbeat=_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=3),
+    )
+
+    c = _check(health(store=store, agent_id="agent-x"), "notifyd_alive")
+
+    assert c["ok"] is False
+    assert "STALE" in c["detail"]
+    assert c["hint"]
+
+
+def test_notifyd_dead_for_a_dead_local_daemon(tmp_path):
+    """A genuinely dead daemon in OUR namespace is still caught by the pid probe."""
+    store = _healthy_store(tmp_path)
+    _stamp_pidfile(
+        store,
+        _dead_pid(),
+        identity=local_identity(),
+        heartbeat=_dt.datetime.now(_dt.timezone.utc),  # fresh, but it IS a corpse
+    )
+
+    c = _check(health(store=store, agent_id="agent-x"), "notifyd_alive")
+
+    assert c["ok"] is False
+    assert "is not running" in c["detail"]
+    assert c["hint"]
 
 
 # --------------------------------------------------------------------------- #

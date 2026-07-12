@@ -52,6 +52,8 @@ from pathlib import Path
 from .._inbox import _resolved_store
 from ._ledger import TERMINAL_STATUS, Ledger, _KEY_SEP, ledger_path
 from ._loop import deliver_pending
+from ._pidfile import DEFAULT_INTERVAL as _PIDFILE_DEFAULT_INTERVAL
+from ._pidfile import render as _render_pidfile
 from ._sweeps import (
     DEFAULT_NUDGE_SWEEP_MINUTES,
     ENV_NUDGE_SWEEP_MINUTES,
@@ -63,8 +65,10 @@ from ._sweeps import (
 
 logger = logging.getLogger("scitex_todo.delivery.notifyd")
 
-#: Default seconds between delivery ticks.
-DEFAULT_INTERVAL = 120.0
+#: Default seconds between delivery ticks — ALSO the heartbeat cadence, so it is
+#: defined next to the pidfile format (whose READER needs it to judge freshness)
+#: and re-exported here under its long-standing name.
+DEFAULT_INTERVAL = _PIDFILE_DEFAULT_INTERVAL
 
 #: Default cadence (in ticks) for the throttled terminal-miss re-report.
 DEFAULT_TERMINAL_REPORT_EVERY = 10
@@ -97,10 +101,16 @@ class _SingleInstanceLock:
     ``LOCK_NB`` so a second daemon fails fast rather than queueing behind the
     first. The fd is kept open for the whole run; releasing it (and removing
     the pidfile) is what frees the slot for a restart.
+
+    The pidfile is ALSO the daemon's HEARTBEAT (:mod:`._pidfile`): the bytes
+    carry our namespace identity plus a stamp refreshed every tick, because a
+    reader in a DIFFERENT PID namespace (the fleet's containers share the store
+    by bind-mount) cannot interpret the pid at all — only freshness.
     """
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, *, interval: float = DEFAULT_INTERVAL):
         self._path = path
+        self._interval = interval
         self._fd = None
 
     def acquire(self) -> None:
@@ -119,12 +129,23 @@ class _SingleInstanceLock:
                 f"(pid {existing or 'unknown'}); refusing to start a second "
                 f"instance ({type(exc).__name__})"
             ) from exc
-        # We own it — record our pid for human/ops visibility.
+        self._fd = fd
+        # We own it — stamp pid + namespace identity + the first heartbeat.
+        self.heartbeat()
+
+    def heartbeat(self, now: _dt.datetime | None = None) -> None:
+        """Rewrite the pidfile with a FRESH stamp — called once per tick.
+
+        This is the only liveness signal that survives a namespace boundary: a
+        cross-namespace reader cannot probe our pid, but it can read a clock.
+        """
+        fd = self._fd
+        if fd is None:
+            return
         fd.seek(0)
         fd.truncate()
-        fd.write(f"{os.getpid()}\n")
+        fd.write(_render_pidfile(os.getpid(), interval=self._interval, now=now))
         fd.flush()
-        self._fd = fd
 
     def _read_pid_text(self) -> str:
         try:
@@ -342,7 +363,7 @@ def run_notifyd(
     )
     last_nudge_sweep: _dt.datetime | None = None
 
-    lock = _SingleInstanceLock(pidfile_path(store))
+    lock = _SingleInstanceLock(pidfile_path(store), interval=interval)
     lock.acquire()  # raises DaemonAlreadyRunning — BEFORE the try/finally so a
     # failed acquire never releases a lock we do not own.
 
@@ -368,6 +389,18 @@ def run_notifyd(
                 stopped_by = "max_iterations"
                 break
             iterations += 1
+            # HEARTBEAT FIRST, and separately guarded: it is the ONLY liveness
+            # signal a reader in another PID namespace can use, so a failure to
+            # write it must be loud (logged) yet must not cost us this tick's
+            # delivery. A missed stamp is a health-visibility bug; a skipped
+            # delivery is a comm-miss. Never trade the second for the first.
+            try:
+                lock.heartbeat(now_fn())
+            except Exception:  # noqa: BLE001 — a bad disk/clock != kill the daemon
+                logger.exception(
+                    "notifyd tick %d: heartbeat stamp failed; continuing",
+                    iterations,
+                )
             # TICK RESILIENCE: a single bad tick must NEVER kill an always-on
             # daemon. deliver_pending is already fail-soft per recipient, but a
             # ledger/disk/clock error could still raise — catch it, log with a
