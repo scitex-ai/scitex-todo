@@ -221,3 +221,43 @@ def test_health_check_contract(fake_pkg, monkeypatch):
     assert set(res) == {"ok", "detail", "hint"}
     assert res["ok"] is False
     assert res["hint"], "a failing doctor check must always hint at the next step"
+
+
+# --------------------------------------------------------------------------
+# The THIRD failure mode: disk truth is not process truth.
+# --------------------------------------------------------------------------
+
+
+def test_features_interrogate_the_LOADED_module_not_the_disk(fake_pkg, monkeypatch):
+    """The stale-in-memory detector. Found by scitex-dev, 2026-07-12.
+
+    A long-lived process holds module objects in ``sys.modules``. Upgrading the
+    files on disk does NOT touch them — so a server can serve stale code while
+    its disk, its .dist-info, and this probe all report a current install, each
+    of them truthfully, all of them answering the wrong question.
+
+    ``features`` is the ONLY check that sees through this, because ``hasattr``
+    reads the LOADED module. Here: the source on disk gains a symbol AFTER the
+    module is already imported, and the feature probe correctly reports it ABSENT
+    — exactly as it would in a server running pre-upgrade code.
+    """
+    import fakepkg  # noqa: F401  - force it into sys.modules ("the running process")
+
+    monkeypatch.setattr(
+        "scitex_todo._install_probe._md.version", lambda dist: "2.0.0"
+    )
+    # The DISK now grows a symbol the loaded module does not have — the exact
+    # shape of "someone pip-upgraded under a running server".
+    (fake_pkg / "src" / "fakepkg" / "__init__.py").write_text(
+        "MARKER = True\nPOST_UPGRADE_SYMBOL = True\n", encoding="utf-8"
+    )
+
+    p = probe_install("fakepkg", features={"post_upgrade": "fakepkg:POST_UPGRADE_SYMBOL"})
+
+    # Every DISK-level signal says the install is fine...
+    assert p.trustworthy is True
+    assert p.code_version == "2.0.0"
+    # ...but the PROCESS does not have the new code, and only the symbol probe
+    # can tell us. This is the finding: a passing disk check is NOT a healthy
+    # process, and the remedy here is a RESTART, not an upgrade.
+    assert p.features["post_upgrade"] is False

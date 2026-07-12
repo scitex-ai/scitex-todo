@@ -27,6 +27,48 @@ happens to look right. It cannot distinguish the two.
 This module is the fix: it reports what the CODE says, what the METADATA says,
 and whether they agree — so a caller can never be fooled by the string alone.
 
+THE THIRD FAILURE MODE — DISK TRUTH IS NOT PROCESS TRUTH
+--------------------------------------------------------
+**This probe reports what is on DISK. A long-lived process may be running
+something else entirely, and no version number will ever tell you.**
+
+Found by scitex-dev (2026-07-12) while checking a claim of mine — which is the
+only reason it is written down here. Their symptom: an ``update_task`` call failed
+for HOURS with an old-enum validator message. A mid-session ``pip install
+--upgrade`` changed the code on disk, and the failures **continued,
+byte-identical**. Only a full process restart cleared them.
+
+The cause is neither pip nor the metadata. Python imports a module ONCE, into
+``sys.modules``; upgrading the files on disk does not touch the module objects a
+running process already holds. So a server can serve stale code from memory while
+its disk, its ``.dist-info``, and this probe ALL agree the install is current —
+and every one of them is telling the truth. They are simply answering a different
+question than the one that was asked.
+
+You cannot detect this from a version string. Not the metadata's, and not the
+source's: both describe the DISK.
+
+**The only reliable detector is to probe the LOADED MODULE for a symbol** — which
+is exactly what ``features`` does, because ``hasattr`` reads ``sys.modules`` and
+therefore interrogates the code the process is ACTUALLY RUNNING::
+
+    p = probe_install("scitex-todo", features={
+        "post_migration_enum": "scitex_todo._model:VALID_BLOCKERS",
+    })
+    if not p.features["post_migration_enum"]:
+        # THIS PROCESS is running pre-migration code, whatever the disk says.
+        # An upgrade will NOT fix it — only a RESTART will.
+
+The rule: **to know what a process is running, ask the process — not the package
+manager.** And when the answer is "stale", the remedy is a RESTART; an upgrade
+will not touch it.
+
+(A tempting shortcut — comparing the module file's mtime against the process
+start time — was tried and DELIBERATELY NOT SHIPPED: it depends on boot-time
+arithmetic and clock skew, and it gave a wrong answer on the first live box it
+was pointed at. Shipping a flaky detector for a false-confidence bug would be
+self-parody. Symbol probing is exact; use it.)
+
 DESIGN
 ------
 Pure, dependency-light, and **it never raises**: a probe that can crash is a
@@ -99,10 +141,21 @@ class InstallProbe:
 
     @property
     def trustworthy(self) -> bool:
-        """True when ``metadata_version`` may be used as the real version.
+        """True when ``metadata_version`` may be used as the version ON DISK.
 
-        The ONE question a deploy check should ask. False for an orphaned or
-        drifted install — i.e. exactly when the version string would mislead.
+        The ONE question a deploy check should ask of the filesystem. False for an
+        orphaned or drifted install — i.e. exactly when the version string would
+        mislead.
+
+        .. warning::
+
+           ``trustworthy`` is a statement about the DISK, never about a running
+           PROCESS. A long-lived server can serve stale code from ``sys.modules``
+           while every disk-level signal here reports a perfectly current install
+           — and none of them is lying; they are answering a different question.
+           See "THE THIRD FAILURE MODE" in the module docstring. To ask what a
+           PROCESS is running, use ``features`` (symbol probing), and remember
+           that the remedy for a stale process is a RESTART, not an upgrade.
         """
         return self.honest and self.kind in (KIND_WHEEL, KIND_EDITABLE)
 
