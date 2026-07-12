@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import _inbox
+from ._install_probe import check_install_honest
 from ._mcp_channel import recipient_keys, resolve_agent_id
 
 #: Unseen-notification backlog above which — combined with ``seen == 0`` (the
@@ -343,6 +344,12 @@ def health(
             lambda: _check_channel_drain(soft_agent, store, unseen_threshold),
         ),
         _run_check("channel_capable", _check_channel_capable),
+        # Is our own reported version actually TRUE? An orphaned/stale .dist-info
+        # reports a version that outlived the code it describes — and the fleet's
+        # drift detector reads exactly that string, so a fossil silently turns the
+        # detector off. Verified BY CONTENT, never by the version alone.
+        # (Incident 2026-07-12: metadata said 0.7.26 while the code ran 0.8.7.)
+        _run_check("install_honest", check_install_honest),
     ]
     ok = all(c["ok"] for c in checks)
     n_ok = sum(1 for c in checks if c["ok"])
