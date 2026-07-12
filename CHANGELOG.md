@@ -4,6 +4,50 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.7] - 2026-07-13 — board: it is SciTeX Cards now; two views gone, the Graph pre-rendered, a Details column added
+
+Operator-driven overhaul of the board. Everything below was verified in a real browser against
+the live 1,390-card store, not inferred from the diff.
+
+### Removed
+- **Column and Table views are gone**, along with the controls that only served them (Sort,
+  Group-by, bulk-select, hide-project). Column was the DEFAULT, so the default moves to
+  **Timeline**. Anyone whose browser still remembers `column` or `table` is migrated to
+  Timeline on load — **not** dropped on a blank board. (This board has shipped a blank board
+  twice this month; the migration is deliberate and tested.)
+- **The header is quiet again**: no Reload button, no Hide-project control, no oversized
+  "Blocking me" readout (the legend already says it), no `new/24h` counter in the bar.
+- **The status ring around each agent icon is gone.** The icons stay — the operator likes them.
+  The *ring* nobody could read: "エージェントアイコンの周りが何を表すのかよくわかりませんでした."
+  It encoded status around a glyph that encodes identity, with no legend entry to decode it.
+  Displayed is not the same as read.
+- **Wall: one icon per agent tile**, not one per card. 50 islands, 50 icons — down from 161.
+
+### Added
+- **A Details column on the right**, built on scitex-ui's real `.stx-shell-sidebar` primitive
+  rather than a bespoke layout, so the board collapses and responds like the rest of the
+  ecosystem. It holds the filters, the `new/24h` counter, and:
+- **A Stats panel that matches the Legend** — the same statuses, in the same order, in the same
+  colours, sharing one source of truth in code. Two lists that must agree and are maintained
+  separately will drift; these cannot.
+- **A d/w/m timescale**, which drives (and is driven by) the Timeline's *existing* window rather
+  than inventing a second, subtly-different notion of "week".
+- **Timeline hover feedback**: the hovered lane highlights and only that lane's dots grow.
+
+### Fixed
+- **Search autocomplete has been silently dead.** `searchQuery.js` and `searchSuggest.js` both
+  declared a top-level `const _api`; in a classic `<script>` that is one shared global binding,
+  so the second file threw `Identifier '_api' has already been declared` at parse time and never
+  ran. No error surfaced to the user — the dropdown simply never opened.
+- **The Graph no longer freezes the page.** It is rendered off-DOM ahead of time and cached, so
+  switching to it shows a finished diagram (measured: on screen within 300 ms, 1238 px inside a
+  1300 px canvas — fitted, not tiny). Rendering into a `display:none` container would have
+  produced a zero-width, unscaled SVG; it deliberately does not.
+
+### Changed
+- **The product is called SciTeX Cards.** Display strings only — package, CLI, MCP tool prefix
+  and store path are untouched (a coordinated rename is a separate effort).
+
 ## [0.9.6] - 2026-07-13 — fix: health called a LIVE daemon dead, and the one recovery path it offered could not start
 
 ### Fixed
