@@ -35,15 +35,24 @@ free." **Every one of those numbers was real, and the conclusion was still wrong
 The discipline that would have caught both: MEASURE THE PATH THE USER IS WAITING
 ON, END TO END, AND STATE THE DENOMINATOR.
 
-THE FULL REBUILD IS STILL O(n), AND STILL THE NEXT THING TO FIX
+THE FULL REBUILD IS GONE FROM THIS PATH — MIND THE DENOMINATOR
 --------------------------------------------------------------
-The write chokepoint (:func:`scitex_todo._model._save_doc_unlocked`) receives the
-WHOLE doc and does not know which card changed, so this mirror rebuilds every row
-on every write. That rebuild is now ~1.4 s (it was ~7.3 s until the ``INSERT OR
-REPLACE`` blunder documented in :func:`scitex_todo._db_bootstrap._insert_tasks` was
-removed — a 5x cut for one word of SQL), but O(n) still GROWS with the board. The
-mirror must become INCREMENTAL — upsert the one changed card — and that is tracked
-as work in its own right, ahead of the S2 read-cutover.
+The 8.69 s above is the OLD full rebuild, and it is no longer what a card write
+pays. The write chokepoint (:func:`scitex_todo._model._save_doc_unlocked`) hands us
+the WHOLE doc without saying which card changed, so this mirror used to DELETE and
+re-insert every row, every time — O(n), growing with the board (1.24 s in the
+morning, 8.69 s by the evening). It now diffs by card hash and touches only what
+actually changed: **8.69 s -> 0.199 s**. A typical write changes one card, so it
+writes one card.
+
+The full rebuild still exists in :mod:`scitex_todo._db_bootstrap` — the right shape
+for ``db import`` and for the re-bootstrap after a mirror failure — and it is ~5x
+faster than it was, because ``INSERT OR REPLACE INTO tasks`` turned out to be 86% of
+it (see :func:`scitex_todo._db_bootstrap._insert_tasks`; one word of SQL, 42x per
+row). But that is the BOOTSTRAP path, NOT the write path. Do not quote the rebuild's
+numbers as the cost of a card write: that substitution — a true measurement of one
+component, reported against the wrong denominator — is the exact mistake catalogued
+above, and it has now been made twice in this file.
 
 THE THREE RULES THIS MODULE ENFORCES
 ------------------------------------
