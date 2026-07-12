@@ -2,34 +2,57 @@
 # -*- coding: utf-8 -*-
 """S1 DUAL-WRITE — mirror every card write into SQLite, YAML still canonical.
 
-WHY THIS EXISTS — THE NUMBER (measured on the live store, 1,257 cards, 2026-07-12)
----------------------------------------------------------------------------------
-    full YAML rewrite  : 11,176 ms   <- THE COST OF EVERY CARD WRITE, TODAY
-    full SQLite rebuild:  1,243 ms   <- what this module adds
-    ONE row update     :      4.71 ms  <- what S2 buys
+WHY THIS EXISTS — THE NUMBERS (measured end-to-end, live store, 2026-07-13)
+--------------------------------------------------------------------------
+    ONE uncontended card write : 16.31 s   <- what the operator actually waits on
+        of which, this mirror  :  8.69 s   <- MORE THAN HALF
+    ONE SQLite row update      :  4.71 ms  <- what S2 buys
 
-**Every card write takes ELEVEN SECONDS while holding a fleet-wide lock.**
+**A card write takes SIXTEEN SECONDS while holding a fleet-wide lock**, and a
+16-second critical section serialises every other writer: two agents means the
+second waits 32 s, ten means the last waits 160 s. A single comment waiting ~4
+minutes (2026-07-11) is exactly what that predicts. The lock is not at fault — the
+lock is correct. What we DO while holding it is at fault.
 
-That is the whole convoy, explained, with no theory left over: two agents writing
-means the second waits 11 s; ten means the last waits 110 s. A single comment
-waiting ~4 minutes (2026-07-11) is exactly what this predicts. The lock is not at
-fault — the lock is correct. What we DO while holding it is at fault.
+So this migration is not a performance nicety. The store is already broken, and
+SQLite is the repair: it collapses the CRITICAL SECTION, which is what kills the
+convoy. It was never about the YAML serialiser (that is ~1.7 s, about 10%).
 
-So this migration is not a performance nicety. **The store is already broken, and
-SQLite is the repair**: 11,176 ms -> 4.71 ms, a 2,375x reduction.
+WHAT THE EARLIER VERSION OF THIS DOCSTRING GOT WRONG — READ THIS BEFORE TRUSTING A NUMBER
+-----------------------------------------------------------------------------------------
+It said: "full YAML rewrite 11,176 ms; the mirror's full rebuild is NINE TIMES
+FASTER than the YAML rewrite beside it; dual-write costs +11%; it is effectively
+free." **Every one of those numbers was real, and the conclusion was still wrong.**
 
-THE DESIGN QUESTION MEASUREMENT SETTLED
----------------------------------------
-The write chokepoint (:func:`scitex_todo._model._save_doc_unlocked`) receives the
-WHOLE doc — it does not know which card changed. So a mirror must rebuild all
-1,257 rows on every write: O(n), the very thing we are escaping. I expected that
-to make the convoy WORSE, and planned a row-diffing engine to avoid it.
+  * The 11,176 ms measured ``save_tasks`` IN ISOLATION — not the write path a card
+    actually takes. It was a true measurement of one COMPONENT, quoted as the cost
+    of the SYSTEM.
+  * "+11%, effectively free" used a CONTENDED denominator (105 s, taken while the
+    measurer's own writes were draining). Against the real 16.3 s write, the mirror
+    is 8.7 s — it MORE THAN DOUBLES a card write. Not free: the largest single
+    item in it.
 
-That was wrong, and only measuring showed it: **SQLite's full rebuild (1.2 s) is
-NINE TIMES FASTER than the YAML rewrite (11.2 s) it sits beside.** Dual-write
-costs +11% on top of an already-catastrophic 11 s. It is effectively free — and a
-full rebuild is far simpler, and far safer, than a diff engine I would have had to
-get exactly right on the fleet's critical store.
+The discipline that would have caught both: MEASURE THE PATH THE USER IS WAITING
+ON, END TO END, AND STATE THE DENOMINATOR.
+
+THE FULL REBUILD IS GONE FROM THIS PATH — MIND THE DENOMINATOR
+--------------------------------------------------------------
+The 8.69 s above is the OLD full rebuild, and it is no longer what a card write
+pays. The write chokepoint (:func:`scitex_todo._model._save_doc_unlocked`) hands us
+the WHOLE doc without saying which card changed, so this mirror used to DELETE and
+re-insert every row, every time — O(n), growing with the board (1.24 s in the
+morning, 8.69 s by the evening). It now diffs by card hash and touches only what
+actually changed: **8.69 s -> 0.199 s**. A typical write changes one card, so it
+writes one card.
+
+The full rebuild still exists in :mod:`scitex_todo._db_bootstrap` — the right shape
+for ``db import`` and for the re-bootstrap after a mirror failure — and it is ~5x
+faster than it was, because ``INSERT OR REPLACE INTO tasks`` turned out to be 86% of
+it (see :func:`scitex_todo._db_bootstrap._insert_tasks`; one word of SQL, 42x per
+row). But that is the BOOTSTRAP path, NOT the write path. Do not quote the rebuild's
+numbers as the cost of a card write: that substitution — a true measurement of one
+component, reported against the wrong denominator — is the exact mistake catalogued
+above, and it has now been made twice in this file.
 
 THE THREE RULES THIS MODULE ENFORCES
 ------------------------------------
@@ -109,9 +132,20 @@ def mirror_after_save(doc: dict, store_path: str | Path) -> bool:
         return False
 
     try:
-        from ._db_bootstrap import mirror_doc
+        from ._db import resolve_db_path
+        from ._db_mirror import mirror_doc_incremental
 
-        mirror_doc(doc)
+        # INCREMENTAL: touch only the cards that actually changed.
+        #
+        # This used to call `_db_bootstrap.mirror_doc`, which DELETEs and
+        # re-inserts every table on every write. MEASURED on the live board:
+        # that full rebuild was 8.69 s of a 16.31 s card write — MORE THAN HALF.
+        # It also grows with the board (1.24 s in the morning, 8.69 s by the
+        # evening), and because it runs inside the store lock it doubled the
+        # critical section, and so the convoy, for every other writer.
+        #
+        # A typical write changes ONE card. Now it writes one card.
+        mirror_doc_incremental(doc, resolve_db_path())
         return True
     except Exception as exc:  # noqa: BLE001 - a mirror must never break the write
         msg = f"{type(exc).__name__}: {exc}"

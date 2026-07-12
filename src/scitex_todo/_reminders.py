@@ -77,6 +77,7 @@ from ._reminder_enqueue import (
     _safe_resolve,
 )
 from ._reminder_liveness import _card_creator, _owner_liveness
+from ._reminder_cadence import resolve_owner_interval
 from ._stale_active import detect_pending_backlog, detect_stale_active
 from ._throughput import _now_utc, _parse_iso
 
@@ -331,10 +332,15 @@ def sweep_reminders(
     # The set of (owner, [StaleCard]) needing a nag this sweep, oldest-first
     # within each owner (the detectors already sort that way).
     buckets: dict[str, list] = {}
+    # Remember which ids came from the BACKLOG sweep: the two detectors have
+    # deliberately different clocks (active = 2 h, backlog = 24 h) and merging
+    # them into one bucket threw that away. See the cadence block below.
+    backlog_ids: set[str] = set()
     for owner, cards in detect_stale_active(tasks, now=cur).items():
         buckets.setdefault(owner, []).extend(cards)
     for owner, cards in detect_pending_backlog(tasks, now=cur).items():
         buckets.setdefault(owner, []).extend(cards)
+        backlog_ids.update(sc.id for sc in cards if sc.id)
 
     # Phased-rollout allowlist: when set (arg or env), nag ONLY these owners
     # and leave every other owner untouched (no fleet-wide first-sweep storm).
@@ -388,15 +394,17 @@ def sweep_reminders(
                     creator_escalated.append(sc.id)
                 card_state[sc.id] = centry
 
-        # Effective cadence for this owner: the TIGHTEST interval any of their
-        # stale cards asks for (a per-card override pulls the whole digest onto
-        # a faster clock). A flat `interval_minutes` arg forces one value.
-        if interval_minutes is not None:
-            owner_interval = interval_minutes
-        else:
-            owner_interval = min(
-                resolve_interval_minutes(by_id.get(sc.id), cfg) for sc in cards
-            )
+        # Cadence: tightest interval any ACTIVE card asks for. A deferred card
+        # can no longer drag the digest onto a 5-minute clock — see
+        # _reminder_cadence for why that was an interrupt loop, not a reminder.
+        owner_interval = resolve_owner_interval(
+            cards,
+            backlog_ids=backlog_ids,
+            by_id=by_id,
+            cfg=cfg,
+            resolve_interval_minutes=resolve_interval_minutes,
+            forced=interval_minutes,
+        )
 
         entry = owner_state.get(owner) or {}
         count = int(entry.get("count") or 0)

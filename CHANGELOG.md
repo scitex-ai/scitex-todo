@@ -4,6 +4,37 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.5] - 2026-07-13 — perf: a card write no longer drags the whole board through SQLite
+
+Two fixes to the dual-write mirror. Together they take the mirror from **more than half of a
+card write** down to **under 2% of it**.
+
+### Performance
+- **The mirror now writes only the cards that actually changed.** It used to `DELETE` and
+  re-insert every row of every table on every single write — 1,370 cards and 3,073 comments
+  rebuilt because you edited one card. That rebuild was **8.69 s of a 16.31 s card write**,
+  and it *grew with the board* (1.24 s in the morning, 8.69 s by the evening). Worse, it ran
+  **inside the store lock**, so it doubled the critical section — and therefore the convoy —
+  for every other writer. It now diffs by card hash: **8.69 s → 0.199 s**. (#401)
+
+- **The full rebuild that remains was 86% one word of SQL.** `INSERT OR REPLACE INTO tasks`
+  cost **4,592 µs/row** against **110 µs/row** for a plain `INSERT` — a **42x** difference,
+  and 6.3 s of the rebuild's 7.3 s. `tasks` is a *parent* of `task_comments` / `task_edges` /
+  `task_roles` (`ON DELETE CASCADE`), so under `PRAGMA foreign_keys=ON` every REPLACE runs
+  SQLite's full cascade/FK-check machinery — to resolve a collision that **cannot happen**,
+  because the rebuild has just deleted every row in the same transaction.
+
+  It was never foreign keys: `task_comments` already used a plain `INSERT`, and FK
+  enforcement costs it *nothing* (150 vs 149 µs/row, FK on vs off). It is REPLACE **on a
+  parent row** that is expensive. The rebuild — now the `db import` / post-failure
+  re-bootstrap path — drops from **7,299 ms → 1,415 ms**, verified byte-for-byte: every row
+  of all seven tables hashes identically before and after. (#402)
+
+### Fixed
+- **A duplicate card id is no longer swallowed in silence.** `INSERT OR REPLACE` absorbed it
+  — and still appended *both* copies' comments. The mirror now keeps the same winner
+  (last-wins) and logs the data bug loudly. Two cards cannot share an id.
+
 ## [0.8.6] - 2026-07-12 — fix: the WIP gate refused to let an agent record a P0; deadlines documented honestly
 
 ### Fixed

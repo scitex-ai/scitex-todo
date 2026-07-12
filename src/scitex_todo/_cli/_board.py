@@ -48,12 +48,17 @@ def _board_run_server(
     tasks_path: str | None,
     port: int,
     no_browser: bool,
+    host: str = "127.0.0.1",
 ) -> None:
     """Foreground-blocking server start (the historical board_cmd body).
 
     Writes the pidfile BEFORE handing off to Django's runserver loop and
     removes it on exit (clean shutdown via Ctrl-C, OR exception). Other
     terminals can `board stop` against the pidfile to SIGTERM us.
+
+    ``host`` defaults to loopback. Binding elsewhere exposes an
+    UNAUTHENTICATED board — the store carries every agent's cards — so the
+    default must stay 127.0.0.1 and a wider bind must be typed out by hand.
     """
     import os as _os
 
@@ -74,7 +79,7 @@ def _board_run_server(
     _dj.setup()
     from django.core.management import call_command
 
-    args = ["scitex_todo_board", "--port", str(port)]
+    args = ["scitex_todo_board", "--port", str(port), "--host", host]
     if tasks_path:
         args += ["--tasks", tasks_path]
     if no_browser:

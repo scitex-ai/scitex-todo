@@ -43,7 +43,7 @@ _COMMAND_CATEGORIES = (
         ),
     ),
     ("Data & Sync", ("db", "sync-github", "sync-store", "deliver")),
-    ("Service", ("board", "mcp", "notifyd", "watch", "watch-ci")),
+    ("Service", ("board", "gui", "mcp", "notifyd", "watch", "watch-ci")),
     ("Diagnostics", ("blocked", "print-stats", "health", "resolve-store")),
     ("Introspection", ("list-python-apis", "skills")),
     ("Shell", ("install-shell-completion", "print-shell-completion")),
@@ -373,6 +373,7 @@ from . import (  # hook-bypass: line-limit (_main.py pre-existing over-cap; mini
     _ci_watch,
     _completion,
     _deliver,
+    _gui,
     _hooks,
     _inbox,
     _index,
@@ -393,6 +394,11 @@ from . import (  # hook-bypass: line-limit (_main.py pre-existing over-cap; mini
 # status). Extracted to _board.py to keep _main.py under the 512-line cap;
 # behaviour + pidfile path (~/.scitex/todo/board.pid) are unchanged.
 _board.register(main)
+# gui <verb> — the ecosystem-standard GUI verbs (open/serve/status/stop),
+# shared with figrecipe / scitex-writer / scitex-scholar so the operator's
+# `scitex_start_gui_servers` loop can bring every SciTeX GUI up the same way.
+# A thin front over the board lifecycle above; `board` stays canonical.
+_gui.register(main)
 # index <verb> — SQLite derived-index lifecycle (rebuild / info). Extracted
 # to _index.py alongside the board split (same pure-move refactor).
 _index.register(main)

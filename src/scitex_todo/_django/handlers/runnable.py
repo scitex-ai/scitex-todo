@@ -52,8 +52,6 @@ def runnable_view(request: HttpRequest) -> HttpResponse:
             status=405,
         )
 
-    from ..._model import load_tasks
-    from ..._paths import resolve_tasks_path
     from ..._runnable import runnable_tasks
 
     agent = request.GET.get("agent") or None
@@ -62,8 +60,16 @@ def runnable_view(request: HttpRequest) -> HttpResponse:
     # "no group param" (None) from "group param with empty value" ("").
     group = request.GET["group"] if "group" in request.GET else None
 
-    path = resolve_tasks_path(None)
-    tasks = load_tasks(path)
+    # Read through the board's mtime-keyed cache, NOT a bare load_tasks: a
+    # direct read re-parses the whole 5 MB store on every poll (1.22 s on the
+    # live 1,352-card store). get_board re-reads only when a source has
+    # actually changed. It also returns the same UNION the board page renders,
+    # so the surfaces cannot disagree about which cards exist.
+    from ..services import get_board
+
+    board = get_board()
+    path = board.store_path
+    tasks = board.tasks
     result = runnable_tasks(tasks, agent=agent, group=group)
 
     payload = {
@@ -82,15 +88,21 @@ def blocked_batch_view(request: HttpRequest) -> HttpResponse:
             status=405,
         )
 
-    from ..._model import load_tasks
-    from ..._paths import resolve_tasks_path
     from ..._runnable import blocked_tasks
 
     agent = request.GET.get("agent") or None
     group = request.GET["group"] if "group" in request.GET else None
 
-    path = resolve_tasks_path(None)
-    tasks = load_tasks(path)
+    # Read through the board's mtime-keyed cache, NOT a bare load_tasks: a
+    # direct read re-parses the whole 5 MB store on every poll (1.22 s on the
+    # live 1,352-card store). get_board re-reads only when a source has
+    # actually changed. It also returns the same UNION the board page renders,
+    # so the surfaces cannot disagree about which cards exist.
+    from ..services import get_board
+
+    board = get_board()
+    path = board.store_path
+    tasks = board.tasks
     result = blocked_tasks(tasks, agent=agent, group=group)
 
     payload = {

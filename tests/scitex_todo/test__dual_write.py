@@ -118,7 +118,7 @@ def test_a_mirror_failure_does_not_fail_the_card_write(monkeypatch, tmp_path):
     def boom(doc, db_path=None):
         raise sqlite3.OperationalError("disk I/O error")
 
-    monkeypatch.setattr("scitex_todo._db_bootstrap.mirror_doc", boom)
+    monkeypatch.setattr("scitex_todo._db_mirror.mirror_doc_incremental", boom)
 
     _store.add_task(store, id="a", title="A", assignee="tester")  # must NOT raise
 
@@ -132,7 +132,7 @@ def test_a_mirror_failure_is_counted_not_swallowed(monkeypatch, tmp_path):
     def boom(doc, db_path=None):
         raise sqlite3.OperationalError("disk I/O error")
 
-    monkeypatch.setattr("scitex_todo._db_bootstrap.mirror_doc", boom)
+    monkeypatch.setattr("scitex_todo._db_mirror.mirror_doc_incremental", boom)
     _store.add_task(store, id="a", title="A", assignee="tester")
 
     assert _dual_write.failure_count() == 1
@@ -146,7 +146,7 @@ def test_a_mirror_failure_is_logged_loud(monkeypatch, tmp_path, caplog):
     def boom(doc, db_path=None):
         raise sqlite3.OperationalError("disk I/O error")
 
-    monkeypatch.setattr("scitex_todo._db_bootstrap.mirror_doc", boom)
+    monkeypatch.setattr("scitex_todo._db_mirror.mirror_doc_incremental", boom)
 
     with caplog.at_level("ERROR"):
         _store.add_task(store, id="a", title="A", assignee="tester")
