@@ -109,9 +109,20 @@ def mirror_after_save(doc: dict, store_path: str | Path) -> bool:
         return False
 
     try:
-        from ._db_bootstrap import mirror_doc
+        from ._db import resolve_db_path
+        from ._db_mirror import mirror_doc_incremental
 
-        mirror_doc(doc)
+        # INCREMENTAL: touch only the cards that actually changed.
+        #
+        # This used to call `_db_bootstrap.mirror_doc`, which DELETEs and
+        # re-inserts every table on every write. MEASURED on the live board:
+        # that full rebuild was 8.69 s of a 16.31 s card write — MORE THAN HALF.
+        # It also grows with the board (1.24 s in the morning, 8.69 s by the
+        # evening), and because it runs inside the store lock it doubled the
+        # critical section, and so the convoy, for every other writer.
+        #
+        # A typical write changes ONE card. Now it writes one card.
+        mirror_doc_incremental(doc, resolve_db_path())
         return True
     except Exception as exc:  # noqa: BLE001 - a mirror must never break the write
         msg = f"{type(exc).__name__}: {exc}"
