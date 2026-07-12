@@ -48,18 +48,59 @@ from __future__ import annotations
 
 import datetime as _dt
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from ._throughput import _now_utc, _parse_iso
 
+#: An extra row filter applied on top of the status filter — see
+#: ``_detect_owned_untouched``'s ``where`` parameter.
+_Predicate = Callable[[dict], bool]
+
 #: Statuses that count as "active" — the owner is claiming live work.
 STALE_ACTIVE_STATUSES = frozenset({"in_progress", "blocked"})
+
+#: Blockers that put a card OUTSIDE its owner's control.
+#:
+#: The blocker enum exists precisely so that different blockers get different
+#: signals — ``_model.VALID_BLOCKERS`` records the operator's pain verbatim:
+#: "I cannot tell what is waiting on ME." This sweep used to ignore the
+#: blocker entirely and nudge the OWNER every ``DEFAULT_STALE_ACTIVE_HOURS``
+#: (2 h) about EVERY blocked card — including cards blocked on a dependency,
+#: a compute job, another agent, or an operator decision. The owner cannot
+#: move any of those. 12 identical nudges a day about work you are powerless
+#: to advance is not a signal, it is training to ignore the channel — and a
+#: channel that cries wolf is exactly how the REAL nudge gets missed. (Found
+#: 2026-07-12: all 8 of scitex-todo's own "stale" cards were blocked on an
+#: external blocker; not one was actionable.)
+#:
+#: So: a card blocked on one of these is NOT owner-stale on the tight clock.
+#: It moves to the lenient ``blocked-check`` sweep below, whose question is
+#: not "why have you abandoned this?" but "has your blocker cleared?"
+#:
+#: ``dep`` is the legacy alias of ``dependency`` (see ``_model._BLOCKER_ALIASES``);
+#: both spellings are listed so a not-yet-normalized row is classified
+#: correctly rather than falling through to the tight clock.
+EXTERNAL_BLOCKERS = frozenset(
+    {"compute", "dependency", "dep", "operator-decision", "agent-wait"}
+)
 
 #: Env override + default for the staleness threshold (hours). 2 h is
 #: tight on purpose: an in_progress/blocked card untouched for >2 h is
 #: very likely forgotten, not mid-keystroke.
 ENV_STALE_ACTIVE_HOURS = "SCITEX_TODO_STALE_ACTIVE_HOURS"
 DEFAULT_STALE_ACTIVE_HOURS = 2.0
+
+#: Env override + default for the EXTERNALLY-BLOCKED re-check (hours).
+#:
+#: Deliberately as lenient as the backlog clock: the owner is legitimately
+#: waiting, so the only thing worth asking is a periodic "is your blocker
+#: still real?" — blockers DO go stale silently (the dependency shipped, the
+#: compute job died, the operator answered elsewhere), and a card can rot for
+#: weeks behind a blocker that cleared long ago. A daily check catches that
+#: rot without the alert fatigue of the 2 h clock.
+ENV_BLOCKED_NUDGE_HOURS = "SCITEX_TODO_BLOCKED_NUDGE_HOURS"
+DEFAULT_BLOCKED_NUDGE_HOURS = 24.0
 
 #: Statuses that count as BACKLOG — accepted but not yet started.
 #:
@@ -83,11 +124,6 @@ ENV_BACKLOG_NUDGE_HOURS = "SCITEX_TODO_BACKLOG_NUDGE_HOURS"
 ENV_PENDING_NUDGE_HOURS = "SCITEX_TODO_PENDING_NUDGE_HOURS"
 DEFAULT_PENDING_NUDGE_HOURS = 24.0
 DEFAULT_BACKLOG_NUDGE_HOURS = DEFAULT_PENDING_NUDGE_HOURS
-
-#: Cap on ids rendered per owner line so a runaway lane doesn't produce
-#: a multi-kilobyte nudge body.
-NUDGE_ID_CAP = 12
-
 
 def _resolve_hours(
     explicit: float | None, env_name: str, default: float
@@ -130,6 +166,13 @@ def _pending_nudge_hours(pending_hours: float | None) -> float:
     return _resolve_hours(None, ENV_PENDING_NUDGE_HOURS, DEFAULT_BACKLOG_NUDGE_HOURS)
 
 
+def _blocked_nudge_hours(blocked_hours: float | None) -> float:
+    """Resolve the externally-blocked re-check threshold (env-overridable)."""
+    return _resolve_hours(
+        blocked_hours, ENV_BLOCKED_NUDGE_HOURS, DEFAULT_BLOCKED_NUDGE_HOURS
+    )
+
+
 def _owner_of(task: dict) -> str:
     """The card's owner = the USER the nudge is addressed to.
 
@@ -157,18 +200,51 @@ def _age_hours(task: dict, now: _dt.datetime) -> float | None:
     return (now - parsed).total_seconds() / 3600.0
 
 
+def is_externally_blocked(task: dict) -> bool:
+    """True when the card is blocked on something its OWNER cannot move.
+
+    ``status == "blocked"`` AND ``blocker`` names an external blocker (a
+    dependency, a compute job, another agent, or an operator decision).
+
+    A blocked card with NO blocker named — or the explicit ``"none"`` —
+    is NOT external: nobody has said what it is waiting for, and saying so
+    IS the owner's job. That card stays on the tight clock.
+    """
+    if task.get("status") != "blocked":
+        return False
+    blocker = (task.get("blocker") or "").strip()
+    return blocker in EXTERNAL_BLOCKERS
+
+
+def is_owner_actionable(task: dict) -> bool:
+    """True when the card is active AND its owner can actually move it.
+
+    This is the predicate the TIGHT (2 h) nudge is allowed to fire on:
+    ``in_progress`` work, or a ``blocked`` card whose blocker nobody has
+    named. Everything blocked on a real external blocker is excluded —
+    see :data:`EXTERNAL_BLOCKERS` for why nudging those is anti-signal.
+    """
+    if task.get("status") not in STALE_ACTIVE_STATUSES:
+        return False
+    return not is_externally_blocked(task)
+
+
 def is_stale_active(
     task: dict,
     *,
     now: _dt.datetime | None = None,
     stale_hours: float | None = None,
 ) -> bool:
-    """True when ``task`` is active (in_progress / blocked) AND stale.
+    """True when ``task`` is OWNER-ACTIONABLE and stale.
 
     Stale = age (``last_activity`` else ``created_at``) older than the
     threshold, OR no parseable timestamp at all (can't prove fresh).
+
+    An externally-blocked card is never stale-active however old it is:
+    its owner is waiting, not neglecting it. Those are reported by
+    :func:`detect_blocked_external` on the lenient clock instead.
     """
-    if task.get("status") not in STALE_ACTIVE_STATUSES:
+    if not is_owner_actionable(task):
         return False
     cur = now or _now_utc()
     age = _age_hours(task, cur)
@@ -198,6 +274,7 @@ def _detect_owned_untouched(
     statuses: frozenset[str],
     threshold_hours: float,
     now: _dt.datetime | None = None,
+    where: _Predicate | None = None,
 ) -> dict[str, list[StaleCard]]:
     """Generic core: owned cards in ``statuses`` untouched > threshold.
 
@@ -206,9 +283,15 @@ def _detect_owned_untouched(
     cards are sorted oldest-first (most-forgotten on top); cards with no
     parseable timestamp (age ``None``) sort first as maximally stale.
 
-    Both :func:`detect_stale_active` and :func:`detect_pending_backlog`
-    are thin wrappers over this so owner-resolution, ordering, and the
-    missing-timestamp-is-stale rule stay identical between them.
+    ``where`` is an optional extra predicate applied AFTER the status
+    filter — used to split ``blocked`` rows between the tight
+    owner-actionable sweep and the lenient externally-blocked one, so the
+    two never double-report the same card.
+
+    :func:`detect_stale_active`, :func:`detect_blocked_external` and
+    :func:`detect_pending_backlog` are thin wrappers over this so
+    owner-resolution, ordering, and the missing-timestamp-is-stale rule
+    stay identical between them.
 
     Pure: no env reads, no network — the caller resolves the threshold.
     """
@@ -216,6 +299,8 @@ def _detect_owned_untouched(
     out: dict[str, list[StaleCard]] = {}
     for t in tasks:
         if t.get("status") not in statuses:
+            continue
+        if where is not None and not where(t):
             continue
         age = _age_hours(t, cur)
         if age is not None and age <= threshold_hours:
@@ -241,13 +326,19 @@ def detect_stale_active(
     now: _dt.datetime | None = None,
     stale_hours: float | None = None,
 ) -> dict[str, list[StaleCard]]:
-    """Group stale-active cards by OWNER.
+    """Group OWNER-ACTIONABLE stale cards by OWNER.
 
     Returns ``{owner: [StaleCard, ...]}`` — only owners that have at
     least one stale-active card appear (no empty rows). Within each
     owner the cards are sorted oldest-first (most-forgotten on top);
     cards with no timestamp (age ``None``) sort first as maximally
     stale.
+
+    EXCLUDES externally-blocked cards (see :data:`EXTERNAL_BLOCKERS`):
+    nudging an owner every 2 h about a card they are powerless to move is
+    anti-signal. Those are reported by :func:`detect_blocked_external` on
+    the lenient clock instead — the two sweeps partition the ``blocked``
+    rows between them and never double-report a card.
 
     Pure: no env reads beyond the threshold resolution, no network.
     """
@@ -256,6 +347,36 @@ def detect_stale_active(
         statuses=STALE_ACTIVE_STATUSES,
         threshold_hours=_stale_active_hours(stale_hours),
         now=now,
+        where=is_owner_actionable,
+    )
+
+
+def detect_blocked_external(
+    tasks: list[dict],
+    *,
+    now: _dt.datetime | None = None,
+    blocked_hours: float | None = None,
+) -> dict[str, list[StaleCard]]:
+    """Group long-externally-blocked cards by OWNER (the lenient sweep).
+
+    The complement of :func:`detect_stale_active` over the ``blocked``
+    rows: cards whose blocker is real and external, untouched for longer
+    than the lenient threshold (default 24 h).
+
+    The question this sweep asks is NOT "why have you abandoned this?"
+    but "has your blocker cleared?" — blockers go stale silently (the
+    dependency shipped, the compute job died, the operator answered
+    somewhere else), and a card can rot for weeks behind one that lifted
+    long ago. Nobody re-checks a blocker they set and forgot.
+
+    Pure: no env reads beyond the threshold resolution, no network.
+    """
+    return _detect_owned_untouched(
+        tasks,
+        statuses=frozenset({"blocked"}),
+        threshold_hours=_blocked_nudge_hours(blocked_hours),
+        now=now,
+        where=is_externally_blocked,
     )
 
 
@@ -289,90 +410,48 @@ def detect_pending_backlog(
     )
 
 
-def stale_active_nudge_line(
-    owner: str,
-    cards: list[StaleCard],
-    *,
-    stale_hours: float | None = None,
-) -> str:
-    """Compose the concise per-owner nudge line.
-
-    Shape (single line; caller wraps / delivers):
-
-        STALE-ACTIVE: N stale cards (in_progress/blocked, untouched
-        >Nh) — reconcile or update: <id>, <id>, …
-
-    Ids are capped at :data:`NUDGE_ID_CAP` with a "+K more" tail so a
-    runaway lane can't produce a huge body.
-    """
-    threshold = _stale_active_hours(stale_hours)
-    thr = f"{threshold:g}"
-    ids = [c.id for c in cards if c.id]
-    shown = ids[:NUDGE_ID_CAP]
-    tail = ""
-    if len(ids) > NUDGE_ID_CAP:
-        tail = f", +{len(ids) - NUDGE_ID_CAP} more"
-    id_str = ", ".join(shown) + tail if shown else "(no ids)"
-    return (
-        f"STALE-ACTIVE: {len(cards)} stale card(s) "
-        f"(in_progress/blocked, untouched >{thr}h) — "
-        f"reconcile or update: {id_str}"
-    )
-
-
-def pending_backlog_nudge_line(
-    owner: str,
-    cards: list[StaleCard],
-    *,
-    pending_hours: float | None = None,
-) -> str:
-    """Compose the concise per-owner PENDING-backlog nudge line.
-
-    Distinct wording from :func:`stale_active_nudge_line`: stale-active
-    says "reconcile/update the work you said you were doing"; pending
-    says "start or triage the cards you accepted but never began".
-
-    Shape (single line; caller wraps / delivers):
-
-        BACKLOG: N untouched deferred card(s) (>Nh) — start or
-        triage (begin, re-prioritise, or close): <id>, <id>, …
-
-    Ids are capped at :data:`NUDGE_ID_CAP` with a "+K more" tail so a
-    runaway lane can't produce a huge body.
-    """
-    threshold = _pending_nudge_hours(pending_hours)
-    thr = f"{threshold:g}"
-    ids = [c.id for c in cards if c.id]
-    shown = ids[:NUDGE_ID_CAP]
-    tail = ""
-    if len(ids) > NUDGE_ID_CAP:
-        tail = f", +{len(ids) - NUDGE_ID_CAP} more"
-    id_str = ", ".join(shown) + tail if shown else "(no ids)"
-    # Wording names `deferred` — the backlog status since the pending
-    # abolition. A nudge telling an agent about "pending cards" it cannot
-    # find (or write) is an instruction it cannot follow.
-    return (
-        f"BACKLOG: {len(cards)} untouched deferred card(s) "
-        f"(>{thr}h) — start or triage "
-        f"(begin, re-prioritise, or close): {id_str}"
-    )
-
+# ---------------------------------------------------------------------------
+# Nudge-line composition lives in ``_stale_active_lines`` (split out when the
+# third sweep pushed this module past the line limit). Re-exported here so
+# every existing importer — ``_stale_active_nudge``, notifyd, the CLI, the
+# tests — keeps working against the original import path. The split is an
+# internal reorganisation, not an API break.
+#
+# Imported at the BOTTOM, after the detectors and threshold resolvers this
+# module defines, because the composers import those back (they render the
+# resolved threshold into the line). Top-of-file would be a circular import.
+from ._stale_active_lines import (  # noqa: E402,F401  (re-export)
+    NUDGE_ID_CAP,
+    blocked_external_nudge_line,
+    pending_backlog_nudge_line,
+    stale_active_nudge_line,
+)
 
 __all__ = [
+    # Policy / detection.
     "STALE_ACTIVE_STATUSES",
-    "PENDING_STATUSES",
+    "EXTERNAL_BLOCKERS",
     "BACKLOG_STATUSES",
-    "ENV_BACKLOG_NUDGE_HOURS",
-    "DEFAULT_BACKLOG_NUDGE_HOURS",
-    "ENV_STALE_ACTIVE_HOURS",
-    "DEFAULT_STALE_ACTIVE_HOURS",
-    "ENV_PENDING_NUDGE_HOURS",
-    "DEFAULT_PENDING_NUDGE_HOURS",
-    "NUDGE_ID_CAP",
+    "PENDING_STATUSES",
     "StaleCard",
     "is_stale_active",
+    "is_owner_actionable",
+    "is_externally_blocked",
     "detect_stale_active",
+    "detect_blocked_external",
     "detect_pending_backlog",
+    # Thresholds.
+    "ENV_STALE_ACTIVE_HOURS",
+    "DEFAULT_STALE_ACTIVE_HOURS",
+    "ENV_BLOCKED_NUDGE_HOURS",
+    "DEFAULT_BLOCKED_NUDGE_HOURS",
+    "ENV_BACKLOG_NUDGE_HOURS",
+    "ENV_PENDING_NUDGE_HOURS",
+    "DEFAULT_BACKLOG_NUDGE_HOURS",
+    "DEFAULT_PENDING_NUDGE_HOURS",
+    # Presentation (re-exported from _stale_active_lines).
+    "NUDGE_ID_CAP",
     "stale_active_nudge_line",
+    "blocked_external_nudge_line",
     "pending_backlog_nudge_line",
 ]
