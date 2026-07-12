@@ -402,7 +402,31 @@ managed by the registry + inbox layers). Each task:
 | `notify`     | no       | per-card notify override (`events` / `add` / `mute`)             |
 | `kind`       | no       | `task` (default) \| `compute` — `compute` marks a row updated by an external writer (Spartan/CI watcher) |
 | `job_id` / `host` / `command` / `started_at` / `finished_at` | no | compute-job metadata; only with `kind: compute` |
-| `deadline` / `deadlines` / `scheduled` | no | ISO-8601 deadline schema with optional `+1d`/`+1w`/`+1m`/`+1y` repeater |
+| `deadline` / `deadlines` / `scheduled` | no | ISO-8601 deadline schema with optional `+1d`/`+1w`/`+1m`/`+1y` repeater. **A view, never a notifier** — see below |
+
+### A deadline is a VIEW, never a notifier
+
+**A deadline never sends a notification.** Nothing fires when one arrives — no
+sweep, digest or nudge reads `deadline`. It feeds the `overdue` filter
+(`list-tasks --overdue`) and the board view, and nothing else.
+
+Two consequences, in increasing order of surprise:
+
+1. **A one-off deadline is a PULL filter, not an alarm.** `list-tasks
+   --overdue` really does match cards past their deadline — but *you* have to
+   run it. Nobody is told.
+2. **A recurring deadline never even goes overdue.** The
+   `+1d`/`+1w`/`+1m`/`+1y` repeater rolls the next occurrence *forward*, so it
+   is always in the future — which means `--overdue` never matches a recurring
+   card, at any time, for either the `+` or the `++` form. A recurring deadline
+   is a date-pill showing the next occurrence. It drives neither rail.
+
+So **a recurring deadline is not a recurring reminder.** If you want to be
+**nudged** about an ongoing responsibility, keep the card open and owned:
+nudges key on INACTIVITY (`last_activity`, falling back to `created_at`). The
+stale-active sweep nudges the owner of any `in_progress` / `blocked` card
+untouched beyond the threshold, and the backlog sweep does the same for
+untouched `deferred` cards.
 
 ### status -> color
 

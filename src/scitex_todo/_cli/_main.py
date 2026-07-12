@@ -261,10 +261,16 @@ def render_graph_cmd(tasks_path: str | None, output: str, print_mermaid: bool) -
     "--overdue",
     is_flag=True,
     help=(
-        "Predicate: tasks past their next deadline AND not in a terminal "
-        "lifecycle state (done / deferred / failed / goal). Uses the "
+        "Predicate: tasks past their next deadline AND not in a closed "
+        "lifecycle state (done / failed / cancelled / goal). Uses the "
         "deadline / deadlines schema + repeater rules from "
-        "scitex_todo._model.is_overdue (PR #125, todo-p6-overdue-ui)."
+        "scitex_todo._model.is_overdue (PR #125, todo-p6-overdue-ui). "
+        "This filter is the ONLY thing a deadline drives (that, and the "
+        "board view) — a deadline NEVER sends a notification, so poll "
+        "this yourself. Owner nudges key on inactivity, not deadlines. "
+        "Matches NON-recurring deadlines only: a repeater (+1w) rolls "
+        "the next occurrence into the future, so a recurring card is "
+        "never overdue."
     ),
 )
 @click.option(

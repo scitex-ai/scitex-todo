@@ -37,6 +37,15 @@ can ingest the file directly:
 Today's slice is EXPORT only (one-way YAML -> .org). Import (.org ->
 YAML) lands when the operator starts editing the .org file in emacs
 + org-agenda; design notes are in the P4 design a2a.
+
+Note on DEADLINE lines: this export is where a scitex-todo deadline can
+first *reach* a reminder engine — because ORG-AGENDA is one. scitex-todo
+itself is NOT. In scitex-todo a deadline is a VIEW: it feeds the `overdue`
+filter and the board, and NEVER sends a notification; a recurring one does
+not even reach that filter (the repeater rolls it into the future — see
+`_model.is_overdue`). Emitting a `DEADLINE:` here does not change any of
+that; it just hands the date to org, where a repeater DOES mean what a
+reader expects. Do not infer scitex-todo behaviour from org's.
 """
 
 from __future__ import annotations
