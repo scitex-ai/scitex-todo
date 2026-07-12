@@ -314,6 +314,34 @@ def _save_doc_unlocked(
             pass
         raise
 
+    # S1 DUAL-WRITE — mirror this doc into the SQLite shadow DB.
+    #
+    # HERE, and not earlier: the `os.replace` above is POSIX-atomic, so the user's
+    # card is now DURABLE. A mirror failure can therefore cost them nothing.
+    # HERE, and not later: we still hold `_store_lock`, so the mirror cannot
+    # interleave with another writer and needs no lock of its own.
+    #
+    # NEVER raises — a mirror hiccup must not turn a successful card write into a
+    # failed one. But it is never SILENT either: `_dual_write` logs it LOUD, counts
+    # it, and surfaces it in `health`. A mirror that fails quietly lets the DB rot
+    # out of sync while every check reports green, and S2 would then cut the fleet
+    # over to a store that is confidently wrong.
+    #
+    # OFF by default (`SCITEX_TODO_DUAL_WRITE`): the write path of the fleet's
+    # critical store does not get a flag day.
+    #
+    # COST, MEASURED on the live 1,257-card store: the YAML rewrite above takes
+    # 11,176 ms; this mirror adds 1,243 ms (+11%). That looks expensive and is not —
+    # SQLite's FULL rebuild is 9x FASTER than the YAML rewrite it sits beside. That
+    # measurement is why this is a simple full mirror rather than the row-diffing
+    # engine I first assumed it would need to be. (S2, writing ONE row: 4.71 ms.)
+    try:
+        from ._dual_write import mirror_after_save
+
+        mirror_after_save(doc, path)
+    except Exception:  # noqa: BLE001 — even the import must not break a save
+        pass
+
     # Best-effort git auto-commit on the store dir (lead a2a `3b0df14a`).
     # Lazy-init a small `.git` inside the store dir on first call; commit
     # each save so the operator gets time-travel via `git show <sha>:<file>`.
