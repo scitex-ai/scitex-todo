@@ -262,6 +262,20 @@ class Task:
     # the field over the existing title-parsed date when both are
     # present; absent field → fall back to title parse (back-compat).
     # See ADR-0007 follow-up + the P4 design a2a.
+    #
+    # A DEADLINE IS A VIEW, NEVER A NOTIFIER. It drives the `overdue`
+    # filter (:func:`is_overdue`), the board date-pill / sort, and the
+    # org export — and NOTHING else. No sweep, digest or nudge reads
+    # `deadline` / `deadlines`: the delivery surface (`_reminders`,
+    # `_stale_active`, `_backlog_triage`, `_delivery/*`) keys ONLY on
+    # `last_activity` (falling back to `created_at`). A deadline
+    # arriving — recurring or not — fires nothing. And a RECURRING
+    # deadline never even goes overdue (the repeater rolls the next
+    # occurrence into the future), so it reaches NEITHER rail. To BE
+    # nudged, keep the card open and owned: the stale-active sweep
+    # nudges the owner of any in_progress/blocked card untouched past
+    # its threshold, and the backlog sweep does the same for untouched
+    # `deferred` cards.
     # (hook-bypass: line-limit — board_v3.html refactor still queued.)
     deadline: str | None = None
     scheduled: str | None = None
@@ -427,6 +441,18 @@ def next_deadline_for_task(task: dict, *, now=None) -> str | None:
     The output is normalised to a bare ``YYYY-MM-DD`` so the FE can
     drop the time-of-day for the date-pill (the YAML still carries
     full ISO + repeater for export). (hook-bypass: line-limit.)
+
+    The repeater rolls forward for real — but the roll is only ever
+    OBSERVED, never announced. Every consumer of this function is a
+    VIEW (the graph endpoint, the ``overdue`` filter, the CLI list).
+    NO notification path calls it: a recurring deadline coming due
+    does NOT nudge the owner.
+
+    And since the roll always lands in the FUTURE, a recurring task is
+    never :func:`is_overdue` either — so the ``overdue`` filter never
+    sees it. Rolling forward is what makes the date-pill correct AND
+    what makes the overdue filter blind to it; both follow from this
+    one function. (hook-bypass: line-limit.)
     """
     import datetime as _dt
 
@@ -477,6 +503,20 @@ def is_overdue(task: dict, *, now=None) -> bool:
     TG12664 "attended an overdue task but no suitable UI to act on it" —
     todo-p6-overdue-ui). Pure function (no I/O); deterministic given
     ``now``.
+
+    OVERDUE IS A FILTER, NOT AN ALARM. This predicate is PULL-only —
+    something has to ASK (``list_tasks(overdue=True)``, the board, the
+    fleet payload's ``overdue_count``). It is never PUSHED: no reminder
+    digest, stale-active nudge or backlog sweep calls it, so a card
+    going overdue notifies nobody. Owner nudges come from INACTIVITY
+    (``last_activity``), never from deadlines.
+
+    NOTE — a RECURRING deadline is NEVER overdue. ``next_deadline_for_task``
+    rolls a repeater's next occurrence into the FUTURE, so the comparison
+    below can never fire for one (true of both the ``+`` and ``++`` forms,
+    at any ``now``). Only a NON-recurring deadline can go overdue. A
+    recurring deadline therefore reaches neither the notification rail nor
+    this filter — it is a date-pill. (hook-bypass: line-limit.)
     """
     import datetime as _dt
 
@@ -593,6 +633,16 @@ class Repeater:
     means "if the deadline is missed, jump to the NEXT future
     occurrence" (org's `++` semantic), which is the right behaviour
     for missed-then-reload tasks.
+
+    A REPEATER IS NOT A RECURRING REMINDER. It schedules nothing and it
+    never notifies — and because it always rolls the next occurrence
+    into the FUTURE, a recurring card is never :func:`is_overdue`
+    either (see that function). So it drives NEITHER rail: it feeds the
+    date-pill / sort / org export and nothing else.
+    ``deadline: "2026-01-01 +1w"`` rolls every week and pages NOBODY,
+    and never shows up under ``--overdue``. To be prodded about an
+    ongoing responsibility, keep an open owned card — INACTIVITY is
+    what nudges, never deadlines. (hook-bypass: line-limit.)
 
     Attributes
     ----------
