@@ -87,6 +87,8 @@ from pathlib import Path
 
 from ._reminder_enqueue import _iso, _safe_enqueue, _safe_resolve
 from ._stale_active import (
+    blocked_external_nudge_line,
+    detect_blocked_external,
     detect_pending_backlog,
     detect_stale_active,
     pending_backlog_nudge_line,
@@ -124,6 +126,12 @@ DEFAULT_NUDGE_FLOOR_HOURS = 24.0
 #: display key). Same shape as :data:`scitex_todo._reminders.EVENT_DIGEST`.
 KIND_STALE_ACTIVE = "stale-active"
 KIND_PENDING_BACKLOG = "pending-backlog"
+#: The externally-blocked re-check. A SEPARATE kind (not a flavour of
+#: stale-active) precisely so it carries its own deliver-on-change state and
+#: its own, far more lenient clock: these cards are blocked on something the
+#: owner cannot move, so the only honest question is "has your blocker
+#: cleared?" — never "why haven't you reconciled this?"
+KIND_BLOCKED_CHECK = "blocked-check"
 
 #: Synthetic ``card_id`` per kind — a nudge is ABOUT many cards, not one
 #: (mirrors :data:`scitex_todo._reminders.DIGEST_CARD_ID`). Distinct per kind so
@@ -134,6 +142,7 @@ KIND_PENDING_BACKLOG = "pending-backlog"
 NUDGE_CARD_ID = {
     KIND_STALE_ACTIVE: "(stale-active)",
     KIND_PENDING_BACKLOG: "(pending-backlog)",
+    KIND_BLOCKED_CHECK: "(blocked-check)",
 }
 
 
@@ -186,7 +195,11 @@ def load_nudge_state(store: str | Path | None = None) -> dict[str, dict]:
     from ._yaml import safe_load
 
     path = _sidecar_path(store)
-    empty: dict[str, dict] = {KIND_STALE_ACTIVE: {}, KIND_PENDING_BACKLOG: {}}
+    empty: dict[str, dict] = {
+        KIND_STALE_ACTIVE: {},
+        KIND_PENDING_BACKLOG: {},
+        KIND_BLOCKED_CHECK: {},
+    }
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -215,8 +228,10 @@ def save_nudge_state(
     import yaml
 
     path = _sidecar_path(store)
-    payload = {kind: state.get(kind) or {} for kind in
-               (KIND_STALE_ACTIVE, KIND_PENDING_BACKLOG)}
+    payload = {
+        kind: state.get(kind) or {}
+        for kind in (KIND_STALE_ACTIVE, KIND_PENDING_BACKLOG, KIND_BLOCKED_CHECK)
+    }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(path.suffix + ".tmp")
@@ -452,6 +467,27 @@ def sweep_and_nudge(
         resolve_key=resolve_key,
     )
     lines.extend(_summary_lines(KIND_PENDING_BACKLOG, counts_pending))
+
+    # Blocked-check sweep — the cards the owner CANNOT move (blocked on a
+    # dependency / compute job / another agent / an operator decision). These
+    # used to ride the 2 h stale-active clock, which nudged owners 12x a day
+    # about walls they were powerless to move; that is not a signal, it is
+    # training to ignore the channel. Here they get their own lenient clock
+    # and their own question: "has your blocker cleared?"
+    by_owner_blocked = detect_blocked_external(tasks, now=cur)
+    counts_blocked = _deliver_per_owner(
+        by_owner_blocked,
+        kind=KIND_BLOCKED_CHECK,
+        label="blocked",
+        body_fn=blocked_external_nudge_line,
+        lines=lines,
+        state=state[KIND_BLOCKED_CHECK],
+        now=cur,
+        store=store,
+        enqueue=enqueue,
+        resolve_key=resolve_key,
+    )
+    lines.extend(_summary_lines(KIND_BLOCKED_CHECK, counts_blocked))
 
     save_nudge_state(state, store)
     return lines
