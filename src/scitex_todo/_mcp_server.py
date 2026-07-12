@@ -120,6 +120,22 @@ async def add_task(
     ``scheduled`` is the corresponding "start work on" stamp (validator
     rejects ``deadline < scheduled``). See ``scitex_todo._model`` +
     ``next_deadline_for_task`` for parse rules.
+
+    A DEADLINE IS A VIEW, NEVER A NOTIFIER. NOTHING FIRES when one
+    arrives: no sweep, digest or nudge reads ``deadline``. It feeds the
+    ``list_tasks(overdue=True)`` filter and the board view, nothing else
+    — and even that filter is PULL-only (you must run the query).
+
+    A RECURRING DEADLINE IS NOT A RECURRING REMINDER, and is worse than
+    merely silent: the repeater rolls the next occurrence FORWARD, so it
+    is always in the future and ``overdue=True`` NEVER matches it. It
+    reaches neither rail; it is a date-pill. Do not set one expecting to
+    be reminded — you will not be.
+
+    To BE NUDGED, keep the card open and owned: the stale-active sweep
+    nudges the owner of any ``in_progress`` / ``blocked`` card untouched
+    beyond the threshold, and the backlog sweep does the same for
+    untouched ``deferred`` cards. (hook-bypass: line-limit.)
     """
     _call = functools.partial(
         _store.add_task,
@@ -214,6 +230,14 @@ async def update_task(
     ``scheduled``; pass an empty list to CLEAR ``deadlines``. The pair
     ``deadline`` + ``deadlines`` is mutually exclusive; the validator
     will raise if both are set on the resulting task.
+
+    A DEADLINE IS A VIEW, NEVER A NOTIFIER — setting one (recurring or
+    not) sends no notification, ever; it only feeds
+    ``list_tasks(overdue=True)`` and the board, and a RECURRING one does
+    not even reach that filter (the repeater rolls it into the future).
+    Owner nudges key on INACTIVITY (``last_activity``), so to be nudged
+    keep the card open and owned. See ``add_task``.
+    (hook-bypass: line-limit.)
     """
     fields: dict = {}
     for key, value in (
@@ -311,7 +335,13 @@ async def list_tasks(
     matches tasks past their next deadline AND not in a terminal lifecycle
     state (mirrors the ``scitex-todo list-tasks --overdue`` CLI flag and
     the fleet payload's ``overdue_count``; see scitex_todo._model.is_overdue
-    — todo-p6-overdue-ui, PR #125 / #126).
+    — todo-p6-overdue-ui, PR #125 / #126). ``overdue`` is a PULL filter,
+    not an alarm: this query is the ONLY way an overdue card reaches you
+    — nothing pushes it. A deadline passing notifies nobody, so poll
+    ``overdue=True`` yourself if you care. Note it only ever matches
+    NON-recurring deadlines: a repeater (``+1w``) rolls the next
+    occurrence into the future, so a recurring card is never overdue.
+    (hook-bypass: line-limit.)
     """
     _call = functools.partial(
         _store.list_tasks,

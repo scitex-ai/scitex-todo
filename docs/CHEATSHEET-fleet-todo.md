@@ -372,6 +372,9 @@ loading).
   repo: <free-form-string>                   # ✅ LIVE
   note: |                                    # ✅ LIVE — markdown, drawer-rendered
     <markdown>
+  deadline: <ISO-8601>[ +1d|+1w|+1m|+1y]     # ✅ LIVE — VIEW ONLY, never notifies
+  deadlines: [<same shape>, ...]             # ✅ LIVE — multi form (excl. deadline)
+  scheduled: <ISO-8601>                      # ✅ LIVE — "start work on" stamp
   _log_meta:                                 # 🟡 PHASE-1 — opaque event-stamp bag
     completed_at: <ISO-8601 UTC>
     completed_by: <free-form-string>
@@ -379,6 +382,23 @@ loading).
 
 Statuses (`VALID_STATUSES`): `goal`, `pending`, `in_progress`, `blocked`,
 `done`, `deferred`, `failed`. The board colors these consistently.
+
+### ⚠️ A deadline is a VIEW, never a notifier
+
+**Setting a deadline sends no notification, ever.** Nothing fires when one
+arrives — no sweep, digest or nudge reads `deadline`. It feeds the `--overdue`
+filter and the board view, and nothing else.
+
+| You set | What actually happens |
+| --- | --- |
+| `deadline: 2026-07-11` (one-off, past) | Matches `list-tasks --overdue`. Nobody is notified — **you** must run the query. |
+| `deadline: 2026-01-01 +1w` (recurring) | The repeater rolls the next occurrence **forward**, so it is always in the future → **`--overdue` never matches it, ever.** Nobody is notified. It is a date-pill. |
+
+**A recurring deadline is not a recurring reminder.** To be **nudged** about an
+ongoing responsibility, keep the card open and owned — nudges key on INACTIVITY
+(`last_activity`, falling back to `created_at`). The stale-active sweep nudges
+the owner of any `in_progress` / `blocked` card untouched beyond the threshold;
+the backlog sweep does the same for untouched `deferred` cards.
 
 ---
 
