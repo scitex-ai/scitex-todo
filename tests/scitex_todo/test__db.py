@@ -252,16 +252,44 @@ def test_a_v1_db_gains_the_payload_column_on_open(tmp_path):
     but the existing rows keep ``card_json = NULL``, and those NULLs are LOAD-BEARING:
     they are what makes the S2 read guard refuse a DB that has not been re-imported,
     instead of quietly serving cards with their unknown fields stripped.
+
+    THE V1 DB IS BUILT BY SUBTRACTION FROM THE SCHEMA TEXT — NOT BY HAND, AND NOT WITH
+    ``DROP COLUMN``. Two earlier drafts got this wrong, in opposite directions, and both
+    are worth remembering:
+
+    1. The first hand-rolled ``CREATE TABLE tasks (id, title, status)`` as its "v1 shape".
+       ``open_db`` then died on ``CREATE INDEX ... ON tasks(agent)`` — no v1 DB ever had
+       only three columns, so the test was failing the CODE for not surviving a database
+       that HAS NEVER EXISTED.
+
+    2. The second built it by ``ALTER TABLE tasks DROP COLUMN card_json``. That passed
+       locally (SQLite 3.45.1) and FAILED IN CI with ``no such column: agent`` on the
+       reopen — the rewritten table came back missing columns. ``DROP COLUMN`` is a
+       table-rewrite whose behaviour varies across SQLite versions, so the fixture was
+       testing the runner's SQLite as much as our migration. A TEST FIXTURE MUST NOT BE
+       BUILT OUT OF A FEATURE WHOSE SEMANTICS VARY BY ENVIRONMENT — it turns a green
+       local run into a red CI run and sends you hunting through the wrong code.
+
+    So: take the REAL schema text and delete the one line v2 added. Every other column,
+    every index, exactly as v1 had them — and no dependency on any ALTER at all. The
+    fixture is a v1 DB because it was BUILT AS ONE, deterministically, on every SQLite.
     """
     import sqlite3
 
+    # The true v1 schema: today's schema, minus the single column v2 introduced.
+    v1_sql = _db._SCHEMA_SQL.replace("    row_order      INTEGER,\n    card_json      TEXT\n", "    row_order      INTEGER\n")
+    assert "card_json" not in v1_sql, "the v1 fixture must not contain the v2 column"
+    assert "idx_tasks_agent" in v1_sql, "…but it MUST keep every v1 index (this is what caught draft 1)"
+
     db = tmp_path / "v1.db"
-    conn = sqlite3.connect(str(db))
-    try:  # a v1-shaped tasks table: no card_json
-        conn.execute("CREATE TABLE tasks (id TEXT PRIMARY KEY, title TEXT, status TEXT)")
-        conn.execute("INSERT INTO tasks VALUES ('old-1', 'from v1', 'goal')")
+    conn = sqlite3.connect(db)
+    try:
+        conn.executescript(v1_sql)
         conn.execute("PRAGMA user_version=1")
+        conn.execute("INSERT INTO tasks(id, title, status) VALUES ('old-1', 'v1', 'goal')")
         conn.commit()
+        assert "card_json" not in _db.table_columns(conn, "tasks")
+        assert "agent" in _db.table_columns(conn, "tasks"), "a real v1 DB HAS agent"
     finally:
         conn.close()
 
