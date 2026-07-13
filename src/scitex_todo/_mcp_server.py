@@ -316,6 +316,14 @@ from . import _mcp_relations  # noqa: E402,F401
 from . import _mcp_skills  # noqa: E402,F401
 from . import _mcp_write  # noqa: E402,F401 — add_task + update_task
 
-__all__ = ["TOOL_NAMES", "mcp"]
+# RE-EXPORT the two write tools. Registering them on `mcp` from `_mcp_write` was
+# enough for the MCP surface, but NOT for the PYTHON one: callers and tests do
+# `from scitex_todo._mcp_server import add_task`, and moving the definition out
+# broke that import while every MCP tool still resolved. A split must leave the
+# original module a thin orchestrator that RE-EXPORTS its public API — otherwise
+# it is not a refactor, it is a rename with extra steps.
+from ._mcp_write import add_task, update_task  # noqa: E402,F401
+
+__all__ = ["TOOL_NAMES", "mcp", "add_task", "update_task"]
 
 # EOF
