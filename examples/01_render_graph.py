@@ -4,9 +4,9 @@
 
 Loads the generic example store that ships inside the wheel, builds its
 mermaid ``flowchart TB`` source, and prints it. Rendering to PNG
-(``scitex-todo render-graph``) additionally needs ``mmdc`` or ``kroki.io``;
+(``scitex-cards render-graph``) additionally needs ``mmdc`` or ``kroki.io``;
 this example stops at the mermaid source so it runs fully offline with no
-dependencies beyond ``scitex-todo`` itself.
+dependencies beyond ``scitex-cards`` itself.
 
 Run:
     python 01_render_graph.py
@@ -14,9 +14,9 @@ Run:
 
 from __future__ import annotations
 
-from scitex_todo._diagram import build_mermaid
-from scitex_todo._model import load_tasks
-from scitex_todo._paths import bundled_example
+from scitex_cards._diagram import build_mermaid
+from scitex_cards._model import load_tasks
+from scitex_cards._paths import bundled_example
 
 if __name__ == "__main__":
     store = bundled_example()

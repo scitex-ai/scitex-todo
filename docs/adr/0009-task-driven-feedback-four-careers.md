@@ -23,7 +23,7 @@ passive log. We want it to be an **active feedback surface**.
 Four things have a lifecycle ("career" — a state machine + a history
 trail). The right model is to treat each as its own machine and connect
 them **through the card as the hub**, by stable join keys, over the
-existing `scitex_todo.hooks` entry-point bus — so each package stays
+existing `scitex_cards.hooks` entry-point bus — so each package stays
 standalone (no hard cross-imports):
 
 ```
@@ -44,10 +44,10 @@ agent id       = host@name  → the dedup/join key between todo membership and s
 
 What already exists (verified 2026-06-24 by a 4-track code investigation):
 
-* **The bus** — `scitex_todo.hooks` entry-point dispatch; events `push`
+* **The bus** — `scitex_cards.hooks` entry-point dispatch; events `push`
   / `done` / `card-message`; built-in handlers (`_handle_push` →
   comment, `_handle_done` → `status:done` + `pr_url`, both idempotent);
-  three surfaces (HTTP `/hooks/*`, CLI `scitex-todo hook`, in-process
+  three surfaces (HTTP `/hooks/*`, CLI `scitex-cards hook`, in-process
   `dispatch_event`).
 * **Ports & adapters** — `NotificationPort`, `IdentityACLPort`
   (default `OpenACL`), `TaskSyncPort` — the standalone-with-ports shape.
@@ -105,7 +105,7 @@ No shared agent registry, no hard dependency:
 
 * **scitex-agent-container** is SSOT for agent **runtime** (exists /
   running / stopped / liveness) — it spawns them.
-* **scitex-todo** is SSOT for board **membership** (who may be
+* **scitex-cards** is SSOT for board **membership** (who may be
   assignee/collaborator/subscriber — including humans).
 * They join on the canonical agent id **`host@name`** and connect via a
   **port** (entry-point provider): sac exposes an agent-directory; todo

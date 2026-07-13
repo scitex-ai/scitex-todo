@@ -1,0 +1,386 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""SHADOW SQLite adapter for scitex-cards — STAGE S0 (RFC #348).
+
+SAFETY BOUNDARY (S0)
+--------------------
+This module is PURELY ADDITIVE. The YAML store (``tasks.yaml`` + the
+``threads.yaml`` sidecar) stays the CANONICAL source of truth. The SQLite
+database created here is a **SHADOW** that is bootstrapped FROM the YAML by
+:mod:`scitex_cards._db_bootstrap`. Nothing in the existing CRUD / MCP /
+``load_doc`` / ``_save_doc_unlocked`` path reads or writes this DB in S0 —
+dual-write (S1) and DB-canonical (S2) are later, separately-shipped stages.
+The shadow DB is therefore INCAPABLE of harming the YAML by construction:
+it is a different file, opened read/create, never linked into any write path.
+
+Adapter scope
+-------------
+stdlib ``sqlite3`` ONLY (no scitex-db, no third-party) per the S0 decision on
+RFC #348 Q2 — keeps the corruption-adjacent canonical store dependency-light,
+mirroring scitex-clew's hand-rolled PRAGMA approach. On every writable connect
+we set ``journal_mode=WAL``, ``synchronous=NORMAL``, ``busy_timeout=300000``
+(5 min), ``foreign_keys=ON``. The schema is created idempotently
+(``CREATE TABLE/INDEX IF NOT EXISTS``) and stamped with ``PRAGMA user_version=1``
+plus a ``schema_meta`` row.
+
+Path resolution (RFC #348 §1.2) — DELEGATED, never re-rolled
+------------------------------------------------------------
+Precedence: explicit arg → ``$SCITEX_TODO_DB`` env → the ecosystem
+``local_state.user_path("todo", "todo.db")``. We DELEGATE the third tier to
+``scitex_config._ecosystem.local_state.user_path`` rather than re-rolling a
+project/user precedence chain. ``user_path()`` is user-canonical and CANNOT
+express a project scope — which is the whole point: the 2026-07-06 stale-store
+incident was caused by a rolled-own resolver that ranked a project copy above
+the user store. Resolves to ``~/.scitex/todo/todo.db``.
+"""
+
+from __future__ import annotations
+
+import os
+import sqlite3
+from pathlib import Path
+
+#: Canonical DB filename. ``.db`` (not ``.sqlite``) so a future
+#: ``stx.io.load("todo.db")`` round-trips (scitex-io registers only ``.db``).
+DEFAULT_DB_FILENAME = "todo.db"
+
+#: package short name (``scitex-cards`` with the ``scitex-`` prefix stripped),
+#: the ``pkg_short`` passed to ``local_state.user_path``.
+PKG_SHORT = "todo"
+
+#: env var that overrides the resolved DB path entirely (2nd tier).
+ENV_DB = "SCITEX_TODO_DB"
+
+#: schema version — mirrored into both ``PRAGMA user_version`` and the
+#: ``schema_meta`` table so a fast gate (pragma) and a human-readable row exist.
+SCHEMA_VERSION = 1
+
+
+def resolve_db_path(explicit: str | Path | None = None) -> Path:
+    """Resolve the shadow-DB path, following the S0 precedence chain.
+
+    Precedence (highest first):
+
+    1. ``explicit`` argument (CLI ``--db`` / function arg),
+    2. ``$SCITEX_TODO_DB`` environment override,
+    3. ``local_state.user_path("todo", "todo.db")`` — DELEGATED to the
+       ecosystem user-canonical resolver (never a re-rolled precedence).
+
+    Returns a :class:`~pathlib.Path`; does NOT create the file.
+    """
+    if explicit is not None:
+        return Path(explicit).expanduser()
+    env_val = os.environ.get(ENV_DB)
+    if env_val:
+        return Path(env_val).expanduser()
+    # Tier 3 — DELEGATE to the ecosystem user-canonical resolver. Imported
+    # lazily so a caller passing an explicit / env path never hard-requires
+    # scitex_config to be importable.
+    from scitex_config._ecosystem import local_state
+
+    return local_state.user_path(PKG_SHORT, DEFAULT_DB_FILENAME)
+
+
+# --------------------------------------------------------------------------- #
+# Schema                                                                      #
+# --------------------------------------------------------------------------- #
+#
+# Rule (RFC #348 §2): a field any read path filters/sorts on → typed column +
+# index; rare / nested / opaque payloads → JSON TEXT. ``group`` is remapped to
+# the ``grp`` column (``group`` is a SQL reserved word); the adapter/bootstrap
+# translate the name so the Python/YAML field is unchanged. ``deadlines`` and
+# ``_log_meta`` ride JSON TEXT columns; comments / edges / roles are child
+# tables. Enum validity stays in ``_model._validate_tasks`` — no SQL CHECKs.
+_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS tasks (
+    id             TEXT PRIMARY KEY,
+    title          TEXT NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'pending',
+    kind           TEXT,
+    blocker        TEXT,
+    task           TEXT,
+    note           TEXT,
+    goal           TEXT,
+    project        TEXT,
+    repo           TEXT,
+    host           TEXT,
+    agent          TEXT,
+    assignee       TEXT,
+    scope          TEXT,
+    grp            TEXT,
+    priority       INTEGER,
+    parent         TEXT,
+    pr_url         TEXT,
+    issue_url      TEXT,
+    deadline       TEXT,
+    scheduled      TEXT,
+    created_at     TEXT,
+    last_activity  TEXT,
+    started_at     TEXT,
+    finished_at    TEXT,
+    created_by     TEXT,
+    job_id         TEXT,
+    command        TEXT,
+    deadlines_json TEXT,
+    log_meta_json  TEXT,
+    row_order      INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_status   ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_agent    ON tasks(agent);
+CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
+CREATE INDEX IF NOT EXISTS idx_tasks_scope    ON tasks(scope);
+CREATE INDEX IF NOT EXISTS idx_tasks_kind     ON tasks(kind);
+CREATE INDEX IF NOT EXISTS idx_tasks_blocker  ON tasks(blocker);
+CREATE INDEX IF NOT EXISTS idx_tasks_project  ON tasks(project);
+CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline);
+CREATE INDEX IF NOT EXISTS idx_tasks_parent   ON tasks(parent);
+CREATE INDEX IF NOT EXISTS idx_tasks_pr_url   ON tasks(pr_url);
+
+CREATE TABLE IF NOT EXISTS task_comments (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    seq     INTEGER NOT NULL,
+    author  TEXT,
+    ts      TEXT,
+    kind    TEXT,
+    text    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_comments_task ON task_comments(task_id, seq);
+
+CREATE TABLE IF NOT EXISTS task_edges (
+    src_task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    dst_task_id TEXT NOT NULL,
+    edge_type   TEXT NOT NULL,
+    PRIMARY KEY (src_task_id, dst_task_id, edge_type)
+);
+CREATE INDEX IF NOT EXISTS idx_edges_dst ON task_edges(dst_task_id);
+
+CREATE TABLE IF NOT EXISTS task_roles (
+    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    who     TEXT NOT NULL,
+    role    TEXT NOT NULL,
+    PRIMARY KEY (task_id, who, role)
+);
+CREATE INDEX IF NOT EXISTS idx_roles_who ON task_roles(who);
+
+CREATE TABLE IF NOT EXISTS users (
+    id           TEXT PRIMARY KEY,
+    kind         TEXT NOT NULL,
+    host_at_name TEXT,
+    notify_json  TEXT,
+    turn_url     TEXT,
+    a2a_port     INTEGER,
+    created_at   TEXT,
+    last_seen    TEXT
+);
+CREATE TABLE IF NOT EXISTS user_names (
+    name    TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_user_names_uid ON user_names(user_id);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id           TEXT PRIMARY KEY,
+    recipient_id TEXT NOT NULL,
+    event_type   TEXT NOT NULL,
+    card_id      TEXT,
+    body         TEXT,
+    actor        TEXT,
+    ts           TEXT NOT NULL,
+    seen         INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_notif_recipient_seen
+    ON notifications(recipient_id, seen);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id         TEXT PRIMARY KEY,
+    thread_key TEXT NOT NULL,
+    sender     TEXT NOT NULL,
+    recipient  TEXT NOT NULL,
+    body       TEXT NOT NULL,
+    ts         TEXT NOT NULL,
+    read       INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_key, ts);
+
+CREATE TABLE IF NOT EXISTS schema_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
+"""
+
+#: Ordered tuple of every table name the schema creates — used by
+#: :func:`verify` and the tests to assert completeness.
+SCHEMA_TABLES: tuple[str, ...] = (
+    "tasks",
+    "task_comments",
+    "task_edges",
+    "task_roles",
+    "users",
+    "user_names",
+    "notifications",
+    "messages",
+    "schema_meta",
+)
+
+
+def _apply_pragmas(conn: sqlite3.Connection) -> None:
+    """Apply the S0 connection PRAGMAs on a writable connection."""
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=300000")
+    conn.execute("PRAGMA foreign_keys=ON")
+
+
+def connect(path: str | Path) -> sqlite3.Connection:
+    """Open (creating parent dirs) a writable connection with S0 PRAGMAs.
+
+    Does NOT create the schema — call :func:`init_schema` (or the combined
+    :func:`open_db`) for that. ``row_factory`` is :class:`sqlite3.Row` so
+    callers get name-addressable rows.
+    """
+    p = Path(path).expanduser()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(p))
+    conn.row_factory = sqlite3.Row
+    _apply_pragmas(conn)
+    return conn
+
+
+def init_schema(conn: sqlite3.Connection) -> None:
+    """Create the schema idempotently + stamp version. Commits on success.
+
+    Runs the ``CREATE TABLE/INDEX IF NOT EXISTS`` script, sets
+    ``PRAGMA user_version=SCHEMA_VERSION``, and seeds the ``schema_meta``
+    rows (``schema_version`` always; ``created_at`` / ``source`` only if
+    absent so a re-init never clobbers the original provenance).
+    """
+    conn.executescript(_SCHEMA_SQL)
+    conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+    conn.execute(
+        "INSERT INTO schema_meta(key, value) VALUES('schema_version', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (str(SCHEMA_VERSION),),
+    )
+    conn.execute(
+        "INSERT OR IGNORE INTO schema_meta(key, value) VALUES('created_at', ?)",
+        (_utc_now_iso(),),
+    )
+    conn.execute(
+        "INSERT OR IGNORE INTO schema_meta(key, value) VALUES('source', 'fresh')",
+    )
+    conn.commit()
+
+
+def open_db(explicit: str | Path | None = None) -> sqlite3.Connection:
+    """Resolve → connect → ensure schema. The one-call adapter entry point.
+
+    Combines :func:`resolve_db_path`, :func:`connect`, and
+    :func:`init_schema`. Returns a ready-to-use connection whose schema is
+    guaranteed present (created on first open; a no-op on an existing DB).
+    """
+    return _open_at(resolve_db_path(explicit))
+
+
+def _open_at(path: Path) -> sqlite3.Connection:
+    conn = connect(path)
+    init_schema(conn)
+    return conn
+
+
+def verify(explicit: str | Path | None = None) -> dict:
+    """Open the DB read/verify its integrity + report table row counts.
+
+    Returns a JSON-friendly dict::
+
+        {"path", "exists", "ok", "user_version", "schema_version",
+         "quick_check", "tables": {<name>: <row_count>, ...}, "source"}
+
+    ``ok`` is True iff the file exists, ``user_version`` and the
+    ``schema_meta.schema_version`` both equal :data:`SCHEMA_VERSION`, every
+    expected table is present, and ``PRAGMA quick_check`` returns ``ok``.
+    Never raises on a merely-absent DB (``exists=False``, ``ok=False``).
+    """
+    path = resolve_db_path(explicit)
+    report: dict = {
+        "path": str(path),
+        "exists": path.exists(),
+        "ok": False,
+        "user_version": None,
+        "schema_version": None,
+        "quick_check": None,
+        "source": None,
+        "tables": {},
+    }
+    if not path.exists():
+        return report
+
+    conn = connect(path)
+    try:
+        report["user_version"] = int(
+            conn.execute("PRAGMA user_version").fetchone()[0]
+        )
+        report["quick_check"] = conn.execute(
+            "PRAGMA quick_check"
+        ).fetchone()[0]
+        present = {
+            r[0]
+            for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        tables: dict[str, int] = {}
+        for name in SCHEMA_TABLES:
+            if name in present:
+                tables[name] = int(
+                    conn.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0]
+                )
+        report["tables"] = tables
+        meta = {
+            row[0]: row[1]
+            for row in conn.execute("SELECT key, value FROM schema_meta")
+        }
+        report["schema_version"] = meta.get("schema_version")
+        report["source"] = meta.get("source")
+        all_tables_present = all(t in present for t in SCHEMA_TABLES)
+        report["ok"] = bool(
+            report["user_version"] == SCHEMA_VERSION
+            and report["schema_version"] == str(SCHEMA_VERSION)
+            and all_tables_present
+            and report["quick_check"] == "ok"
+        )
+    finally:
+        conn.close()
+    return report
+
+
+def _utc_now_iso() -> str:
+    """ISO-8601 UTC timestamp with the canonical ``Z`` suffix.
+
+    Same second-resolution shape as the task / user / inbox timestamps so
+    the DB provenance stamps match the YAML store on disk.
+    """
+    import datetime as _dt
+
+    return (
+        _dt.datetime.now(_dt.timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+__all__ = [
+    "DEFAULT_DB_FILENAME",
+    "ENV_DB",
+    "PKG_SHORT",
+    "SCHEMA_TABLES",
+    "SCHEMA_VERSION",
+    "connect",
+    "init_schema",
+    "open_db",
+    "resolve_db_path",
+    "verify",
+]
+
+# EOF

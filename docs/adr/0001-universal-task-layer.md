@@ -1,10 +1,10 @@
-# ADR-0001 — scitex-todo as the fleet's universal task-driven layer
+# ADR-0001 — scitex-cards as the fleet's universal task-driven layer
 
 **Status.** Strawman — operator review pending.
 
 **Date.** 2026-06-02
 
-**Author.** proj-scitex-todo (agent), driven by the lead under operator's
+**Author.** proj-scitex-cards (agent), driven by the lead under operator's
 overnight directive.
 
 **Supersedes / extends.** `GITIGNORED/ARCHITECTURE.md` (Phase-0 9-requirement
@@ -21,8 +21,8 @@ The operator's directive (verbatim intent, 2026-06-01 overnight):
 > A task-driven UI usable at EVERY level: inside Orochi, inside scitex-hub,
 > sac-agent-to-sac-agent, a single agent, a single human, or a team.
 > Layer separation: Orochi = chat (Slack-like, good at talking, weak at
-> task-centric). scitex-todo = task-centric. Orochi's "todo tab" will
-> CONSUME scitex-todo rather than reimplement tasks.
+> task-centric). scitex-cards = task-centric. Orochi's "todo tab" will
+> CONSUME scitex-cards rather than reimplement tasks.
 
 The package is already built on `scitex-{ui,app}`, already ships a Django
 module, already lays out the YAML store under `~/.scitex/todo/tasks.yaml`,
@@ -67,12 +67,12 @@ can do.
    ┌──────────┴──────────┐  ┌──────────┴──────────┐  ┌──────────┴──────────┐
    │  _store.py          │  │  _django handlers   │  │  _mcp_server.py     │
    │  Python API         │  │  HTTP /graph etc.   │  │  FastMCP tools      │
-   │  (add/update/done/  │  │  (drag-reorder,     │  │  (scitex_todo_*)    │
+   │  (add/update/done/  │  │  (drag-reorder,     │  │  (scitex_cards_*)    │
    │  list/summary)      │  │  /priority, drawer) │  │                     │
    └────────┬────────────┘  └──────────┬──────────┘  └──────────┬──────────┘
             │                          │                        │
    ┌────────┴────────┐    ┌────────────┴───────────┐    ┌───────┴────────┐
-   │  scitex-todo    │    │  scitex-todo board     │    │  Claude /      │
+   │  scitex-cards    │    │  scitex-cards board     │    │  Claude /      │
    │  CLI verbs      │    │  (React Flow)          │    │  agent harness │
    │  (add/done/...) │    │  ↳ standalone @8051    │    │  via MCP       │
    │                 │    │  ↳ embedded in hub     │    │                │
@@ -85,15 +85,15 @@ The six participant levels:
 | Level                    | How they reach the store            | Default scope           |
 | ------------------------ | ----------------------------------- | ----------------------- |
 | Single human (operator)  | CLI + web board on localhost        | unfiltered              |
-| Single agent (standalone)| Python API (`import scitex_todo`)   | `agent:<self>`          |
+| Single agent (standalone)| Python API (`import scitex_cards`)   | `agent:<self>`          |
 | sac peer ↔ sac peer      | MCP tools + `$SCITEX_TODO_SCOPE` env| `agent:<self>`          |
 | Team (operator + agents) | Shared YAML + scope filters         | mixed                   |
 | scitex-hub app           | `_django` module mounted at `/todo/`| as configured           |
 | Orochi todo tab          | Same `_django` module embedded     | as configured           |
 
-**Layer separation guarantee.** scitex-todo never imports sac, scitex-hub,
-or Orochi. The flow is one-way: those higher layers depend on scitex-todo
-or speak to it via its public surfaces. This keeps scitex-todo testable
+**Layer separation guarantee.** scitex-cards never imports sac, scitex-hub,
+or Orochi. The flow is one-way: those higher layers depend on scitex-cards
+or speak to it via its public surfaces. This keeps scitex-cards testable
 and shippable on its own and avoids the "everything depends on everything"
 trap.
 
@@ -143,15 +143,15 @@ canonical store; it is, optionally, a notification fan-out adapter on top
 
 A **notification fan-out adapter** on top of the git-backed store
 (Section 6 — Phase 4, optional). When an agent does a local write, it
-emits a `scitex-todo:tasks-changed` event on a sac channel; other agents
+emits a `scitex-cards:tasks-changed` event on a sac channel; other agents
 subscribed to that channel can choose to re-pull and re-render. This buys
 "the operator drags a node on the board and three agent containers see
 the new priority within a second" without making sac the source of truth.
 
 ### Where the GitHub remote lives
 
-`ywatanabe1989-private/scitex-todo-state` (private, operator-owned). The
-public scitex-todo *package* repo stays at `ywatanabe1989/scitex-todo` and
+`ywatanabe1989-private/scitex-cards-state` (private, operator-owned). The
+public scitex-cards *package* repo stays at `ywatanabe1989/scitex-cards` and
 contains zero personal task data — only the code, the schema, the example
 store, and the adapters.
 
@@ -204,16 +204,16 @@ alongside `agent:<name>` and `project:<name>`. Typical uses:
 
 ```bash
 # A task that only matters on this host (env setup, local config, etc.)
-scitex-todo add wsl-ssh-key "regenerate ssh key" --scope host:wsl2-dev
+scitex-cards add wsl-ssh-key "regenerate ssh key" --scope host:wsl2-dev
 
 # A cross-project, cross-host operator memo
-scitex-todo add memo-call-sarah "Call Sarah re: grant" --scope user:operator
+scitex-cards add memo-call-sarah "Call Sarah re: grant" --scope user:operator
 
 # All my tasks on this host
-scitex-todo list-tasks --scope "host:$(hostname)"
+scitex-cards list-tasks --scope "host:$(hostname)"
 
 # All my tasks across every host — the 串刺し view
-scitex-todo list-tasks --scope ""
+scitex-cards list-tasks --scope ""
 ```
 
 `host:` is a convention not an enum (Req 8 stance), so a task that
@@ -259,26 +259,26 @@ tasks:
                                          #   pending, in_progress, blocked,
                                          #   done, deferred, failed
     # ── identity / direction ──
-    scope: "agent:proj-scitex-todo"      # optional, free-form audience label
-    assignee: "agent:proj-scitex-todo"   # optional, free-form actor label
+    scope: "agent:proj-scitex-cards"      # optional, free-form audience label
+    assignee: "agent:proj-scitex-cards"   # optional, free-form actor label
     priority: 3                          # optional, integer (lower = earlier)
     parent: "epic-id"                    # optional, parent task id (nested graph)
     # ── shape ──
     depends_on: [other-task]             # optional
     blocks: [downstream-task]            # optional
-    repo: "scitex-todo"                  # optional, free-form
+    repo: "scitex-cards"                  # optional, free-form
     note: |                              # optional, markdown — shown in drawer
       ## Context
       ...
     # ── automatic event stamps ──
     _log_meta:                           # opaque dict, written by complete_task
       completed_at: "2026-06-02T03:00:00Z"
-      completed_by: "agent:proj-scitex-todo"
+      completed_by: "agent:proj-scitex-cards"
 ```
 
 **Scope and assignee conventions** (convention, not enum — generic stance):
 
-- `agent:<name>`  e.g. `agent:proj-scitex-todo`, `agent:lead`, `agent:hub-ops`
+- `agent:<name>`  e.g. `agent:proj-scitex-cards`, `agent:lead`, `agent:hub-ops`
 - `project:<name>` e.g. `project:scitex-clew`, `project:neurovista`
 - `host:<name>`    e.g. `host:wsl2-dev`, `host:mba-arm64`
 - `user:<name>`    e.g. `user:operator`
@@ -298,10 +298,10 @@ any participant can read any task by removing the filter.
 ### 5.1 Single human (operator)
 
 ```
-$ scitex-todo board                  # web UI on http://127.0.0.1:8051
-$ scitex-todo list-tasks                   # CLI listing
-$ scitex-todo add note1 "Don't forget X" --scope private
-$ scitex-todo done note1
+$ scitex-cards board                  # web UI on http://127.0.0.1:8051
+$ scitex-cards list-tasks                   # CLI listing
+$ scitex-cards add note1 "Don't forget X" --scope private
+$ scitex-cards done note1
 ```
 
 Browser bookmark is the operator's "second brain". Personal memos go in
@@ -310,8 +310,8 @@ with `scope: private` so they don't pollute fleet views.
 ### 5.2 Single agent (one Claude/process, no fleet)
 
 ```python
-import scitex_todo as todo
-# Default scope from $SCITEX_TODO_SCOPE = "agent:proj-scitex-todo"
+import scitex_cards as todo
+# Default scope from $SCITEX_TODO_SCOPE = "agent:proj-scitex-cards"
 mine = todo.list_tasks(status="pending")           # only my pending work
 todo.update_task(task_id="my-task", status="in_progress")
 # ... work ...
@@ -330,7 +330,7 @@ touches the schema. Cross-agent claim/handoff is a single
 ### 5.4 Team (operator + multiple agents on multiple hosts)
 
 Each host has `~/.scitex/todo/` as a git checkout of the private state
-repo. `scitex-todo sync-store --apply` runs locally (manual or cron) to push
+repo. `scitex-cards sync-store --apply` runs locally (manual or cron) to push
 local edits and pull peers' edits. Conflict-resolve via per-task LWW on
 `_log_meta.completed_at` (Phase-2 body — see `sync-substrate.md`).
 
@@ -338,15 +338,15 @@ local edits and pull peers' edits. Conflict-resolve via per-task LWW on
 
 The `_django/` module is already shaped as a scitex-app. The hub PR
 (opened on the *scitex-hub* repo, not here) registers the module:
-URL prefix `/todo/`, app config `scitex_todo._django.apps.SciTeXTodoConfig`.
+URL prefix `/todo/`, app config `scitex_cards._django.apps.SciTeXTodoConfig`.
 Static files are bundled into the wheel. See `GITIGNORED/DESIGN/hub-embed.md`.
 
 ### 5.6 Orochi todo tab
 
-Orochi consumes scitex-todo rather than reimplementing tasks. Two
+Orochi consumes scitex-cards rather than reimplementing tasks. Two
 viable embed options, in increasing decoupling:
 
-1. **Iframe** the scitex-todo board served from a known host:port. Cheapest
+1. **Iframe** the scitex-cards board served from a known host:port. Cheapest
    to ship; cross-frame click handling is awkward.
 2. **Import** the `_django` module into the Orochi app the same way the
    scitex-hub embed works. Better integration; requires Orochi to be on
@@ -394,7 +394,7 @@ When `proj-foo` is migrated (new host, new container, fresh restart, or
 ownership handed to `proj-bar`), the new instance:
 
 1. Reads `$SCITEX_TODO_SCOPE` from its env (e.g. `agent:proj-foo`).
-2. Runs `scitex-todo list-tasks --assignee agent:proj-foo --status in_progress`.
+2. Runs `scitex-cards list-tasks --assignee agent:proj-foo --status in_progress`.
 3. Picks up exactly where the old instance left off, with the `note`
    field as the handoff context.
 
@@ -404,7 +404,7 @@ The work-state was never in the agent — it was in the store.
 ### 7.2 Operator memory
 
 Same mechanism, different scope. Operator writes
-`scitex-todo add forget-me-not "Tell Sarah about X" --scope private` and
+`scitex-cards add forget-me-not "Tell Sarah about X" --scope private` and
 the next time he opens the board, it's there. The store doubles as a
 durable inbox that survives laptop reboots, browser-tab closures, and
 context-switches between projects. Personal memos are git-backed and
@@ -437,7 +437,7 @@ new order. The board is the *one rope* every agent rows behind.
 
 3. **Private state-repo bootstrap.** The first time an agent comes up
    on a fresh host, `~/.scitex/todo/.git` doesn't exist yet. Phase-2
-   needs a `scitex-todo init-store --shared --from-remote <url>` mode that
+   needs a `scitex-cards init-store --shared --from-remote <url>` mode that
    `git clone`s the state repo. Currently the design assumes the dir is
    already a git repo.
 
@@ -461,7 +461,7 @@ new order. The board is the *one rope* every agent rows behind.
 - **2026-05-27** — Phase-0 architecture (9-req map) accepted by the lead;
   Phase-1 build started.
 - **2026-05-27** — PR #14 (Phase-1 MVP) opened.
-- **2026-06-01** — Operator overnight directive: scitex-todo as the
+- **2026-06-01** — Operator overnight directive: scitex-cards as the
   universal task-driven layer.
 - **2026-06-02** — This ADR drafted. Storage backend = GitHub
   (private state repo + `git pull/push` substrate). sac-listen = optional

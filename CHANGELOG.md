@@ -116,10 +116,10 @@ card write** down to **under 2% of it**.
 - **The board was telling every agent to look in an empty drawer.** The MCP server
   instructions — read by every agent at session start — hard-coded a dead example:
 
-      "Use list_tasks with a `scope` arg (e.g. 'agent:proj-scitex-todo')"
+      "Use list_tasks with a `scope` arg (e.g. 'agent:proj-scitex-cards')"
 
-  There is no `proj-scitex-todo`. Measured against the live store, that taught scope held
-  **2** cards while the real one (`agent:scitex-todo`) held **63**. So an agent that
+  There is no `proj-scitex-cards`. Measured against the live store, that taught scope held
+  **2** cards while the real one (`agent:scitex-cards`) held **63**. So an agent that
   *followed the shipped instructions* saw ~3% of its own work and reasonably concluded the
   board had nothing for it. Nothing errored; the query simply returned almost nothing.
   This is a mechanical explanation for the standing complaint that "the fleet ignores the
@@ -151,7 +151,7 @@ card write** down to **under 2% of it**.
   caller — and it then ran every 30 minutes reaching zero agents. Verified against the
   live daemon:
 
-      liveness sweep: ERR  scitex-todo    32 pending  wire=http  reason=transport-error
+      liveness sweep: ERR  scitex-cards    32 pending  wire=http  reason=transport-error
       liveness sweep: ERR  scitex-types    2 pending  wire=http  reason=no-turn-url-configured
       liveness sweep: ERR  scitex-writer   3 pending  wire=http  reason=no-turn-url-configured
       liveness sweep: # 0 pending-backlog push(es) sent
@@ -229,7 +229,7 @@ card write** down to **under 2% of it**.
   high-priority escalation (the existing escalation test caught exactly that on
   the first cut). Only the owner-facing enqueue is conditional; escalation and
   creator-escalation are untouched, and a regression test pins it.
-- **`scitex-todo update --help` crashed on click >= 8.2.** The custom
+- **`scitex-cards update --help` crashed on click >= 8.2.** The custom
   `--blocker` param type's `get_metavar()` predated the `ctx` keyword click now
   passes, so the help screen died with a `TypeError` and the update syntax was
   undiscoverable (found by neurovista in production while working around a
@@ -272,7 +272,7 @@ that each bit multiple agents in production, plus the board-UI review batch.
   outcome cancellation; the owner rescues what they still want), the
   `deferred_at` age clock (stamped once on entry, never reset by a re-defer)
   and the `last_triaged_at` re-draw cooldown.
-- `scitex-todo triage [--mine|--agent X] [--json]` — the read-only payload a
+- `scitex-cards triage [--mine|--agent X] [--json]` — the read-only payload a
   short-lived twin consumes under its parent's identity; mutation stays with
   the existing verbs.
 - The 24 h backlog nudge, `runnable`, and `next` now target `deferred`
@@ -298,7 +298,7 @@ that each bit multiple agents in production, plus the board-UI review batch.
 
 ## [0.7.50] - 2026-07-09 — feat: inbox reads/writes default to SQLite (retires the per-poll whole-store parse)
 
-Fleet load incident: every agent's `scitex-todo mcp start` digest-poll (every
+Fleet load incident: every agent's `scitex-cards mcp start` digest-poll (every
 5 s) `safe_load`ed the entire ~9 MB task store just to read ONE recipient's
 inbox — across ~21 agents the fleet's biggest CPU sink (host load ~27). This
 moves the inbox read/write path onto SQLite so a poll is an indexed
@@ -315,7 +315,7 @@ moves the inbox read/write path onto SQLite so a poll is an indexed
   into the DB (guarded by a `migrated_from_yaml` meta flag), so no unseen
   notification is lost regardless of restart timing; steady state never reads
   YAML. Idempotent + reversible (the YAML section is never deleted).
-- CLI: `scitex-todo inbox migrate-to-sqlite` / `inbox info`.
+- CLI: `scitex-cards inbox migrate-to-sqlite` / `inbox info`.
 
 Phase 1 of the YAML→SQLite migration (inboxes only; cards/users/ledger stay on
 YAML for now — Phase 2 covers cards). Complements the S0 shadow store (#349).
@@ -392,7 +392,7 @@ Incident: incident-todo-wake-watcher-interval2-spiral-20260708.
 
 ## [0.7.47] - 2026-07-08 — fix: single-instance flock on `print-stats --notify` (third store-size daemon)
 
-The managed notify cron runs `scitex-todo print-stats --by agent --notify
+The managed notify cron runs `scitex-cards print-stats --by agent --notify
 --nudge-quiet` every 10 minutes. `print-stats --by agent` re-derives per-agent
 rollups from all ~930 cards in the ~9 MB `tasks.yaml`; when a single run exceeds
 the 10-min period it OVERLAPS the next cron tick, so runs STACK (observed: 2
@@ -419,7 +419,7 @@ stacking guard.
 
 ## [0.7.46] - 2026-07-08 — fix: mtime-gate the channel inbox drain (read-side twin of #344)
 
-Each agent's `scitex-todo mcp start` runs a channel poll loop that called
+Each agent's `scitex-cards mcp start` runs a channel poll loop that called
 `drain_once` every 5s **unconditionally**. Every drain calls `recipient_keys` +
 `_inbox.poll_inbox`, both of which `safe_load` the ENTIRE shared store — the
 inbox lives in an `inboxes:` section of the SAME ~9 MB / ~930-card `tasks.yaml`
@@ -459,7 +459,7 @@ to land the change under budget.
 
 ## [0.7.45] - 2026-07-08 — fix: prevent the wake-watcher digest death-spiral
 
-`scitex-todo.wake-watcher` (`watch --push --interval 2`, systemd
+`scitex-cards.wake-watcher` (`watch --push --interval 2`, systemd
 `Restart=on-failure`) death-spiraled on ywata-note-win 2026-07-08: the 2s
 interval re-parsed the ~9 MB / ~930-card store faster than a tick finished on a
 slow host, so the watch daemon ran at sustained high CPU while the separate
@@ -498,7 +498,7 @@ ended mid-string). That full construct built ~159k Python objects on the live
 9.2 MB / ~930-card store just to prove the bytes were parseable, and every
 write paid it; bursts convoyed on the flock.
 
-- New `src/scitex_todo/_store_verify.py` `_verify_dumped_tmp(tmp_path, dumped)`
+- New `src/scitex_cards/_store_verify.py` `_verify_dumped_tmp(tmp_path, dumped)`
   keeps the SAME guarantee (the promoted bytes must be FULLY reparseable) but
   drops the object construction. It does two cheap checks:
   1. **Byte-length check** — `os.stat(tmp).st_size == len(dumped.encode())`,
@@ -520,7 +520,7 @@ write paid it; bursts convoyed on the flock.
 - Measured on a synthetic realistic-shape store: the event-scan verify is
   ~2.4x faster than the full `safe_load` construct-reparse it replaces
   (e.g. ~3.1 s → ~1.3 s on a ~900-card 1 MB doc; the saving scales with store
-  size). New `tests/scitex_todo/test__store_verify.py` (10 tests) pins the
+  size). New `tests/scitex_cards/test__store_verify.py` (10 tests) pins the
   corruption-safety non-negotiables; `test__store_doc_preservation.py` +
   `test__model.py` regression-green.
 
@@ -539,7 +539,7 @@ live: one agent had 53 unseen `reminder` digests spanning 3 days).
 - The reminder engine wires `supersede=True` ONLY at the cumulative owner-digest
   enqueue (`EVENT_DIGEST` / `(digest)`). Per-card events (escalation,
   creator_escalation) stay distinct and do NOT supersede.
-- New maintenance verb `scitex-todo notifyd collapse-digests [--json]`
+- New maintenance verb `scitex-cards notifyd collapse-digests [--json]`
   (`_inbox_maint.collapse_digests`): one safe locked pass that collapses each
   recipient's unseen digest backlog to the single newest digest (older ones
   marked seen, nothing deleted) — clears the already-accumulated fleet backlog.
@@ -550,7 +550,7 @@ live: one agent had 53 unseen `reminder` digests spanning 3 days).
 ## [0.7.42] - 2026-07-08 — fix: tolerate a STALE deprecated env var when the current one is valid
 
 Fleet agents still carry a stale ambient `SCITEX_TODO_AGENT` (the pre-0.7.30
-name) baked in by an old sac injector. Until now scitex-todo fail-louded on the
+name) baked in by an old sac injector. Until now scitex-cards fail-louded on the
 mere PRESENCE of that old var — even when the current `SCITEX_TODO_AGENT_ID` was
 set and correct. In the unified MCP server that fail-loud was swallowed by
 `resolve_agent_id_optional` → returned `None` → the digest poll loop never
@@ -580,7 +580,7 @@ board, and agents reply through an MCP verb.
 
 ### Added
 
-- **`scitex_todo._threads`** — pure DM thread store. Canonical record
+- **`scitex_cards._threads`** — pure DM thread store. Canonical record
   `{id, thread, from, to, body, ts, read}`; thread id `dm:<a>::<b>` with the
   peers sorted lexicographically (one thread per pair, both directions;
   reserved operator name `operator`). Threads live in a SIDECAR
@@ -601,7 +601,7 @@ board, and agents reply through an MCP verb.
   `resolve_agent_id_optional` with an actionable error when unset; store IO
   wrapped in `anyio.to_thread.run_sync`).
 - **Board `/chat` view** — mobile-first page (new `chat.html` template +
-  `static/scitex_todo/chat/chat.js`): collapsible agent list (users registry
+  `static/scitex_cards/chat/chat.js`): collapsible agent list (users registry
   ∪ existing thread peers, unread badges), chronological bubble thread
   (operator right-aligned), compose box; polls `/dm/thread/<peer>` every 5s
   and `/dm/threads` every 10s. JSON endpoints `GET /dm/threads`,
@@ -632,13 +632,13 @@ scitex-dev `general/03_interface/02_cli`).
   Data & Sync / Service / Diagnostics / Introspection / Shell; the `Other`
   catch-all is empty), with spec-built help (`CliHelp`) on the root group
   and on `list-tasks` / `add` / `done` / `close` plus the renamed leaves.
-- The `scitex-todo.ci-watch` JobSpec keeps its registry NAME (systemd/dedupe
+- The `scitex-cards.ci-watch` JobSpec keeps its registry NAME (systemd/dedupe
   identity) but its command now invokes the canonical
-  `scitex-todo watch-ci --once`.
+  `scitex-cards watch-ci --once`.
 
 ### Added
 
-- `src/scitex_todo/_cli/_compat.py` — guarded imports of scitex-dev's
+- `src/scitex_cards/_cli/_compat.py` — guarded imports of scitex-dev's
   `deprecated_alias` + `help_spec` helpers (present on scitex-dev develop,
   absent from the released 0.21.0; scitex-python#352 precedent) with
   doctrine-contract fallbacks so warn+forward behavior is identical on
@@ -653,16 +653,16 @@ scitex-dev `general/03_interface/02_cli`).
 
 ### Changed
 
-- **Default `meta.source` label: `scitex-todo-system` → `stodo`.** Per the
+- **Default `meta.source` label: `scitex-cards-system` → `stodo`.** Per the
   fleet naming agreement (operator 2026-07-07, card
   fleet-channel-source-sender-identity-naming-20260707), channel-notification
   source labels are standardized to SHORT sender-identity names — sac / cct /
   stodo (`daemon` is reserved for daemon-origin messages). This supersedes the
-  short-lived `scitex-todo-system` default introduced in 0.7.32. Label-only
+  short-lived `scitex-cards-system` default introduced in 0.7.32. Label-only
   change: `meta.source` is a free attribution label decoupled from routing
   (replies route via the MCP tool + ids).
 - **Deployed config note:** `.mcp.json` entries that pin the old values
-  (`--name scitex-todo` / `--name scitex-todo-system`, or
+  (`--name scitex-cards` / `--name scitex-cards-system`, or
   `SCITEX_TODO_CHANNEL_SOURCE` set to either) should update to `stodo` or
   simply drop the override and inherit the new default.
 
@@ -671,7 +671,7 @@ scitex-dev `general/03_interface/02_cli`).
 Hardens the `notifications/claude/channel` push surface against the crash class
 behind the 2026-07-02 incident, where 180 solver apptainer containers died on
 boot with `JSON message exceeded maximum buffer size of 1048576 bytes` — an
-oversized scitex-todo channel push overflowed the Claude Agent SDK's 1 MB stdio
+oversized scitex-cards channel push overflowed the Claude Agent SDK's 1 MB stdio
 reader.
 
 ### Fixed
@@ -690,26 +690,26 @@ reader.
 
 ### Added
 
-- New pure, unit-testable `scitex_todo._channel_guard` module holding the size
+- New pure, unit-testable `scitex_cards._channel_guard` module holding the size
   constants and `_bounded_content` / `_bounded_meta_value` helpers (keeps
   `_mcp_channel.py` within the module size budget).
 
 ### Docs
 
 - Documented the headless lever: with **no** `SCITEX_TODO_AGENT_ID` the unified
-  `scitex-todo mcp start` runs tools-only (no poll loop, zero pushes) — the
+  `scitex-cards mcp start` runs tools-only (no poll loop, zero pushes) — the
   intended mode for solver / headless capsules that must not receive pushes.
 
 ## [0.7.33] - 2026-07-05 — feat: package-level `health` doctor (MCP tool + CLI verb)
 
 A broad store / identity / delivery health check, exposed as BOTH the `health`
-MCP tool and the `scitex-todo health` CLI verb. Motivated by the 0.7.32
+MCP tool and the `scitex-cards health` CLI verb. Motivated by the 0.7.32
 handshake incident: the `channel_drain` check turns that class of "MCP not
 connected" failure into a one-command diagnosis.
 
 ### Added
 
-- **`scitex_todo._health.health(...)`** — one pure, never-raising function that
+- **`scitex_cards._health.health(...)`** — one pure, never-raising function that
   returns the cross-package standard report shape
   `{"package", "ok", "checks":[{name,ok,detail,hint}], "summary"}` (shared
   verbatim with the sac/cct health tools). Every FAILING check carries an
@@ -721,24 +721,24 @@ connected" failure into a one-command diagnosis.
   blank/`unknown`/an unexpanded `$VAR`), `notifyd_alive` (real pidfile probe of
   the delivery daemon), `channel_drain` (this agent's unseen vs seen inbox
   backlog — flags a large unseen pile that was never drained), and
-  `channel_capable` (`scitex_todo._mcp_channel` imports and exposes
+  `channel_capable` (`scitex_cards._mcp_channel` imports and exposes
   `_serve`/`_run`).
 - **`health` MCP tool** — registered on the shared FastMCP instance
-  (`scitex_todo._mcp_skills`); returns the JSON report. Distinct from the
+  (`scitex_cards._mcp_skills`); returns the JSON report. Distinct from the
   narrow `mcp doctor` (which only checks the fastmcp install).
-- **`scitex-todo health [--json]` CLI verb** — human-readable report by default,
+- **`scitex-cards health [--json]` CLI verb** — human-readable report by default,
   raw JSON with `--json`; exits `0` when all checks pass, else `1` (usable as a
   shell/CI gate).
 
 ## [0.7.32] - 2026-07-04 — fix: channel poll loop no longer starves the MCP handshake
 
-Hotfix for a fleet-wide "scitex-todo MCP not connected" regression introduced
+Hotfix for a fleet-wide "scitex-cards MCP not connected" regression introduced
 by the unified server (0.7.31).
 
 ### Fixed
 
 - **Unified `mcp start` failed the MCP `initialize` handshake once an agent had
-  an identity set** — every fleet agent showed the `scitex-todo` server as "not
+  an identity set** — every fleet agent showed the `scitex-cards` server as "not
   connected". Root cause: the inbox poll loop's first drain ran SYNCHRONOUS
   blocking store IO (`recipient_keys` + `_inbox.poll_inbox`, which lock and
   parse the whole YAML store) **inline on the asyncio event loop**. That starved
@@ -752,26 +752,26 @@ by the unified server (0.7.31).
 
 ### Changed
 
-- **Channel render name is now `scitex-todo-system`** (was `scitex-todo`). The
+- **Channel render name is now `scitex-cards-system`** (was `scitex-cards`). The
   system-pushed notification source (`meta.source`, env
   `SCITEX_TODO_CHANNEL_SOURCE`, default) is deliberately distinct from the
-  `scitex-todo` agent id so the operator's TUI does not confuse a system digest
-  with a message authored by the scitex-todo agent. Deployed `.mcp.json` entries
-  that pin `SCITEX_TODO_CHANNEL_SOURCE=scitex-todo` must update to
-  `scitex-todo-system` (or drop the key to take the new default).
+  `scitex-cards` agent id so the operator's TUI does not confuse a system digest
+  with a message authored by the scitex-cards agent. Deployed `.mcp.json` entries
+  that pin `SCITEX_TODO_CHANNEL_SOURCE=scitex-cards` must update to
+  `scitex-cards-system` (or drop the key to take the new default).
 
-## [0.7.31] - 2026-07-03 — one unified scitex-todo MCP server (tools + digest push)
+## [0.7.31] - 2026-07-03 — one unified scitex-cards MCP server (tools + digest push)
 
 The turn-on release for fleet-wide notifications. Together with the 0.7.30
 env-var standardization, this is what the coordinated fleet flip deploys.
 
 ### Changed
 
-- **One MCP server instead of two**: `scitex-todo mcp start` now runs a SINGLE
+- **One MCP server instead of two**: `scitex-cards mcp start` now runs a SINGLE
   server that both serves the card tools AND pushes this agent's digest
   (`notifications/claude/channel`). Previously the tools server (`mcp start`)
   and the digest-push server (`mcp channel`) were separate, needing two
-  `.mcp.json` entries. Now one `scitex-todo` entry (`args: ["mcp", "start"]`)
+  `.mcp.json` entries. Now one `scitex-cards` entry (`args: ["mcp", "start"]`)
   does both — matching the one-server-per-project convention.
   - It reuses FastMCP's underlying low-level server (which has every registered
     tool) and declares the `claude/channel` capability alongside the tools
@@ -780,7 +780,7 @@ env-var standardization, this is what the coordinated fleet flip deploys.
     pushed; without it, the server serves tools only (a loud warning, never a
     hard failure on the tools surface).
   - `--http` transport remains tools-only (HTTP cannot carry the push).
-  - The standalone `scitex-todo mcp channel` verb is retained for
+  - The standalone `scitex-cards mcp channel` verb is retained for
     back-compatibility.
 
 ## [0.7.30] - 2026-07-02 — env-var standardization for fleet-wide notification delivery
@@ -798,8 +798,8 @@ layer: the env-injection + `.mcp.json` wiring flip in lockstep with this release
   filter.
 - **Env var rename**: the task-store override `SCITEX_TODO_TASKS` is renamed to
   `SCITEX_TODO_TASKS_YAML_SHARED` (encodes the shared-yaml store).
-- **Channel server is fully env-configurable**: `scitex-todo mcp channel` now
-  reads `SCITEX_TODO_CHANNEL_SOURCE` (meta.source, default `scitex-todo`) and
+- **Channel server is fully env-configurable**: `scitex-cards mcp channel` now
+  reads `SCITEX_TODO_CHANNEL_SOURCE` (meta.source, default `scitex-cards`) and
   `SCITEX_TODO_CHANNEL_INTERVAL` (poll seconds, default `5`), with CLI flags as
   optional overrides. The `.mcp.json` entry needs zero config args — every
   parameter is a `SCITEX_TODO_`-prefixed env var.
@@ -818,7 +818,7 @@ broken (see Fixed below), so the accumulated work below shipped only now.
 
 ### Added
 
-- **Standalone user-delivery rail**: scitex-todo's own notification path —
+- **Standalone user-delivery rail**: scitex-cards's own notification path —
   channels + a delivery ledger + an always-on `notifyd` daemon (with a systemd
   unit) + a standalone MCP channel-notification server. Users-first, with no
   dependency on scitex-agent-container.
@@ -906,11 +906,11 @@ broken (see Fixed below), so the accumulated work below shipped only now.
   `MAX_ROWS`) now fans co-located markers into stacked sub-rows and grows the
   lane to fit, so every task is visible. x/time math and the time-axis are
   unchanged.
-- **`scitex-todo help-wait` / `help-clear`** CLI verbs + `help_wait` /
+- **`scitex-cards help-wait` / `help-clear`** CLI verbs + `help_wait` /
   `help_clear` MCP tools (PR #242). First-class "an agent is waiting on the
   operator" card semantics (`help-<agent>-waiting`, `status=blocked`,
   `blocker=operator-decision`), idempotent atomic upsert / resolve. Lifts the
-  card shape out of the dotfiles Notification hook so scitex-todo owns the
+  card shape out of the dotfiles Notification hook so scitex-cards owns the
   single source of truth; the hook becomes a thin trigger that calls the verb.
 
 ### Changed
@@ -921,11 +921,11 @@ broken (see Fixed below), so the accumulated work below shipped only now.
   fleet dependency can never red-gate the standalone package's CI. Fail-loud
   adapter-error tests still run (they need no working sac).
 
-## [0.7.25] - 2026-06-15 — `scitex-todo ci-watch` (record-only CI poller)
+## [0.7.25] - 2026-06-15 — `scitex-cards ci-watch` (record-only CI poller)
 
 ### Added
 
-- **`scitex-todo ci-watch`** + **`scitex-todo.ci-watch` cron JobSpec**
+- **`scitex-cards ci-watch`** + **`scitex-cards.ci-watch` cron JobSpec**
   (PR #206, lead a2a `b4c10158` / operator decoupled-pollers override
   via dev a2a `96afacc7`). Record-only CI poller — server-side
   `*/5 * * * *` cron that sweeps every repo in
@@ -945,25 +945,25 @@ broken (see Fixed below), so the accumulated work below shipped only now.
 
   CLI:
 
-      scitex-todo ci-watch --once                # cron mode (one sweep)
-      scitex-todo ci-watch --interval 600        # loop with custom cadence
-      scitex-todo ci-watch --once --dry-run      # plan + summary, no state write
-      SCITEX_TODO_FLEET_CI_REPOS=owner/a scitex-todo ci-watch --once
+      scitex-cards ci-watch --once                # cron mode (one sweep)
+      scitex-cards ci-watch --interval 600        # loop with custom cadence
+      scitex-cards ci-watch --once --dry-run      # plan + summary, no state write
+      SCITEX_TODO_FLEET_CI_REPOS=owner/a scitex-cards ci-watch --once
 
   Wired into the ecosystem federation via `_jobs_provider.py`; after
-  `scitex-dev ecosystem up`, the `scitex-todo.ci-watch.timer`
+  `scitex-dev ecosystem up`, the `scitex-cards.ci-watch.timer`
   systemd-user unit fires every 5 min. 18 mock-free tests
   (classifier purity, state load/save round-trip + atomic-write, CLI
   dry-run, JobSpec registration).
 
-## [0.7.24] - 2026-06-14 — `scitex-todo mcp install-fleet` (P3a one-liner)
+## [0.7.24] - 2026-06-14 — `scitex-cards mcp install-fleet` (P3a one-liner)
 
 ### Added
 
-- **`scitex-todo mcp install-fleet --agents-dir <DIR>`** (PR #204,
+- **`scitex-cards mcp install-fleet --agents-dir <DIR>`** (PR #204,
   lead a2a `1ab212f3`). One-shot fleet sweep — walks every
   ``<agents-dir>/*/to_home/.mcp.json`` (the agent-container spec
-  convention) and idempotently applies the scitex-todo MCP entry to
+  convention) and idempotently applies the scitex-cards MCP entry to
   each. Sibling MCP server entries preserved; per-agent corrupt JSON
   reported + sweep continues; final summary line carries
   ``agents=N updated=K noop=M errors=E``. Closes the missing-MCP gap
@@ -973,7 +973,7 @@ broken (see Fixed below), so the accumulated work below shipped only now.
 
   Sweep one-liner for agent-container:
 
-      scitex-todo mcp install-fleet \\
+      scitex-cards mcp install-fleet \\
           --agents-dir ~/.dotfiles/src/.scitex/agent-container/agents \\
           --env-tasks-path /home/agent/.scitex/todo/tasks.yaml -y
 
@@ -994,8 +994,8 @@ broken (see Fixed below), so the accumulated work below shipped only now.
   - New "Group by time" checkbox (`#stx-toggle-group-by-time`) folds
     each project column's cards under collapsible bucket headers:
     TODAY / THIS WEEK / THIS MONTH / OLDER. State persists in
-    localStorage (`scitex-todo:group-by-time`,
-    `scitex-todo:time-buckets-collapsed`).
+    localStorage (`scitex-cards:group-by-time`,
+    `scitex-cards:time-buckets-collapsed`).
   - New `board_v3/08-time-grouping.css` with token-only styling
     (bucket headers, chevrons, collapsed state, body left-rail).
   - 43 mock-free test cases pin the bucket classifier + sort-key
@@ -1024,7 +1024,7 @@ by `test__no_multiline_django_short_comments.py` from PR #199).
   ``board_v3.html:200-208`` (introduced in PR #173) rendered as
   visible text on the board UI. Converted to
   ``{% comment %}…{% endcomment %}`` (multi-line safe). New
-  regression test (``tests/scitex_todo/_django/test__no_multiline_django_short_comments.py``)
+  regression test (``tests/scitex_cards/_django/test__no_multiline_django_short_comments.py``)
   walks every ``.html`` under ``_django/templates/`` and asserts
   every ``{#`` closes with ``#}`` on the same line — bug class
   pinned. Operator reported live; hotfix-released same hour.
@@ -1033,7 +1033,7 @@ by `test__no_multiline_django_short_comments.py` from PR #199).
 
 Two enhancements that close the **operator↔card↔owner+collaborators
 feedback ring** Phase 6 was missing. Cross-package coordination via
-the existing `scitex_todo.hooks` entry-point bus — no new poller, no
+the existing `scitex_cards.hooks` entry-point bus — no new poller, no
 inter-package import.
 
 ### Added
@@ -1063,7 +1063,7 @@ inter-package import.
   errors are caught + logged so external handler failure (SAC
   unreachable, missing entry-point) never breaks the producer's
   comment-save. 15 mock-free tests.
-  Surfaces emit: `/chat/<card_id>` POST, `scitex-todo comment` CLI,
+  Surfaces emit: `/chat/<card_id>` POST, `scitex-cards comment` CLI,
   MCP `comment_task` tool, Python API direct calls.
 
 ### Provenance
@@ -1185,21 +1185,21 @@ PR #189. Lead a2a `74db4f2d`. 3/6 TRACK-2 dashboard surfaces shipped
 
 Wave 2 of the fleet-dashboard mission. The hook-consumer contract
 is the operator-mandated "green static record pipe" — SAC's
-push-hook + dev's merge-Action will call scitex-todo's API to
+push-hook + dev's merge-Action will call scitex-cards's API to
 auto-record progress/DONE on the board.
 
 ### Added — Hook-consumer (loose-coupling contract)
 
-- **`scitex_todo.hooks` entry-point group** (PR #187, lead a2a
+- **`scitex_cards.hooks` entry-point group** (PR #187, lead a2a
   `6fff33d6` + `fbffb879`, operator-mandated). External producers
   register a plugin callable under this group:
   `def on_event(event: dict) -> None`.
 - **Three converging wire surfaces** (producers pick one):
   - **HTTP**: `POST /hooks/push`, `POST /hooks/done`. Idempotent.
     405 on GET, 400 on bad shape / kind-mismatch.
-  - **CLI**: `scitex-todo hook push --payload <FILE|->` /
-    `scitex-todo hook done --payload <FILE|->`.
-  - **Python**: `from scitex_todo._hooks import dispatch_event`.
+  - **CLI**: `scitex-cards hook push --payload <FILE|->` /
+    `scitex-cards hook done --payload <FILE|->`.
+  - **Python**: `from scitex_cards._hooks import dispatch_event`.
 - **Canonical event payloads**:
   - push: `{kind, repo, branch, commit_sha, author?, message?,
     card_ids?}`
@@ -1246,14 +1246,14 @@ release closes Wave 1 of the fleet-dashboard mission.
 
 ### Added — TRACK 1 (parallelism-engine backbone)
 
-- **T1.2 — `runnable_tasks()` API + `scitex-todo runnable` CLI**
+- **T1.2 — `runnable_tasks()` API + `scitex-cards runnable` CLI**
   (PR #181). Batch runnable view (sister to `next_task`'s single
   pick) respecting `depends_on` + reverse-`blocks` closure +
   optional agent + group filter. Diagnostic counts
   (`candidate_count`, `blocked_by_deps_count`) let the dispatcher
   distinguish "queue empty" from "queue blocked." 22 mock-free
   tests.
-- **T1.3 — `blocked_tasks()` inverse view + `scitex-todo blocked`
+- **T1.3 — `blocked_tasks()` inverse view + `scitex-cards blocked`
   CLI** (PR #182). For every NOT-runnable task, name WHY
   (`explicit-blocker` / `manual-block` / `depends-on` /
   `reverse-blocks`) + the chain of upstream ids. `by_reason`
@@ -1279,7 +1279,7 @@ dashboard) continues in parallel — Phase 2 host geometry queued.
 
 ## [0.7.15] - 2026-06-14 — Fleet-dashboard Phase 1 (CI pills) + TRACK-1 `group` field
 
-Operator vision (lead a2a `74db4f2d` + `10afa799`): scitex-todo
+Operator vision (lead a2a `74db4f2d` + `10afa799`): scitex-cards
 becomes the ONE fleet dashboard + dependency-aware ticket backbone.
 This is wave 1 of two parallel tracks.
 
@@ -1311,7 +1311,7 @@ This is wave 1 of two parallel tracks.
   `_groups.py:Group` (project-cluster viewer aggregation). 15
   mock-free tests pin the dataclass shape, validator, Python API,
   and CLI wiring. Follow-up chain: T1.2 (`runnable()` API + CLI),
-  T1.3 (`scitex-todo blocked` introspection), T1.4 (`/runnable` +
+  T1.3 (`scitex-cards blocked` introspection), T1.4 (`/runnable` +
   `/blocked-batch` endpoints).
 
 ### Architectural principles enforced
@@ -1319,9 +1319,9 @@ This is wave 1 of two parallel tracks.
 - **fail-loud / no-silent-fallback** — adapters RAISE on missing
   data; no stubs.
 - **registry-sourced** — read from authoritative GitHub via `gh`;
-  scitex-todo doesn't duplicate state.
+  scitex-cards doesn't duplicate state.
 - **NO hardcoded proper nouns** — watched-repo list is fully
-  config-driven; no `["scitex-todo","scitex-dev",...]` literals in
+  config-driven; no `["scitex-cards","scitex-dev",...]` literals in
   source.
 
 ### Provenance
@@ -1333,25 +1333,25 @@ PR #178 + #179. Lead a2a `74db4f2d` + `10afa799` (refined brief
 
 ### Changed (BREAKING)
 
-- **`scitex-todo board` (no verb) HARD-ERRORS** (PR #176, op TG 13316
+- **`scitex-cards board` (no verb) HARD-ERRORS** (PR #176, op TG 13316
   via lead a2a `c36b0d1e`). PR #139 (v0.7.6) had kept it as a
   deprecation-warn-and-forward to `board start`, but that path HID
   the noun-verb violation from audit tools. Bare invocation now exits
   2 + emits a redirect message naming the canonical replacements:
 
   ```
-  ERROR: `scitex-todo board` (no verb) is no longer supported.
+  ERROR: `scitex-cards board` (no verb) is no longer supported.
   Operator directive TG 13316 — noun-verb CLI convention. Use:
-    scitex-todo board start [--port N] [--no-browser]
-    scitex-todo board stop
-    scitex-todo board restart
-    scitex-todo board status
+    scitex-cards board start [--port N] [--no-browser]
+    scitex-cards board stop
+    scitex-cards board restart
+    scitex-cards board status
   ```
 
   In-tree call site migrated: `_jobs_provider.py`'s
-  `scitex-todo.dashboard` JobSpec command now reads
-  `scitex-todo board start --port 8051`. External call sites (the
-  host systemd unit `scitex-todo.dashboard.service` ExecStart + any
+  `scitex-cards.dashboard` JobSpec command now reads
+  `scitex-cards board start --port 8051`. External call sites (the
+  host systemd unit `scitex-cards.dashboard.service` ExecStart + any
   launcher script) need the same migration on the host side. Until
   they do, restarting them will exit 2 + log the redirect — which IS
   the operator's intended forcing function, but coordinate with the
@@ -1438,14 +1438,14 @@ card with `--pr-url` post-merge).
 ### Added
 
 - **Canonical skill mandate: NEVER hand-edit `tasks.yaml`** (PR #168,
-  lead a2a `02c8a4ae`). Folds into the bundled `scitex-todo` skill
+  lead a2a `02c8a4ae`). Folds into the bundled `scitex-cards` skill
   alongside the SSoT MANDATE and the multiplier-#3 PR-merge recording
   mandate. The 2026-06-13 corruption episode traced to a hand-edit
   bypassing the API. Rule: always use the CLI / MCP / Python API; the
   flock + atomic-rename + post-dump-validate path is the only safe
   write. Emergency-repair exception documented (already-broken file
   with backup-first / parse-verify-after / report-to-lead protocol).
-  Propagates to every agent's required_skills via `scitex-todo skills
+  Propagates to every agent's required_skills via `scitex-cards skills
   propagate` (PR #161 mechanism), so every fleet agent reads it on
   boot. 4 mock-free file-content tests pin the load-bearing phrases.
 
@@ -1486,7 +1486,7 @@ fix closes the dogfooded blocker that surfaced from dev's reconcile.
 
 Closes the **board-recording gap** surfaced by the 2026-06-13 reconciliation
 pass (199 PRs merged in 24h vs ~5 board completions — structural, not a
-hygiene problem). Adds a LOAD-BEARING mandate to the canonical scitex-todo
+hygiene problem). Adds a LOAD-BEARING mandate to the canonical scitex-cards
 skill that propagates to every fleet agent via `skills propagate` (#161).
 
 ### Added
@@ -1496,7 +1496,7 @@ skill that propagates to every fleet agent via `skills propagate` (#161).
   sister leaf `60_pr-merge-recording-mandate.md` with the CLI/API/MCP
   verb table, no-PR alternative, bulk catch-up verb (`sync-github
   --since <date> -y`), anti-pattern list, and provenance. Hard rule:
-  `scitex-todo done <card-id> --pr-url <merged-PR-URL>` IMMEDIATELY at
+  `scitex-cards done <card-id> --pr-url <merged-PR-URL>` IMMEDIATELY at
   PR-merge time; bare `done` without `--pr-url` is the recording-gap.
   8 mock-free file-content tests pin the load-bearing phrases so they
   can't drift silently. Lead a2a `0cdca03a` approved as fleet-adoption
@@ -1512,7 +1512,7 @@ pass.
 ## [0.7.8] - 2026-06-13 — Fleet-adoption multipliers (PreToolUse hook + skill propagation)
 
 Ships the two **fleet-adoption multipliers** so every other agent in the
-fleet uses scitex-todo correctly without per-agent buy-in. Lead a2a
+fleet uses scitex-cards correctly without per-agent buy-in. Lead a2a
 `1b5c3b4d` prioritized both over the UX cards because they move the
 operator's single-shared-store doctrine forward across the WHOLE fleet
 in one bump.
@@ -1520,16 +1520,16 @@ in one bump.
 ### Added
 
 - **Bundled PreToolUse hook** (PR #160): a bash script in the skill
-  bundle (`_skills/scitex-todo/hooks/pre-tool-use/`) that any agent
+  bundle (`_skills/scitex-cards/hooks/pre-tool-use/`) that any agent
   drops into `~/.claude/hooks/pre-tool-use/` and immediately gets
   the redirect. Intercepts Claude Code's built-in `TaskCreate`,
   `TaskUpdate`, `TaskList` — exits non-zero with a clear stderr
-  redirect to the equivalent scitex-todo CLI verb. ENFORCES the
+  redirect to the equivalent scitex-cards CLI verb. ENFORCES the
   doctrine, not just warns. Opt-out: `CC_ALLOW_CLAUDE_TASKLIST=1`
   for rare legit uses. 8 mock-free subprocess tests.
-- **Canonical skill manifest + `scitex-todo skills propagate`**
-  (PR #161): `_skills/manifest.yaml` lists which scitex-todo skill
-  IDs every fleet agent should require. `scitex-todo skills
+- **Canonical skill manifest + `scitex-cards skills propagate`**
+  (PR #161): `_skills/manifest.yaml` lists which scitex-cards skill
+  IDs every fleet agent should require. `scitex-cards skills
   propagate --agents-dir <DIR>` walks a tree of agent-container
   `spec.yaml` files and idempotently appends those IDs to each
   agent's `required_skills` list (ruamel.yaml round-trip preserves
@@ -1548,7 +1548,7 @@ WHOLE single-shared-store + agent-redirect story for agent-container.
 
 ## [0.7.7] - 2026-06-13 — P3a fleet host-store wire-up + board-reconciliation verbs
 
-Cuts the **P3a throughput unlock** (host scitex-todo store reachable from
+Cuts the **P3a throughput unlock** (host scitex-cards store reachable from
 every containerized agent, write-safety via flock-scoped RMW) into a
 pull-able PyPI release so agent-container can bake the wire into
 `to_home/.mcp.json`. agent-container a2a `e330b084` confirmed
@@ -1559,27 +1559,27 @@ board-reconciliation verb sweep landed over 2026-06-13.
 
 ### Added
 
-- **`scitex-todo mcp install [--apply] --env-tasks-path <abs/path>`**
+- **`scitex-cards mcp install [--apply] --env-tasks-path <abs/path>`**
   (PR #158) — when set, pins `SCITEX_TODO_TASKS` in the generated
   `.mcp.json` entry's `env` block. Belt-and-suspenders for the
   bind-mount-based host-store resolution; makes the wire-up
   self-documenting in the generated config. Operator P3a, lead a2a
   `a579358e` + `d7789963`. agent-container's one-liner:
-  `scitex-todo mcp install --apply --to to_home/.mcp.json --env-tasks-path /home/agent/.scitex/todo/tasks.yaml -y`.
-- **`scitex-todo mcp install --apply`** (PR #155) — idempotent
+  `scitex-cards mcp install --apply --to to_home/.mcp.json --env-tasks-path /home/agent/.scitex/todo/tasks.yaml -y`.
+- **`scitex-cards mcp install --apply`** (PR #155) — idempotent
   `.mcp.json` merge; the foundation #158 builds on. P3a fleet
   enablement.
-- **`scitex-todo stale-list`** (PR #157) — terminal twin of the
+- **`scitex-cards stale-list`** (PR #157) — terminal twin of the
   board's `🧹 Stale` panel + `/stale` HTTP endpoint. Lets agents
   reconcile from the CLI without opening the board.
 - **`/stale` + `/archive` board endpoints + `🧹 Stale` layout +
   per-row Archive button** (PR #153 backend + #154 frontend) —
   recurring stale-review surface; 128 / ~218 candidate cards
   flagged for operator review at landing.
-- **`scitex-todo close <id> --reason ...`** (PR #151) — close-stale-
+- **`scitex-cards close <id> --reason ...`** (PR #151) — close-stale-
   with-reason verb (board-reconciliation gap fix); writes
   `status=deferred` + a `[CLOSED]` activity comment.
-- **`scitex-todo comment <id> <text>`** (PR #144) — CLI wrapping
+- **`scitex-cards comment <id> <text>`** (PR #144) — CLI wrapping
   `_store.comment_task` (the PR #64 replacement).
 - **Per-row multi-select + bulk status change on the board**
   (PR #150) — PR(h) Stage 1.
@@ -1615,13 +1615,13 @@ canonical path lock-in).
 ## [0.7.6] - 2026-06-13 — board lifecycle verbs (start/stop/restart/status + pidfile)
 
 Operator-direct TG12949/12950/12951 (via lead a2a `b5726672`).
-`scitex-todo board` was a bare NOUN that directly LAUNCHED — CLI
+`scitex-cards board` was a bare NOUN that directly LAUNCHED — CLI
 noun-verb violation, AND no clean way to restart after a card/source
 change (`port already in use` was the trap).
 
 ### Added
 
-- **`scitex-todo board <verb>` lifecycle CLI** (PR #139):
+- **`scitex-cards board <verb>` lifecycle CLI** (PR #139):
   - `board start [--port --tasks --no-browser] [--dry-run] [-y]` —
     foreground launch, writes `~/.scitex/todo/board.pid` (env-
     overridable via `SCITEX_TODO_BOARD_PIDFILE`).
@@ -1637,7 +1637,7 @@ change (`port already in use` was the trap).
 
 ### Changed
 
-- Bare `scitex-todo board` (no verb) stays back-compat: forwards to
+- Bare `scitex-cards board` (no verb) stays back-compat: forwards to
   `board start` with a stderr DEPRECATION line. Operator's muscle
   memory survives; the alias will be removed in a future minor bump.
 
@@ -1675,7 +1675,7 @@ Stage 0-1 chain:
 
 - `BoardState.lane_paths` exposes the successfully-consumed per-project
   lanes so the FE / tests / future indexer can see what was unioned.
-- Suite-wide test isolation: `tests/scitex_todo/conftest.py` autouse
+- Suite-wide test isolation: `tests/scitex_cards/conftest.py` autouse
   fixture pins `SCITEX_TODO_LANE_GLOBS=""` by default so existing
   fixture-pure tests don't pick up the test runner's host lanes.
 
@@ -1734,7 +1734,7 @@ The pragmatic stopgap here can then be reverted.
 
 PR #123 (`fix/push-timeout-env`), lead a2a `0b59485f` (root-fix
 directive: not just a bigger timeout but DISPATCHED-success
-semantics), proj-scitex-todo overnight mission.
+semantics), proj-scitex-cards overnight mission.
 
 ## [0.7.3] - 2026-06-12 — `_push.deliver` payload aliases `text` to `body` (SAC /v1/turn unblocked)
 
@@ -1749,7 +1749,7 @@ whole nudge chain still produced zero delivered turns.
 
 - **`_push.deliver` now sends BOTH `text` and `body`** in the payload.
   `text` satisfies SAC + the telegrammer; `body` stays for back-compat
-  with any pre-existing consumer keying off scitex-todo's historical
+  with any pre-existing consumer keying off scitex-cards's historical
   name.
 
 ### Tests
@@ -1766,7 +1766,7 @@ Real localhost `http.server` round-trips (no mocks, STX-NM / PA-306):
 ### Provenance
 
 PR #120 (`fix/push-text-alias`), lead a2a `8afe659e` (SPLIT directive
-from the decay PR so the delivery fix ships first), proj-scitex-todo
+from the decay PR so the delivery fix ships first), proj-scitex-cards
 overnight mission.
 
 ## [0.7.2] - 2026-06-12 — coerce naive ISO timestamps to UTC-aware (unblocks `--notify` cron)
@@ -1797,7 +1797,7 @@ BEFORE any POST fired, so no agent ever received a structural nudge.
 ### Provenance
 
 PR #118 (`fix/parse-iso-utc-coerce`), lead-ACK a2a `cfbade6b` /
-`f556b755`, proj-scitex-todo overnight mission.
+`f556b755`, proj-scitex-cards overnight mission.
 
 ## [0.7.1] - 2026-06-12 — 10-min structural-nudge cron + `--nudge-quiet` flag
 
@@ -1809,17 +1809,17 @@ manual lead intervention. The 10-min threshold is the operator's
 
 ### Added
 
-- **New `--nudge-quiet` flag on `scitex-todo print-stats`.** Per-agent
+- **New `--nudge-quiet` flag on `scitex-cards print-stats`.** Per-agent
   sweep: if any open `in_progress` task hasn't been touched in
   `SCITEX_TODO_NUDGE_QUIET_MIN` (default 10) minutes, push a
   quiet-nudge body via `_push.deliver(kind="quiet-nudge")` — the
   same self-contained HTTP push wire 0.7.0 introduced. Composes the
   full per-agent open list (RUNNABLE first, BLOCKED after) so the
   recipient sees the full picture, not just the stalled row.
-- **`scitex-todo.notify` JobSpec** in `_jobs_provider.provide_jobs`.
+- **`scitex-cards.notify` JobSpec** in `_jobs_provider.provide_jobs`.
   `kind="oneshot"` + `schedule="*:0/10"` → systemd runs it every 10
   minutes via the existing `scitex-dev ecosystem up` federation.
-  Command: `scitex-todo print-stats --by agent --notify --nudge-quiet`.
+  Command: `scitex-cards print-stats --by agent --notify --nudge-quiet`.
   Pairs with the v0.7.0 UI nudge button: the cron is the STRUCTURAL
   feedback path; the button is the manual override.
 
@@ -1832,20 +1832,20 @@ manual lead intervention. The 10-min threshold is the operator's
 
 Operator standing direction (lead a2a `f16b0d2a` + `9e710ab0` +
 `8e51b1e0` + `ffc6629c80e4462a8401fb7e4ebb7240`, 2026-06-12,
-operator TG12608 / TG12611 / TG12617): scitex-todo must NOT depend on
+operator TG12608 / TG12611 / TG12617): scitex-cards must NOT depend on
 the `sac` CLI for outbound notifications. The package owns its own
 push delivery, the contract is HTTP (not Python imports), and silent
 fallbacks are forbidden — failures must be loud-but-not-fatal so the
 operator can fix the config without breaking the running board.
 
-### Added — `src/scitex_todo/_push.py` (self-contained HTTP push wire)
+### Added — `src/scitex_cards/_push.py` (self-contained HTTP push wire)
 
 - `deliver(agent, body, *, kind=..., task_id=..., store_path=...)` —
   resolves the agent's turn URL from `SCITEX_TODO_AGENT_TURN_URLS`
   (JSON map, canonical) or `SCITEX_TODO_TURN_URL_<AGENT_SLUG>` (per-
   agent fallback, same shape as claude-code-telegrammer's
   `TURN_URL`). POSTs a JSON envelope (`agent` / `kind` / `body` /
-  `task_id` / `store_path` / `ts` / `source: scitex-todo`) and
+  `task_id` / `store_path` / `ts` / `source: scitex-cards`) and
   returns a structured result with `ok`, `wire`, `reason`,
   `status`. No `sac` dependency.
 - `SCITEX_TODO_PUSH_DRY_RUN=1` short-circuits to stdout; useful in
@@ -1879,7 +1879,7 @@ operator can fix the config without breaking the running board.
   the comment write. Relay outcome surfaces in the response so the
   UI can render a toast ("📨 relayed → <agent>" / failure marker).
 - Comment-relay body invites the agent to reply via
-  `scitex-todo comment <task-id>` (CLI) or `add_comment` / `comment_task`
+  `scitex-cards comment <task-id>` (CLI) or `add_comment` / `comment_task`
   (MCP) — both surfaces are already available in v0.5.x.
 
 ### Changed — `print-stats --notify` migrated to `_push.deliver`
@@ -1897,7 +1897,7 @@ operator can fix the config without breaking the running board.
 
 ### Tests
 
-- `tests/scitex_todo/test__push.py` — 12 tests against a localhost
+- `tests/scitex_cards/test__push.py` — 12 tests against a localhost
   `http.server` capture (no mocks, STX-NM / PA-306). Covers env
   resolution (JSON map + per-agent fallback + malformed JSON +
   missing), HTTP 200 / 4xx / transport-error, dry-run, and
@@ -1918,9 +1918,9 @@ completion rate, push the per-agent numbers hourly so receivers
 self-correct, hard-throttle add-task at 2× the agent's WIP limit, and
 absorb GitHub merges back into the canonical board automatically.
 
-### Added — `scitex-todo print-stats`
+### Added — `scitex-cards print-stats`
 
-- New CLI: `scitex-todo stats [--by agent|project|host] [--since
+- New CLI: `scitex-cards stats [--by agent|project|host] [--since
   YYYY-MM-DD] [--format text|json] [--notify]`.
 - Per-group rows: `name / open / stale / created / completed / delta
   / ratio / velocity_per_day`. Source = canonical `tasks.yaml`. The
@@ -1934,9 +1934,9 @@ absorb GitHub merges back into the canonical board automatically.
   capped at 10 + `+ N more`, then a RECENT DONE section. `⚠` marks
   stale in_progress so receivers see neglected work at a glance.
 
-### Added — `scitex-todo sync-github`
+### Added — `scitex-cards sync-github`
 
-- New CLI: `scitex-todo sync-github [--since YYYY-MM-DD] [--dry-run]`.
+- New CLI: `scitex-cards sync-github [--since YYYY-MM-DD] [--dry-run]`.
 - Permanent version of the lead's 2026-06-12 one-time GitHub→board
   sync. Pulls `ywatanabe1989/*` merged PRs in the window, matches by
   `pr_url` (and creates new `status=done` records for unmatched PRs),
@@ -1961,14 +1961,14 @@ absorb GitHub merges back into the canonical board automatically.
 
 ### Added — `_throughput.py` shared aggregator
 
-- New module `src/scitex_todo/_throughput.py` — the single source of
+- New module `src/scitex_cards/_throughput.py` — the single source of
   truth for "open" / "stale" / "completed" / "RUNNABLE" / "BLOCKED"
   semantics across the three new surfaces (stats CLI, WIP gate,
   notify body). The dependency classifier (`classify()`) is
   operator-confirmed defensive: an `depends_on` reference to a task
   id that doesn't exist returns `BLOCKED(→ unknown:<id>)` rather
   than silently treating it as RUNNABLE (lead-confirmed `130cc5ac`).
-- 26 unit tests in `tests/scitex_todo/test__throughput.py` covering
+- 26 unit tests in `tests/scitex_cards/test__throughput.py` covering
   `aggregate` (groupings, status semantics, stale flag, unassigned
   rendering), `classify` (RUNNABLE / BLOCKED / unknown-dep
   defensive / status-blocked precedence), the WIP thresholds
@@ -2107,7 +2107,7 @@ Table) sits in the filterbar; TIME (Recent) is a SORT mode in the
 existing Sort dropdown, applies across all layouts.
 
 - **LAYOUT switcher** — three segmented buttons in the filterbar.
-  Persisted in `localStorage["scitex-todo:layout"]`.
+  Persisted in `localStorage["scitex-cards:layout"]`.
   - `📋 Column` — the existing kanban (default).
   - `📑 Table` — flat rows view, sortable, click a row to open the
     detail drawer. Status / Title / Project / Blocker / Priority /
@@ -2119,7 +2119,7 @@ existing Sort dropdown, applies across all layouts.
   the existing `#f-sort` dropdown. Cards sort by `last_activity →
   created_at` desc; cards with activity in the last 24 h get a gold
   `NEW` badge in `.card-top`. The badge renders across every layout
-  when sort = recent. Persisted in `localStorage["scitex-todo:sort"]`.
+  when sort = recent. Persisted in `localStorage["scitex-cards:sort"]`.
 - **🆕 N new in 24 h pill** — always-visible filterbar indicator
   showing how many of the currently-visible cards moved in the last
   day. Click to set Sort = Recent. Hidden when zero.
@@ -2146,9 +2146,9 @@ Operator-reported regression after the 0.5.3 release:
   Django's `{# … #}` is single-line only; multi-line blocks render their
   body as page text. Already pinned by
   `test_standalone_template_does_not_leak_django_comment` in
-  `tests/scitex_todo/_django/test_views.py`.
+  `tests/scitex_cards/_django/test_views.py`.
 - **Bundle/template food (root cause)** (PR #105). The vite config wrote
-  into `../static/scitex_todo` with `emptyOutDir: true`, which wiped the
+  into `../static/scitex_cards` with `emptyOutDir: true`, which wiped the
   SIBLINGS of `assets/` on every rebuild — `favicon.svg`,
   `board_v3/*.css`, and `board_v3/searchQuery.js`/`searchSuggest.js` are
   all tracked-in-git static assets consumed by the live `board_v3.html`
@@ -2203,11 +2203,11 @@ TG 12028 / 12038 / 12081 wave).
 
 ### Added — Self-consuming board loop (operator TG 12038)
 
-- **`scitex-todo next` CLI verb** (PR #95). Canonical "what to pick
+- **`scitex-cards next` CLI verb** (PR #95). Canonical "what to pick
   up next" predicate. `--mine` reads `SCITEX_TODO_AGENT`;
   `--auto-claim` atomic-flips to `in_progress` + stamps a starting
   comment in one write.
-- **`scitex-todo watch --push` CLI verb** (PR #95). Polls tasks.yaml,
+- **`scitex-cards watch --push` CLI verb** (PR #95). Polls tasks.yaml,
   diffs, POSTs `/v1/turn` to the owning agent's a2a port on
   new / commented / status-changed tasks. Watcher declared as a
   second `kind=service` JobSpec.
@@ -2219,15 +2219,15 @@ TG 12028 / 12038 / 12081 wave).
 - **P1 + P7 regressions restored** (PR #96). The P10/P11 squash wave
   silently dropped P1 #86 + P7 #87 from develop; PR #96 restores both
   and pins **24 substring signatures** in
-  `tests/scitex_todo/test__board_v3_signatures.py` so future squash
+  `tests/scitex_cards/test__board_v3_signatures.py` so future squash
   drops fail CI instead.
 
 ### Notes for operators
 
-After upgrading: `systemctl --user restart scitex-todo.dashboard`.
-The new `scitex-todo.wake-watcher` unit needs
-`systemctl --user reset-failed scitex-todo.wake-watcher` followed by
-`systemctl --user enable --now scitex-todo.wake-watcher`.
+After upgrading: `systemctl --user restart scitex-cards.dashboard`.
+The new `scitex-cards.wake-watcher` unit needs
+`systemctl --user reset-failed scitex-cards.wake-watcher` followed by
+`systemctl --user enable --now scitex-cards.wake-watcher`.
 
 ## [0.4.2] - 2026-06-08 — Crash-safe store + version label + Uncategorized column
 
@@ -2250,7 +2250,7 @@ the store layer + makes the live release visible on the board.
   Best-effort: a git failure never blocks the actual save.
 
 ### Added (board v3)
-- **`scitex-todo vX.Y.Z` page title + header** (operator TG 407). The
+- **`scitex-cards vX.Y.Z` page title + header** (operator TG 407). The
   live `__version__` is read off the package import and rendered in
   both the `<title>` tag (browser tab) and the in-page H1. No second
   source of truth to drift on release.
@@ -2260,7 +2260,7 @@ the store layer + makes the live release visible on the board.
   key + filter dropdown both updated.
 
 ### Notes for operators
-After upgrading: restart your `scitex-todo board` systemd unit.
+After upgrading: restart your `scitex-cards board` systemd unit.
 `~/.scitex/todo` becomes a git repo on the first board write — the
 operator can `git -C ~/.scitex/todo log` immediately, no extra setup.
 Any future corruption is recoverable via standard git commands.
@@ -2282,11 +2282,11 @@ many projects + no way to reorder / prioritize them.
 ### Added (board v3)
 - **Column drag-to-reorder.** Each column section is `draggable`;
   drop on another column inserts BEFORE that target. Order persists
-  in `localStorage` under `scitex-todo:col-order` (per-browser
+  in `localStorage` under `scitex-cards:col-order` (per-browser
   preference, no backend change).
 - **Column pin (📍 / 📌).** Per-column pin button in the header.
   Pinned columns float to the LEFT of the strip regardless of drag
-  order. Persists in `localStorage` under `scitex-todo:col-pinned`.
+  order. Persists in `localStorage` under `scitex-cards:col-pinned`.
 - **Fleet-liveness dot-strip** (PR #75) — one colored dot per agent
   in the filter bar, gold/green/blue/grey by status, click toggles
   the agent filter. Powered by a new `fleet` summary on `/graph`
@@ -2363,14 +2363,14 @@ nodes + ports skeleton land for the north-star roadmap.
   `scitex-dev cron` JobSpec.
 
 ### Fixed
-- **`scitex-todo board --tasks PATH`** now actually pins the server's
+- **`scitex-cards board --tasks PATH`** now actually pins the server's
   store (was previously a no-op for the Django subprocess — only the
   browser URL query was set). (#46.)
 - **Audit pipeline unblocked** — TQ002 / TQ007 + PS-202 / PS-204
   violations fixed. (#68.)
 
 ### Notes for operators
-After upgrading: restart your `scitex-todo board` systemd unit so the
+After upgrading: restart your `scitex-cards board` systemd unit so the
 board picks up the scitex-ui-shell extension. Alt+I + element-
 inspector work immediately after restart. CRUD UI on board v3 wires
 to the existing endpoints incrementally — Resolve + Priority +
@@ -2392,15 +2392,15 @@ conventions (Convention A: tool_name == python_api_name).
 - **`_log_meta` mapping** — opaque event-stamp dict; `complete_task` writes
   `completed_at` (ISO-8601 UTC, `Z`-suffixed, second resolution) +
   `completed_by`. Phase-2 progress-history substrate.
-- **Mutation Python API** (`scitex_todo._store`, re-exported from
-  `scitex_todo`): `add_task`, `update_task`, `complete_task`, `list_tasks`,
+- **Mutation Python API** (`scitex_cards._store`, re-exported from
+  `scitex_cards`): `add_task`, `update_task`, `complete_task`, `list_tasks`,
   `summarize_tasks`, `resolve_store`, `TaskNotFoundError`, `ENV_SCOPE`,
   `ENV_AGENT`. The public top-level surface is narrowed to these six
   task-store functions (plus errors / env constants) to satisfy audit §6
   (Convention A: tool_name == python_api_name). The mermaid / render /
   model / paths helpers remain importable from their submodules
-  (`scitex_todo._diagram`, `scitex_todo._diagram`, `scitex_todo._model`,
-  `scitex_todo._paths`).
+  (`scitex_cards._diagram`, `scitex_cards._diagram`, `scitex_cards._model`,
+  `scitex_cards._paths`).
 - **CLI write / admin verbs**: `add`, `update`, `done`, `summary`, plus
   `list-tasks` (extended with `--scope` / `--assignee` / `--status`
   filters; backward-compatible default output for existing `list-tasks`
@@ -2410,12 +2410,12 @@ conventions (Convention A: tool_name == python_api_name).
   accept `--dry-run` + `-y`/`--yes` per audit §2. The pre-audit names
   `list` / `where` / `init` / `sync` were renamed per audit §1 (bare
   transitive verbs at the top level need an object noun).
-- **MCP server** (`scitex_todo._mcp_server`) behind the new `[mcp]` extra
+- **MCP server** (`scitex_cards._mcp_server`) behind the new `[mcp]` extra
   (`fastmcp>=2.0`). Eight tools — six task-store tools follow
   Convention A (tool_name == python_api_name, no prefix): `add_task`,
   `update_task`, `complete_task`, `list_tasks`, `summarize_tasks`,
   `resolve_store`; plus `todo_skills_list` / `todo_skills_get` for
-  bundled-skill discovery. `import scitex_todo` works fine without the
+  bundled-skill discovery. `import scitex_cards` works fine without the
   extra installed.
 - **`mcp` CLI subgroup** — §3 required four (`start`, `doctor`,
   `list-tools`, `install`). Prefers `scitex_dev._mcp_cli` when present;
@@ -2428,7 +2428,7 @@ conventions (Convention A: tool_name == python_api_name).
 - `GITIGNORED/ARCHITECTURE.md` — Phase-0 9-requirement → mechanism map.
 - `GITIGNORED/QUESTIONS.md` — open defaults for the operator/lead.
 - `GITIGNORED/PROPOSAL_scitex-dev-ecosystem-register.md` — paste-apply
-  diff for the lead so `scitex_dev.ECOSYSTEM` includes `scitex-todo`
+  diff for the lead so `scitex_dev.ECOSYSTEM` includes `scitex-cards`
   (Req 6).
 
 ### Test surface
@@ -2441,7 +2441,7 @@ conventions (Convention A: tool_name == python_api_name).
 
 ### Added
 - Web board (read-only React-Flow dependency graph) served by Django:
-  `scitex-todo board` (needs the `[web]` extra). Nodes colored by status,
+  `scitex-cards board` (needs the `[web]` extra). Nodes colored by status,
   `depends_on` arrows, `blocks` inhibition edges, clickable cards, and
   nested-graph drill-down via a new `parent` task field.
 - Drag-reorder write path: the board's `POST /priority` handler persists a new
@@ -2451,10 +2451,10 @@ conventions (Convention A: tool_name == python_api_name).
   ladder) and `mcp list-tools`, both with `--json`.
 - Shell completion: `install-shell-completion` / `print-shell-completion`
   (bash/zsh/fish) using the static cache-file pattern.
-- Agent skills: bundled `_skills/scitex-todo/` (installation, quick-start,
+- Agent skills: bundled `_skills/scitex-cards/` (installation, quick-start,
   python-api, cli-reference, env-vars) plus a self-contained
   `skills {list, get, install}` CLI group.
-- `python -m scitex_todo` entry point; `.env.example`; `examples/` with a
+- `python -m scitex_cards` entry point; `.env.example`; `examples/` with a
   matching `tests/examples/` smoke test; cross-package integration gate.
 
 ### Changed
@@ -2470,7 +2470,7 @@ conventions (Convention A: tool_name == python_api_name).
 - Test suite reorganized to mirror `src/` and to satisfy the test-quality rules
   (one assertion per test, AAA markers).
 
-[0.2.0]: https://github.com/ywatanabe1989/scitex-todo/releases/tag/v0.2.0
+[0.2.0]: https://github.com/ywatanabe1989/scitex-cards/releases/tag/v0.2.0
 
 ## [0.1.0] - 2026-05-22
 
@@ -2488,7 +2488,7 @@ conventions (Convention A: tool_name == python_api_name).
 - Task-store path resolution following the SciTeX local-state convention:
   explicit path -> `$SCITEX_TODO_TASKS` -> project `.scitex/todo/tasks.yaml`
   -> user `~/.scitex/todo/tasks.yaml` -> bundled generic example.
-- CLI `scitex-todo` (Click, noun-verb): `render`, `list`.
-- Bundled generic example task store at `scitex_todo/examples/tasks.yaml`.
+- CLI `scitex-cards` (Click, noun-verb): `render`, `list`.
+- Bundled generic example task store at `scitex_cards/examples/tasks.yaml`.
 
-[0.1.0]: https://github.com/ywatanabe1989/scitex-todo/releases/tag/v0.1.0
+[0.1.0]: https://github.com/ywatanabe1989/scitex-cards/releases/tag/v0.1.0

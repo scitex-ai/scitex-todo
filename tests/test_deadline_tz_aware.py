@@ -25,7 +25,7 @@ import datetime as dt
 
 import pytest
 
-from scitex_todo._model import (
+from scitex_cards._model import (
     Repeater,
     is_overdue,
     next_deadline_for_task,

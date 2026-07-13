@@ -1,4 +1,4 @@
-# scitex-todo (`scitex-todo`)
+# scitex-cards (`scitex-cards`)
 
 <p align="center">
   <a href="https://scitex.ai">
@@ -9,20 +9,20 @@
 <p align="center"><b>A standalone, YAML-backed fleet task board — the single source of truth for tasks <em>and</em> the agent-to-agent communication medium that rides on top of the cards.</b></p>
 
 <p align="center">
-  <a href="https://scitex-todo.readthedocs.io/">Full Documentation</a> · <code>uv pip install scitex-todo[all]</code>
+  <a href="https://scitex-cards.readthedocs.io/">Full Documentation</a> · <code>uv pip install scitex-cards[all]</code>
 </p>
 
 <!-- scitex-badges:start -->
 <p align="center">
-  <a href="https://pypi.org/project/scitex-todo/"><img src="https://img.shields.io/pypi/v/scitex-todo?label=pypi" alt="pypi"></a>
-  <a href="https://pypi.org/project/scitex-todo/"><img src="https://img.shields.io/pypi/pyversions/scitex-todo?label=python" alt="python"></a>
-  <a href="https://img.shields.io/readthedocs/scitex-todo?label=docs"><img src="https://img.shields.io/readthedocs/scitex-todo?label=docs" alt="docs"></a>
+  <a href="https://pypi.org/project/scitex-cards/"><img src="https://img.shields.io/pypi/v/scitex-cards?label=pypi" alt="pypi"></a>
+  <a href="https://pypi.org/project/scitex-cards/"><img src="https://img.shields.io/pypi/pyversions/scitex-cards?label=python" alt="python"></a>
+  <a href="https://img.shields.io/readthedocs/scitex-cards?label=docs"><img src="https://img.shields.io/readthedocs/scitex-cards?label=docs" alt="docs"></a>
 </p>
 <p align="center">
-  <a href="https://github.com/ywatanabe1989/scitex-todo/actions/workflows/pytest-matrix-on-ubuntu-py3-11-3-12-3-13.yml"><img src="https://img.shields.io/github/actions/workflow/status/ywatanabe1989/scitex-todo/pytest-matrix-on-ubuntu-py3-11-3-12-3-13.yml?branch=develop&label=tests" alt="tests"></a>
-  <a href="https://github.com/ywatanabe1989/scitex-todo/actions/workflows/import-smoke-on-ubuntu-py3-12.yml"><img src="https://img.shields.io/github/actions/workflow/status/ywatanabe1989/scitex-todo/import-smoke-on-ubuntu-py3-12.yml?branch=develop&label=install-check" alt="install-check"></a>
-  <a href="https://github.com/ywatanabe1989/scitex-todo/actions/workflows/scitex-dev-quality-audit-on-ubuntu-latest.yml"><img src="https://img.shields.io/github/actions/workflow/status/ywatanabe1989/scitex-todo/scitex-dev-quality-audit-on-ubuntu-latest.yml?branch=develop&label=quality" alt="quality"></a>
-  <a href="https://codecov.io/gh/ywatanabe1989/scitex-todo"><img src="https://img.shields.io/codecov/c/github/ywatanabe1989/scitex-todo/develop?label=cov" alt="cov"></a>
+  <a href="https://github.com/ywatanabe1989/scitex-cards/actions/workflows/pytest-matrix-on-ubuntu-py3-11-3-12-3-13.yml"><img src="https://img.shields.io/github/actions/workflow/status/ywatanabe1989/scitex-cards/pytest-matrix-on-ubuntu-py3-11-3-12-3-13.yml?branch=develop&label=tests" alt="tests"></a>
+  <a href="https://github.com/ywatanabe1989/scitex-cards/actions/workflows/import-smoke-on-ubuntu-py3-12.yml"><img src="https://img.shields.io/github/actions/workflow/status/ywatanabe1989/scitex-cards/import-smoke-on-ubuntu-py3-12.yml?branch=develop&label=install-check" alt="install-check"></a>
+  <a href="https://github.com/ywatanabe1989/scitex-cards/actions/workflows/scitex-dev-quality-audit-on-ubuntu-latest.yml"><img src="https://img.shields.io/github/actions/workflow/status/ywatanabe1989/scitex-cards/scitex-dev-quality-audit-on-ubuntu-latest.yml?branch=develop&label=quality" alt="quality"></a>
+  <a href="https://codecov.io/gh/ywatanabe1989/scitex-cards"><img src="https://img.shields.io/codecov/c/github/ywatanabe1989/scitex-cards/develop?label=cov" alt="cov"></a>
 </p>
 <!-- scitex-badges:end -->
 
@@ -30,7 +30,7 @@
 
 ## What it is
 
-`scitex-todo` is a **standalone YAML task board** for a fleet of agents and humans. One
+`scitex-cards` is a **standalone YAML task board** for a fleet of agents and humans. One
 plain-YAML file at `~/.scitex/todo/tasks.yaml` is the single source of truth (SSoT), holding
 three top-level sections in one document:
 
@@ -63,10 +63,10 @@ flowchart TB
     store["`**~/.scitex/todo/tasks.yaml** (SSoT)
     tasks: · users: · inboxes:`"]
 
-    mcp["MCP server<br/>(scitex-todo mcp start)<br/>CRUD + roles + edges + poll"]
-    board["Board GUI<br/>(scitex-todo board · :8051)<br/>kanban + timeline + resolve"]
-    notifyd["notifyd daemon<br/>(scitex-todo notifyd)<br/>reminders + escalation + delivery"]
-    chan["per-agent channel servers<br/>(scitex-todo mcp channel --agent X)<br/>drain inbox → push into Claude"]
+    mcp["MCP server<br/>(scitex-cards mcp start)<br/>CRUD + roles + edges + poll"]
+    board["Board GUI<br/>(scitex-cards board · :8051)<br/>kanban + timeline + resolve"]
+    notifyd["notifyd daemon<br/>(scitex-cards notifyd)<br/>reminders + escalation + delivery"]
+    chan["per-agent channel servers<br/>(scitex-cards mcp channel --agent X)<br/>drain inbox → push into Claude"]
 
     mcp <--> store
     board <--> store
@@ -83,7 +83,7 @@ pushes into that agent's Claude session.</sub>
 
 ### Where your task data lives (store resolution)
 
-The store is resolved by the precedence chain (first existing wins), from `scitex_todo._paths`:
+The store is resolved by the precedence chain (first existing wins), from `scitex_cards._paths`:
 
 | Precedence | Source | Path |
 |---|---|---|
@@ -91,7 +91,7 @@ The store is resolved by the precedence chain (first existing wins), from `scite
 | 2 | `$SCITEX_TODO_TASKS_YAML_SHARED` | any path |
 | 3 | project scope | `<git-root>/.scitex/todo/tasks.yaml` |
 | 4 | user scope (the shared-fleet default) | `$SCITEX_DIR/todo/tasks.yaml` (default `~/.scitex/todo`) |
-| 5 | bundled generic example | `scitex_todo/examples/tasks.yaml` |
+| 5 | bundled generic example | `scitex_cards/examples/tasks.yaml` |
 
 Runtime state (pidfiles, the delivery ledger, the reminder sidecar) lives under
 `<store-dir>/runtime/` (gitignored); the notify + reminder sidecars (`notify.yaml`,
@@ -115,7 +115,7 @@ Roles are mutated through first-class verbs — `set_collaborator`, `set_subscri
 
 A role member is a name string, but names drift (`proj-scitex-dev`, `scitex-dev`,
 `lead-ywata-note-win`, `sac`, `scitex-agent-container` …). The `users:` registry
-(`scitex_todo._users`) gives every member a **stable id** (`u_` + 12 hex) plus a `names[]`
+(`scitex_cards._users`) gives every member a **stable id** (`u_` + 12 hex) plus a `names[]`
 alias list, an optional `host_at_name` join key, and a `last_seen` liveness stamp. Renaming an
 owner no longer breaks references — the id is durable, the display name is just an alias.
 
@@ -155,7 +155,7 @@ sequenceDiagram
     participant E as emit() → hook bus<br/>(card-event C1)
     participant R as resolve_recipients<br/>(notify C3, PURE)
     participant Q as enqueue → inboxes:<br/>(dispatch C4, PULL)
-    participant C as Recipient channel server<br/>(scitex-todo mcp channel)
+    participant C as Recipient channel server<br/>(scitex-cards mcp channel)
     participant CL as Recipient Claude session
 
     A->>S: mutate a card
@@ -169,7 +169,7 @@ sequenceDiagram
     Note over C,CL: PULL rail — no inbound POST to the mutation
     loop every ~5s
         C->>Q: drain unseen (poll_inbox)
-        C->>CL: notifications/claude/channel<br/>(rendered "&lt;- scitex-todo")
+        C->>CL: notifications/claude/channel<br/>(rendered "&lt;- scitex-cards")
         C->>Q: ack (mark seen) after successful push
     end
 ```
@@ -200,10 +200,10 @@ The actor (whoever caused the event) is always dropped — no one is notified of
   `{id, event_type, card_id, body, actor, ts, seen: false}` to `inboxes[recipient_id]` under
   the shared store lock, keyed by the resolved id (`u_*` or raw-name fallback). It dedups on
   `(event_type, card_id, ts, actor)`.
-- **Drain** — each agent runs `scitex-todo mcp channel --agent X` (`_mcp_channel.py`), a
+- **Drain** — each agent runs `scitex-cards mcp channel --agent X` (`_mcp_channel.py`), a
   low-level MCP stdio server. Every ~5s it polls the agent's inbox (both its raw name and its
   resolved `u_*` id, matching the producer's keys), pushes each record as a
-  `notifications/claude/channel` JSON-RPC notification (rendered `<- scitex-todo` in the
+  `notifications/claude/channel` JSON-RPC notification (rendered `<- scitex-cards` in the
   terminal), then acks it. Ack happens ONLY after a successful push, so a failed push is retried
   next drain.
 - **Poll (alternative read path)** — the `poll_notifications` MCP tool returns an agent's inbox
@@ -247,23 +247,23 @@ NOT alive escalates straight to the card's creator (the assignee will never act)
 
 ## The processes
 
-`scitex-todo` is one CLI with several long-running roles. Each reads/writes the same store.
+`scitex-cards` is one CLI with several long-running roles. Each reads/writes the same store.
 
 | Command | Role | What it does |
 |---|---|---|
-| `scitex-todo mcp start` | MCP server (stdio/HTTP) | Exposes the CRUD + roles + edges tools (`add_task`, `comment_task`, `update_task`, `complete_task`, `reassign_task`, `set_collaborator`, `set_subscriber`, `set_edge`, `resolve_task`, `list_tasks`, `poll_notifications`, …). Every tool is a thin wrapper over `scitex_todo._store` so MCP / CLI / GUI share one logic path. |
-| `scitex-todo mcp channel --agent X` | per-agent channel server (stdio) | Drains agent `X`'s inbox and pushes `notifications/claude/channel` into its Claude session. Fail-loud on an unresolved agent id (never drains an `unknown`/blank inbox). |
-| `scitex-todo notifyd` | always-on delivery + reminder daemon | Ticks the reminder sweep + delivery pass every `--interval` seconds under a single-instance lock; `--once` runs a single pass; `notifyd install-unit` writes an operator-gated systemd user unit. |
-| `scitex-todo board [start] --port 8051` | board GUI (Django) | Serves the `board_v3` app (kanban columns, timeline, multi-select toolbar, resolve→notify). Lifecycle verbs `start` / `stop` / `restart` / `status` via a pidfile at `~/.scitex/todo/board.pid`. Embedded in the scitex-ui shell. |
+| `scitex-cards mcp start` | MCP server (stdio/HTTP) | Exposes the CRUD + roles + edges tools (`add_task`, `comment_task`, `update_task`, `complete_task`, `reassign_task`, `set_collaborator`, `set_subscriber`, `set_edge`, `resolve_task`, `list_tasks`, `poll_notifications`, …). Every tool is a thin wrapper over `scitex_cards._store` so MCP / CLI / GUI share one logic path. |
+| `scitex-cards mcp channel --agent X` | per-agent channel server (stdio) | Drains agent `X`'s inbox and pushes `notifications/claude/channel` into its Claude session. Fail-loud on an unresolved agent id (never drains an `unknown`/blank inbox). |
+| `scitex-cards notifyd` | always-on delivery + reminder daemon | Ticks the reminder sweep + delivery pass every `--interval` seconds under a single-instance lock; `--once` runs a single pass; `notifyd install-unit` writes an operator-gated systemd user unit. |
+| `scitex-cards board [start] --port 8051` | board GUI (Django) | Serves the `board_v3` app (kanban columns, timeline, multi-select toolbar, resolve→notify). Lifecycle verbs `start` / `stop` / `restart` / `status` via a pidfile at `~/.scitex/todo/board.pid`. Embedded in the scitex-ui shell. |
 
 The `mcp start` and `mcp channel` servers are launched by each agent's Claude Code `.mcp.json`
-(`scitex-todo mcp install` / `install-fleet` writes the entries). `notifyd` runs as a systemd
+(`scitex-cards mcp install` / `install-fleet` writes the entries). `notifyd` runs as a systemd
 user service; `board` is started by the operator or the UI shell.
 
 ## Quick Start
 
 ```python
-import scitex_todo as todo
+import scitex_cards as todo
 
 # Task CRUD + roles (the same functions the MCP tools wrap)
 todo.add_task(None, id="c1", title="Wire the notify rail", status="in_progress")
@@ -276,28 +276,28 @@ From the shell:
 
 ```bash
 # default store: project -> user -> bundled example (or $SCITEX_TODO_TASKS_YAML_SHARED)
-scitex-todo render-graph -o tasks.png     # YAML -> dependency PNG
-scitex-todo render-graph --print-mermaid  # inspect the mermaid without rendering
-scitex-todo list-tasks --json             # resolved tasks, machine-readable
+scitex-cards render-graph -o tasks.png     # YAML -> dependency PNG
+scitex-cards render-graph --print-mermaid  # inspect the mermaid without rendering
+scitex-cards list-tasks --json             # resolved tasks, machine-readable
 
 # communication surfaces
-scitex-todo mcp start                     # MCP CRUD server (stdio)
-scitex-todo mcp channel --agent scitex-todo   # push inbox → Claude
-scitex-todo notifyd --interval 120        # reminders + delivery daemon
-scitex-todo board start --port 8051       # kanban / timeline GUI
+scitex-cards mcp start                     # MCP CRUD server (stdio)
+scitex-cards mcp channel --agent scitex-cards   # push inbox → Claude
+scitex-cards notifyd --interval 120        # reminders + delivery daemon
+scitex-cards board start --port 8051       # kanban / timeline GUI
 ```
 
 ## Installation
 
-> **Recommended**: `uv pip install scitex-todo[all]` — uv's Rust resolver
+> **Recommended**: `uv pip install scitex-cards[all]` — uv's Rust resolver
 > handles the SciTeX dep set quickly. Plain `pip install` still works.
 
 ```bash
 # Recommended — uv resolver
-uv pip install scitex-todo[all]
+uv pip install scitex-cards[all]
 
 # Plain pip also works
-pip install scitex-todo
+pip install scitex-cards
 ```
 
 Extras: `[mcp]` for the MCP + channel servers, `[web]` for the Django board. Rendering a PNG
@@ -322,12 +322,12 @@ export SCITEX_TODO_SCOPE='agent:<name>'        # default list/summary filter
 <summary><strong>Task store</strong></summary>
 
 ```bash
-scitex-todo render-graph -o tasks.png       # YAML -> dependency PNG
-scitex-todo list-tasks --json               # resolved tasks, machine-readable
-scitex-todo list-tasks --assignee X --status pending --status in_progress
-scitex-todo list-tasks --blocking-operator  # the operator's decision queue
-scitex-todo list-python-apis -v             # introspect the Python surface
-scitex-todo install-shell-completion        # bash/zsh/fish tab-completion
+scitex-cards render-graph -o tasks.png       # YAML -> dependency PNG
+scitex-cards list-tasks --json               # resolved tasks, machine-readable
+scitex-cards list-tasks --assignee X --status pending --status in_progress
+scitex-cards list-tasks --blocking-operator  # the operator's decision queue
+scitex-cards list-python-apis -v             # introspect the Python surface
+scitex-cards install-shell-completion        # bash/zsh/fish tab-completion
 ```
 
 </details>
@@ -336,13 +336,13 @@ scitex-todo install-shell-completion        # bash/zsh/fish tab-completion
 <summary><strong>Communication</strong></summary>
 
 ```bash
-scitex-todo mcp start [--http --port N]     # CRUD + roles + poll tools
-scitex-todo mcp doctor                      # self-diagnose the MCP install
-scitex-todo mcp list-tools -vv              # enumerate registered tools
-scitex-todo mcp install                     # print the .mcp.json snippet
-scitex-todo mcp channel --agent X           # drain inbox → push into Claude
-scitex-todo notifyd [--interval N | --once] # reminders + delivery daemon
-scitex-todo notifyd install-unit            # write the systemd user unit (operator-gated)
+scitex-cards mcp start [--http --port N]     # CRUD + roles + poll tools
+scitex-cards mcp doctor                      # self-diagnose the MCP install
+scitex-cards mcp list-tools -vv              # enumerate registered tools
+scitex-cards mcp install                     # print the .mcp.json snippet
+scitex-cards mcp channel --agent X           # drain inbox → push into Claude
+scitex-cards notifyd [--interval N | --once] # reminders + delivery daemon
+scitex-cards notifyd install-unit            # write the systemd user unit (operator-gated)
 ```
 
 </details>
@@ -351,9 +351,9 @@ scitex-todo notifyd install-unit            # write the systemd user unit (opera
 <summary><strong>Web board</strong></summary>
 
 ```bash
-pip install scitex-todo[web]
-scitex-todo board start --port 8051         # kanban + timeline, opens http://127.0.0.1:8051/
-scitex-todo board status | stop | restart   # pidfile-backed lifecycle
+pip install scitex-cards[web]
+scitex-cards board start --port 8051         # kanban + timeline, opens http://127.0.0.1:8051/
+scitex-cards board status | stop | restart   # pidfile-backed lifecycle
 ```
 
 </details>
@@ -371,7 +371,7 @@ scripts/install-todo-git-hooks.sh --uninstall
 ```
 
 The hooks **soft-link**: a commit/push on a `<type>/<card-id>-…` branch (e.g.
-`feat/tcfb-p3-git-to-card`) appends a `[push]` comment to that card via `scitex-todo hook push`,
+`feat/tcfb-p3-git-to-card`) appends a `[push]` comment to that card via `scitex-cards hook push`,
 which emits a `committed` / `pushed` card-event down the same notify rail. Commits on ad-hoc
 branches are skipped silently — no card id, no error. To link a one-off commit, add a
 `Card: <id>` trailer to the commit message. The hooks are best-effort and never block a commit
@@ -442,7 +442,7 @@ untouched `deferred` cards.
 
 ## Part of SciTeX
 
-`scitex-todo` is part of [**SciTeX**](https://scitex.ai).
+`scitex-cards` is part of [**SciTeX**](https://scitex.ai).
 
 >Four Freedoms for Research
 >

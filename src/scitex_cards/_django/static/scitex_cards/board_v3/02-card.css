@@ -1,0 +1,494 @@
+/* board_v3 — card visuals + status colors + search input + date pill + ctx menu
+ *
+ * Extracted from src/scitex_cards/_django/templates/scitex_cards/board_v3.html
+ * Owns: .card variants, .filt-search, .date-pill, .card-ctx-menu.
+ */
+
+/* === CARD ============================================================== */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 100ms ease;
+  /* CRITICAL: cards live inside `.col-body` which is `display: flex;
+   * flex-direction: column` bounded by `.main { height: 100% }` (added in
+   * 22b6a6f to keep the BLOCKING-YOU aside from stretching). Without
+   * `flex-shrink: 0` here, every card defaults to flex-shrink:1 and the
+   * column's bounded height compresses every card down to ~18-40 px —
+   * cards render as empty pills (operator-reported regression in v0.5.3
+   * and v0.5.4: the "business レーンの空ピル" / "全レーン card not rendered"
+   * symptom). Cards must keep their natural content height; `.col-body`
+   * already has `overflow-y: auto` so excess content scrolls inside the
+   * column instead of squashing.
+   *
+   * Diagnosis (PR #110, board v0.5.6 — fix verified live on :8051 by
+   * injecting this rule via DevTools: every lane's first card grew from
+   * 18-42 px back to 111-150 px). */
+  flex-shrink: 0;
+}
+.card:hover {
+  border-color: var(--purple);
+}
+.card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 4px;
+}
+/* Per-status COLOR layer — single-sourced from STATUS_STYLE via the
+ * server-rendered `--status-*` CSS vars (see board_v3.html
+ * `#status-color-vars`). The left bar fills with the status's SSOT fill,
+ * so all 7 statuses render DISTINCT + consistent with the mermaid graph.
+ * Column placement still comes from the `card--<bucket>` class; only the
+ * color moved to `data-status`. */
+.card[data-status="goal"]::before {
+  background: var(--status-fill-goal);
+}
+.card[data-status="done"]::before {
+  background: var(--status-fill-done);
+}
+.card[data-status="in_progress"]::before {
+  background: var(--status-fill-in_progress);
+}
+.card[data-status="blocked"]::before {
+  background: var(--status-fill-blocked);
+}
+.card[data-status="pending"]::before {
+  background: var(--status-fill-pending);
+}
+.card[data-status="deferred"]::before {
+  background: var(--status-fill-deferred);
+}
+.card[data-status="failed"]::before {
+  background: var(--status-fill-failed);
+}
+/* Blocked keeps its attention-grabbing pulse (bucket-driven, unchanged). */
+.card--blocked::before {
+  animation: pulse-red 1.8s ease-in-out infinite;
+}
+.card-pad {
+  margin-left: 6px;
+}
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.card-status {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  font-size: 0.65rem;
+}
+/* Status label color = the status's SSOT stroke (per-status, 7 distinct). */
+.card[data-status="goal"] .card-status {
+  color: var(--status-stroke-goal);
+}
+.card[data-status="done"] .card-status {
+  color: var(--status-stroke-done);
+}
+.card[data-status="in_progress"] .card-status {
+  color: var(--status-stroke-in_progress);
+}
+.card[data-status="blocked"] .card-status {
+  color: var(--status-stroke-blocked);
+}
+.card[data-status="pending"] .card-status {
+  color: var(--status-stroke-pending);
+}
+.card[data-status="deferred"] .card-status {
+  color: var(--status-stroke-deferred);
+}
+.card[data-status="failed"] .card-status {
+  color: var(--status-stroke-failed);
+}
+.card-last {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+.card-goal {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-style: italic;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-goal::before {
+  content: "🎯 ";
+  opacity: 0.7;
+}
+.card-task {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1.3;
+  word-wrap: break-word;
+}
+.card-bot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+.card-host {
+  background: rgba(110, 118, 134, 0.2);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: ui-monospace, monospace;
+}
+.card-blocker {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 0 7px;
+  background: rgba(244, 67, 54, 0.18);
+  color: var(--red);
+  border: 1px solid var(--red);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+.card-blocker--operator-decision {
+  background: rgba(255, 193, 7, 0.18);
+  color: var(--gold);
+  border-color: var(--gold);
+}
+.card-link {
+  background: rgba(76, 175, 80, 0.18);
+  color: var(--green);
+  padding: 0 6px;
+  border-radius: 3px;
+  font-size: 0.68rem;
+  font-family: ui-monospace, monospace;
+  text-decoration: none;
+  border: 1px solid var(--green);
+}
+/* Copy button — operator TG 375 share/copy. Minimal chrome so it
+ * doesn't crowd the other footer pills; emoji icon carries the
+ * affordance. */
+.card-copy-btn {
+  appearance: none;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+  line-height: 1.1;
+}
+.card-copy-btn:hover {
+  color: var(--text);
+  border-color: var(--purple);
+  background: rgba(109, 76, 173, 0.12);
+}
+
+/* Fuzzy-search input (operator TG 437/438) — narrow, lives in the
+ * filter bar next to the dropdowns; minimal chrome so it blends in. */
+/* Search-as-launcher (lead brief P1, 2026-06-12) — RESTORED 2026-06-12
+ * after the P10/P11 squash wave silently dropped these blocks. The
+ * search input is the PRIMARY go-to of the filterbar, not a tucked-
+ * away sidekick. Wider, taller, purple halo by default, brighter halo
+ * on focus, and a keyboard hint chip ("/ to focus") rendered as a
+ * sibling span to advertise the affordance even when the input is
+ * empty. Global "/" focuses it; Esc blurs. Pinned by the regression
+ * test ``tests/scitex_cards/test__board_v3_signatures.py``. */
+/* Operator 2026-07-10 (でかすぎ, todo-board-search-box-oversized-20260710):
+ * the search input dwarfed the sibling .filt controls (44.5px tall, 16px
+ * font, permanent purple glow). Sized to the filterbar baseline; the glow
+ * now appears on :focus only (see :focus rule below). */
+.filt-search {
+  min-width: 220px;
+  flex: 1 1 220px;
+  padding: 5px 10px !important;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  background: rgba(109, 76, 173, 0.04);
+  transition:
+    box-shadow 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
+}
+.filt-search::placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.filt-search:hover {
+  background: rgba(109, 76, 173, 0.08);
+}
+.filt-search:focus {
+  outline: none;
+  border-color: var(--purple);
+  background: rgba(109, 76, 173, 0.12);
+  box-shadow: 0 0 0 2px rgba(109, 76, 173, 0.3);
+}
+.filt-search-kbd {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: -4px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  user-select: none;
+  pointer-events: none;
+}
+.filt-search-kbd kbd {
+  display: inline-block;
+  min-width: 14px;
+  padding: 0 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: var(--text);
+  background: rgba(109, 76, 173, 0.18);
+  border: 1px solid var(--purple);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+}
+.filt-search:focus + .filt-search-kbd,
+.filt-search:not(:placeholder-shown) + .filt-search-kbd {
+  opacity: 0;
+}
+
+/* Date-proximity pill (operator TG 440/442) — inline below the task
+ * title. Color by proximity bucket: overdue red, today amber-bright,
+ * within-3d red-warning, within-7d amber, within-30d blue, far plain. */
+.date-pill {
+  display: inline-block;
+  margin: 4px 0 0 0;
+  padding: 1px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+}
+.date-pill--overdue {
+  color: #fff;
+  background: var(--red);
+  border-color: var(--red);
+  box-shadow: 0 0 8px 1px rgba(244, 67, 54, 0.55);
+  animation: pulse-red 2s ease-in-out infinite;
+}
+.date-pill--today {
+  color: #000;
+  background: var(--gold);
+  border-color: var(--gold);
+  box-shadow: 0 0 8px 1px rgba(255, 193, 7, 0.55);
+}
+.date-pill--soon {
+  color: var(--red);
+  border-color: var(--red);
+  background: rgba(244, 67, 54, 0.12);
+}
+.date-pill--week {
+  color: var(--amber);
+  border-color: var(--amber);
+  background: rgba(255, 179, 0, 0.12);
+}
+.date-pill--month {
+  color: #4a90e2;
+  border-color: #4a90e2;
+  background: rgba(74, 144, 226, 0.12);
+}
+.date-pill--far {
+  color: var(--text-muted);
+}
+
+/* Age pill (P12, operator-asked 2026-06-12) — inline next to `.card-last`
+ * in the card header. Buckets by days-since-created-or-last-activity so
+ * the operator sees stale cards at a glance without opening the drawer.
+ *   today    : 0 d  -- mint green ("new")
+ *   fresh    : 1-6 d -- neutral muted
+ *   aging    : 7-29 d -- amber
+ *   stale    : 30-89 d -- orange-red, mild glow
+ *   rotten   : >= 90 d -- saturated red, pulse
+ * Tooltip in the JS spells out "N d since created/last activity".
+ */
+.age-pill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0px 7px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+}
+.age-pill--today {
+  color: #000;
+  background: var(--green);
+  border-color: var(--green);
+}
+.age-pill--fresh {
+  color: var(--text-muted);
+}
+.age-pill--aging {
+  color: var(--amber);
+  border-color: var(--amber);
+  background: rgba(255, 179, 0, 0.1);
+}
+.age-pill--stale {
+  color: #ff9442;
+  border-color: #ff9442;
+  background: rgba(255, 148, 66, 0.12);
+}
+.age-pill--rotten {
+  color: #fff;
+  background: var(--red);
+  border-color: var(--red);
+  box-shadow: 0 0 6px 1px rgba(244, 67, 54, 0.45);
+}
+
+/* Activity bucket badge (render side of working-status decay).
+ *
+ * Board card `scitex-cards-working-status-decay-tg12739`, render half of
+ * PR #122 (backend `_build_fleet` derives the same buckets for the
+ * fleet strip). Per-card pill that reflects how recently the task was
+ * touched, derived from `last_activity` freshness. Orthogonal to the
+ * age-pill: age-pill buckets by DAYS since created/last activity (long-
+ * horizon staleness signal); this one buckets by HOURS (short-horizon
+ * live-vs-decayed signal that fixes the operator pain "manual working
+ * color stays lit indefinitely").
+ *
+ *   fresh : <= 1 h    -- bright green  (live activity)
+ *   warm  : 1-24 h    -- amber         (recent but quieting)
+ *   stale : > 24 h    -- muted grey    (decayed)
+ *
+ * Renders only when `last_activity` is present + parseable (back-compat
+ * with older snapshots).
+ */
+.activity-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0px 7px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  text-transform: lowercase;
+}
+.activity-badge--fresh {
+  color: var(--green);
+  border-color: var(--green);
+  background: rgba(76, 175, 80, 0.14);
+  box-shadow: 0 0 4px 0 rgba(76, 175, 80, 0.35);
+}
+.activity-badge--warm {
+  color: var(--amber);
+  border-color: var(--amber);
+  background: rgba(255, 179, 0, 0.12);
+}
+.activity-badge--stale {
+  color: var(--text-muted);
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  opacity: 0.85;
+}
+
+/* Right-click CRUD context menu (operator TG 432/433) — fixed-position
+ * floating menu anchored to the click point. Single-column item list
+ * with section headers + dividers. ESC / click-outside dismisses. */
+.card-ctx-menu {
+  position: fixed;
+  z-index: 130;
+  min-width: 220px;
+  max-width: 280px;
+  max-height: 460px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--purple);
+  border-radius: 8px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.5);
+  font-size: 0.84rem;
+}
+.card-ctx-title {
+  padding: 5px 8px 7px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-ctx-header {
+  padding: 6px 8px 2px;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.card-ctx-empty {
+  padding: 4px 12px 6px;
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.78rem;
+}
+.card-ctx-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+.card-ctx-item {
+  display: block;
+  width: 100%;
+  appearance: none;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 0.85rem;
+}
+.card-ctx-item:hover {
+  background: rgba(109, 76, 173, 0.18);
+  color: #fff;
+}
+.card-ctx-item--sub {
+  padding: 5px 10px 5px 18px;
+  font-size: 0.8rem;
+}
+.card-ctx-item--danger {
+  color: var(--red);
+}
+.card-ctx-item--danger:hover {
+  background: var(--red);
+  color: #fff;
+}

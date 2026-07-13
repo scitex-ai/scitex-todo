@@ -1,4 +1,4 @@
-# scitex-todo roadmap
+# scitex-cards roadmap
 
 The canonical artifact is the **YAML task store** (top-level `tasks:` list).
 Everything else is an adapter that renders, imports, or serves that store.
@@ -16,7 +16,7 @@ This keeps the data portable and the surfaces swappable.
 
 ## Vision
 
-`scitex-todo` is the **shared task backend** for SciTeX — one store that:
+`scitex-cards` is the **shared task backend** for SciTeX — one store that:
 
 - is shared across agents (including SAC agents), each with their own scope so
   unnecessary detail stays hidden;
@@ -35,14 +35,14 @@ This keeps the data portable and the surfaces swappable.
 - **Mermaid adapter** — `build_mermaid` (depends_on arrows, `blocks`
   inhibition edges, per-status colors) + `render` (mmdc-first, kroki fallback).
 - **Web board (read-only + drag-reorder)** — React-Flow board served by Django
-  (`scitex-todo board`); the priority handler persists drag-reorder back to the
+  (`scitex-cards board`); the priority handler persists drag-reorder back to the
   YAML store (the agent↔user GUI interface, first write path).
 - **Local-state path resolution** — explicit -> `$SCITEX_TODO_TASKS` ->
   project `.scitex/todo/` -> user `~/.scitex/todo/` -> bundled example.
 - **CLI** — `render-graph`, `list-tasks`, `board`, plus the standard
   introspection / completion / `skills` commands.
-- **Agent skills** — `_skills/scitex-todo/` (installable via
-  `scitex-todo skills install`).
+- **Agent skills** — `_skills/scitex-cards/` (installable via
+  `scitex-cards skills install`).
 
 ## Future
 

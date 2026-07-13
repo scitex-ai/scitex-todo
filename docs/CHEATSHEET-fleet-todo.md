@@ -1,10 +1,10 @@
-# scitex-todo — fleet cheatsheet
+# scitex-cards — fleet cheatsheet
 
 **Audience.** Every agent, every host, every human in the SciTeX fleet.
 
-**One-line summary.** `scitex-todo` is the fleet's shared task store. The
+**One-line summary.** `scitex-cards` is the fleet's shared task store. The
 canonical data is a YAML file at `~/.scitex/todo/tasks.yaml`. You read and
-write it from CLI, from Python (`import scitex_todo`), from MCP tools, or
+write it from CLI, from Python (`import scitex_cards`), from MCP tools, or
 from the web board at `http://127.0.0.1:8051/`. Filter your view to your
 own slice via the `scope` and `assignee` fields.
 
@@ -22,10 +22,10 @@ own slice via the `scope` and `assignee` fields.
 
 ```bash
 # 1.1 Install
-pip install 'scitex-todo[mcp]'   # [mcp] extra is needed for the MCP server
+pip install 'scitex-cards[mcp]'   # [mcp] extra is needed for the MCP server
 
 # 1.2 Where do your tasks live? (read-only — won't create files)
-scitex-todo resolve-store                # ✅ LIVE — prints resolved path + precedence chain
+scitex-cards resolve-store                # ✅ LIVE — prints resolved path + precedence chain
 
 # 1.3 Tell the package who you are
 #     (these envs make all read verbs default to YOUR slice)
@@ -33,18 +33,18 @@ export SCITEX_TODO_SCOPE='agent:<your-name>'    # 🟡 PHASE-1
 export SCITEX_TODO_AGENT='agent:<your-name>'    # 🟡 PHASE-1 — used to stamp `completed_by`
 
 # 1.4 First-time create of the shared store on a fresh host (idempotent)
-scitex-todo init-store --shared        # 🟡 PHASE-1
+scitex-cards init-store --shared        # 🟡 PHASE-1
 ```
 
 **Convention for `<your-name>`.** Pick the literal sac peer name (e.g.
-`agent:scitex-todo`, `agent:lead`, `agent:hub-ops`). Humans use
+`agent:scitex-cards`, `agent:lead`, `agent:hub-ops`). Humans use
 `user:operator`, `user:ywatanabe`, etc.
 
 **Scope label conventions** (free-form strings — not enums):
 
 | Prefix          | Use for                                          | Example                          |
 | --------------- | ------------------------------------------------ | -------------------------------- |
-| `agent:<name>`  | The sac peer or single-agent identity            | `agent:scitex-todo`         |
+| `agent:<name>`  | The sac peer or single-agent identity            | `agent:scitex-cards`         |
 | `project:<name>`| A project / repo team                            | `project:scitex-clew`            |
 | `host:<name>`   | **A specific host (cross-host axis — §6)**       | `host:wsl2-dev`, `host:mba-arm64`|
 | `user:<name>`   | A human                                          | `user:operator`                  |
@@ -62,33 +62,33 @@ setup, host-specific config) so cross-host filters keep it in its lane.
 ### 2.1 Read
 
 ```bash
-scitex-todo list-tasks                                  # all tasks (filtered by $SCITEX_TODO_SCOPE if set)
-scitex-todo list-tasks --scope ""                       # opt out of env-default filter (see EVERYTHING)
-scitex-todo list-tasks --assignee agent:lead            # tasks owned by the lead
-scitex-todo list-tasks --status in_progress             # what's actively being worked
-scitex-todo list-tasks --status pending --json          # JSON for scripting
-scitex-todo summary --scope project:scitex-clew   # counts by status for one project
+scitex-cards list-tasks                                  # all tasks (filtered by $SCITEX_TODO_SCOPE if set)
+scitex-cards list-tasks --scope ""                       # opt out of env-default filter (see EVERYTHING)
+scitex-cards list-tasks --assignee agent:lead            # tasks owned by the lead
+scitex-cards list-tasks --status in_progress             # what's actively being worked
+scitex-cards list-tasks --status pending --json          # JSON for scripting
+scitex-cards summary --scope project:scitex-clew   # counts by status for one project
 ```
 
 ### 2.2 Write
 
 ```bash
 # Create a task you intend to do yourself
-scitex-todo add e1-acl-cli "sac ACL fleet-group + grant CLI" \
+scitex-cards add e1-acl-cli "sac ACL fleet-group + grant CLI" \
     --scope project:sac --assignee agent:scitex-agent-container \
     --priority 3 --note "see lead's E1 brief"
 
 # Claim a task from someone else's queue
-scitex-todo update e1-acl-cli --assignee agent:<me> --status in_progress
+scitex-cards update e1-acl-cli --assignee agent:<me> --status in_progress
 
 # Mark it done (stamps completed_at + completed_by automatically)
-scitex-todo done e1-acl-cli
+scitex-cards done e1-acl-cli
 
 # Mark done on someone's behalf (override the env default)
-scitex-todo done e1-acl-cli --by 'user:operator'
+scitex-cards done e1-acl-cli --by 'user:operator'
 
 # Clear a field (empty string)
-scitex-todo update e1-acl-cli --scope ''
+scitex-cards update e1-acl-cli --scope ''
 ```
 
 All write verbs above are 🟡 PHASE-1 (PR #14).
@@ -96,15 +96,15 @@ All write verbs above are 🟡 PHASE-1 (PR #14).
 ### 2.3 Cross-host sync (Phase-2 — designed, not yet built)
 
 ```bash
-scitex-todo sync-store --dry-run                       # 🟡 PHASE-1 STUB (no-op, prints plan)
-scitex-todo sync-store --apply --remote origin         # 🟠 PHASE-2 — git pull/push (TBD)
+scitex-cards sync-store --dry-run                       # 🟡 PHASE-1 STUB (no-op, prints plan)
+scitex-cards sync-store --apply --remote origin         # 🟠 PHASE-2 — git pull/push (TBD)
 ```
 
 ### 2.4 Visualize
 
 ```bash
-scitex-todo board                                 # ✅ LIVE — opens http://127.0.0.1:8051
-scitex-todo render-graph --format png            # ✅ LIVE — static dependency graph
+scitex-cards board                                 # ✅ LIVE — opens http://127.0.0.1:8051
+scitex-cards render-graph --format png            # ✅ LIVE — static dependency graph
 ```
 
 The board has drill-down (click a parent card), drag-reorder (changes
@@ -116,17 +116,17 @@ The board has drill-down (click a parent card), drag-reorder (changes
 ## 3 — The Python API (for agent code)
 
 ```python
-import scitex_todo as todo
+import scitex_cards as todo
 
 # ── read (snapshot, no lock) ────────────────────────────────────
-mine = todo.list_tasks(scope="agent:scitex-todo",        # 🟡 PHASE-1
+mine = todo.list_tasks(scope="agent:scitex-cards",        # 🟡 PHASE-1
                        status="pending")
 counts = todo.summarize_tasks(scope="project:sac")            # 🟡 PHASE-1
 
 # ── write (locked via fcntl.flock around full RMW) ───────────────
 todo.add_task(id="my-task", title="Implement my-task",         # 🟡 PHASE-1
-              scope="agent:scitex-todo",
-              assignee="agent:scitex-todo",
+              scope="agent:scitex-cards",
+              assignee="agent:scitex-cards",
               status="pending", priority=5)
 todo.update_task(task_id="my-task", status="in_progress")      # 🟡 PHASE-1
 todo.complete_task(task_id="my-task")                          # 🟡 PHASE-1
@@ -135,8 +135,8 @@ todo.complete_task(task_id="my-task")                          # 🟡 PHASE-1
 # ── load + raw read (submodule imports — these helpers are not on
 #    the narrowed top-level surface; the audit §6 1:1 rule keeps the
 #    top level == the MCP tool set) ───────────────────────────────
-from scitex_todo._model import load_tasks
-from scitex_todo._paths import resolve_tasks_path
+from scitex_cards._model import load_tasks
+from scitex_cards._paths import resolve_tasks_path
 tasks = load_tasks(resolve_tasks_path())
 ```
 
@@ -162,20 +162,20 @@ python_api_name`, no prefix), plus two skills-discovery tools:
 | `list_tasks`        | Filter by scope/assignee/status. Returns list as JSON. |
 | `summarize_tasks`   | Counts by status/scope/assignee. Returns dict as JSON. |
 | `resolve_store`     | Resolved store path + precedence chain.      |
-| `todo_skills_list`  | List bundled scitex-todo agent skill files.  |
+| `todo_skills_list`  | List bundled scitex-cards agent skill files.  |
 | `todo_skills_get`   | Read one bundled skill file by name.         |
 
 All 🟡 PHASE-1 (PR #14). Start the server:
 
 ```bash
-scitex-todo mcp start            # 🟡 PHASE-1 — FastMCP stdio server
-scitex-todo mcp doctor           # 🟡 PHASE-1 — env + dep diagnostic
-scitex-todo mcp list-tools       # 🟡 PHASE-1
-scitex-todo mcp install          # 🟡 PHASE-1 — wire into local MCP config
+scitex-cards mcp start            # 🟡 PHASE-1 — FastMCP stdio server
+scitex-cards mcp doctor           # 🟡 PHASE-1 — env + dep diagnostic
+scitex-cards mcp list-tools       # 🟡 PHASE-1
+scitex-cards mcp install          # 🟡 PHASE-1 — wire into local MCP config
 ```
 
-**Install hint.** If `import scitex_todo._mcp_server` raises ImportError,
-you didn't install the `[mcp]` extra. `pip install 'scitex-todo[mcp]'`.
+**Install hint.** If `import scitex_cards._mcp_server` raises ImportError,
+you didn't install the `[mcp]` extra. `pip install 'scitex-cards[mcp]'`.
 
 ---
 
@@ -229,8 +229,8 @@ cross-cut view; add the dir to the project's `.gitignore`.
 `~/.scitex/todo/` is per-host (it lives on each machine's local
 filesystem). To make the user-scope store fleet-shared, it is itself a
 **git checkout of a private state repo** (default name
-`ywatanabe1989-private/scitex-todo-state`); cross-host sync is
-`scitex-todo sync-store --apply` ≈ `git pull --rebase --autostash && git push`
+`ywatanabe1989-private/scitex-cards-state`); cross-host sync is
+`scitex-cards sync-store --apply` ≈ `git pull --rebase --autostash && git push`
 (🟠 PHASE-2 body; the Phase-1 stub already exists).
 
 ```
@@ -240,7 +240,7 @@ host: wsl2-dev                                 host: mba-arm64
   └─ tasks.yaml                                   └─ tasks.yaml
                        │
                        ▼  (the private state repo)
-              github.com/ywatanabe1989-private/scitex-todo-state
+              github.com/ywatanabe1989-private/scitex-cards-state
 ```
 
 After a `sync --apply` on each host, both hosts see one canonical view.
@@ -249,7 +249,7 @@ That view is the 串刺し view: read-only-equivalent across the fleet.
 ### To see what your process is actually pointing at
 
 ```bash
-scitex-todo resolve-store --json         # 🟡 PHASE-1 — prints resolved path + chain
+scitex-cards resolve-store --json         # 🟡 PHASE-1 — prints resolved path + chain
 ```
 
 ### Conflict resolution (Phase 2, designed)
@@ -267,27 +267,27 @@ board if a merge picked badly.
 
 ```bash
 # Container has injected SCITEX_TODO_SCOPE=agent:<me>, SCITEX_TODO_AGENT=agent:<me>
-scitex-todo list-tasks --status in_progress      # what was I doing?
+scitex-cards list-tasks --status in_progress      # what was I doing?
 # pick the top one, read its `note` field for handoff context, resume
 ```
 
 ### 7.2 "I'm an agent claiming a task off the queue"
 
 ```bash
-scitex-todo list-tasks --assignee '' --status pending  # unowned pending work
-scitex-todo update <id> --assignee agent:<me> --status in_progress
+scitex-cards list-tasks --assignee '' --status pending  # unowned pending work
+scitex-cards update <id> --assignee agent:<me> --status in_progress
 ```
 
 ### 7.3 "I'm the operator and I want to leave myself a memo"
 
 ```bash
-scitex-todo add memo-buy-milk "Pick up milk" --scope private
+scitex-cards add memo-buy-milk "Pick up milk" --scope private
 ```
 
 ### 7.4 "I'm the lead and I want to broadcast an epic for someone to claim"
 
 ```bash
-scitex-todo add e1-acl "sac ACL fleet-group + grant CLI" \
+scitex-cards add e1-acl "sac ACL fleet-group + grant CLI" \
     --scope project:sac \
     --assignee agent:scitex-agent-container \
     --priority 2 --status pending \
@@ -297,7 +297,7 @@ scitex-todo add e1-acl "sac ACL fleet-group + grant CLI" \
 ### 7.5 "I want to see one team's progress at a glance"
 
 ```bash
-scitex-todo summary --scope project:sac
+scitex-cards summary --scope project:sac
 # → totals + by_status + by_scope + by_assignee, JSON-able with --json
 ```
 
@@ -309,9 +309,9 @@ the cross-HOST axis. With both, "every task on every host" is just
 
 ```bash
 # On any host, after a sync:
-scitex-todo sync-store --apply             # 🟠 PHASE-2 — pull/push the state repo
-scitex-todo list-tasks --scope ''          # the full 串刺し view (no scope filter)
-scitex-todo summary --scope ''       # numeric digest of the same
+scitex-cards sync-store --apply             # 🟠 PHASE-2 — pull/push the state repo
+scitex-cards list-tasks --scope ''          # the full 串刺し view (no scope filter)
+scitex-cards summary --scope ''       # numeric digest of the same
 ```
 
 Slice the 串刺し view by host with the `host:<hostname>` scope label
@@ -319,19 +319,19 @@ Slice the 串刺し view by host with the `host:<hostname>` scope label
 
 ```bash
 # Tag a task as host-local when I create it
-scitex-todo add wsl-ssh-key "regenerate ssh key" --scope "host:$(hostname)"
+scitex-cards add wsl-ssh-key "regenerate ssh key" --scope "host:$(hostname)"
 
 # What's on this host?
-scitex-todo list-tasks --scope "host:$(hostname)"
+scitex-cards list-tasks --scope "host:$(hostname)"
 
 # What's on the MBA?
-scitex-todo list-tasks --scope "host:mba-arm64"
+scitex-cards list-tasks --scope "host:mba-arm64"
 
 # Everything everywhere (the operator's cross-cut dashboard)
-scitex-todo list-tasks --scope ''
+scitex-cards list-tasks --scope ''
 ```
 
-The web board (`scitex-todo board`) renders the same 串刺し view —
+The web board (`scitex-cards board`) renders the same 串刺し view —
 it reads whatever `where` resolves to, so on a host with the
 fleet-shared user-scope store, the board IS the fleet board.
 
@@ -342,10 +342,10 @@ the cross-project 串刺し view:
 
 ```bash
 cd ~/proj/scitex-foo
-scitex-todo init-store --project           # 🟡 PHASE-1 — creates ./.scitex/todo/tasks.yaml
+scitex-cards init-store --project           # 🟡 PHASE-1 — creates ./.scitex/todo/tasks.yaml
 echo ".scitex/" >> .gitignore        # don't commit the local task list
-scitex-todo list-tasks                     # now reads the PROJECT store (overrides user)
-scitex-todo resolve-store                    # confirms which store the verbs hit
+scitex-cards list-tasks                     # now reads the PROJECT store (overrides user)
+scitex-cards resolve-store                    # confirms which store the verbs hit
 ```
 
 Removing the project-scope file (or `cd`-ing outside the project tree)
@@ -406,8 +406,8 @@ the backlog sweep does the same for untouched `deferred` cards.
 
 | Symptom                                   | Fix                                                |
 | ----------------------------------------- | -------------------------------------------------- |
-| `scitex-todo` not found                   | `pip install 'scitex-todo[mcp]'`                   |
-| `import scitex_todo._mcp_server` fails    | You didn't install the `[mcp]` extra              |
+| `scitex-cards` not found                   | `pip install 'scitex-cards[mcp]'`                   |
+| `import scitex_cards._mcp_server` fails    | You didn't install the `[mcp]` extra              |
 | `list` returns nothing                    | `$SCITEX_TODO_SCOPE` is filtering you out; try `--scope ''` |
 | Concurrent writers seem to lose data      | `fcntl.flock` should serialize them; check that all writers go through `_store.py` / `save_tasks` (NOT raw YAML writes) |
 | `add` fails with `TaskValidationError`    | Duplicate `id`, invalid `status`, or `priority` not an int |
@@ -417,9 +417,9 @@ the backlog sweep does the same for untouched `deferred` cards.
 
 ## 10 — Where to file bugs / requests
 
-This package: `https://github.com/ywatanabe1989/scitex-todo`. The
-`scitex-todo` agent owns it. The lead and operator triage feature
+This package: `https://github.com/ywatanabe1989/scitex-cards`. The
+`scitex-cards` agent owns it. The lead and operator triage feature
 requests on the operator-channel; agents file via sac peer-message to
-`scitex-todo`.
+`scitex-cards`.
 
 <!-- EOF -->

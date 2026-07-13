@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # -*- coding: utf-8 -*-
-# Install the scitex-todo git->card hooks into a repository.
+# Install the scitex-cards git->card hooks into a repository.
 #
 # Phase P3 of the task-driven-feedback epic (card tcfb-p3-git-to-card).
 # Wires the `post-commit` + `pre-push` hooks (from this package's
 # `.githooks/` dir) so that local git mutations on a `<type>/<card-id>-*`
-# branch are recorded on the matching scitex-todo card's ROUTE via
-#   scitex-todo hook push --payload -
+# branch are recorded on the matching scitex-cards card's ROUTE via
+#   scitex-cards hook push --payload -
 #
 # SOFT linking: commits on ad-hoc branches (no card id) are skipped
 # silently by the hooks; this installer just wires them in.
@@ -88,7 +88,7 @@ if [ "${MODE}" = "uninstall" ]; then
     # marker line so we never delete an unrelated hook of the same name).
     for name in ${HOOK_NAMES}; do
         f="${REPO_ROOT}/.githooks/${name}"
-        if [ -f "${f}" ] && grep -q "scitex-todo git->card hook" "${f}" 2>/dev/null; then
+        if [ -f "${f}" ] && grep -q "scitex-cards git->card hook" "${f}" 2>/dev/null; then
             rm -f "${f}"
         fi
     done
