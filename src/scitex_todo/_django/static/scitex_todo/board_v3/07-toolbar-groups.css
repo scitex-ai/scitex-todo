@@ -6,18 +6,24 @@
  * + blocking-me + hidden + Add-Task into one rubber-band flex row, so
  * the wraps fell at unpredictable places.
  *
- * This file groups the children into THREE logical clusters + a primary
- * action zone, each with breathing room + a subtle vertical divider:
+ * This file groups the children into logical clusters + a primary action
+ * zone, each with breathing room + a subtle vertical divider:
  *
- *   .stx-todo-filterbar__group--view     — Layout + Sort + Group
- *   .stx-todo-filterbar__group--search   — Search input + Filters popover
+ *   .stx-todo-filterbar__group--view     — Layout
+ *   .stx-todo-filterbar__group--search   — Search input
  *                                          (lives on .fb-center band)
- *   .stx-todo-filterbar__group--status   — recent-count + Reload +
- *                                          hide-project + blocking-me +
- *                                          hidden
  *   .stx-todo-filterbar__primary         — + Add Task (brand accent, pops)
  *   .stx-todo-filterbar__divider         — subtle 1px vertical separator
  *                                          between groups
+ *
+ * DECLUTTER 2026-07-13 (operator TG). The whole STATUS cluster is gone —
+ * Reload, the hide-project toggle, the big blocking-me display and the
+ * "N new / 24 h" counter all left the header (the counter reappears in
+ * Details > Stats; blocking-me is a checkbox in Details > Filters, and the
+ * legend already carries the meaning the big display used to). Sort and
+ * Group went with the Column layout that was the only thing they acted on.
+ * Their rules are deleted, not merely unused — test__toolbar_groups.py
+ * pins their absence.
  *
  * Token contract: every color sources from the board_v3 :root palette in
  * 01-filterbar.css (--border, --purple, --text-muted, --gold). The +Add
@@ -125,20 +131,15 @@
 }
 
 /* ── Group-local refinements ──────────────────────────────────────────── */
-/* The VIEW group's inner controls (Layout segment + Sort select +
- * Group select) are themselves flex-row spans. Give them a tighter
- * inner gap so the labels stay glued to their controls. */
-.stx-todo-filterbar__group--view > .filt-layout,
-.stx-todo-filterbar__group--view > .filt-sort,
-.stx-todo-filterbar__group--view > .filt-groupby {
+/* The VIEW group's only inner control is the Layout segment (the Sort and
+ * Group selects left with the Column layout on 2026-07-13). It is itself a
+ * flex-row span; give it a tighter inner gap so the label stays glued to
+ * the control. */
+.stx-todo-filterbar__group--view > .filt-layout {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
-
-/* STATUS group: keep the tight 12px inter-control gap; recent-count
- * pill + reload + the two <details> dropdowns + blocking-me toggle
- * already carry their own padding. No per-child overrides needed. */
 
 /* ── Responsive wrap (≤780px) ─────────────────────────────────────────── */
 /* At narrow widths each group drops to its own row inside the .fb-right

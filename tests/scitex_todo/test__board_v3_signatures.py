@@ -135,26 +135,187 @@ class TestP1SearchAsLauncher:
 
 
 # -----------------------------------------------------------------------------
-# P7 — self-named project-umbrella card filter (PR #87)
+# Column + Table layouts REMOVED (operator TG, 2026-07-13:
+# "Column, Table view がいらないです、削除してください")
 # -----------------------------------------------------------------------------
 
 
-class TestP7SelfNamedCard:
-    """Pins for the PR #87 self-named project-umbrella filter."""
+class TestColumnAndTableLayoutsRemoved:
+    """Pins for the Column (kanban) + Table (flat rows) removal.
 
-    def test_is_self_named_project_card_defined(self, board_text):
+    The operator asked for both layouts to be DELETED, not hidden. The
+    surviving layouts are Timeline (default) | Wall | Graph.
+
+    These pins are the mirror image of the ones they replace: the features
+    that lived ONLY inside those two renderers — the per-card renderer, the
+    column chrome (pin / drag-reorder / column ctx-menu / per-column nudge),
+    the multi-select bulk toolbar, the Sort / Group / Group-by-time controls
+    and the project-COLUMN hide — must stay GONE. Same convention used when
+    the Stale layout was removed on 2026-07-10.
+    """
+
+    def test_layout_buttons_gone(self, board_text):
         # Arrange
         # Act
         # Assert
-        assert "function isSelfNamedProjectCard" in board_text
+        assert 'id="f-layout-column"' not in board_text
+        assert 'id="f-layout-table"' not in board_text
+        assert "📋 Column" not in board_text
+        assert "📑 Table" not in board_text
 
-    def test_filter_applied_in_render(self, board_text):
-        # The fix is the call site inside render() — the function alone
-        # doesn't help if the filter loop doesn't invoke it.
+    def test_layouts_out_of_the_whitelist(self, board_text):
+        # Arrange
+        whitelist = board_text.split("VALID_LAYOUTS = ")[1].split("]")[0]
+        # Act
+        # Assert
+        assert '"column"' not in whitelist
+        assert '"table"' not in whitelist
+        assert '"stale"' not in whitelist
+        for live in ('"timeline"', '"wall"', '"graph"'):
+            assert live in whitelist
+
+    def test_default_layout_is_timeline(self, board_text):
+        # Column used to be the DEFAULT. If the default is not re-pointed at
+        # a layout that still renders, every first-time visitor gets a BLANK
+        # board — the single most likely way to break this change.
         # Arrange
         # Act
         # Assert
-        assert "isSelfNamedProjectCard(t, p)" in board_text
+        assert 'const DEFAULT_LAYOUT = "timeline";' in board_text
+
+    def test_stale_persisted_layout_is_migrated(self, board_text):
+        # A browser whose localStorage still says "column" / "table" must be
+        # coerced to the default, not left on a dead layout.
+        # Arrange
+        # Act
+        # Assert
+        assert "function normalizeLayout" in board_text
+        assert "normalizeLayout(stored)" in board_text
+        assert "normalizeLayout(STATE.layout)" in board_text
+
+    def test_renderers_gone(self, board_text):
+        # Arrange
+        # Act
+        # Assert
+        for fn in (
+            "function _renderColumnView",
+            "function _renderColumnHtml",
+            "function _renderTableView",
+            "function _renderTimeBucketedColumn",
+            "function cardHtml",
+        ):
+            assert fn not in board_text, f"{fn} must be removed"
+
+    def test_column_chrome_gone(self, board_text):
+        # Pin / drag-reorder / column ctx-menu / per-column nudge / card drag
+        # only ever acted on column DOM.
+        # Arrange
+        # Act
+        # Assert
+        for fn in (
+            "function toggleColPin",
+            "function openColCtx",
+            "function onColDragStart",
+            "function onCardDragStart",
+            "function nudgePrimaryAgent",
+            "function isSelfNamedProjectCard",
+            "function bumpPriority",
+        ):
+            assert fn not in board_text, f"{fn} must be removed"
+
+    def test_column_only_controls_gone(self, board_text):
+        # Sort / Group / Group-by-time / bulk-select / project-column hide
+        # all operated on column cards; a control that cannot act on anything
+        # is a lie in the UI, so they went with the layouts.
+        # Arrange
+        # Act
+        # Assert
+        for dom_id in (
+            'id="f-sort"',
+            'id="f-groupby"',
+            'id="stx-toggle-group-by-time"',
+            'id="board-toolbar"',
+            'id="group-spans-all"',
+            'id="proj-hide-wrap"',
+        ):
+            assert dom_id not in board_text, f"{dom_id} must be removed"
+        for fn in (
+            "function _sortComparator",
+            "function renderGroupStrip",
+            "function _applyGroupClustering",
+            "function bulkSetStatus",
+            "function toggleProjHidden",
+        ):
+            assert fn not in board_text, f"{fn} must be removed"
+
+    def test_table_css_gone(self, css_text):
+        # Arrange
+        # Act
+        # Assert
+        assert '[data-layout="table"]' not in css_text
+        assert ".tbl-wrap" not in css_text
+        assert ".tbl-status-dot" not in css_text
+
+
+# -----------------------------------------------------------------------------
+# Graph layout — background render + fit-to-panel sizing
+# (operator TG 2026-07-13: "Graph view は最適化してください。裏で描画を始めて置き、
+#  サイズも調整して表示されるようにしてください")
+# -----------------------------------------------------------------------------
+
+
+class TestGraphBackgroundRender:
+    """Pins for the async / pre-warmed mermaid render.
+
+    Switching to Graph used to freeze the UI for seconds (3 MB bundle fetch
+    + a synchronous ``mermaid.run()`` against the live canvas). The render is
+    now done OFF-DOM on an idle callback and cached by source string.
+    """
+
+    def test_source_builder_is_pure(self, board_text):
+        # The mermaid source build must be separable from the DOM write —
+        # that is what lets it run on the idle callback.
+        # Arrange
+        # Act
+        # Assert
+        assert "function _graphSrc" in board_text
+
+    def test_prewarm_runs_on_idle(self, board_text):
+        # Arrange
+        # Act
+        # Assert
+        assert "function _prewarmGraph" in board_text
+        assert "requestIdleCallback" in board_text
+        assert "_prewarmGraph();" in board_text
+
+    def test_render_uses_the_promise_api_not_run(self, board_text):
+        # `mermaid.run({querySelector})` lays out against the LIVE canvas and
+        # blocks; `mermaid.render(id, src)` resolves an SVG string off-DOM.
+        # Arrange
+        # Act
+        # Assert
+        assert "mermaid.render(" in board_text
+        assert "mermaid.run(" not in board_text
+
+    def test_render_is_cached_by_source(self, board_text):
+        # Re-rendering on every poll tick was the other half of the cost.
+        # Arrange
+        # Act
+        # Assert
+        assert "GRAPH_CACHE" in board_text
+        assert "GRAPH_CACHE.key === built.src" in board_text
+
+    def test_svg_is_sized_to_the_panel(self, board_text, css_text):
+        # An SVG rendered off-DOM carries mermaid's natural px width; dropped
+        # into the panel unscaled it overflows. The viewBox + the fit rule are
+        # what make it show up correctly sized.
+        # Arrange
+        # Act
+        # Assert
+        assert "preserveAspectRatio" in board_text
+        assert "viewBox" in board_text
+        assert ".graph-wrap--fit .graph-canvas svg" in css_text
+        assert ".graph-canvas" in css_text
 
 
 # -----------------------------------------------------------------------------
@@ -217,17 +378,16 @@ class TestP2P9FilterAndSort:
         # Assert
         assert "function clearOneFilter" in board_text
 
-    def test_state_sort_field_present(self, board_text):
+    def test_sort_control_removed_with_the_column_layout(self, board_text):
+        # P9's Sort dropdown only re-ordered cards WITHIN a column (and the
+        # Table rows). Both layouts were removed 2026-07-13, so the control
+        # and its comparator went too — see
+        # TestColumnAndTableLayoutsRemoved.
         # Arrange
         # Act
         # Assert
-        assert "STATE.sort" in board_text
-
-    def test_sort_comparator_defined(self, board_text):
-        # Arrange
-        # Act
-        # Assert
-        assert "function _sortComparator" in board_text
+        assert "STATE.sort" not in board_text
+        assert "function _sortComparator" not in board_text
 
 
 # -----------------------------------------------------------------------------
@@ -235,33 +395,21 @@ class TestP2P9FilterAndSort:
 # -----------------------------------------------------------------------------
 
 
-class TestP10Groups:
-    """Pins for the PR #91 project-groups feature."""
+class TestP10GroupsRemoved:
+    """PR #91's group clustering re-ordered COLUMNS and rendered a banner
+    above the columns grid. Both died with the Column layout (2026-07-13).
+    The `groups:` schema + the /graph payload field are untouched — only the
+    board-side clustering UI is gone.
+    """
 
-    def test_state_group_by_present(self, board_text):
+    def test_group_clustering_ui_removed(self, board_text):
         # Arrange
         # Act
         # Assert
-        assert "STATE.groupBy" in board_text
-
-    def test_render_group_strip_defined(self, board_text):
-        # Arrange
-        # Act
-        # Assert
-        assert "function renderGroupStrip" in board_text
-
-    def test_apply_group_clustering_defined(self, board_text):
-        # Arrange
-        # Act
-        # Assert
-        assert "function _applyGroupClustering" in board_text
-
-    def test_group_spans_all_mount_present(self, board_text):
-        # The spans_all banner mounts here above the columns grid.
-        # Arrange
-        # Act
-        # Assert
-        assert 'id="group-spans-all"' in board_text
+        assert "STATE.groupBy" not in board_text
+        assert "function renderGroupStrip" not in board_text
+        assert "function _applyGroupClustering" not in board_text
+        assert 'id="group-spans-all"' not in board_text
 
 
 # -----------------------------------------------------------------------------
@@ -418,152 +566,55 @@ class TestSearchQualifierSyntax:
 # -----------------------------------------------------------------------------
 
 
-class TestMultiselectBatchOpsStage1:
-    """Pins for the PR(h) Stage 1 per-row multi-select + bulk status feature.
+class TestMultiselectBatchOpsRemoved:
+    """PR(h) Stage 1's multi-select + bulk status change is GONE (2026-07-13).
 
-    Stage 1 ships ONE bulk op (status change). The other 4 (project
-    re-assign / agent re-assign / bulk nudge / bulk hide) come in
-    follow-up PRs — this class deliberately does NOT pin them.
+    Not a deliberate feature cut: the per-row checkbox was rendered by
+    ``cardHtml`` and existed ONLY on Column / Table cards. With both layouts
+    removed there is nothing to select, so the toolbar could not act on
+    anything. Re-introducing bulk ops means putting a selection affordance on
+    the Wall notes / Timeline markers first — a separate card.
     """
 
-    def test_card_select_checkbox_in_card_html(self, board_text):
-        # cardHtml(t) must render a per-row checkbox with the
-        # `card-select` class so the toolbar can detect / batch-toggle.
+    def test_card_checkbox_gone(self, board_text):
         # Arrange
         # Act
         # Assert
-        assert 'class="card-select"' in board_text
+        assert 'class="card-select"' not in board_text
+        assert "window.MULTISELECT" not in board_text
 
-    def test_card_select_carries_data_task_id(self, board_text):
-        # The bulk-action loop walks selected ids — without
-        # data-task-id, select-all has nothing to read.
+    def test_bulk_toolbar_gone(self, board_text):
         # Arrange
         # Act
         # Assert
-        assert "data-task-id=" in board_text
+        for dom_id in (
+            'id="board-toolbar"',
+            'id="board-toolbar-select-all"',
+            'id="board-toolbar-count"',
+            'id="board-toolbar-status"',
+        ):
+            assert dom_id not in board_text
 
-    def test_multiselect_state_is_a_set_board_text_contains(self, board_text):
-        # Selection state is client-side only in window.MULTISELECT.
-        # The `new Set()` literal is the load-bearing primitive.
+    def test_bulk_helpers_gone(self, board_text):
         # Arrange
         # Act
         # Assert
-        assert "window.MULTISELECT" in board_text
+        for fn in (
+            "function toggleCardSelected",
+            "function toggleSelectAll",
+            "function clearMultiselect",
+            "async function bulkSetStatus",
+        ):
+            assert fn not in board_text
 
-    def test_multiselect_state_is_a_set_board_text_contains_2(self, board_text):
-        # Selection state is client-side only in window.MULTISELECT.
-        # The `new Set()` literal is the load-bearing primitive.
-        # Arrange
-        # Act
-        # Assert
-        assert "new Set()" in board_text
-
-    def test_toggle_card_selected_helper_defined(self, board_text):
-        # Arrange
-        # Act
-        # Assert
-        assert "function toggleCardSelected" in board_text
-
-    def test_toggle_select_all_helper_defined(self, board_text):
-        # Arrange
-        # Act
-        # Assert
-        assert "function toggleSelectAll" in board_text
-
-    def test_clear_multiselect_helper_defined(self, board_text):
-        # Arrange
-        # Act
-        # Assert
-        assert "function clearMultiselect" in board_text
-
-    def test_bulk_set_status_helper_defined(self, board_text):
-        # Arrange
-        # Act
-        # Assert
-        assert "async function bulkSetStatus" in board_text
-
-    def test_bulk_set_status_hits_update_endpoint(self, board_text):
-        # v1 reuses the existing single-card /update endpoint in a
-        # per-task loop. A future /bulk endpoint can swap in without
-        # touching this pin (which only guards against the loop being
-        # accidentally dropped).
+    def test_single_card_update_path_survives(self, board_text):
+        # The ctx-menu status change still posts to /update — the endpoint is
+        # untouched, only the bulk loop is gone.
         # Arrange
         # Act
         # Assert
         assert '"/update"' in board_text
-
-    def test_board_toolbar_mount_present(self, board_text):
-        # The toolbar mounts above the columns grid (next to
-        # group-spans-all). The id is what renderBoardToolbar() reads.
-        # Arrange
-        # Act
-        # Assert
-        assert 'id="board-toolbar"' in board_text
-
-    def test_board_toolbar_select_all_input_present(self, board_text):
-        # Arrange
-        # Act
-        # Assert
-        assert 'id="board-toolbar-select-all"' in board_text
-
-    def test_board_toolbar_count_span_present(self, board_text):
-        # Arrange
-        # Act
-        # Assert
-        assert 'id="board-toolbar-count"' in board_text
-
-    def test_board_toolbar_status_dropdown_present(self, board_text):
-        # Arrange
-        # Act
-        # Assert
-        assert 'id="board-toolbar-status"' in board_text
-
-    def test_board_toolbar_status_options_cover_valid_statuses(self, board_text):
-        # The 7-status enum used by the right-click ctx menu —
-        # bulk should offer the same set so the operator sees parity.
-        # Arrange
-        # Act
-        # Assert
-        for status in (
-            "in_progress",
-            "blocked",
-            "done",
-            "deferred",
-            "failed",
-            "goal",
-        ):
-            assert f'value="{status}"' in board_text
-
-        # `pending` was ABOLISHED 2026-07-10 (operator: "存在してはならない状態
-        # である"); it is out of VALID_STATUSES and any write of it now fails
-        # validation. A status <option> offering it would hand the operator a
-        # guaranteed error, so no picker may expose it. This pin is the guard
-        # against it creeping back in.
-        assert '<option value="pending">' not in board_text
-
-    def test_toolbar_followup_ops_left_as_commented_hooks(self, board_text):
-        # The card asks for 5 bulk ops. Stage 1 ships ONE; the other 4
-        # are deliberately left as a TODO sentinel for the follow-up
-        # PR. The pin guarantees the next PR has a discoverable
-        # landing site.
-        # Arrange
-        # Act
-        # Assert
-        assert "TODO(PR-h+1)" in board_text
-
-    def test_board_toolbar_css_class_defined(self, css_text):
-        # CSS pin — `.board-toolbar` lives in the extracted layout
-        # stylesheet alongside the other board-level chrome.
-        # Arrange
-        # Act
-        # Assert
-        assert ".board-toolbar" in css_text
-
-    def test_card_select_css_class_defined(self, css_text):
-        # Arrange
-        # Act
-        # Assert
-        assert ".card-select" in css_text
+        assert "async function setCardStatus" in board_text
 
 
 # -----------------------------------------------------------------------------
@@ -572,85 +623,35 @@ class TestMultiselectBatchOpsStage1:
 # -----------------------------------------------------------------------------
 
 
-class TestActivityBucketBadge:
-    """Pins for the per-card activity-bucket badge.
+class TestActivityBucketBadgeRemoved:
+    """The per-card activity badge (and the age / date pills) rendered INSIDE
+    ``cardHtml``, which only Column + Table used. They went with the card
+    renderer on 2026-07-13.
 
-    Backend half (PR #122) added the working/stale/active/idle decay
-    derivation in ``_build_fleet``. This render-side feature surfaces
-    the same RECENCY signal on each card via a tiny dot badge whose
-    bucket is computed from ``t.last_activity`` freshness (hours):
-
-      fresh : <= 1 h   -- bright green  (live activity)
-      warm  : 1-24 h   -- amber         (recent but quieting)
-      stale : > 24 h   -- muted grey    (decayed)
-
-    Fixes the operator pain "manual working color stays lit
-    indefinitely" (TG 12739) on a per-card basis.
+    The RECENCY signal itself is not lost: the Timeline raster is built on
+    exactly the same ``last_activity`` axis, and the backend
+    ``_build_fleet`` decay derivation (PR #122) is untouched.
     """
 
-    def test_activity_badge_html_defined(self, board_text):
-        # The render function must exist.
+    def test_card_pill_renderers_gone(self, board_text):
         # Arrange
         # Act
         # Assert
-        assert "function activityBadgeHtml" in board_text
+        for fn in (
+            "function activityBadgeHtml",
+            "function _activityBucket",
+            "function _activityHoursSince",
+            "function agePillHtml",
+            "function datePillHtml",
+        ):
+            assert fn not in board_text, f"{fn} must be removed"
 
-    def test_activity_bucket_helper_defined(self, board_text):
-        # Bucketing is its own helper so the wired-in call stays clean.
-        # Arrange
-        # Act
-        # Assert
-        assert "function _activityBucket" in board_text
-
-    def test_activity_hours_helper_defined(self, board_text):
-        # Time-since helper reads `t.last_activity` and returns hours.
-        # Arrange
-        # Act
-        # Assert
-        assert "function _activityHoursSince" in board_text
-
-    def test_activity_badge_wired_into_card_top(self, board_text):
-        # The badge must actually render on each card, not just be defined.
-        # A regression that ships only the helper without the call site
-        # silently hides the feature.
-        # Arrange
-        # Act
-        # Assert
-        assert "${activityBadgeHtml(t)}" in board_text
-
-    def test_activity_badge_reads_last_activity_field(self, board_text):
-        # The derivation must read the PR #122 schema field, not invent
-        # a new one. Pinning the field name keeps the FE in sync with
-        # the backend (`_build_fleet` precedence rules).
+    def test_last_activity_axis_survives(self, board_text):
+        # The field is still read (recent-count pill + the /timeline raster).
         # Arrange
         # Act
         # Assert
         assert "t.last_activity" in board_text
-
-    def test_activity_badge_css_defined(self, css_text):
-        # CSS pin — `.activity-badge` lives in the extracted card stylesheet.
-        # Arrange
-        # Act
-        # Assert
-        assert ".activity-badge" in css_text
-
-    def test_activity_badge_fresh_modifier_present(self, css_text):
-        # Arrange
-        # Act
-        # Assert
-        assert ".activity-badge--fresh" in css_text
-
-    def test_activity_badge_warm_modifier_present(self, css_text):
-        # Arrange
-        # Act
-        # Assert
-        assert ".activity-badge--warm" in css_text
-
-    def test_activity_badge_stale_modifier_present(self, css_text):
-        # Arrange
-        # Act
-        # Assert
-        assert ".activity-badge--stale" in css_text
 
 
 # -----------------------------------------------------------------------------

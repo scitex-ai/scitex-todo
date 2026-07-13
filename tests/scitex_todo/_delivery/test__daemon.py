@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import logging
+import os
 import threading
 
 import yaml
@@ -37,6 +38,13 @@ from scitex_todo._delivery._daemon import (
     run_notifyd,
 )
 from scitex_todo._delivery._ledger import Ledger, TERMINAL_STATUS, _make_key
+from scitex_todo._delivery._pidfile import (
+    assess_liveness,
+    heartbeat_age_seconds,
+    local_identity,
+    parse as parse_pidfile,
+    writer_is_local,
+)
 from scitex_todo._inbox import enqueue, poll_inbox
 
 from ._fakes import RecorderChannel
@@ -373,6 +381,62 @@ def test_daemon_never_flips_inbox_seen(tmp_path):
     )
     after = poll_inbox("u_ivan", unseen_only=True, mark_seen=False, store=store)
     assert len(after) == 1  # delivery is seen-independent.
+
+
+# --------------------------------------------------------------------------- #
+# HEARTBEAT — the only liveness signal that crosses a PID-namespace boundary   #
+# --------------------------------------------------------------------------- #
+def test_daemon_refreshes_the_pidfile_heartbeat_every_tick(tmp_path):
+    """The pidfile is REWRITTEN each tick with our identity + a fresh stamp.
+
+    A reader in another PID namespace (a container sharing the store by
+    bind-mount) cannot interpret our pid at all — freshness is all it has. So
+    the stamp must actually advance, tick over tick, not just be written once.
+    """
+    store = _store(tmp_path)
+    _write_recipients(tmp_path, {})
+
+    t0 = _dt.datetime(2026, 7, 13, 9, 0, 0, tzinfo=_dt.timezone.utc)
+    calls = {"n": 0}
+
+    def _now():
+        calls["n"] += 1
+        return t0 + _dt.timedelta(seconds=calls["n"])
+
+    # Read the LIVE pidfile from inside the loop (via the sleep seam) — after
+    # the run it is deliberately unlinked.
+    snapshots: list[dict] = []
+    verdicts: list[dict] = []
+
+    def _sleep(_s):
+        text = pidfile_path(store).read_text(encoding="utf-8")
+        snapshots.append(parse_pidfile(text))
+        verdicts.append(assess_liveness(pidfile_path(store)))
+
+    run_notifyd(
+        store=store,
+        interval=120.0,
+        channels={},
+        sleep=_sleep,
+        now_fn=_now,
+        max_iterations=3,
+        terminal_report_every=0,
+        nudge_sweep_minutes=0,
+    )
+
+    assert len(snapshots) == 2  # no sleep after the final (short-circuited) tick
+    for snap in snapshots:
+        assert snap["pid"] == os.getpid()
+        assert snap["host"] == local_identity()["host"]
+        assert snap["pid_ns"] == local_identity()["pid_ns"]
+        assert float(snap["interval"]) == 120.0
+        assert writer_is_local(snap) is True
+    # The stamp ADVANCED between ticks — a frozen stamp would read as a dead
+    # daemon to every cross-namespace checker.
+    ages = [heartbeat_age_seconds(s, t0 + _dt.timedelta(hours=1)) for s in snapshots]
+    assert ages[0] > ages[1], f"heartbeat did not advance between ticks: {ages}"
+    # And a health probe taken WHILE the daemon runs sees it as alive.
+    assert all(v["ok"] and v["state"] == "alive" for v in verdicts)
 
 
 # EOF

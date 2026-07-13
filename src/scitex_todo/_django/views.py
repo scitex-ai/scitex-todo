@@ -52,7 +52,10 @@ def board_page(request):
         try:
             html = render_to_string(
                 "scitex_todo/standalone.html",
-                {"app_name": "scitex-todo", "app_label": "SciTeX Todo Board"},
+                # DISPLAY string only (operator TG 2026-07-13). ``app_name``
+                # stays ``scitex-todo`` — it keys the shell's static/asset
+                # namespace, not the product name the operator reads.
+                {"app_name": "scitex-todo", "app_label": "SciTeX Cards"},
                 request=request,
             )
             return HttpResponse(html)
@@ -86,7 +89,12 @@ def board_v3_page(request):
         from scitex_todo import __version__ as _version
     except Exception:  # noqa: BLE001
         _version = "?"
-    label = f"scitex-todo v{_version}"
+    # PRODUCT NAME (operator TG 2026-07-13: "製品なので、scitex-todo ではなく、
+    # SciTeX Cards としてタイトルを書いてください"). This is the DISPLAY string only
+    # — the browser tab + the in-page header. The package, module, CLI, MCP
+    # tool prefix and store path are all still `scitex-todo`; renaming those
+    # is a separate, coordinated change.
+    label = f"SciTeX Cards v{_version}"
 
     # SSOT status colors (kill the 4-bucket color collapse). The board's
     # color layer is single-sourced from ``STATUS_STYLE`` via the same
@@ -210,7 +218,7 @@ def _static_graph_page(request) -> str:
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>SciTeX Todo Board</title>
+<title>SciTeX Cards</title>
 <style>
   body {{ font-family: -apple-system, system-ui, sans-serif; background: #1e1e2e;
     color: #e0e0e0; margin: 0; padding: 24px; }}

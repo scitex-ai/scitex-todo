@@ -166,11 +166,17 @@ def notifyd_group(
 )
 def install_unit_cmd(force: bool) -> None:
     """Write the unit file (operator-gated) and print the enable commands."""
-    from .._delivery._systemd import install_unit
+    from .._delivery._systemd import ExecStartUnresolved, install_unit
 
-    result = install_unit(force=force)
+    try:
+        result = install_unit(force=force)
+    except ExecStartUnresolved as exc:
+        # Fail LOUDLY: a unit with an unresolvable ExecStart would install fine
+        # and then die at 203/EXEC the moment the operator enables it.
+        raise click.ClickException(str(exc)) from exc
     if result["written"]:
         click.echo(f"# wrote systemd user unit: {result['path']}")
+        click.echo(f"#   ExecStart={result['exec_start']}")
     elif result["existed"]:
         click.echo(
             f"# unit already exists (NOT overwritten): {result['path']}\n"

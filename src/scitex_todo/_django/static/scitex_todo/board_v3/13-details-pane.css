@@ -1,0 +1,278 @@
+/* board_v3 — RIGHT-HAND DETAILS COLUMN (filters + legend-aligned stats).
+ *
+ * Operator TG 2026-07-13:
+ *   "右の方に details カラムを作ってそこにもっと使いやすい形でのフィルタを用意
+ *    すればよい … 114 new/24h ですが、それも details のほうで"
+ *   "Legend と対応させて Details の方に Stats を用意して、可視化してください。
+ *    タイムスケールも分けられるようにして可視化してください。(d/w/m) など"
+ *   "Details カラムは scitex-writer とかが参考になりそうです。"
+ *   "scitex-ui にシェルとカラムとスマートな畳み方などがあるはずです。"
+ *
+ * MACHINERY comes from scitex-ui; SHAPE comes from scitex-writer.
+ *
+ *   PANE      = scitex-ui `.stx-shell-sidebar` (css/shell/stx-shell-sidebar.css
+ *               — "SINGLE SOURCE OF TRUTH for workspace sidebar layout. Used
+ *               by: Writer, Scholar, Visualizer, Console, Verifier, Hub").
+ *               Already linked by the standalone shell this board extends, so
+ *               there is nothing new to load. It owns the pane box, the 50 px
+ *               `__header`, the scrolling `__content` and the `__toggle`.
+ *   COLLAPSE  = its `.collapsed` state ("スマートな畳み方"): the pane shrinks to
+ *               --ui-collapsed-pane-width and the header becomes a vertical
+ *               icon+label strip. The board only TOGGLES the class.
+ *   SECTIONS  = scitex-writer's Details accordion shape (editor.css
+ *               `.details-section` / `-toggle` / `-body` / `.details-row` +
+ *               frontend/src/details-panel.ts's localStorage open-set), so the
+ *               two products' Details columns read the same.
+ *
+ * Per stx-shell-sidebar.css's own instruction ("Module CSS should ONLY define
+ * overrides"), everything below is either an override that docks the pane to
+ * the RIGHT (the shell's sidebars are left-docked) or board-specific content
+ * styling (filter rows, timescale, stat bars) the component doesn't cover.
+ */
+
+.board-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* --- overrides on scitex-ui's .stx-shell-sidebar ----------------------- */
+/* Right-docked (the shell's own sidebars sit on the left, so the border and
+ * the width are the only structural things the board changes). */
+.details-pane.stx-shell-sidebar {
+  width: 300px;
+  border-left: 1px solid var(--border);
+  border-bottom: 0;
+  background: var(--col-bg);
+}
+.details-pane .stx-shell-sidebar__header {
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--border);
+  padding: 0 10px 0 12px;
+}
+.details-pane .stx-shell-sidebar__header h5 {
+  font-size: 0.82rem;
+  color: var(--text);
+}
+.details-pane .stx-shell-sidebar__content {
+  background: var(--col-bg);
+  border-bottom: 0;
+  padding: 2px 0 12px;
+}
+.details-pane .stx-shell-sidebar__toggle {
+  font-size: 1rem;
+  line-height: 1;
+}
+.details-section {
+  border-bottom: 1px solid var(--border);
+}
+.details-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+}
+.details-section-toggle:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.details-section-title {
+  flex: 1;
+  font-weight: 600;
+}
+.details-filter-count {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+.details-chevron {
+  font-size: 0.7rem;
+  opacity: 0.6;
+  transition: transform 120ms ease;
+}
+.details-section.open .details-chevron {
+  transform: rotate(90deg);
+}
+/* Closed sections keep their body in the DOM (the filter <select>s must stay
+ * addressable by populateFilters() even when collapsed) but out of view. */
+.details-section-body {
+  display: none;
+  padding: 2px 12px 12px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.details-section.open .details-section-body {
+  display: block;
+}
+
+/* --- filter rows ------------------------------------------------------- */
+.details-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+}
+.details-row--filter label {
+  flex: 0 0 68px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+/* The six dropdowns are full-width here instead of squeezed into a header
+ * popover — the "もっと使いやすい形でのフィルタ" the operator asked for. */
+.details-row--filter select {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+.details-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 0;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 0.78rem;
+}
+.details-muted {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+.details-clear {
+  width: 100%;
+  margin-top: 8px;
+  padding: 5px 8px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 0.75rem;
+}
+.details-clear:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* --- timescale (d / w / m) -------------------------------------------- */
+.details-scale {
+  display: inline-flex;
+  margin: 2px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.details-scale-btn {
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--border);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+.details-scale-btn:last-child {
+  border-right: 0;
+}
+.details-scale-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+.details-scale-btn--on {
+  background: var(--purple);
+  color: #fff;
+}
+
+/* --- stats bars -------------------------------------------------------
+ * The bars are the LEGEND, given length. Same statuses, same order, same
+ * swatch colours — they all come from the one `status_colors` map
+ * (STATUS_STYLE), read through the same --status-fill-<s> /
+ * --status-stroke-<s> / --status-border-<s> vars the legend chips use. */
+.stat-head {
+  color: var(--text);
+  font-size: 0.78rem;
+  margin-bottom: 8px;
+}
+.stat-row {
+  display: grid;
+  grid-template-columns: 88px 1fr 46px;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+.stat-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text);
+  font-size: 0.72rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stat-swatch {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+.stat-bar-track {
+  display: block;
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.stat-bar {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 999px;
+  transition: width 160ms ease;
+}
+.stat-num {
+  text-align: right;
+  color: var(--text);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+.stat-total {
+  color: var(--text-muted);
+  font-size: 0.66rem;
+}
+.stat-foot {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+/* Mobile: the pane drops below the board rather than eating half the width.
+ * (The shell's own panes collapse instead; a phone-width board has no room
+ * for a 300 px column, and `.collapsed` is still available by tapping the
+ * toggle.) */
+@media (max-width: 900px) {
+  .main {
+    flex-direction: column;
+  }
+  .details-pane.stx-shell-sidebar {
+    width: 100%;
+    min-width: 0;
+    max-height: 45vh;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}

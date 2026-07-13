@@ -1,15 +1,30 @@
 name: newb
 
-# DISABLED — needs apptainer support in `newb` to run on Spartan; no GitHub
+# PARKED — needs apptainer support in `newb` to run on Spartan; no GitHub
 # paid runners (operator rule). Re-enable once newb runs under apptainer.
 #
 # This job runs a DOCKER image (ghcr.io/ywatanabe1989/newb-runner). Spartan is
 # apptainer-only, so it cannot run there; and GitHub-hosted `ubuntu-latest` is
-# forbidden for this private repo. With no eligible runner it is parked: ALL
-# triggers (schedule + workflow_dispatch) are removed below so GitHub never
-# starts it. To re-enable, restore the `on:` triggers AND point `runs-on` at a
+# forbidden for this private repo. With no eligible runner it is parked. To
+# re-enable, restore the `schedule:` trigger below AND point `runs-on` at a
 # runner that can execute the docker image (e.g. once newb gains apptainer
 # support, switch to the Spartan self-hosted runner).
+#
+# HOW TO PARK A WORKFLOW — `on: {}` IS NOT IT.
+# This file used to say `on: {}`, meaning "no triggers, never run". GitHub does
+# not read it that way: it treats a workflow with no valid trigger as a BROKEN
+# workflow file, and so it created a run on EVERY PUSH, on EVERY BRANCH, with
+# ZERO JOBS, and marked each one FAILED in 0s. 100% failure rate, forever.
+#
+# That is worse than it sounds. A permanently-red check trains everyone to read
+# red as "that's just the broken one" — so the day a real failure lands in the
+# run list, nobody looks. A CI signal that is always failing is not a signal;
+# it is a switched-off drift detector wearing an alarm's clothes.
+#
+# `workflow_dispatch:` is the correct way to park: it is a REAL trigger, so the
+# file is valid and GitHub creates no runs on push — but it only ever fires when
+# a human clicks "Run workflow". Zero automatic runs, zero false red, and the
+# job stays one click away.
 #
 # Doc-quality verification — fresh Claude agent reads only the package's
 # docs in a hard-isolated container, then tries to install + import +
@@ -18,12 +33,10 @@ name: newb
 #
 # Cost-aware schedule (when re-enabled): weekly cron + manual dispatch only.
 # Per-PR runs are intentionally NOT enabled here (LLM API cost + run time).
-#
-# on:
-#   schedule:
-#     - cron: "0 17 * * 1"  # weekly Mon 17:00 UTC (~Tue 02:00 JST)
-#   workflow_dispatch:
-on: {}
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "0 17 * * 1"  # weekly Mon 17:00 UTC (~Tue 02:00 JST)
 
 jobs:
   newb:

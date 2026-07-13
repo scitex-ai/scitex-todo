@@ -117,9 +117,13 @@
   justify-content: space-between;
   gap: 6px;
 }
-.sw-note-av {
+/* The per-note agent icon is GONE (operator 2026-07-13: "Wall ではカードごとに
+ * アイコンがあって冗長なので、エージェントのタイルの層にアイコンを置いてもらうのが
+ * 良い"). The icon now sits ONCE on the island (= agent tile) header. */
+.sw-island-av {
   flex: 0 0 auto;
-  overflow: visible;
+  margin-right: 6px;
+  vertical-align: middle;
 }
 .sw-note-chips {
   display: inline-flex;

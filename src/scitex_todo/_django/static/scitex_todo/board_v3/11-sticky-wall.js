@@ -105,17 +105,19 @@
     return Math.round(h / 24) + "d";
   }
 
-  /* One note. Readable with NO hover: 2-line title, owner avatar, status as
-   * the left edge, age + priority chips. Click -> the existing detail pane. */
+  /* One note. Readable with NO hover: 2-line title, status as the left edge,
+   * age + priority chips. Click -> the existing detail pane.
+   *
+   * The per-note agent icon was REMOVED 2026-07-13 (operator: "Wall では
+   * カードごとにアイコンがあって冗長なので、エージェントのタイルの層にアイコンを
+   * 置いてもらうのが良いかと思います"): when the wall is grouped by assignee every
+   * note in an island repeats the island's own owner, so the icon carried
+   * zero information N times. It now sits ONCE on the island header
+   * (islandHtml below). Grouped by project/status the island key is not an
+   * agent, so no icon is drawn there at all rather than a misleading one. */
   function noteHtml(node, opts) {
     opts = opts || {};
     var st = node.status || "none";
-    var av =
-      global.STX && global.STX.agentAvatar
-        ? '<svg class="sw-note-av" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' +
-          global.STX.agentAvatar.avatarSvg(12, 12, 9, node.agent || node.assignee || "?", null) +
-          "</svg>"
-        : "";
     var pr = typeof node.priority === "number" ? node.priority : null;
     var chips =
       (opts.isNext ? '<span class="sw-chip sw-chip--next">NEXT</span>' : "") +
@@ -135,7 +137,6 @@
       _esc(node.title || node.id) +
       '">' +
       '<span class="sw-note-head">' +
-      av +
       '<span class="sw-note-chips">' +
       chips +
       "</span></span>" +
@@ -148,6 +149,19 @@
 
   /* Island = one cluster. Area grows with count (the "poor-man's UMAP":
    * deterministic packing, related things adjacent, no embedding). */
+  /* The island (agent tile) header icon — the ONE place an agent icon
+   * belongs on the Wall. Only drawn when the island IS an agent, i.e. the
+   * wall is grouped by assignee. */
+  function islandAvatarHtml(key, by) {
+    if (by !== "assignee") return "";
+    if (!(global.STX && global.STX.agentAvatar)) return "";
+    return (
+      '<svg class="sw-island-av" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">' +
+      global.STX.agentAvatar.avatarSvg(12, 12, 10, key, null) +
+      "</svg>"
+    );
+  }
+
   function islandHtml(key, nodes, opts) {
     opts = opts || {};
     var selected = opts.selected === key;
@@ -177,6 +191,7 @@
       '<header class="sw-island-head"><button type="button" class="sw-island-title" data-key="' +
       _esc(key) +
       '">' +
+      islandAvatarHtml(key, opts.groupBy) +
       _esc(_clamp(key, 28)) +
       '<span class="sw-island-count">' +
       ordered.length +
@@ -216,6 +231,7 @@
           runnable: runnable,
           nowMs: nowMs,
           previewCount: state.previewCount || 6,
+          groupBy: by,   // the island key is an AGENT only when grouped by assignee
         });
       })
       .join("");

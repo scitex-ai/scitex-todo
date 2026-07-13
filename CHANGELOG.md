@@ -4,6 +4,89 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.7] - 2026-07-13 — board: it is SciTeX Cards now; two views gone, the Graph pre-rendered, a Details column added
+
+Operator-driven overhaul of the board. Everything below was verified in a real browser against
+the live 1,390-card store, not inferred from the diff.
+
+### Removed
+- **Column and Table views are gone**, along with the controls that only served them (Sort,
+  Group-by, bulk-select, hide-project). Column was the DEFAULT, so the default moves to
+  **Timeline**. Anyone whose browser still remembers `column` or `table` is migrated to
+  Timeline on load — **not** dropped on a blank board. (This board has shipped a blank board
+  twice this month; the migration is deliberate and tested.)
+- **The header is quiet again**: no Reload button, no Hide-project control, no oversized
+  "Blocking me" readout (the legend already says it), no `new/24h` counter in the bar.
+- **The status ring around each agent icon is gone.** The icons stay — the operator likes them.
+  The *ring* nobody could read: "エージェントアイコンの周りが何を表すのかよくわかりませんでした."
+  It encoded status around a glyph that encodes identity, with no legend entry to decode it.
+  Displayed is not the same as read.
+- **Wall: one icon per agent tile**, not one per card. 50 islands, 50 icons — down from 161.
+
+### Added
+- **A Details column on the right**, built on scitex-ui's real `.stx-shell-sidebar` primitive
+  rather than a bespoke layout, so the board collapses and responds like the rest of the
+  ecosystem. It holds the filters, the `new/24h` counter, and:
+- **A Stats panel that matches the Legend** — the same statuses, in the same order, in the same
+  colours, sharing one source of truth in code. Two lists that must agree and are maintained
+  separately will drift; these cannot.
+- **A d/w/m timescale**, which drives (and is driven by) the Timeline's *existing* window rather
+  than inventing a second, subtly-different notion of "week".
+- **Timeline hover feedback**: the hovered lane highlights and only that lane's dots grow.
+
+### Fixed
+- **Search autocomplete has been silently dead.** `searchQuery.js` and `searchSuggest.js` both
+  declared a top-level `const _api`; in a classic `<script>` that is one shared global binding,
+  so the second file threw `Identifier '_api' has already been declared` at parse time and never
+  ran. No error surfaced to the user — the dropdown simply never opened.
+- **The Graph no longer freezes the page.** It is rendered off-DOM ahead of time and cached, so
+  switching to it shows a finished diagram (measured: on screen within 300 ms, 1238 px inside a
+  1300 px canvas — fitted, not tiny). Rendering into a `display:none` container would have
+  produced a zero-width, unscaled SVG; it deliberately does not.
+
+### Changed
+- **The product is called SciTeX Cards.** Display strings only — package, CLI, MCP tool prefix
+  and store path are untouched (a coordinated rename is a separate effort).
+
+## [0.9.6] - 2026-07-13 — fix: health called a LIVE daemon dead, and the one recovery path it offered could not start
+
+### Fixed
+- **`health` reported the notify daemon DEAD while it was running and ticking.** The check read
+  the pid from the pidfile and probed it with `os.kill(pid, 0)`. But notifyd runs on the HOST
+  while agents run in CONTAINERS — same bind-mounted store, **different PID namespace**. The
+  host's pid does not exist in the container's `/proc`, so the probe raised
+  `ProcessLookupError` and the check reported "stale pidfile: pid N is not running",
+  confidently, and permanently.
+
+  **A pid is only meaningful inside the namespace that issued it.** The check was drawing a
+  conclusion from a number it had no standing to interpret. Liveness across that boundary is
+  now judged by **freshness, not identity**: notifyd re-stamps its pidfile every tick with
+  `pid_ns` / `boot_id` / `host` / `interval` / `heartbeat`; the check probes the pid only when
+  the pidfile came from *this* PID namespace, and otherwise judges by heartbeat age (3× the
+  recorded interval, 60s floor). An undeterminable state now degrades to a truthful non-verdict
+  instead of a false failure.
+
+  (Hostname would NOT have worked as the discriminator — Apptainer shares the UTS namespace, so
+  the container's hostname is *identical* to the host's. Only the PID namespace distinguishes
+  them.)
+
+  **Fail-loud is preserved deliberately**: a *local* daemon whose pid is gone still reports DEAD
+  even with a fresh heartbeat. Freshness must not paper over a corpse we can actually see.
+
+- **The systemd unit template could not start.** `scitex-todo notifyd install-unit` emitted
+  `ExecStart=scitex-todo notifyd` — a bare command. systemd does not use your login PATH, and
+  the console script lives in a venv, so the unit died with `status=203/EXEC`. The one durable
+  recovery path the tool offered was itself broken. `ExecStart` is now resolved to an absolute
+  path at generation time, and generation **raises** rather than writing a unit that is
+  guaranteed not to start.
+
+### CI
+- **A parked workflow was manufacturing a red X on every push.** It was disabled with `on: {}`,
+  which GitHub does not read as "disabled" — it treats a workflow with no valid trigger as a
+  *broken file*, and created a zero-job run on every push to every branch, failing each in 0s.
+  A check that is always red is not a signal; it teaches everyone that red means "that's just
+  the broken one". Parked properly with `workflow_dispatch:`.
+
 ## [0.9.5] - 2026-07-13 — perf: a card write no longer drags the whole board through SQLite
 
 Two fixes to the dual-write mirror. Together they take the mirror from **more than half of a

@@ -1,25 +1,38 @@
-"""CSS + template contract tests for the toolbar declutter (board UI overhaul
-part 2).
+"""CSS + template contract tests for the board's filterbar (toolbar) groups.
 
-Operator complaint via lead a2a `d1af161e` (2026-06-14): the scitex-todo
-board filterbar was overcrowded — Search, Filters, Layout toggle, Sort,
-"N new" badge, Group, Reload, +Add Task, hide-project all crammed into
-one row and visually collided.
+History
+-------
+The groups were introduced by the "board UI overhaul part 2" declutter
+(operator complaint via lead a2a `d1af161e`, 2026-06-14): Search, Filters,
+Layout, Sort, "N new" badge, Group, Reload, +Add Task and hide-project were
+all crammed into one rubber-band flex row and visually collided. The fix was
+a structural reorganization of the ``.filterbar`` children into logical
+groups with breathing room and a divider.
 
-The fix is a structural reorganization of the .filterbar children into
-three logical groups + a primary action zone, each with breathing room
-and a subtle vertical divider:
+DECLUTTER 2026-07-13 (operator TG, this PR)
+-------------------------------------------
+The operator asked for far more than breathing room — he asked for the
+controls to LEAVE the header:
 
-  .stx-todo-filterbar__group--view     — Layout + Sort + Group
-  .stx-todo-filterbar__group--search   — Search + Filters popover
-  .stx-todo-filterbar__group--status   — "N new" + Reload + hide-project
-  .stx-todo-filterbar__primary         — + Add Task (brand-accent)
-  .stx-todo-filterbar__divider         — vertical separator between groups
+  * "Column, Table view がいらないです、削除してください" — the Column and Table
+    layouts are gone, and with them Sort / Group / Group-by-time, which only
+    ever acted on Column CARDS.
+  * "reload は要らない" / "hide project も" / "Blocking me の大きな表示も"
+    ("the legend already conveys it") — the whole STATUS cluster left.
+  * "114 new/24h ですが、それも details のほうで" — the recent-count counter
+    MOVED to Details > Stats. It did not vanish.
+  * The six filter dropdowns moved out of the header popover into the new
+    right-hand Details column.
 
-Visual verification is the operator's job; this module pins the
-LOAD-BEARING CONTRACT — selectors, responsive media query, no hardcoded
-colors in the new toolbar CSS block. Mocks-free: open the source files
-and grep them.
+So the toolbar is now: identity | search | Layout | + Add Task.
+
+This module therefore pins BOTH halves of the contract:
+
+  1. the surviving structure (the group classes, the controls that stayed),
+  2. and — the load-bearing half after a removal — that the retired controls
+     are really GONE from the template and their rules gone from the CSS.
+
+Mocks-free: open the source files and read them.
 """
 
 from __future__ import annotations
@@ -60,7 +73,7 @@ def _read(path: Path) -> str:
 
 
 # ============================================================================
-# Half A — CSS contract: every required selector is present
+# Half A — CSS contract: every surviving selector is present
 # ============================================================================
 
 
@@ -69,14 +82,13 @@ def _read(path: Path) -> str:
     [
         ".stx-todo-filterbar__group--view",
         ".stx-todo-filterbar__group--search",
-        ".stx-todo-filterbar__group--status",
         ".stx-todo-filterbar__primary",
         ".stx-todo-filterbar__divider",
     ],
 )
 def test_toolbar_css_declares_group_selector(selector: str) -> None:
-    """Every new group / primary / divider class must have at least one
-    CSS rule in 07-toolbar-groups.css."""
+    """Every surviving group / primary / divider class must have at least
+    one CSS rule in 07-toolbar-groups.css."""
     # Arrange
     # Act
     css = _read(_TOOLBAR_CSS)
@@ -95,18 +107,13 @@ def test_toolbar_css_responsive_media_query_present_m() -> None:
     # Act
     m = re.search(r"@media\s*\([^)]*max-width\s*:\s*(\d+)px\)", css)
     # Assert
-    px = int(m.group(1))
     assert m, "07-toolbar-groups.css missing @media (max-width: …px) rule"
 
 
 def test_toolbar_css_responsive_media_query_present_case_2() -> None:
-    """A media query for the narrow-viewport wrap (≤780px) must be
-    declared so each group drops to its own row gracefully."""
+    """The responsive wrap breakpoint must stay in the operator's range."""
     # Arrange
     css = _read(_TOOLBAR_CSS)
-    # Accept any max-width up to 800px so a future bump to 768/800 still
-    # passes — the contract is "there is a responsive wrap rule", not the
-    # exact pixel value.
     # Act
     m = re.search(r"@media\s*\([^)]*max-width\s*:\s*(\d+)px\)", css)
     # Assert
@@ -118,10 +125,10 @@ def test_toolbar_css_responsive_media_query_present_case_2() -> None:
 
 
 def test_toolbar_css_no_hardcoded_colors() -> None:
-    """Every color in the new toolbar CSS must source from a `var(--…)`
-    token. The only acceptable hex literals are inside `var(--token,
-    #fallback)` fallback slots; bare `#fff` / `white` / raw hex
-    assignments are forbidden."""
+    """Every color in the toolbar CSS must source from a `var(--…)` token.
+    The only acceptable hex literals are inside `var(--token, #fallback)`
+    fallback slots; bare `#fff` / `white` / raw hex assignments are
+    forbidden."""
     # Arrange
     css = _read(_TOOLBAR_CSS)
     # Strip block comments first so explanatory prose ("white in dark mode")
@@ -131,9 +138,6 @@ def test_toolbar_css_no_hardcoded_colors() -> None:
     # inside a var() call doesn't get caught — that's the documented
     # token-default pattern used across the codebase.
     no_var = re.sub(r"var\([^)]*\)", "", comments_stripped, flags=re.DOTALL)
-    # Forbidden literals: `#fff` / `#ffffff` / `white` outside of
-    # property names. Use a negative lookbehind to keep `white-space:`
-    # property names safe.
     pattern = re.compile(
         r"(?<![\w-])" r"(#[0-9a-fA-F]{3,8}\b|\bwhite\b(?!-))",
     )
@@ -159,7 +163,7 @@ def test_toolbar_css_balanced_braces() -> None:
 
 
 # ============================================================================
-# Half B — template / HTML uses each new group class
+# Half B — template / HTML uses each surviving group class
 # ============================================================================
 
 
@@ -168,14 +172,13 @@ def test_toolbar_css_balanced_braces() -> None:
     [
         "stx-todo-filterbar__group--view",
         "stx-todo-filterbar__group--search",
-        "stx-todo-filterbar__group--status",
         "stx-todo-filterbar__primary",
         "stx-todo-filterbar__divider",
     ],
 )
 def test_template_renders_group_class(selector_class: str) -> None:
-    """board_v3.html must mount each new group / primary / divider class
-    on at least one element so the CSS rules actually find targets."""
+    """board_v3.html must mount each surviving group / primary / divider
+    class on at least one element so the CSS rules actually find targets."""
     # Arrange
     # Act
     html = _read(_BOARD_V3_TEMPLATE)
@@ -186,7 +189,7 @@ def test_template_renders_group_class(selector_class: str) -> None:
 
 
 def test_template_loads_toolbar_css() -> None:
-    """The toolbar declutter CSS must be wired into the template."""
+    """The toolbar CSS must be wired into the template."""
     # Arrange
     # Act
     html = _read(_BOARD_V3_TEMPLATE)
@@ -196,83 +199,50 @@ def test_template_loads_toolbar_css() -> None:
     ), "board_v3.html never <link>s 07-toolbar-groups.css"
 
 
-def test_template_view_group_contains_layout_sort_group_m() -> None:
-    """The VIEW group must wrap the Layout, Sort, and Group controls so
-    the existing behavior is unchanged — only the structural wrapper
-    moves."""
-    # Arrange
-    html = _read(_BOARD_V3_TEMPLATE)
-    # Find the VIEW group <div>; capture its inner content up to the
-    # next end-of-group comment.
-    # Act
+def _view_group_body(html: str) -> str:
     m = re.search(
         r"stx-todo-filterbar__group--view[^>]*>(.*?)\{#\s*end VIEW group",
         html,
         flags=re.DOTALL,
     )
-    # Assert
-    view_body = m.group(1)
     assert m, "could not locate VIEW group block in template"
+    return m.group(1)
 
 
-def test_template_view_group_contains_layout_sort_group_view_body_contains() -> None:
-    """The VIEW group must wrap the Layout, Sort, and Group controls so
-    the existing behavior is unchanged — only the structural wrapper
-    moves."""
+def test_template_view_group_block_exists() -> None:
+    """The VIEW group wrapper must still be in the template."""
     # Arrange
     html = _read(_BOARD_V3_TEMPLATE)
-    # Find the VIEW group <div>; capture its inner content up to the
-    # next end-of-group comment.
     # Act
-    m = re.search(
-        r"stx-todo-filterbar__group--view[^>]*>(.*?)\{#\s*end VIEW group",
-        html,
-        flags=re.DOTALL,
-    )
+    body = _view_group_body(html)
     # Assert
-    view_body = m.group(1)
+    assert body.strip(), "VIEW group block is empty"
+
+
+def test_template_view_group_contains_layout() -> None:
+    """The VIEW group holds the Layout segmented control. Sort and Group
+    are NOT here any more — they were removed with the Column layout."""
+    # Arrange
+    html = _read(_BOARD_V3_TEMPLATE)
+    # Act
+    view_body = _view_group_body(html)
+    # Assert
     assert 'class="filt-layout"' in view_body, "VIEW group missing Layout"
 
 
-def test_template_view_group_contains_layout_sort_group_view_body_contains_2() -> None:
-    """The VIEW group must wrap the Layout, Sort, and Group controls so
-    the existing behavior is unchanged — only the structural wrapper
-    moves."""
+@pytest.mark.parametrize("gone", ['class="filt-sort"', 'class="filt-groupby"'])
+def test_template_view_group_dropped_sort_and_group(gone: str) -> None:
+    """Sort + Group only ever ordered/clustered COLUMN cards. The Column
+    layout is gone, so they are too (operator TG 2026-07-13)."""
     # Arrange
     html = _read(_BOARD_V3_TEMPLATE)
-    # Find the VIEW group <div>; capture its inner content up to the
-    # next end-of-group comment.
     # Act
-    m = re.search(
-        r"stx-todo-filterbar__group--view[^>]*>(.*?)\{#\s*end VIEW group",
-        html,
-        flags=re.DOTALL,
-    )
+    view_body = _view_group_body(html)
     # Assert
-    view_body = m.group(1)
-    assert 'class="filt-sort"' in view_body, "VIEW group missing Sort"
+    assert gone not in view_body, f"VIEW group still carries retired control {gone!r}"
 
 
-def test_template_view_group_contains_layout_sort_group_view_body_contains_3() -> None:
-    """The VIEW group must wrap the Layout, Sort, and Group controls so
-    the existing behavior is unchanged — only the structural wrapper
-    moves."""
-    # Arrange
-    html = _read(_BOARD_V3_TEMPLATE)
-    # Find the VIEW group <div>; capture its inner content up to the
-    # next end-of-group comment.
-    # Act
-    m = re.search(
-        r"stx-todo-filterbar__group--view[^>]*>(.*?)\{#\s*end VIEW group",
-        html,
-        flags=re.DOTALL,
-    )
-    # Assert
-    view_body = m.group(1)
-    assert 'class="filt-groupby"' in view_body, "VIEW group missing Group"
-
-
-def test_template_primary_zone_contains_add_task_m() -> None:
+def test_template_primary_zone_contains_add_task() -> None:
     """The PRIMARY action zone must wrap the +Add Task button so it pops
     as the right-most, brand-accent element."""
     # Arrange
@@ -284,109 +254,15 @@ def test_template_primary_zone_contains_add_task_m() -> None:
         flags=re.DOTALL,
     )
     # Assert
-    primary_body = m.group(1)
     assert m, "could not locate PRIMARY zone block in template"
-
-
-def test_template_primary_zone_contains_add_task_primary_body_contains() -> None:
-    """The PRIMARY action zone must wrap the +Add Task button so it pops
-    as the right-most, brand-accent element."""
-    # Arrange
-    html = _read(_BOARD_V3_TEMPLATE)
-    # Act
-    m = re.search(
-        r"stx-todo-filterbar__primary[^>]*>(.*?)\{#\s*end PRIMARY",
-        html,
-        flags=re.DOTALL,
-    )
-    # Assert
-    primary_body = m.group(1)
     assert (
-        'id="add-task-btn"' in primary_body
+        'id="add-task-btn"' in m.group(1)
     ), "PRIMARY zone missing the +Add Task button"
 
 
-def test_template_status_group_contains_recent_reload_hideproject_m() -> None:
-    """The STATUS group must wrap the 'N new' recent-count pill, Reload
-    button, and hide-project toggle so the operator's status-row stays
-    together."""
-    # Arrange
-    html = _read(_BOARD_V3_TEMPLATE)
-    # Act
-    m = re.search(
-        r"stx-todo-filterbar__group--status[^>]*>(.*?)\{#\s*end STATUS group",
-        html,
-        flags=re.DOTALL,
-    )
-    # Assert
-    status_body = m.group(1)
-    assert m, "could not locate STATUS group block in template"
-
-
-def test_template_status_group_contains_recent_reload_hideproject_status_body_contains() -> (
-    None
-):
-    """The STATUS group must wrap the 'N new' recent-count pill, Reload
-    button, and hide-project toggle so the operator's status-row stays
-    together."""
-    # Arrange
-    html = _read(_BOARD_V3_TEMPLATE)
-    # Act
-    m = re.search(
-        r"stx-todo-filterbar__group--status[^>]*>(.*?)\{#\s*end STATUS group",
-        html,
-        flags=re.DOTALL,
-    )
-    # Assert
-    status_body = m.group(1)
-    assert (
-        'id="recent-count-pill"' in status_body
-    ), "STATUS group missing the 'N new in 24 h' pill"
-
-
-def test_template_status_group_contains_recent_reload_hideproject_status_body_contains_2() -> (
-    None
-):
-    """The STATUS group must wrap the 'N new' recent-count pill, Reload
-    button, and hide-project toggle so the operator's status-row stays
-    together."""
-    # Arrange
-    html = _read(_BOARD_V3_TEMPLATE)
-    # Act
-    m = re.search(
-        r"stx-todo-filterbar__group--status[^>]*>(.*?)\{#\s*end STATUS group",
-        html,
-        flags=re.DOTALL,
-    )
-    # Assert
-    status_body = m.group(1)
-    assert 'id="reload"' in status_body, "STATUS group missing Reload"
-
-
-def test_template_status_group_contains_recent_reload_hideproject_status_body_contains_3() -> (
-    None
-):
-    """The STATUS group must wrap the 'N new' recent-count pill, Reload
-    button, and hide-project toggle so the operator's status-row stays
-    together."""
-    # Arrange
-    html = _read(_BOARD_V3_TEMPLATE)
-    # Act
-    m = re.search(
-        r"stx-todo-filterbar__group--status[^>]*>(.*?)\{#\s*end STATUS group",
-        html,
-        flags=re.DOTALL,
-    )
-    # Assert
-    status_body = m.group(1)
-    assert (
-        'id="proj-hide-wrap"' in status_body
-    ), "STATUS group missing hide-project toggle"
-
-
-def test_template_search_group_contains_search_and_filters_m() -> None:
-    """The SEARCH/FILTER group must wrap the search input and the
-    Filters popover so query-narrowing controls cluster."""
+def test_template_search_group_contains_search_input() -> None:
+    """The SEARCH group must wrap the search input. The Filters popover is
+    no longer here — the filters moved to the right-hand Details column."""
     # Arrange
     html = _read(_BOARD_V3_TEMPLATE)
     # Act
@@ -396,50 +272,12 @@ def test_template_search_group_contains_search_and_filters_m() -> None:
         flags=re.DOTALL,
     )
     # Assert
-    search_body = m.group(1)
-    assert m, "could not locate SEARCH/FILTER group block in template"
-
-
-def test_template_search_group_contains_search_and_filters_search_body_contains() -> (
-    None
-):
-    """The SEARCH/FILTER group must wrap the search input and the
-    Filters popover so query-narrowing controls cluster."""
-    # Arrange
-    html = _read(_BOARD_V3_TEMPLATE)
-    # Act
-    m = re.search(
-        r"stx-todo-filterbar__group--search[^>]*>(.*?)\{#\s*end " r"\.fb-center",
-        html,
-        flags=re.DOTALL,
-    )
-    # Assert
-    search_body = m.group(1)
-    assert 'id="f-search"' in search_body, "SEARCH group missing search input"
-
-
-def test_template_search_group_contains_search_and_filters_search_body_contains_2() -> (
-    None
-):
-    """The SEARCH/FILTER group must wrap the search input and the
-    Filters popover so query-narrowing controls cluster."""
-    # Arrange
-    html = _read(_BOARD_V3_TEMPLATE)
-    # Act
-    m = re.search(
-        r"stx-todo-filterbar__group--search[^>]*>(.*?)\{#\s*end " r"\.fb-center",
-        html,
-        flags=re.DOTALL,
-    )
-    # Assert
-    search_body = m.group(1)
-    assert (
-        'id="filt-popover-wrap"' in search_body
-    ), "SEARCH group missing Filters popover"
+    assert m, "could not locate SEARCH group block in template"
+    assert 'id="f-search"' in m.group(1), "SEARCH group missing search input"
 
 
 # ============================================================================
-# Behavior preservation — every original toolbar control still exists
+# Behavior preservation — the controls that STAYED are still there
 # ============================================================================
 
 
@@ -447,26 +285,70 @@ def test_template_search_group_contains_search_and_filters_search_body_contains_
     "needle",
     [
         'id="f-search"',  # Search input
-        'id="filt-popover-wrap"',  # Filters popover
+        'id="f-layout-timeline"',  # Layout: Timeline (the DEFAULT)
+        'id="f-layout-wall"',  # Layout: Wall
         'id="f-layout-graph"',  # Layout: Graph
-        'id="f-layout-column"',  # Layout: Column
-        'id="f-layout-table"',  # Layout: Table
-        'id="f-sort"',  # Sort
-        'id="recent-count-pill"',  # 🆕 N new pill
-        'id="f-groupby"',  # Group
-        'id="reload"',  # Reload
         'id="add-task-btn"',  # + Add Task
-        'id="proj-hide-wrap"',  # hide-project toggle
-        'id="t-block"',  # 🚧 blocking me
-        'id="hidden-wrap"',  # 👁 hidden
     ],
 )
-def test_template_preserves_every_original_control(needle: str) -> None:
-    """The reorg moves controls into wrapper <div>s — it must NOT delete
-    any of them. This guards against an accidental drop during the
-    structural shuffle."""
+def test_template_preserves_every_surviving_control(needle: str) -> None:
+    """The declutter removes controls on purpose; it must not take the
+    survivors with it. This guards against an accidental drop."""
     # Arrange
     # Act
     html = _read(_BOARD_V3_TEMPLATE)
     # Assert
-    assert needle in html, f"board_v3.html lost an original toolbar control: {needle!r}"
+    assert needle in html, f"board_v3.html lost a surviving toolbar control: {needle!r}"
+
+
+# ============================================================================
+# Declutter — the retired controls are GONE (the load-bearing half)
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    "needle",
+    [
+        'id="f-layout-column"',  # Column layout  — removed 2026-07-13
+        'id="f-layout-table"',  # Table layout   — removed 2026-07-13
+        'id="f-sort"',  # Sort           — column-only
+        'id="f-groupby"',  # Group          — column-only
+        'id="reload"',  # Reload         — "reload は要らない"
+        'id="proj-hide-wrap"',  # hide-project
+        'id="t-block"',  # big blocking-me display (legend conveys it)
+        'id="filt-popover-wrap"',  # filters popover → moved to Details
+    ],
+)
+def test_template_dropped_every_retired_control(needle: str) -> None:
+    """Each of these left the header on 2026-07-13. A regression that
+    re-introduces one is exactly the clutter the operator asked us to
+    remove, so pin their ABSENCE."""
+    # Arrange
+    # Act
+    html = _read(_BOARD_V3_TEMPLATE)
+    # Assert
+    assert needle not in html, f"retired toolbar control is back in board_v3.html: {needle!r}"
+
+
+def test_status_group_is_gone_from_the_template() -> None:
+    """The whole STATUS cluster (recent-count + Reload + hide-project +
+    blocking-me + hidden) left the header. Its wrapper must be gone too."""
+    # Arrange
+    # Act
+    html = _read(_BOARD_V3_TEMPLATE)
+    # Assert
+    assert (
+        "stx-todo-filterbar__group--status" not in html
+    ), "the STATUS toolbar group is back in board_v3.html"
+
+
+def test_recent_count_pill_moved_to_details_not_deleted() -> None:
+    """"114 new/24h ですが、それも details のほうで" — the counter MOVED. It must
+    still exist, and it must be rendered by the Details > Stats panel
+    (renderStats), not by the filterbar."""
+    # Arrange
+    # Act
+    html = _read(_BOARD_V3_TEMPLATE)
+    # Assert
+    assert 'id="recent-count-pill"' in html, "the 'N new / 24 h' counter was deleted"
+    assert 'id="details-stats"' in html, "Details > Stats panel is missing"

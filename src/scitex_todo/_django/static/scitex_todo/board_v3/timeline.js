@@ -24,8 +24,10 @@
 "use strict";
 
 (function () {
-  // Day / Week / Month → window_hours. Matches the backend cap (≤ 3 months).
-  var WINDOWS = { "1d": 24, "1w": 168, "1m": 720 };
+  // D/W/M → window_hours. Published on STX so Details > Stats uses this SAME
+  // definition of a day/week/month, not a second one that can drift.
+  var WINDOWS = ((globalThis.STX = globalThis.STX || {}).timelineWindows =
+    { "1d": 24, "1w": 168, "1m": 720 });
 
   // Layout constants for the raster SVG.
   var LANE_H = 26; // px floor per lane row (a 1-row lane keeps this height)
@@ -203,11 +205,10 @@
       if (byLane[ev.lane]) byLane[ev.lane].push(ev);
     });
 
-    // SCATTER: ONE dot per task at its start time within its lane. Co-located
-    // markers used to stack at the lane centre and occlude; now each lane runs
-    // a deterministic beeswarm packer (packRows) so overlapping markers fan
-    // out into sub-rows. Lanes thus have VARIABLE height + a CUMULATIVE top —
-    // we walk a running `cursor` from AXIS_H, not i*LANE_H.
+    // SCATTER: ONE dot per task at its start time within its lane. Each lane
+    // runs a deterministic beeswarm packer (packRows) so co-located markers
+    // fan out into sub-rows instead of occluding. Lanes therefore have
+    // VARIABLE height + a CUMULATIVE top — walk `cursor` from AXIS_H.
     var dots = [];
     var dotById = {};
     var laneTops = []; // y of each lane's top edge (aligned to `lanes`)
@@ -228,6 +229,7 @@
           cx: LABEL_W + it.x,
           cy: cursor + (packed.rows[k] || 0) * SUB_ROW_H + SUB_ROW_H / 2,
           ev: it.ev,
+          lane: lane,  // carried onto the dot so row-hover can grow it
         };
         dots.push(dot);
         dotById[it.ev.id] = dot;
@@ -272,15 +274,14 @@
       var yTop = laneTops[i];
       var laneH = laneHeights[i];
       var cy = yTop + laneH / 2;
+      // data-lane = the row-hover hit target (13-timeline-hover.js).
       svg +=
         '<rect class="tl-lane-bg' +
         (i % 2 === 0 ? " tl-lane-bg--even" : "") +
-        '" x="0" y="' +
-        yTop +
-        '" width="' +
-        (LABEL_W + width) +
-        '" height="' +
-        laneH +
+        '" data-lane="' + escapeHtml(String(lane)) +
+        '" x="0" y="' + yTop +
+        '" width="' + (LABEL_W + width) +
+        '" height="' + laneH +
         '"></rect>';
       svg += _avatar
         ? _avatar.laneLabelSvg(cy, lane, laneStatus[lane], isAgentLane)
@@ -315,10 +316,8 @@
         '"></line>';
     });
     svg += "</g>";
-    // dots — ONE per task (the scatter). Click → detail drawer; hover →
-    // the cursor-OFFSET tip from 12-hover-tip.js (data-tip), because the
-    // native SVG tooltip sat UNDER the cursor (operator msg 944). Completed
-    // dots fade; live ones keep a bright ring.
+    // dots — ONE per task. Click → drawer; hover → the offset tip from
+    // 12-hover-tip.js. data-lane lets a row-hover grow the lane's dots.
     svg += '<g class="tl-dots">';
     dots.forEach(function (d) {
       var done = d.ev.ended_at != null;
@@ -331,6 +330,7 @@
       svg +=
         '<circle class="tl-dot' +
         (done ? " tl-dot--done" : " tl-dot--live") +
+        '" data-lane="' + escapeHtml(String(d.lane || "")) +
         '" data-card-id="' +
         escapeHtml(String(d.ev.id)) +
         '" data-status="' +
