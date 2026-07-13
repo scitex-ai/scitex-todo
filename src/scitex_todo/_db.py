@@ -53,7 +53,18 @@ ENV_DB = "SCITEX_TODO_DB"
 
 #: schema version — mirrored into both ``PRAGMA user_version`` and the
 #: ``schema_meta`` table so a fast gate (pragma) and a human-readable row exist.
-SCHEMA_VERSION = 1
+#:
+#: v2 (S2 read path) adds ``tasks.card_json``: the VERBATIM card mapping as JSON.
+#: The typed columns are the INDEX; ``card_json`` is the PAYLOAD. This is not
+#: redundancy — it is the only way a SQLite read can be indistinguishable from the
+#: YAML read. MEASURED on the live 1,452-card store: 22 distinct card keys are NOT
+#: in the column mapping (``deferred_at`` x20, ``subagent`` x8, ``blocked_by`` x3,
+#: ``note_*`` variants, ``completed_at``, ``tasks_path``, ...), and 711 distinct key
+#: ORDERS exist. A column-based reconstruction would silently DROP those keys and
+#: re-order the rest — serving confidently-wrong cards to the whole fleet, which is
+#: far worse than being slow. Reconstructing from ``card_json`` is exact BY
+#: CONSTRUCTION, and it cannot rot as new fields are added.
+SCHEMA_VERSION = 2
 
 
 def resolve_db_path(explicit: str | Path | None = None) -> Path:
@@ -123,7 +134,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     command        TEXT,
     deadlines_json TEXT,
     log_meta_json  TEXT,
-    row_order      INTEGER
+    row_order      INTEGER,
+    card_json      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_status   ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_agent    ON tasks(agent);
@@ -247,15 +259,46 @@ def connect(path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+def table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    """The column names actually present on ``table`` in THIS database file.
+
+    The honest question a guard must ask. ``PRAGMA user_version`` is a STAMP —
+    a number some code wrote — and a stamp is metadata, so it can outlive the
+    thing it describes. The columns are the artifact itself.
+    """
+    return {
+        str(r[1]) for r in conn.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+
+
+def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
+    """Add ``tasks.card_json`` to a v1 DB. Idempotent, additive, no rewrite.
+
+    ``CREATE TABLE IF NOT EXISTS`` is a NO-OP on an existing table — it will not
+    add a column — so a DB created before v2 keeps the old shape forever unless
+    something ALTERs it. That silently-missing column is precisely the sort of
+    thing a version stamp would have papered over.
+
+    Existing rows get ``card_json = NULL``: the column is added, but NOT
+    back-filled (a back-fill needs the YAML, which this layer does not have).
+    Those NULLs are load-bearing — they are what makes the S2 read guard REFUSE a
+    DB that has not been re-imported, instead of quietly serving cards with their
+    unknown fields stripped. Run ``scitex-todo db import`` to populate them.
+    """
+    if "card_json" not in table_columns(conn, "tasks"):
+        conn.execute("ALTER TABLE tasks ADD COLUMN card_json TEXT")
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     """Create the schema idempotently + stamp version. Commits on success.
 
-    Runs the ``CREATE TABLE/INDEX IF NOT EXISTS`` script, sets
-    ``PRAGMA user_version=SCHEMA_VERSION``, and seeds the ``schema_meta``
-    rows (``schema_version`` always; ``created_at`` / ``source`` only if
-    absent so a re-init never clobbers the original provenance).
+    Runs the ``CREATE TABLE/INDEX IF NOT EXISTS`` script, applies the additive
+    column migrations, sets ``PRAGMA user_version=SCHEMA_VERSION``, and seeds the
+    ``schema_meta`` rows (``schema_version`` always; ``created_at`` / ``source``
+    only if absent so a re-init never clobbers the original provenance).
     """
     conn.executescript(_SCHEMA_SQL)
+    _migrate_v1_to_v2(conn)
     conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
     conn.execute(
         "INSERT INTO schema_meta(key, value) VALUES('schema_version', ?) "
@@ -380,6 +423,7 @@ __all__ = [
     "init_schema",
     "open_db",
     "resolve_db_path",
+    "table_columns",
     "verify",
 ]
 
