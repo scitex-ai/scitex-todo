@@ -7,9 +7,11 @@ Tools follow audit §6 Convention A (``tool_name == python_api_name``); see
 ``help_wait`` / ``help_clear`` cards, ``poll_notifications`` — the standalone
 PULL card-message inbox — and the ``todo_skills_*`` §5 pair).
 
-Two cohesive tool clusters live in sibling modules for this module's line
+Three cohesive tool clusters live in sibling modules for this module's line
 budget and register on the SAME ``mcp`` instance (imported at the tail for the
-side effect): :mod:`scitex_todo._mcp_relations` (edges + roles) and
+side effect): :mod:`scitex_todo._mcp_write` (``add_task`` + ``update_task`` —
+the two tools whose signatures carry the whole card schema, so they grow with
+every field), :mod:`scitex_todo._mcp_relations` (edges + roles) and
 :mod:`scitex_todo._mcp_skills` (skills, help-wait, DMs, inbox, health). The
 agent-facing instructions text lives in :mod:`scitex_todo._mcp_instructions`.
 
@@ -67,229 +69,10 @@ mcp = FastMCP(
 # --------------------------------------------------------------------------- #
 # Task-store tools — Convention A (tool name == Python API name).             #
 # --------------------------------------------------------------------------- #
-@mcp.tool()
-async def add_task(
-    id: str,
-    title: str,
-    status: str = "deferred",
-    scope: str | None = None,
-    assignee: str | None = None,
-    priority: int | None = None,
-    parent: str | None = None,
-    note: str | None = None,
-    repo: str | None = None,
-    depends_on: list[str] | None = None,
-    blocks: list[str] | None = None,
-    # Operator-co-designed surface (TG 9667).
-    task: str | None = None,
-    project: str | None = None,
-    host: str | None = None,
-    agent: str | None = None,
-    goal: str | None = None,
-    last_activity: str | None = None,
-    blocker: str | None = None,
-    pr_url: str | None = None,
-    issue_url: str | None = None,
-    kind: str | None = None,
-    # Compute-kind metadata (ADR-0002).
-    job_id: str | None = None,
-    command: str | None = None,
-    started_at: str | None = None,
-    finished_at: str | None = None,
-    # Deadline schema (P4 + recurring extension; closes the gap
-    # noted in PR #127: callers couldn't SET deadlines via MCP).
-    deadline: str | None = None,
-    deadlines: list[str] | None = None,
-    scheduled: str | None = None,
-    created_by: str | None = None,  # creating USER; hook-bypass: line-limit
-    tasks_path: str | None = None,
-) -> str:
-    """Append a new task to the store. Returns the inserted task as JSON.
-
-    ``tasks_path`` overrides the default resolution chain; pass ``None`` to
-    use the resolved default (project → user → bundled).
-
-    Closed-enum fields (``status`` / ``kind`` / ``blocker``) are gated by
-    the writer's validator — typos raise ``TaskValidationError`` with the
-    bad value and the valid set.
-
-    ``deadline`` accepts the P4 schema: a bare ISO date / ISO datetime,
-    optionally followed by a recurring repeater suffix
-    (``+1d``/``+1w``/``+1m``/``+1y``). ``deadlines`` is the multi form (a
-    list of the same shape) — mutually exclusive with ``deadline``.
-    ``scheduled`` is the corresponding "start work on" stamp (validator
-    rejects ``deadline < scheduled``). See ``scitex_todo._model`` +
-    ``next_deadline_for_task`` for parse rules.
-
-    A DEADLINE IS A VIEW, NEVER A NOTIFIER. NOTHING FIRES when one
-    arrives: no sweep, digest or nudge reads ``deadline``. It feeds the
-    ``list_tasks(overdue=True)`` filter and the board view, nothing else
-    — and even that filter is PULL-only (you must run the query).
-
-    A RECURRING DEADLINE IS NOT A RECURRING REMINDER, and is worse than
-    merely silent: the repeater rolls the next occurrence FORWARD, so it
-    is always in the future and ``overdue=True`` NEVER matches it. It
-    reaches neither rail; it is a date-pill. Do not set one expecting to
-    be reminded — you will not be.
-
-    To BE NUDGED, keep the card open and owned: the stale-active sweep
-    nudges the owner of any ``in_progress`` / ``blocked`` card untouched
-    beyond the threshold, and the backlog sweep does the same for
-    untouched ``deferred`` cards. (hook-bypass: line-limit.)
-    """
-    _call = functools.partial(
-        _store.add_task,
-        tasks_path,
-        id=id,
-        title=title,
-        status=status,
-        scope=scope,
-        assignee=assignee,
-        priority=priority,
-        parent=parent,
-        note=note,
-        repo=repo,
-        depends_on=depends_on,
-        blocks=blocks,
-        task=task,
-        project=project,
-        host=host,
-        agent=agent,
-        goal=goal,
-        last_activity=last_activity,
-        blocker=blocker,
-        pr_url=pr_url,
-        issue_url=issue_url,
-        kind=kind,
-        job_id=job_id,
-        command=command,
-        started_at=started_at,
-        finished_at=finished_at,
-        deadline=deadline,
-        deadlines=deadlines,
-        scheduled=scheduled,
-        created_by=created_by,  # hook-bypass: line-limit
-    )
-    inserted = await anyio.to_thread.run_sync(_call)
-    return json.dumps(inserted)
-
-
-@mcp.tool()
-async def update_task(
-    task_id: str,
-    title: str | None = None,
-    status: str | None = None,
-    scope: str | None = None,
-    assignee: str | None = None,
-    priority: int | None = None,
-    parent: str | None = None,
-    note: str | None = None,
-    repo: str | None = None,
-    depends_on: list[str] | None = None,
-    blocks: list[str] | None = None,
-    # Operator-co-designed surface (TG 9667).
-    task: str | None = None,
-    project: str | None = None,
-    host: str | None = None,
-    agent: str | None = None,
-    goal: str | None = None,
-    last_activity: str | None = None,
-    blocker: str | None = None,
-    pr_url: str | None = None,
-    issue_url: str | None = None,
-    kind: str | None = None,
-    # Compute-kind metadata (ADR-0002).
-    job_id: str | None = None,
-    command: str | None = None,
-    started_at: str | None = None,
-    finished_at: str | None = None,
-    # Deadline schema (P4 + recurring extension) — mirror of the
-    # add_task surface so callers can SET deadlines via MCP, not just
-    # READ them via list_tasks (PR #127 gap).
-    deadline: str | None = None,
-    deadlines: list[str] | None = None,
-    scheduled: str | None = None,
-    tasks_path: str | None = None,
-) -> str:
-    """Mutate fields of an existing task. Returns the merged task as JSON.
-
-    Pass an empty string (e.g. ``scope=""``) to CLEAR a string field.
-    Pass an empty list to CLEAR a list field. Omit a field to leave it
-    untouched. Closed-enum values (``status`` / ``kind`` / ``blocker``)
-    are gated by the writer's validator.
-
-    The ``""``-clears rule holds for the CLOSED-ENUM fields too:
-    ``blocker=""`` DELETES the blocker key (it does not write ``""``, which
-    the validator would reject, and it is not the same as ``blocker="none"``
-    — a legal enum member that leaves the key PRESENT). Same for ``kind=""``.
-    The one exception is ``status``, which cannot be cleared — every card
-    must carry a decision — so ``status=""`` raises with the valid set.
-
-    ``deadline`` / ``deadlines`` / ``scheduled`` follow the same P4
-    schema as ``add_task``. Pass an empty string to CLEAR ``deadline`` /
-    ``scheduled``; pass an empty list to CLEAR ``deadlines``. The pair
-    ``deadline`` + ``deadlines`` is mutually exclusive; the validator
-    will raise if both are set on the resulting task.
-
-    A DEADLINE IS A VIEW, NEVER A NOTIFIER — setting one (recurring or
-    not) sends no notification, ever; it only feeds
-    ``list_tasks(overdue=True)`` and the board, and a RECURRING one does
-    not even reach that filter (the repeater rolls it into the future).
-    Owner nudges key on INACTIVITY (``last_activity``), so to be nudged
-    keep the card open and owned. See ``add_task``.
-    (hook-bypass: line-limit.)
-    """
-    fields: dict = {}
-    for key, value in (
-        ("title", title),
-        ("status", status),
-        ("scope", scope),
-        ("assignee", assignee),
-        ("priority", priority),
-        ("parent", parent),
-        ("note", note),
-        ("repo", repo),
-        ("task", task),
-        ("project", project),
-        ("host", host),
-        ("agent", agent),
-        ("goal", goal),
-        ("last_activity", last_activity),
-        ("blocker", blocker),
-        ("pr_url", pr_url),
-        ("issue_url", issue_url),
-        ("kind", kind),
-        ("job_id", job_id),
-        ("command", command),
-        ("started_at", started_at),
-        ("finished_at", finished_at),
-        ("deadline", deadline),
-        ("scheduled", scheduled),
-    ):
-        if value is None:
-            continue
-        # Closed-enum fields go through VERBATIM — the store owns the
-        # ""-clears rule for them (`blocker`/`kind`: delete the key;
-        # `status`: refuse loudly, a card must carry a decision). Mapping
-        # "" -> None HERE would have deleted `status` behind the store's
-        # back, silently producing a status-less card. Free-text fields
-        # keep the local translation: "" = clear.
-        if key in _ENUM_FIELDS:
-            fields[key] = value
-        else:
-            fields[key] = None if value == "" else value
-    # List fields: ``None`` = leave untouched (filtered above);
-    # empty list = clear; non-empty list = replace.
-    if depends_on is not None:
-        fields["depends_on"] = list(depends_on) if depends_on else None
-    if blocks is not None:
-        fields["blocks"] = list(blocks) if blocks else None
-    if deadlines is not None:
-        fields["deadlines"] = list(deadlines) if deadlines else None
-    merged = await anyio.to_thread.run_sync(
-        functools.partial(_store.update_task, tasks_path, task_id, **fields)
-    )
-    return json.dumps(merged)
+# `add_task` + `update_task` live in `_mcp_write` (imported at the tail for
+# the registration side effect). They carry the ENTIRE card schema in their
+# signatures, so they grow with every new field — which is what pushed this
+# module past its line budget. The split the docstring above called 'queued'.
 
 
 @mcp.tool()
@@ -531,6 +314,7 @@ TOOL_NAMES: tuple[str, ...] = (
 # instance, so ``from scitex_todo._mcp_server import mcp`` exposes every tool.
 from . import _mcp_relations  # noqa: E402,F401
 from . import _mcp_skills  # noqa: E402,F401
+from . import _mcp_write  # noqa: E402,F401 — add_task + update_task
 
 __all__ = ["TOOL_NAMES", "mcp"]
 

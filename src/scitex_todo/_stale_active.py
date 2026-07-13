@@ -400,13 +400,31 @@ def detect_pending_backlog(
     and weights toward RECENT cards, because handing an agent its oldest
     cards to work is handing it its least valuable ones.
 
+    PARKED cards are skipped (:func:`_backlog_triage.park_reason`): a card that
+    states WHY it is deliberately standing is not backlog nobody got to, and
+    nudging it is unanswerable by construction — there is nothing to start and
+    no gate to clear, so "untouched" is its steady state. An alarm that cannot
+    be satisfied is one its reader learns to discard, and it takes the genuinely
+    abandoned cards down with it.
+
+    THE SKIP IS DELIBERATELY NARROW — this sweep ONLY. It is NOT applied in
+    :func:`_detect_owned_untouched`, even though that would be one tidier line,
+    because the same core drives the stale-active sweep over ``in_progress`` /
+    ``blocked`` cards. Honouring ``parked`` there would let an agent park a card
+    it claims to be WORKING and silence the abandonment guard — and a claimed,
+    silenced, untouched card is the exact incident the board exists to prevent.
+    You may park work you are NOT doing. You may not park work you say you ARE.
+
     Pure: no env reads beyond the threshold resolution, no network.
     """
+    from ._backlog_triage import is_parked
+
     return _detect_owned_untouched(
         tasks,
         statuses=PENDING_STATUSES,
         threshold_hours=_pending_nudge_hours(pending_hours),
         now=now,
+        where=lambda t: not is_parked(t),
     )
 
 
