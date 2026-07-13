@@ -220,7 +220,13 @@ def mirror_after_save(doc: dict, store_path: str | Path) -> bool:
         # critical section, and so the convoy, for every other writer.
         #
         # A typical write changes ONE card. Now it writes one card.
-        mirror_doc_incremental(doc, resolve_db_path())
+        #
+        # `store_path` is passed so the mirror can stamp WHICH yaml it reflects
+        # (path + mtime + size + card count) in the same transaction as the rows.
+        # We are called AFTER the canonical write and still under the store lock,
+        # so the file on disk is exactly the doc in hand — the one moment at which
+        # that stamp is truthful. The S2 read guard refuses an unstamped DB.
+        mirror_doc_incremental(doc, resolve_db_path(), store_path=store_path)
         return True
     except Exception as exc:  # noqa: BLE001 - a mirror must never break the write
         msg = f"{type(exc).__name__}: {exc}"

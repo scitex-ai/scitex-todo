@@ -55,6 +55,7 @@ from ._db_bootstrap import (
     _insert_users,
     _rebuild_from_doc,
 )
+from ._db_freshness import stamp_yaml_provenance
 
 #: Per-card content hashes, so a write can tell what actually changed.
 HASH_TABLE = "mirror_hashes"
@@ -136,12 +137,20 @@ def mirror_doc_incremental(
     db_path: str | Path,
     *,
     conn: sqlite3.Connection | None = None,
+    store_path: str | Path | None = None,
 ) -> dict:
     """Mirror ``doc`` by writing ONLY what changed. Raises on failure.
 
     Returns a summary: ``{"changed": n, "removed": n, "unchanged": n, "full": bool}``.
     ``full`` is True when it fell back to a full rebuild (first run on a DB that
     has no hash table yet).
+
+    ``store_path`` is the canonical YAML this doc was just written to. Pass it and
+    the mirror stamps its provenance (path + mtime + size + card count) inside the
+    SAME transaction as the rows — so "the data" and "which YAML the data came
+    from" can never disagree. WITHOUT it the mirror is unstamped, and the S2 read
+    guard REFUSES an unstamped DB rather than assume it is current: a mirror that
+    cannot say which store it reflects is a photograph with no date on it.
 
     Raises deliberately, like :func:`_db_bootstrap.mirror_doc` — the POLICY for a
     failed mirror (never break the user's write, never be silent) lives in
@@ -161,7 +170,17 @@ def mirror_doc_incremental(
 
     try:
         tasks = doc.get("tasks") if isinstance(doc, dict) else None
+        raw_count = len(tasks) if isinstance(tasks, list) else 0
         cards = [c for c in (tasks or []) if isinstance(c, dict) and c.get("id")]
+
+        def _stamp() -> None:
+            # The doc's RAW card count — not len(cards). Cards with no id are
+            # dropped just above, and duplicate ids collapse in _insert_tasks; both
+            # are LOSSY. Stamping the raw count is what lets the read guard notice
+            # (db_rows != stamped) and refuse, instead of a SQLite read quietly
+            # returning fewer cards than the YAML has.
+            if store_path is not None:
+                stamp_yaml_provenance(conn, store_path, raw_count)
 
         prior = _existing_hashes(conn)
 
@@ -175,6 +194,7 @@ def mirror_doc_incremental(
                 [(str(c["id"]), _card_hash(c)) for c in cards],
             )
             _remember_sections(conn, doc)
+            _stamp()
             conn.commit()
             summary.update(
                 {"changed": len(cards), "removed": 0, "unchanged": 0, "full": True}
@@ -200,6 +220,12 @@ def mirror_doc_incremental(
 
         # Non-card sections: one hash each, rebuilt only when they actually move.
         _sync_sections(conn, doc)
+
+        # ALWAYS stamp, even when nothing changed. The YAML was just rewritten, so
+        # its mtime moved whether or not any card did; an unrefreshed stamp would
+        # make an ACCURATE mirror look stale and send every reader back to the
+        # 830 ms YAML parse. Freshness is about the FILE, not about the delta.
+        _stamp()
 
         conn.commit()
         return {
