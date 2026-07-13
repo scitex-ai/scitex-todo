@@ -43,6 +43,7 @@ import datetime as _dt
 import itertools
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -471,6 +472,25 @@ def test_a_lossy_mirror_is_refused(tmp_path, monkeypatch):
     # ...and the caller gets the YAML path's LOUD failure, not a quietly short list.
     with pytest.raises(TaskValidationError, match="duplicate task id"):
         _store.list_tasks(path)
+
+
+def test_a_relative_store_path_is_still_the_same_store(store, monkeypatch):
+    """A mirror stamped via a RELATIVE path must still be recognised via an absolute
+    one — the two spellings are ONE store.
+
+    Found by the benchmark, not by me: `db import ./tasks.yaml` stamped a relative
+    `yaml_path`, and the reader (resolving absolutely) then declared "the DB mirrors a
+    DIFFERENT store" and refused a perfectly good mirror. It failed SAFE — fell back to
+    YAML, correct but slow — which is exactly why it would have been easy never to
+    notice. Paths must be compared CANONICALLY.
+    """
+    monkeypatch.setenv(ENV_READ_BACKEND, BACKEND_SQLITE)
+    monkeypatch.chdir(store.parent)
+    import_from_yaml(Path("tasks.yaml"), store.parent / "todo.db")  # RELATIVE stamp
+    _store_read_sqlite.reset_cache()
+
+    assert _store_read_sqlite.enabled(store) is True, "absolute read of a relative stamp"
+    assert _store_read_sqlite.enabled(Path("tasks.yaml")) is True, "relative read"
 
 
 def test_refusal_is_logged_once_not_per_call(store, monkeypatch, caplog):

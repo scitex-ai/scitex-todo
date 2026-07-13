@@ -69,15 +69,25 @@ import datetime as _dt
 import os
 from pathlib import Path
 
-from ._model import (
+from ._model import (  # noqa: F401  (see the re-export note below)
+    VALID_STATUSES,
     TaskValidationError,
     _save_doc_unlocked,
     _save_tasks_unlocked,
     _store_lock,
     load_doc,
+    load_tasks,
     save_tasks,
 )
+from ._paths import resolve_tasks_path  # noqa: F401  (re-export)
 from ._store_enums import resolve_enum_clears as _resolve_enum_clears
+
+# ^ `VALID_STATUSES`, `load_tasks` and `resolve_tasks_path` are no longer used INSIDE
+# this module (they moved out with the read surface) — but they are part of `_store`'s
+# de-facto public surface and other modules import them THROUGH it, e.g.
+# `_cli/_stale.py`: `from .._store import load_tasks`. "Unused in this file" is not
+# "unused". I pruned them once; the full suite caught it immediately. Do not prune
+# them again — remove the re-export only together with its importers.
 
 # The READ / QUERY surface now lives in `_store_list` — `list_tasks` /
 # `summarize_tasks` / `_match` and the resolvers they need. RE-EXPORTED HERE so

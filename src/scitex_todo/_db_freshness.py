@@ -66,6 +66,22 @@ KEY_YAML_CARD_COUNT = "yaml_card_count"
 _KEYS = (KEY_YAML_PATH, KEY_YAML_MTIME_NS, KEY_YAML_SIZE, KEY_YAML_CARD_COUNT)
 
 
+def canonical_path(store_path: str | Path) -> str:
+    """The ONE spelling of a store path that both the stamp and the check must use.
+
+    ``resolve()``, not just ``expanduser()``. The stamp and the check can be made by
+    different processes with different working directories — ``db import ./tasks.yaml``
+    stamps a RELATIVE path, and a later reader resolving the same file absolutely then
+    sees "the DB mirrors a DIFFERENT store" and refuses a perfectly good mirror.
+
+    (That is not hypothetical: the first benchmark run after this guard landed refused
+    itself for exactly this reason. It failed SAFE — fell back to YAML, correct but
+    slow — which is the right direction to be wrong in, and is also why it would have
+    been easy to never notice. Comparing paths means comparing them CANONICALLY.)
+    """
+    return str(Path(store_path).expanduser().resolve())
+
+
 def stat_snapshot(store_path: str | Path) -> tuple[int, int] | None:
     """``(mtime_ns, size)`` of the store, or ``None`` if it does not exist."""
     try:
@@ -92,7 +108,7 @@ def stamp_yaml_provenance(
         return
     mtime_ns, size = snap
     rows = {
-        KEY_YAML_PATH: str(Path(store_path).expanduser()),
+        KEY_YAML_PATH: canonical_path(store_path),
         KEY_YAML_MTIME_NS: str(mtime_ns),
         KEY_YAML_SIZE: str(size),
         KEY_YAML_CARD_COUNT: str(card_count),
@@ -133,7 +149,7 @@ def check_fresh(
             "Rebuild it: `scitex-todo db import`."
         )
 
-    resolved = str(Path(store_path).expanduser())
+    resolved = canonical_path(store_path)
     if prov[KEY_YAML_PATH] != resolved:
         return False, (
             f"the DB mirrors a DIFFERENT store ({prov[KEY_YAML_PATH]!r}) than the one "

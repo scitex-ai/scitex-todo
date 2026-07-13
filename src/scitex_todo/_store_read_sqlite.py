@@ -4,32 +4,36 @@
 
 WHY — THE MEASUREMENT, WITH ITS DENOMINATOR
 -------------------------------------------
-DENOMINATOR: the live board copied read-only — 1,452 cards, 5.81 MB tasks.yaml —
-on this branch, CPython 3.12.3, in-process, median of 7. YAML timings on this box
-drift between ~0.7 s and ~1.3 s depending on load; the RATIOS are what survive::
+DENOMINATOR: the live board, copied read-only — 1,452 cards, 5.82 MB tasks.yaml (the
+mirror is 13.45 MB) — on this branch, CPython 3.12.3, in-process, median of 7, warm
+guard. YAML timings on this box drift between ~0.7 s and ~1.3 s under load; the
+RATIOS are what survive::
 
-    query                     rows      YAML      SQLite    speedup
-    full list (no filter)     1452   1217.5 ms   420.2 ms       3x
-    assignee='scitex-todo'     152    991.2 ms    24.4 ms      41x
-    status='blocked'           157   1171.4 ms    15.4 ms      76x
-    scope='agent:scitex-todo'   79    975.7 ms    10.4 ms      94x
+    query                       rows      YAML     SQLite   speedup
+    full list (no filter)       1452    938.3 ms  361.8 ms       3x
+    assignee='scitex-todo'       152   1010.8 ms   16.2 ms      63x
+    status='blocked'             157    932.4 ms   16.1 ms      58x
+    scope='agent:scitex-todo'     79    984.2 ms   14.1 ms      70x
+    blocking_me=True              47   1061.7 ms   12.4 ms      85x
+    overdue=True                   1   1079.8 ms   79.8 ms      14x
 
-**Look at the YAML column.** Asking for 79 cards costs the same as asking for all
-1,452 — that is the whole diagnosis in one number. ``list_tasks`` parses the ENTIRE
-5.81 MB document and only THEN filters in Python, so **the cost is the parse, not
+**Look at the YAML column.** Asking for 47 cards costs what asking for all 1,452
+costs — that is the whole diagnosis in one number. ``list_tasks`` parses the ENTIRE
+5.82 MB document and only THEN filters in Python, so **the cost is the parse, not
 the query**, and "just ask for less" was never going to help: no amount of narrowing
 helps when the narrowing happens after the expensive part.
 
 An INDEX is the only lever. The mirror already has one on every field ``list_tasks``
 filters by (``status``, ``agent``, ``assignee``, ``scope``, ``kind``, ``blocker``,
 ``project``, ``deadline``, ``parent``), so ``WHERE assignee=?`` touches 152 rows
-instead of parsing 5.81 MB. Every agent in the fleet pays the YAML column on every
+instead of parsing 5.82 MB. Every agent in the fleet pays the YAML column on every
 poll, forever — the single biggest cost scitex-todo imposes on the fleet.
 
 And note where the win ISN'T: the unfiltered list is only ~3x, because there is no
-index to exploit when you ask for everything — it is 283 ms of SQLite reading 13 MB
-of payload plus 71 ms of ``json.loads``. The prize here is the FILTERED read, which
-is what an agent polling its own slice actually issues.
+index to exploit when you ask for EVERYTHING — it is 318 ms of SQLite reading 13 MB
+of payload plus 39 ms of ``json.loads``. The prize here is the FILTERED read, which
+is what an agent polling its own slice actually issues. Reporting only the headline
+"63x" would be quoting the best row of a table I have in front of me.
 
 INDISTINGUISHABLE, OR IT DOES NOT SHIP
 --------------------------------------
@@ -235,12 +239,19 @@ def enabled(store_path: str | Path, db_path: str | Path | None = None) -> bool:
         return _refuse(incapable)[0]
 
     from ._db import resolve_db_path
-    from ._db_freshness import stat_snapshot
+    from ._db_freshness import canonical_path, stat_snapshot
 
     store = Path(store_path).expanduser()
     db = Path(db_path).expanduser() if db_path is not None else resolve_db_path(None)
 
-    key = (str(db), stat_snapshot(db), str(store), stat_snapshot(store))
+    # CANONICAL paths in the key: the same store reached by two spellings (relative
+    # vs absolute, or through a symlink) is ONE store, and must not get two verdicts.
+    key = (
+        canonical_path(db),
+        stat_snapshot(db),
+        canonical_path(store),
+        stat_snapshot(store),
+    )
     cached = _verdict_cache.get(key)
     if cached is None:
         cached = _check_db(db, store)
@@ -352,8 +363,9 @@ def _where(
         # (`deadlines_json` is NULL exactly when the list is absent or empty, which
         # is the same falsy case `next_deadline_for_task` falls through on.)
         #
-        # MEASURED, live board: overdue=True went 248.6 ms -> single-digit ms, and
-        # the equality proof re-ran green across every overdue combination.
+        # MEASURED, live board: overdue=True went 248.6 ms -> 79.8 ms (and 9.2 ms once
+        # any other filter joins it), with the equality proof re-run green across every
+        # overdue combination.
         clauses.append("(deadline IS NOT NULL OR deadlines_json IS NOT NULL)")
 
     return clauses, params
