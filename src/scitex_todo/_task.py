@@ -334,6 +334,35 @@ class Task:
     started_at: str | None = None
     finished_at: str | None = None
 
+    # --- standing / parked cards (raised by scitex-writer 2026-07-13) ------
+    # `parked` = WHY this card is deliberately standing, in free text. Its
+    # PRESENCE (non-empty) exempts the card from the backlog nudge and from
+    # auto-expiry. Its ABSENCE means an untouched deferred card is exactly what
+    # the sweep takes it for: abandoned.
+    #
+    # It is a REASON, never a boolean, and that IS the design. The backlog sweep
+    # fires on `deferred` + untouched, a predicate that cannot separate a card
+    # nobody got to from a north-star umbrella whose real work lives in its
+    # children. For the umbrella the nudge is unanswerable BY CONSTRUCTION —
+    # there is nothing to start and no gate to clear, so "untouched" is its
+    # steady state. Both escapes available before this field were lies: flip it
+    # to `in_progress` (an umbrella is not work in flight), or leave periodic
+    # no-op comments purely to bump `last_activity` (gaming the sweep, and it
+    # buries the real history under noise).
+    #
+    # A bare boolean would have been a MUTE BUTTON, and a mute button is how an
+    # alarm dies: everything gets muted, and then the sweep stops catching the
+    # abandoned cards it exists for. Requiring the reason makes a card PAY for
+    # its exemption by saying why, in writing, where the next reader sees it.
+    # Whitespace-only is NOT a park (see :func:`_backlog_triage.park_reason`):
+    # a park with no stated reason is precisely the abandonment the sweep should
+    # still catch.
+    #
+    # Parking hides a card from the NUDGE, never from the BOARD. `list_tasks`
+    # and every view are untouched, so this cannot silently remove work from the
+    # view someone relies on.
+    parked: str | None = None
+
     # --- legacy shared-fleet additive fields (Phase-1 SSoT) ---------------
     scope: str | None = None
     assignee: str | None = (

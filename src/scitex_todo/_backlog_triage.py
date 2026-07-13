@@ -70,6 +70,49 @@ DEFAULT_EXPIRY_DAYS = 30.0
 FIELD_DEFERRED_AT = "deferred_at"
 FIELD_LAST_TRIAGED_AT = "last_triaged_at"
 
+#: ``parked`` is the standing-card exemption: free text saying WHY the card is
+#: deliberately standing. See :func:`park_reason` for why it is a reason and not
+#: a boolean.
+FIELD_PARKED = "parked"
+
+
+def park_reason(task: dict) -> str | None:
+    """The stated reason this card is deliberately standing, or None.
+
+    A card is parked ONLY when it carries a non-empty, non-whitespace reason.
+    An empty string, a whitespace string, ``True``, or any non-string is NOT a
+    park — such a card sweeps normally.
+
+    *** THE REASON IS THE POINT. ***
+
+    This exemption exists because the sweep's predicate (``deferred`` +
+    untouched) cannot tell two very different cards apart: one nobody got to —
+    the case the sweep exists to catch — and one deliberately parked as a
+    standing goal, whose real work lives in its children. For the second the
+    nudge is unanswerable BY CONSTRUCTION: nothing to start, no gate to clear,
+    and "untouched" is its steady state. It fires forever and says nothing.
+
+    A boolean flag would have solved that and created something worse: a MUTE
+    BUTTON. Mute buttons get pressed. Then every inconvenient card is muted, the
+    sweep stops catching the abandoned cards it was built for, and the alarm is
+    dead while still appearing to work — this codebase's recurring failure, a
+    signal that keeps emitting after it stopped carrying information.
+
+    Demanding a written reason means a card must PAY for its exemption, in
+    words, where the next reader sees them. A park with no stated reason is
+    precisely the abandonment the sweep should still catch, so it is not a park.
+    """
+    raw = task.get(FIELD_PARKED)
+    if not isinstance(raw, str):
+        return None
+    reason = raw.strip()
+    return reason or None
+
+
+def is_parked(task: dict) -> bool:
+    """True when the card states a reason for standing. See :func:`park_reason`."""
+    return park_reason(task) is not None
+
 
 def _env_float(name: str, default: float) -> float:
     """Env override read at CALL time; a junk value falls back, never raises."""
@@ -123,8 +166,17 @@ def is_expired(
 
     An undatable card is NOT expired. We refuse to propose destroying a card
     on the basis of a timestamp we could not read.
+
+    A PARKED card is never expired, and this is the exemption that matters most.
+    Expiry proposes CANCELLATION by default and cancels on silence — so without
+    this line a standing north-star card would be auto-cancelled at the horizon
+    for the sole crime of being a north star, which is the exact opposite of
+    what its owner asked for. Age is a reason to discard work nobody is doing;
+    it is not a reason to discard a goal nobody has abandoned.
     """
     if task.get("status") != BACKLOG_STATUS:
+        return False
+    if is_parked(task):
         return False
     age = age_hours(task, now or _now_utc())
     if age is None:
@@ -179,7 +231,12 @@ def candidates(
     cooldown_hours: float | None = None,
     expiry_days: float | None = None,
 ) -> list[dict]:
-    """Deferred cards eligible to be DRAWN — fresh enough, off cooldown."""
+    """Deferred cards eligible to be DRAWN — fresh enough, off cooldown, not parked.
+
+    A PARKED card is never drawn: the nudge it would produce is unanswerable, and
+    an alarm nobody can satisfy is an alarm everybody learns to ignore — taking
+    the abandoned cards down with it.
+    """
     cur = now or _now_utc()
     cool = cooldown_hours if cooldown_hours is not None else _env_float(ENV_COOLDOWN_HOURS, DEFAULT_COOLDOWN_HOURS)
     out = []
@@ -187,6 +244,8 @@ def candidates(
         if t.get("status") != BACKLOG_STATUS:
             continue
         if owner is not None and _owner_of(t) != owner:
+            continue
+        if is_parked(t):
             continue
         if is_expired(t, now=cur, expiry_days=expiry_days):
             continue
@@ -298,6 +357,9 @@ __all__ = [
     "BACKLOG_STATUS",
     "FIELD_DEFERRED_AT",
     "FIELD_LAST_TRIAGED_AT",
+    "FIELD_PARKED",
+    "park_reason",
+    "is_parked",
     "ENV_TRIAGE_SAMPLE",
     "ENV_HALF_LIFE_HOURS",
     "ENV_COOLDOWN_HOURS",
