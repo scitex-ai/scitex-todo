@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""`set_edge` must SUBSCRIBE the waiter — the edge has to mean what its name says.
+
+Reported by scitex-writer, MEASURED not inferred:
+
+    depends_on edge + set_subscriber  ->  notification FIRES
+    depends_on edge ALONE             ->  NOTHING. Total silence.
+
+The whole reason to record "A depends_on B" is so that FINISHING B TELLS A. An
+agent who wants to hear when their blocker clears reaches for `depends_on` — the
+semantically obvious call, literally named for the relationship — and got
+silence. Silence is INDISTINGUISHABLE from "the gate has not cleared yet", so
+nobody ever finds out. Four real cards sat blocked on gates that had already
+cleared, including a mutual deadlock made of two stale sentences.
+
+THE RULE: the owner of the WAITING card is subscribed to the card they WAIT ON.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from scitex_todo import _store
+
+
+@pytest.fixture()
+def store(tmp_path: Path) -> Path:
+    path = tmp_path / "tasks.yaml"
+    _store.add_task(path, id="gate", title="the blocker", status="in_progress", agent="agent-b")
+    # `blocker` is required on a blocked card — the store warns otherwise, and it is
+    # right to: a blocked card that names no gate is one nobody can clear.
+    _store.add_task(
+        path,
+        id="waiter",
+        title="waits on the gate",
+        status="blocked",
+        agent="agent-a",
+        blocker="dependency",
+    )
+    return path
+
+
+def _subs(path: Path, task_id: str) -> list[str]:
+    return list(_store.get_task(path, task_id).get("subscribers") or [])
+
+
+# --------------------------------------------------------------------------
+# depends_on — the reported case
+# --------------------------------------------------------------------------
+def test_depends_on_subscribes_the_waiters_owner_to_the_gate(store):
+    # Arrange / Act — "waiter depends_on gate": the waiter waits on the gate.
+    _store.set_edge(store, action="add", kind="depends_on", source="waiter", target="gate")
+    # Assert — finishing the GATE must now be able to tell the WAITER's owner.
+    assert _subs(store, "gate") == ["agent-a"]
+
+
+def test_depends_on_reports_who_it_subscribed(store):
+    # The caller must be able to SEE that delivery is wired, not assume it —
+    # assuming it is the entire bug.
+    result = _store.set_edge(store, action="add", kind="depends_on", source="waiter", target="gate")
+    assert result["subscribed"] == "agent-a"
+
+
+def test_depends_on_does_not_subscribe_the_gate_owner_to_the_waiter(store):
+    # The relationship has a DIRECTION. Only the waiter needs telling.
+    _store.set_edge(store, action="add", kind="depends_on", source="waiter", target="gate")
+    assert _subs(store, "waiter") == []
+
+
+# --------------------------------------------------------------------------
+# blocks — the same relationship pointing the other way
+# --------------------------------------------------------------------------
+def test_blocks_subscribes_the_blocked_cards_owner_to_the_blocker(store):
+    # "gate blocks waiter" says the same thing as "waiter depends_on gate".
+    # Leaving this one silent would move the landmine one call to the left.
+    _store.set_edge(store, action="add", kind="blocks", source="gate", target="waiter")
+    assert _subs(store, "gate") == ["agent-a"]
+
+
+def test_blocks_reports_who_it_subscribed(store):
+    result = _store.set_edge(store, action="add", kind="blocks", source="gate", target="waiter")
+    assert result["subscribed"] == "agent-a"
+
+
+# --------------------------------------------------------------------------
+# the guards
+# --------------------------------------------------------------------------
+def test_subscribing_is_idempotent(store):
+    # Arrange — already subscribed by hand.
+    _store.set_subscriber(store, task_id="gate", who="agent-a", action="add")
+    # Act
+    result = _store.set_edge(store, action="add", kind="depends_on", source="waiter", target="gate")
+    # Assert — no duplicate, and it honestly reports that it added nobody new.
+    assert _subs(store, "gate") == ["agent-a"]
+    assert result["subscribed"] is None
+
+
+def test_removing_an_edge_does_NOT_unsubscribe(store):
+    # DELIBERATE. The owner may have subscribed for their own reasons, and
+    # silently dropping that subscription would re-create this bug from the other
+    # side. An extra notification is a nuisance; a missing one strands a card.
+    _store.set_edge(store, action="add", kind="depends_on", source="waiter", target="gate")
+    # Act
+    result = _store.set_edge(store, action="remove", kind="depends_on", source="waiter", target="gate")
+    # Assert — edge gone, subscription kept.
+    assert _store.get_task(store, "waiter").get("depends_on") in (None, [])
+    assert _subs(store, "gate") == ["agent-a"]
+    assert result["subscribed"] is None
+
+
+def test_an_ownerless_waiter_subscribes_nobody_and_says_so(tmp_path: Path):
+    # There is nobody to tell. We do NOT invent a recipient — `subscribed: None`
+    # says so plainly instead of letting the caller believe delivery is wired.
+    path = tmp_path / "tasks.yaml"
+    _store.add_task(path, id="gate", title="gate", status="in_progress", agent="agent-b")
+    _store.add_task(path, id="orphan", title="no owner", status="blocked", agent="agent-b")
+    # strip the owner
+    _store.update_task(path, "orphan", agent=None, assignee=None)
+
+    result = _store.set_edge(path, action="add", kind="depends_on", source="orphan", target="gate")
+    assert result["subscribed"] is None
+
+
+# --------------------------------------------------------------------------
+# END-TO-END — the reporter's own experiment, as a test
+# --------------------------------------------------------------------------
+def test_completing_the_gate_notifies_the_waiters_owner_END_TO_END(store):
+    """The claim that actually matters: does a notification REACH the waiter?
+
+    A unit test on the subscribers list would pass even if the delivery path were
+    broken — which is exactly the shape of the bug being fixed (a mechanism that
+    looks wired and delivers nothing). So complete the gate with a DIFFERENT actor
+    and assert the waiter's owner has a message in the inbox.
+
+    The non-self actor matters: `actor == subscriber` is suppressed, so completing
+    your OWN card notifies nobody. Testing that way is how you conclude, wrongly,
+    that the whole mechanism is broken.
+    """
+    from scitex_todo import _inbox
+
+    # Arrange — the edge alone. NO explicit set_subscriber: that is the point.
+    _store.set_edge(store, action="add", kind="depends_on", source="waiter", target="gate")
+
+    # Act — someone ELSE finishes the gate.
+    _store.complete_task(store, "gate", by="agent-b")
+
+    # Assert — the waiter's owner was told.
+    notes = _inbox.poll_inbox("agent-a", store=store, unseen_only=False)
+    bodies = " ".join(str(n.get("body") or "") for n in notes)
+    assert "gate" in bodies, (
+        "completing the gate did not reach the waiting card's owner — the edge is "
+        f"still a silent no-op. inbox={notes}"
+    )
