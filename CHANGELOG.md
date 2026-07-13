@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.8] - 2026-07-13 — cli: `scitex-cards` is a real command now
+
+### Added
+- **A `scitex-cards` console script.** The product is called SciTeX Cards, the board says so,
+  and the operator typed `scitex-cards gui serve` and got `command not found`. The alias had
+  been written and reviewed and was sitting in an unmerged branch — which is the same as not
+  existing. It ships now.
+
+  `scitex-cards` and `scitex-todo` are the SAME entry point: every verb, identical behaviour.
+  This is the console script only — the package, the module, the MCP tool prefix and the store
+  path are untouched (the full rename is a separate, coordinated effort).
+
 ## [0.9.7] - 2026-07-13 — board: it is SciTeX Cards now; two views gone, the Graph pre-rendered, a Details column added
 
 Operator-driven overhaul of the board. Everything below was verified in a real browser against
