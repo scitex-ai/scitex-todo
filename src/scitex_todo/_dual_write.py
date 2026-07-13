@@ -90,11 +90,86 @@ ENV_DUAL_WRITE = "SCITEX_TODO_DUAL_WRITE"
 #: must not cut over until it is explained.
 _failures: list[str] = []
 
+#: The version-guard refusal is logged ONCE per process, not once per write. A 135 s
+#: bug deserves a loud message; the same message on every card write is just noise that
+#: teaches the reader to skip the channel.
+_refusal_logged = False
+
+
+def _has_incremental_mirror() -> bool:
+    """Can the code ACTUALLY RUNNING honour this flag? Ask for the SYMBOL.
+
+    NOT a version check. A version string is metadata and metadata lies — an orphaned
+    ``.dist-info``, a stale wheel, a SIF image baked months ago all report a version
+    that outlived the code beside them. This repo has been bitten by exactly that.
+
+    The only honest question is: IS THE FUNCTION HERE? If
+    :func:`scitex_todo._db_mirror.mirror_doc_incremental` cannot be imported, then this
+    process physically cannot do an incremental mirror, no matter what any string claims.
+    """
+    try:
+        from ._db_mirror import mirror_doc_incremental  # noqa: F401
+    except Exception:  # noqa: BLE001 — absent, broken, or unimportable: all mean "no"
+        return False
+    return True
+
 
 def enabled() -> bool:
-    """True when the S1 mirror is switched on for this process."""
+    """True when the S1 mirror is switched on AND this code can actually honour it.
+
+    *** THIS GUARD EXISTS BECAUSE THE FLAG ALONE COST 135 SECONDS PER CARD WRITE. ***
+
+    MEASURED on the live 1,449-card board, in the configuration the fleet was really
+    running (2026-07-13)::
+
+        scitex-todo 0.9.4, dual-write ON  : add_task()    = 135.2 s
+        scitex-todo 0.9.4, dual-write OFF : delete_task() =   3.8 s     35x
+
+    WHAT HAPPENED: the flag was switched on because the incremental mirror had shipped —
+    and it HAD, on PyPI. But the fleet's agents do not run PyPI; they run a wheel BAKED
+    INTO A CONTAINER IMAGE, and that image was still on 0.9.4. So the flag did not enable
+    the incremental mirror. IT ENABLED THE FULL REBUILD THAT THE INCREMENTAL MIRROR HAD
+    REPLACED — an O(n) rewrite of every row on every write, which grows with the board.
+
+    The precondition ("only turn this on once the mirror is incremental") was real,
+    agreed, and written down — IN A CONVERSATION BETWEEN TWO AGENTS. A precondition that
+    lives only in a message is not a precondition; it is a hope. So it now lives here, in
+    the code, where it cannot be forgotten, misremembered, or outrun by a stale deploy:
+
+        A FLAG WHOSE SAFETY DEPENDS ON A CODE VERSION MUST VERIFY THAT CODE AT RUNTIME.
+        IT MUST NOT TRUST THAT A DEPLOY HAPPENED.
+
+    So: the env var is necessary but NOT sufficient. If the running code has no
+    incremental mirror, the flag is REFUSED — loudly, once — and the write path stays on
+    the fast, YAML-only route rather than silently paying 35x. Failing safe here means
+    NOT mirroring; a missing mirror is a recoverable inconvenience (``db import`` rebuilds
+    it), while a 135-second card write is an outage every agent feels.
+    """
     raw = os.environ.get(ENV_DUAL_WRITE, "")
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    if raw.strip().lower() not in {"1", "true", "yes", "on"}:
+        return False
+
+    if not _has_incremental_mirror():
+        global _refusal_logged
+        if not _refusal_logged:
+            _refusal_logged = True
+            logger.error(
+                "!! %s IS SET, BUT THIS CODE HAS NO INCREMENTAL MIRROR "
+                "(scitex_todo._db_mirror.mirror_doc_incremental is not importable) — "
+                "REFUSING TO DUAL-WRITE. Honouring the flag here would fall back to the "
+                "OLD FULL REBUILD, which rewrites every row of every table on every card "
+                "write: MEASURED AT 135 SECONDS PER WRITE on a 1,449-card board (vs 3.8 s "
+                "with the flag off). Your writes are proceeding NORMALLY and your cards "
+                "are safe — only the SQLite mirror is skipped, and `scitex-todo db import` "
+                "rebuilds it. FIX: upgrade this process to scitex-todo >= 0.9.5 (the "
+                "release that made the mirror incremental) and restart it. If you are in a "
+                "container, the wheel is baked into the IMAGE — a restart alone will not "
+                "update it; the image must be rebuilt.",
+                ENV_DUAL_WRITE,
+            )
+        return False
+
+    return True
 
 
 def failure_count() -> int:
