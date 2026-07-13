@@ -222,11 +222,55 @@ def test_open_db_creates_expected_indexes(tmp_path):
         conn.close()
 
 
-def test_user_version_is_1(tmp_path):
+def test_user_version_matches_the_schema_constant(tmp_path):
+    """The PRAGMA stamp and the constant must agree — whatever the version IS.
+
+    Was ``test_user_version_is_1``, hard-coding the literal 1 in two places. That is
+    a test of a NUMBER, not of a property: the schema went to v2 (``card_json``, the
+    S2 read payload) and this failed with ``assert 2 == 1`` — telling us only that
+    the number changed, which we knew, and nothing about whether the DB is coherent.
+
+    The property worth pinning is that the stamp and the constant do not DRIFT APART,
+    because a DB whose ``user_version`` disagrees with the code's ``SCHEMA_VERSION``
+    is exactly the "metadata that outlived its artifact" this migration keeps
+    tripping over.
+    """
     conn = _db.open_db(tmp_path / "s.db")
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
-        assert _db.SCHEMA_VERSION == 1
+        stamped = conn.execute("PRAGMA user_version").fetchone()[0]
+        assert stamped == _db.SCHEMA_VERSION
+        assert _db.SCHEMA_VERSION >= 2, "v2 added tasks.card_json (the S2 read payload)"
+    finally:
+        conn.close()
+
+
+def test_a_v1_db_gains_the_payload_column_on_open(tmp_path):
+    """The migration is ADDITIVE and idempotent — and it does NOT back-fill.
+
+    ``CREATE TABLE IF NOT EXISTS`` is a no-op on an existing table, so a DB created
+    before v2 would keep the old shape forever unless something ALTERs it. It does —
+    but the existing rows keep ``card_json = NULL``, and those NULLs are LOAD-BEARING:
+    they are what makes the S2 read guard refuse a DB that has not been re-imported,
+    instead of quietly serving cards with their unknown fields stripped.
+    """
+    import sqlite3
+
+    db = tmp_path / "v1.db"
+    conn = sqlite3.connect(str(db))
+    try:  # a v1-shaped tasks table: no card_json
+        conn.execute("CREATE TABLE tasks (id TEXT PRIMARY KEY, title TEXT, status TEXT)")
+        conn.execute("INSERT INTO tasks VALUES ('old-1', 'from v1', 'goal')")
+        conn.execute("PRAGMA user_version=1")
+        conn.commit()
+    finally:
+        conn.close()
+
+    conn = _db.open_db(db)  # the migration runs here
+    try:
+        assert "card_json" in _db.table_columns(conn, "tasks")
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == _db.SCHEMA_VERSION
+        row = conn.execute("SELECT card_json FROM tasks WHERE id='old-1'").fetchone()
+        assert row[0] is None, "the pre-existing row must NOT be silently back-filled"
     finally:
         conn.close()
 
@@ -348,8 +392,10 @@ def test_verify_reports_ok_after_import(store):
     )
     report = _db.verify(store["db_path"])
     assert report["ok"] is True
-    assert report["user_version"] == 1
-    assert report["schema_version"] == "1"
+    # Against the CONSTANT, not a literal — the schema is at v2 now (card_json) and
+    # will move again. What matters is that the two stamps agree with the code.
+    assert report["user_version"] == _db.SCHEMA_VERSION
+    assert report["schema_version"] == str(_db.SCHEMA_VERSION)
     assert report["quick_check"] == "ok"
     assert report["source"] == "yaml-import"
     assert report["tables"]["tasks"] == 3
