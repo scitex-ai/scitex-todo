@@ -29,20 +29,27 @@ Field mapping (see :mod:`scitex_todo._db` for the schema rationale):
 
 from __future__ import annotations
 
-import json
 import logging
-import secrets
 import sqlite3
 from pathlib import Path
 
 from ._db import SCHEMA_VERSION, connect, init_schema, resolve_db_path
+from ._db_freshness import stamp_yaml_provenance
+from ._db_payload import CARD_JSON_COL, card_payload_json
+from ._db_payload import json_or_none as _json_or_none
+from ._db_sections import (  # re-exported: _db_mirror imports these from here
+    _gen_id,  # noqa: F401
+    _insert_messages,
+    _insert_notifications,
+    _insert_users,
+)
 from ._paths import resolve_tasks_path
 
 logger = logging.getLogger(__name__)
 
 #: (column, yaml-key) pairs for the scalar ``tasks`` columns. ``group`` maps to
 #: the ``grp`` column (SQL reserved word); ``deadlines`` / ``_log_meta`` /
-#: ``row_order`` are handled separately (JSON / positional).
+#: ``row_order`` / ``card_json`` are handled separately (JSON / positional).
 _TASK_SCALAR_COLS: tuple[tuple[str, str], ...] = (
     ("id", "id"),
     ("title", "title"),
@@ -74,6 +81,20 @@ _TASK_SCALAR_COLS: tuple[tuple[str, str], ...] = (
     ("command", "command"),
 )
 
+#: The FULL ordered column list every ``tasks`` INSERT writes: the scalars, the two
+#: JSON side-cars, the positional ``row_order``, and the verbatim ``card_json``.
+#:
+#: PUBLIC ON PURPOSE. The S2 read guard probes THIS TUPLE for ``card_json`` to answer
+#: "can the code running in THIS process actually populate the payload column?" — a
+#: SYMBOL check against the imported object, never a version string. A version string
+#: is metadata, and metadata lies: a stale wheel, an orphaned ``.dist-info`` and a SIF
+#: baked months ago all report a version that outlived the code beside them. This repo
+#: paid 135 SECONDS PER CARD WRITE for exactly that mistake on 2026-07-13.
+TASK_INSERT_COLS: tuple[str, ...] = tuple(
+    [col for col, _ in _TASK_SCALAR_COLS]
+    + ["deadlines_json", "log_meta_json", "row_order", CARD_JSON_COL]
+)
+
 #: Data tables cleared before a rebuild, child-before-parent so the explicit
 #: deletes never fight the FK order (cascade would also cover the children).
 _CLEAR_ORDER: tuple[str, ...] = (
@@ -88,32 +109,30 @@ _CLEAR_ORDER: tuple[str, ...] = (
 )
 
 
-def _gen_id(prefix: str) -> str:
-    """Fallback id (``<prefix>`` + 12 hex) for a record missing its own id."""
-    return prefix + secrets.token_hex(6)
-
-
-def _json_or_none(value) -> str | None:
-    """Serialize a non-empty list/dict to compact JSON, else ``None``."""
-    if value in (None, [], {}):
-        return None
-    return json.dumps(value, ensure_ascii=False, sort_keys=True)
-
-
-def _load_source(tasks_path: str | Path | None) -> tuple[dict, Path]:
-    """Load the YAML doc (tasks/users/inboxes) + return the resolved store path.
+def _load_source(
+    tasks_path: str | Path | None,
+) -> tuple[dict, Path, tuple[int, int] | None]:
+    """Load the YAML doc (tasks/users/inboxes) + the store path + its stat snapshot.
 
     Uses the existing ``load_doc`` read primitive (no validation gate — a
     bootstrap must ingest whatever is on disk). A missing store yields an
     empty doc so ``db import`` on a fresh install is a no-op, not a crash.
+
+    The stat is taken BEFORE the parse, on purpose. If another writer rewrites the
+    store while we are reading it, the snapshot we stamp is the pre-read one, which
+    will no longer match the file on disk — so the next read declares the mirror
+    STALE and falls back to YAML. Stat-AFTER-parse would instead stamp a version of
+    the file the DB never saw, and the mirror would look fresh while being wrong.
     """
+    from ._db_freshness import stat_snapshot
     from ._model import load_doc
 
     path = resolve_tasks_path(tasks_path)
     if not path.exists():
-        return {}, path
+        return {}, path, None
+    snapshot = stat_snapshot(path)
     doc = load_doc(path, validate=False)
-    return (doc if isinstance(doc, dict) else {}), path
+    return (doc if isinstance(doc, dict) else {}), path, snapshot
 
 
 def _load_threads(store_path: Path) -> dict[str, list[dict]]:
@@ -191,19 +210,20 @@ def _insert_tasks(
     REPLACE would have picked), so ``replace=False`` cannot conflict with itself.
     """
     counts = {"tasks": 0, "comments": 0, "edges": 0, "roles": 0}
-    cols = [c for c, _ in _TASK_SCALAR_COLS] + [
-        "deadlines_json",
-        "log_meta_json",
-        "row_order",
-    ]
-    placeholders = ", ".join("?" for _ in cols)
+    placeholders = ", ".join("?" for _ in TASK_INSERT_COLS)
     verb = "INSERT OR REPLACE" if replace else "INSERT"
-    insert_sql = f"{verb} INTO tasks ({', '.join(cols)}) VALUES ({placeholders})"
+    insert_sql = (
+        f"{verb} INTO tasks ({', '.join(TASK_INSERT_COLS)}) VALUES ({placeholders})"
+    )
     for order, row in _dedupe_last_wins(tasks):
         values = [row.get(ykey) for _, ykey in _TASK_SCALAR_COLS]
         values.append(_json_or_none(row.get("deadlines")))
         values.append(_json_or_none(row.get("_log_meta")))
         values.append(order)
+        # The VERBATIM card — the payload an S2 read reconstructs from, exactly as
+        # it appeared in the YAML (unknown keys, key order, types and all). The
+        # typed columns above are only the INDEX. See :mod:`_db_payload`.
+        values.append(card_payload_json(row))
         conn.execute(insert_sql, values)
         counts["tasks"] += 1
         tid = row.get("id")
@@ -267,107 +287,6 @@ def _insert_roles(conn, task_id, row) -> int:
                 "INSERT OR REPLACE INTO task_roles(task_id, who, role) "
                 "VALUES (?, ?, ?)",
                 (task_id, who, role),
-            )
-            n += 1
-    return n
-
-
-def _insert_users(conn, users: list) -> dict[str, int]:
-    counts = {"users": 0, "user_names": 0}
-    if not isinstance(users, list):
-        return counts
-    for u in users:
-        if not isinstance(u, dict):
-            continue
-        uid = u.get("id")
-        if not (isinstance(uid, str) and uid):
-            continue
-        conn.execute(
-            "INSERT OR REPLACE INTO users"
-            "(id, kind, host_at_name, notify_json, turn_url, a2a_port, "
-            " created_at, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                uid,
-                u.get("kind"),
-                u.get("host_at_name"),
-                _json_or_none(u.get("notify")),
-                u.get("turn_url"),
-                u.get("a2a_port"),
-                u.get("created_at"),
-                u.get("last_seen"),
-            ),
-        )
-        counts["users"] += 1
-        names = u.get("names")
-        if isinstance(names, list):
-            for name in names:
-                if not (isinstance(name, str) and name):
-                    continue
-                conn.execute(
-                    "INSERT OR REPLACE INTO user_names(name, user_id) "
-                    "VALUES (?, ?)",
-                    (name, uid),
-                )
-                counts["user_names"] += 1
-    return counts
-
-
-def _insert_notifications(conn, inboxes) -> int:
-    if not isinstance(inboxes, dict):
-        return 0
-    n = 0
-    for recipient_id, records in inboxes.items():
-        if not (isinstance(recipient_id, str) and recipient_id):
-            continue
-        if not isinstance(records, list):
-            continue
-        for r in records:
-            if not isinstance(r, dict):
-                continue
-            conn.execute(
-                "INSERT OR REPLACE INTO notifications"
-                "(id, recipient_id, event_type, card_id, body, actor, ts, seen)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    r.get("id") or _gen_id("n_"),
-                    recipient_id,
-                    "" if r.get("event_type") is None else str(r.get("event_type")),
-                    r.get("card_id"),
-                    r.get("body"),
-                    r.get("actor"),
-                    "" if r.get("ts") is None else str(r.get("ts")),
-                    1 if r.get("seen") else 0,
-                ),
-            )
-            n += 1
-    return n
-
-
-def _insert_messages(conn, threads) -> int:
-    if not isinstance(threads, dict):
-        return 0
-    n = 0
-    for thread_key, records in threads.items():
-        if not (isinstance(thread_key, str) and thread_key):
-            continue
-        if not isinstance(records, list):
-            continue
-        for r in records:
-            if not isinstance(r, dict):
-                continue
-            conn.execute(
-                "INSERT OR REPLACE INTO messages"
-                "(id, thread_key, sender, recipient, body, ts, read)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (
-                    r.get("id") or _gen_id("m_"),
-                    thread_key,
-                    "" if r.get("from") is None else str(r.get("from")),
-                    "" if r.get("to") is None else str(r.get("to")),
-                    "" if r.get("body") is None else str(r.get("body")),
-                    "" if r.get("ts") is None else str(r.get("ts")),
-                    1 if r.get("read") else 0,
-                ),
             )
             n += 1
     return n
@@ -444,9 +363,11 @@ def import_from_yaml(
         {"db_path", "yaml_path", "tasks", "comments", "edges", "roles",
          "users", "user_names", "notifications", "messages"}
     """
-    doc, store_path = _load_source(tasks_path)
+    doc, store_path, snapshot = _load_source(tasks_path)
     threads = _load_threads(store_path)
     resolved_db = resolve_db_path(db_path)
+    doc_cards = doc.get("tasks") if isinstance(doc, dict) else None
+    card_count = len(doc_cards) if isinstance(doc_cards, list) else 0
 
     conn = connect(resolved_db)
     try:
@@ -458,6 +379,10 @@ def import_from_yaml(
         }
         summary.update(_rebuild_from_doc(conn, doc, threads=threads))
         _stamp_meta(conn, "yaml-import")
+        # Record WHICH yaml this mirror reflects, so a read can tell — with one
+        # stat(2) and no parse — whether the store has moved on since. Without
+        # this the DB looks perfectly healthy while serving a stale photograph.
+        stamp_yaml_provenance(conn, store_path, card_count, snapshot=snapshot)
         conn.commit()
     except Exception:
         conn.rollback()

@@ -69,7 +69,7 @@ import datetime as _dt
 import os
 from pathlib import Path
 
-from ._model import (
+from ._model import (  # noqa: F401  (see the re-export note below)
     VALID_STATUSES,
     TaskValidationError,
     _save_doc_unlocked,
@@ -79,13 +79,34 @@ from ._model import (
     load_tasks,
     save_tasks,
 )
-from ._paths import resolve_tasks_path
+from ._paths import resolve_tasks_path  # noqa: F401  (re-export)
 from ._store_enums import resolve_enum_clears as _resolve_enum_clears
 
-#: Env var name an agent sets to scope its default `list_tasks` / `summary`
-#: view. The CLI's `--scope` flag overrides this; pass `scope=""` in the
-#: Python API to see the unfiltered store.
-ENV_SCOPE = "SCITEX_TODO_SCOPE"
+# ^ `VALID_STATUSES`, `load_tasks` and `resolve_tasks_path` are no longer used INSIDE
+# this module (they moved out with the read surface) — but they are part of `_store`'s
+# de-facto public surface and other modules import them THROUGH it, e.g.
+# `_cli/_stale.py`: `from .._store import load_tasks`. "Unused in this file" is not
+# "unused". I pruned them once; the full suite caught it immediately. Do not prune
+# them again — remove the re-export only together with its importers.
+
+# The READ / QUERY surface now lives in `_store_list` — `list_tasks` /
+# `summarize_tasks` / `_match` and the resolvers they need. RE-EXPORTED HERE so
+# every existing caller keeps working untouched: `_store.list_tasks(...)`,
+# `from ._store import _resolved_store`, the MCP tool table, the CLI, the tests.
+#
+# The split is not cosmetic. `_store` is the WRITE surface (add / update / complete
+# / delete / comment, the locked read-modify-write cycle, enum gating, event
+# emission); those two halves share nothing but a store path, and it is the READ
+# half the whole fleet hits on every poll — 830 ms per call on the live board,
+# every agent, forever. It has earned its own file.
+from ._store_list import (  # noqa: F401  (re-export: preserve the public surface)
+    ENV_SCOPE,
+    _default_scope,
+    _match,
+    _resolved_store,
+    list_tasks,
+    summarize_tasks,
+)
 
 #: Env var name carrying the agent's identity. Used as the default
 #: `completed_by` when :func:`complete_task` doesn't get an explicit `by=`.
@@ -117,33 +138,6 @@ class TaskNotFoundError(KeyError):
 # --------------------------------------------------------------------------- #
 # Internal helpers                                                            #
 # --------------------------------------------------------------------------- #
-def _resolved_store(store: str | Path | None) -> Path:
-    """Resolve a store path argument through the precedence chain.
-
-    ``None`` ⇒ apply the full resolution chain (`_paths.resolve_tasks_path`).
-    Explicit path ⇒ used as-is (must exist for reads; will be created for
-    fresh writes by :func:`_model.save_tasks`).
-    """
-    return resolve_tasks_path(store) if store is None else Path(store).expanduser()
-
-
-def _default_scope(arg: str | None) -> str | None:
-    """Resolve a scope argument, honoring ``$SCITEX_TODO_SCOPE`` as the
-    default.
-
-    ``None`` (caller didn't pass anything) → env var if set, else ``None``
-    (no filter).
-    Empty string ``""`` → caller explicitly opted out of filtering.
-    Non-empty string → used as-is.
-    """
-    if arg is None:
-        env = os.environ.get(ENV_SCOPE)
-        return env if env else None
-    if arg == "":
-        return None
-    return arg
-
-
 def _default_agent(arg: str | None) -> str:
     """Resolve an ACTOR/AUTHOR — FAIL LOUD when it cannot be resolved.
 
@@ -213,87 +207,6 @@ def _utc_now_iso() -> str:
         .isoformat()
         .replace("+00:00", "Z")
     )
-
-
-def _match(
-    task: dict,
-    *,
-    scope: str | None = None,
-    assignee: str | None = None,
-    status: str | None = None,
-    statuses: list[str] | None = None,
-    agent: str | None = None,
-    project: str | None = None,
-    host: str | None = None,
-    repo: str | None = None,  # hook-bypass: line-limit
-    blocker: str | None = None,
-    kind: str | None = None,
-    id_prefix: str | None = None,
-    blocking_me: bool = False,
-    overdue: bool = False,
-) -> bool:
-    """String-equality + predicate filter. ``None`` / empty = no constraint.
-
-    Filter semantics (per PR #66 / ADR-0008 D2 + D10):
-      - ``status`` (single) and ``statuses`` (multi) are OR-combined: a
-        row matches if its status is in ``set([status]) ∪ set(statuses)``
-        (after dropping ``None``).
-      - ``blocker="__none"`` matches rows with no blocker field (the
-        explicit "no blocker named" filter the board's `/graph` uses).
-      - ``kind=None`` is NO filter; ``kind="task"`` matches both
-        explicit ``"task"`` AND ``absent`` rows (since absent ≡ "task"
-        per ADR-0002).
-      - ``id_prefix`` is a substring match on the front of ``id`` —
-        the cheap "find my project's rows" without remembering exact
-        ids.
-      - ``blocking_me`` is the BLOCKING-YOU predicate (board-v3 panel):
-        ``status == "blocked" AND blocker == "operator-decision"``.
-        Composes with the other filters via AND.
-    """
-    if scope is not None and task.get("scope") != scope:
-        return False
-    if assignee is not None and task.get("assignee") != assignee:
-        return False
-    if agent is not None and task.get("agent") != agent:
-        return False
-    if project is not None and task.get("project") != project:
-        return False
-    if host is not None and task.get("host") != host:
-        return False
-    if repo is not None and task.get("repo") != repo:  # hook-bypass: line-limit
-        return False
-    if blocker is not None:
-        if blocker == "__none":
-            if task.get("blocker"):
-                return False
-        elif task.get("blocker") != blocker:
-            return False
-    if kind is not None:
-        eff = task.get("kind") or "task"
-        if eff != kind:
-            return False
-    if id_prefix and not str(task.get("id", "")).startswith(id_prefix):
-        return False
-    # Union the single + multi status constraints. None and empty list
-    # collapse to "no constraint." When BOTH are provided, the union is
-    # checked (so callers can extend an existing single-status default).
-    allowed: set[str] = set()
-    if status is not None:
-        allowed.add(status)
-    if statuses:
-        allowed.update(statuses)
-    if allowed and task.get("status") not in allowed:
-        return False
-    if blocking_me and not (
-        task.get("status") == "blocked" and task.get("blocker") == "operator-decision"
-    ):
-        return False
-    if overdue:
-        from ._model import is_overdue as _is_overdue
-
-        if not _is_overdue(task):
-            return False
-    return True
 
 
 # --------------------------------------------------------------------------- #
@@ -844,127 +757,6 @@ def _emit_card_event(
             card_id,
             exc_info=True,
         )
-
-
-def list_tasks(
-    store: str | Path | None = None,
-    *,
-    scope: str | None = None,
-    assignee: str | None = None,
-    status: str | None = None,
-    # PR #66 additions per ADR-0008 D2 / D10:
-    statuses: list[str] | None = None,
-    agent: str | None = None,
-    project: str | None = None,
-    host: str | None = None,
-    repo: str | None = None,  # hook-bypass: line-limit
-    blocker: str | None = None,
-    kind: str | None = None,
-    id_prefix: str | None = None,
-    blocking_me: bool = False,
-    overdue: bool = False,
-) -> list[dict]:
-    """Snapshot the store, then filter by any combination of fields.
-
-    Filter semantics:
-
-    - ``scope=None`` (default): use ``$SCITEX_TODO_SCOPE`` if set, else
-      no filter. ``scope=""`` opts out of the env default explicitly.
-    - ``assignee`` / ``agent`` / ``project`` / ``host`` / ``repo`` /
-      ``status``: ``None`` = no filter; any string = exact match.
-      (Generic Req 8 — no fuzzy / glob; callers compose.) ``repo`` matches
-      the card's ``repo`` field (``owner/repo``) — the reusable seam a
-      producer uses to resolve repo->card at emit time (find-card verb).
-      (hook-bypass: line-limit)
-    - ``statuses`` (list) AND ``status`` (single) are OR-combined.
-    - ``blocker="__none"`` matches rows with no blocker field; any other
-      value is an exact match (closed-enum gating at the CLI layer).
-    - ``kind="task"`` matches both explicit ``"task"`` AND absent rows
-      (since absent ≡ ``"task"`` per ADR-0002).
-    - ``id_prefix`` matches the front of ``id`` (cheap project-rollup
-      lookup without exact id).
-    - ``blocking_me=True`` is the board's BLOCKING-YOU predicate
-      (``status == "blocked" AND blocker == "operator-decision"``);
-      composes with the other filters via AND.
-
-    The returned list contains fresh dicts, safe to mutate without
-    affecting the on-disk store (no save here).
-    """
-    resolved = _resolved_store(store)
-    tasks = load_tasks(resolved)
-    scope_eff = _default_scope(scope)
-    return [
-        dict(t)
-        for t in tasks
-        if _match(
-            t,
-            scope=scope_eff,
-            assignee=assignee,
-            status=status,
-            statuses=statuses,
-            agent=agent,
-            project=project,
-            host=host,
-            repo=repo,  # hook-bypass: line-limit
-            blocker=blocker,
-            kind=kind,
-            id_prefix=id_prefix,
-            blocking_me=blocking_me,
-            overdue=overdue,
-        )
-    ]
-
-
-def summarize_tasks(
-    store: str | Path | None = None,
-    *,
-    scope: str | None = None,
-    assignee: str | None = None,
-) -> dict:
-    """Return numeric progress counts grouped by status, scope, assignee.
-
-    Output shape (always present keys):
-
-    ::
-
-        {
-          "store": "/abs/path/to/tasks.yaml",
-          "total": int,
-          "by_status": {<status>: int, ...},  # one key per VALID_STATUSES
-          "by_scope": {<scope|"">: int, ...},
-          "by_assignee": {<assignee|"">: int, ...},
-        }
-
-    Tasks with no scope / assignee bucket under the empty string ``""``.
-    The ``by_status`` map is densified to all :data:`VALID_STATUSES` so
-    consumers (web UI, progress widgets) don't have to special-case
-    zero-count keys.
-    """
-    resolved = _resolved_store(store)
-    tasks = load_tasks(resolved)
-    scope_eff = _default_scope(scope)
-    by_status: dict[str, int] = {s: 0 for s in VALID_STATUSES}
-    by_scope: dict[str, int] = {}
-    by_assignee: dict[str, int] = {}
-    total = 0
-    for task in tasks:
-        if not _match(task, scope=scope_eff, assignee=assignee, status=None):
-            continue
-        total += 1
-        st = task.get("status")
-        if st in by_status:
-            by_status[st] += 1
-        sc = task.get("scope") or ""
-        by_scope[sc] = by_scope.get(sc, 0) + 1
-        asg = task.get("assignee") or ""
-        by_assignee[asg] = by_assignee.get(asg, 0) + 1
-    return {
-        "store": str(resolved),
-        "total": total,
-        "by_status": by_status,
-        "by_scope": by_scope,
-        "by_assignee": by_assignee,
-    }
 
 
 def resolve_store(store: str | Path | None = None) -> dict:
