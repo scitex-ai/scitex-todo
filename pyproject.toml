@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "scitex-todo"
-version = "0.9.7"
+version = "0.9.8"
 description = "Canonical YAML task store with pluggable adapters (mermaid dependency graphs)"
 readme = "README.md"
 license = "AGPL-3.0-only"
@@ -71,6 +71,21 @@ all = [
 
 [project.scripts]
 scitex-todo = "scitex_todo._cli:main"
+# `scitex-cards` is the name the operator is moving to (it matches scitex-hub's
+# "Cards" surface). Shipping the BINARY first, ahead of the full rename, is the
+# cheap half of the bridge: same entry point, second name, zero behaviour change.
+#
+# It is NOT sufficient on its own. His startup loop
+# (~/.bash.d/secrets/010_scitex/03_gui.src) does:
+#
+#     dir="$HOME/proj/$pkg";              [ ! -d "$dir" ] && skip
+#     bin="$HOME/proj/$pkg/.venv/bin/$pkg"; [ -x "$bin" ] && "$bin" gui serve &
+#
+# so it ALSO needs ~/proj/scitex-cards to exist as a directory. This entry point
+# provides the `.venv/bin/scitex-cards` half; the directory half is a symlink (or
+# the real rename). Read the script before assuming an alias alone lights it up —
+# it does not.
+scitex-cards = "scitex_todo._cli:main"
 
 [project.urls]
 Homepage = "https://github.com/ywatanabe1989/scitex-todo"
@@ -140,7 +155,30 @@ artifacts = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-x -q"
+# `-p no:anyio` — DO NOT REMOVE WITHOUT READING THIS.
+#
+# The anyio pytest plugin is auto-loaded (anyio is a transitive dependency, so the
+# plugin arrives whether we want it or not) and it HANGS THIS SUITE. Symptom:
+# test__channel_size_guard.py runs 5 tests, then wedges FOREVER on the 6th, with no
+# output, no error, and no traceback. It is a silent, indefinite hang — the worst
+# possible failure mode in CI, because it looks like a slow runner rather than a bug.
+#
+# Cause: our async seams are driven by `asyncio.run()` INSIDE SYNC test functions (this
+# repo has no pytest-asyncio). A sync test that creates and tears down its OWN event loop
+# — twice, in one test body — collides with the plugin's session-level loop management,
+# and the second `asyncio.run()` never returns.
+#
+# Proven by a single-variable experiment: the same file HANGS by default and passes
+# 10/10 with `-p no:anyio`. Nothing else changed.
+#
+# Turning it off is free: NOTHING in this repo uses it. There is not one `pytest.mark.anyio`
+# and not one `anyio_backend` fixture in tests/. The plugin is pure liability here — it is
+# needed by no test and it wedges the suite. (anyio the LIBRARY is still used in
+# `_mcp_channel.drain_once`; this disables only its pytest PLUGIN.)
+#
+# If you ever add a genuinely anyio-driven test, drop this flag and give that ONE mechanism
+# ownership of the loop — do not let two things manage event loops in the same session.
+addopts = "-x -q -p no:anyio"
 
 [tool.coverage.run]
 parallel = true
