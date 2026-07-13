@@ -32,10 +32,56 @@ def set_edge(
     source: str | None = None,
     target: str | None = None,
 ) -> dict:
-    """Add or remove a depends_on / blocks edge.
+    """Add or remove a depends_on / blocks edge — and SUBSCRIBE THE WAITER.
 
     ``action`` in {"add", "remove"}. ``kind`` in {"depends_on", "blocks"}.
     Mutates ``tasks[source][kind]`` (adding/removing ``target``).
+
+    *** ADDING AN EDGE SUBSCRIBES THE WAITING CARD'S OWNER TO THE CARD THEY ARE
+    WAITING ON. Until 2026-07-13 it did not, and that was a SILENT NO-OP. ***
+
+    Measured by scitex-writer, with a controlled experiment:
+
+        depends_on edge + set_subscriber  ->  notification FIRES
+        depends_on edge ALONE             ->  NOTHING. Total silence.
+
+    The entire reason to record "A depends_on B" is so that FINISHING B TELLS A.
+    An agent who wants to hear when their blocker clears reaches for
+    ``depends_on`` — it is the semantically obvious call and it is literally
+    named for the relationship — and got silence. And SILENCE IS
+    INDISTINGUISHABLE FROM "the gate has not cleared yet", so nobody ever finds
+    out. A silent no-op wearing the costume of a working mechanism is strictly
+    WORSE than no mechanism at all: with no mechanism, you go and check.
+
+    Not hypothetical. FOUR cards on the live board sat blocked on gates that had
+    ALREADY CLEARED — including a mutual deadlock between two agents, each
+    recorded as waiting on the other, built out of two stale sentences, neither
+    ever told.
+
+    THE RULE, stated once and applied to both kinds — THE OWNER OF THE WAITING
+    CARD IS SUBSCRIBED TO THE CARD THEY WAIT ON:
+
+        A depends_on B   — A waits on B  =>  subscribe A's owner to B
+        A blocks B       — B waits on A  =>  subscribe B's owner to A
+
+    ``blocks`` is the same relationship pointing the other way; leaving it silent
+    would just move the landmine one call to the left.
+
+    REMOVING an edge does NOT unsubscribe. The owner may have subscribed for
+    their own reasons, and silently dropping that subscription would re-create
+    this very bug from the other side. An extra notification is a nuisance; a
+    missing one strands a card for weeks. Unsubscribe explicitly with
+    :func:`set_subscriber` when you mean it.
+
+    Returns ``subscribed``: WHO will now be told when the awaited card completes,
+    or ``None`` when the edge was removed or the waiting card has no owner. The
+    caller can SEE that delivery is wired instead of assuming it — which is the
+    whole complaint this fixes.
+
+    CAVEAT WORTH KNOWING WHEN YOU TEST THIS: a self-completion does not notify,
+    because ``actor == subscriber`` is suppressed. Anyone who exercises the
+    mechanism on their OWN card sees nothing and concludes it is broken. That
+    suppression is correct — it just needs saying.
     """
     from . import _model
     from ._store import TaskNotFoundError, _read_write_doc
@@ -49,6 +95,7 @@ def set_edge(
     if source == target:
         raise ValueError("set_edge: self-edge is forbidden")
     tasks_path = _resolved_store(store)
+    subscribed: str | None = None
     with _model._store_lock(tasks_path):
         doc, tasks = _read_write_doc(tasks_path)
         src_task = next((t for t in tasks if t.get("id") == source), None)
@@ -66,8 +113,33 @@ def set_edge(
             src_task[kind] = edges
         else:
             src_task.pop(kind, None)
+
+        if action == "add":
+            # WHO waits, and WHO is waited on? `depends_on` points from the waiter
+            # to the gate; `blocks` points the other way. Resolve the direction
+            # here so the delivery rule stays one sentence rather than two.
+            waiter, awaited = (
+                (src_task, tgt_task) if kind == "depends_on" else (tgt_task, src_task)
+            )
+            owner = (waiter.get("agent") or waiter.get("assignee") or "").strip()
+            if owner:
+                subs = list(awaited.get("subscribers") or [])
+                if owner not in subs:
+                    subs.append(owner)
+                    awaited["subscribers"] = subs
+                    subscribed = owner
+            # An OWNERLESS waiter cannot be subscribed to anything — there is nobody
+            # to tell. We do NOT invent a recipient; `subscribed: None` says so
+            # plainly rather than letting the caller assume delivery is wired.
+
         _model._save_doc_unlocked(doc, tasks_path, tasks=tasks)
-    return {"action": action, "kind": kind, "source": source, "target": target}
+    return {
+        "action": action,
+        "kind": kind,
+        "source": source,
+        "target": target,
+        "subscribed": subscribed,
+    }
 
 
 def _set_list_member(
