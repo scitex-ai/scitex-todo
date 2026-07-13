@@ -4,6 +4,43 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.9] - 2026-07-13 — fix: a flag that outran its deploy cost 135 seconds per card write
+
+### Fixed
+- **`SCITEX_TODO_DUAL_WRITE` now refuses to turn on where the code cannot honour it.**
+
+  MEASURED on a live 1,449-card store, in the configuration that was actually running:
+
+  | | |
+  |---|---|
+  | scitex-todo **0.9.4**, dual-write **ON** | `add_task()` = **135.2 s** |
+  | scitex-todo **0.9.4**, dual-write **OFF** | `delete_task()` = **3.8 s** |
+
+  **35×. One flag.**
+
+  The flag was switched on because the incremental mirror had shipped — and it *had*, on PyPI.
+  But containers do not run PyPI; they run a wheel **baked into an image**, and that image was
+  still 0.9.4. So the flag did not enable the incremental mirror. **It enabled the full rebuild
+  that the incremental mirror had replaced** — an O(n) rewrite of every row of every table on
+  every card write, which grows with the board (8.69 s at 1,370 cards; 135 s at 1,449).
+
+  `merged != released != installed != RUNNING.`
+
+  **The fix lives in the code, because a precondition that lives only in a conversation is not a
+  precondition — it is a hope.** `enabled()` now requires the env var *and* proof that this
+  process can actually do an incremental mirror.
+
+  **The probe asks for the SYMBOL, never a version string.** It imports
+  `_db_mirror.mirror_doc_incremental`. A version string is metadata, and metadata lies — a stale
+  wheel, an orphaned `.dist-info`, an image baked months ago all report a version that outlived
+  the code beside it. The only honest question is *"is the function here?"*, so the probe answers
+  it by importing it.
+
+  Fails **safe** (writes proceed at full speed; only the mirror is skipped, and `db import`
+  rebuilds it), **loud** (ERROR, with the measured cost and the recovery path — including that a
+  container restart alone will *not* update a baked wheel), and **once** per process, because the
+  same message on every write is noise that teaches the reader to skip the channel.
+
 ## [0.9.8] - 2026-07-13 — cli: `scitex-cards` is a real command now
 
 ### Added
