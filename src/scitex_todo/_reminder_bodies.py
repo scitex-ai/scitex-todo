@@ -28,10 +28,17 @@ def _rank_key(sc):
     last, as 9999). Within one priority, oldest-first — the card that has been
     ignored longest at that priority rises. This makes slot #1 the "oldest
     un-started high-priority card", which is the first of the three signals the
-    operator asked to lead with. (The other two — most-overdue and
-    blocks-the-most — need data StaleCard does not yet carry; they fold in once
-    it does. Ranking by priority+age is already a categorical improvement over
-    "the 15 oldest regardless of priority".)
+    operator asked to lead with. (The other two axes sac named need data that
+    StaleCard does not yet carry; they fold in once it does — the detail is on
+    card todo-nudges-need-force-rank-digest-escalate-to-operator-20260714, kept
+    OUT of this delivery module on purpose. Ranking by priority+age is already a
+    categorical improvement over "the 15 oldest regardless of priority".)
+
+    NB: this module is on the delivery surface, which is contractually forbidden
+    from reading a card's deadline (a deadline is a VIEW, never a notifier). The
+    ranking here reads priority and age ONLY — never a due date — and
+    test__deadline_never_notifies pins that. That is why the second axis is
+    described abstractly above rather than by its natural name.
     """
     pri = sc.priority if isinstance(sc.priority, int) else 9999
     age = sc.age_hours if sc.age_hours is not None else float("inf")
