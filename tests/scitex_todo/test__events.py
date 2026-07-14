@@ -35,6 +35,7 @@ def test_event_type_constants_match_event_types_set():
     declared = {
         EventType.CREATED,
         EventType.REASSIGNED,
+        EventType.REASSIGNED_BATCH,
         EventType.STATUS_CHANGED,
         EventType.COMMENTED,
         EventType.COMPLETED,
@@ -45,9 +46,9 @@ def test_event_type_constants_match_event_types_set():
         EventType.PULLED,
         EventType.DEPLOYED,
     }
-    # Assert — the closed set is exactly the eleven declared constants.
+    # Assert — the closed set is exactly the twelve declared constants.
     assert declared == set(EVENT_TYPES)
-    assert len(EVENT_TYPES) == 11
+    assert len(EVENT_TYPES) == 12
 
 
 def test_event_minimal_construction_defaults():
