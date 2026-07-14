@@ -10,9 +10,32 @@ imports these back; the public API is unchanged.
 
 from __future__ import annotations
 
-#: Max cards listed in one digest body; a runaway lane gets a "+K more" tail
-#: instead of a multi-kilobyte note.
-DIGEST_CARD_CAP = 15
+#: How many cards the digest actually asks the owner to ACT ON. Small on
+#: purpose. Operator, 2026-07-14 (angry, and right): a digest that says "you own
+#: 98 cards" then lists 15 is unreadable, so it gets skimmed, so it stops being a
+#: signal — "a list of 98 is a list of 0. Give me THREE. I will act on three."
+#: The total is not hidden; it is demoted to a one-line footnote.
+DIGEST_ACT_ON = 3
+
+#: Back-compat alias — some callers/tests still import DIGEST_CARD_CAP.
+DIGEST_CARD_CAP = DIGEST_ACT_ON
+
+
+def _rank_key(sc):
+    """Digest ranking: highest PRIORITY first, then OLDEST first.
+
+    Priority is the primary axis (P1 before P2; a card with no priority sorts
+    last, as 9999). Within one priority, oldest-first — the card that has been
+    ignored longest at that priority rises. This makes slot #1 the "oldest
+    un-started high-priority card", which is the first of the three signals the
+    operator asked to lead with. (The other two — most-overdue and
+    blocks-the-most — need data StaleCard does not yet carry; they fold in once
+    it does. Ranking by priority+age is already a categorical improvement over
+    "the 15 oldest regardless of priority".)
+    """
+    pri = sc.priority if isinstance(sc.priority, int) else 9999
+    age = sc.age_hours if sc.age_hours is not None else float("inf")
+    return (pri, -age)
 
 
 def _card_line(sc) -> str:
@@ -22,22 +45,38 @@ def _card_line(sc) -> str:
 
 
 def _digest_body(cards: list, attempt: int) -> str:
-    """One digest listing an owner's open stale cards; agent picks which to advance.
+    """One digest that LEADS with the few cards worth acting on, ranked.
 
-    Lists up to :data:`DIGEST_CARD_CAP` cards (oldest-first, as the detectors
-    order them) with a "+K more" tail. The selection is intentionally LEFT TO
-    THE AGENT — the digest surfaces the scoped list, it does not dictate a
-    single "next card".
+    Reworked 2026-07-14 on the operator's direct complaint that the old digest —
+    "you own N open cards" followed by the 15 oldest — was unreadable and so got
+    skimmed into meaninglessness. Now it names the :data:`DIGEST_ACT_ON`
+    highest-priority, longest-ignored cards and demotes the total to a single
+    footnote line.
+
+    Ranking is by :func:`_rank_key` (priority, then age). The digest still does
+    not DICTATE a single next card — it surfaces the top few — but it no longer
+    pretends a 98-item list is an actionable prompt.
     """
-    shown = cards[:DIGEST_CARD_CAP]
+    total = len(cards)
+    ranked = sorted(cards, key=_rank_key)
+    shown = ranked[:DIGEST_ACT_ON]
     lines = [_card_line(sc) for sc in shown]
-    if len(cards) > DIGEST_CARD_CAP:
-        lines.append(f"  - (+{len(cards) - DIGEST_CARD_CAP} more)")
-    return (
-        f"Assigned-card digest #{attempt}: you own {len(cards)} open card(s) "
-        f"that need attention — decide which to advance now (work it, update "
-        f"it, reassign, or close):\n" + "\n".join(lines)
+    head = (
+        f"Assigned-card digest #{attempt}: ACT ON THESE {len(shown)} "
+        f"(highest priority, longest ignored) — work it, update it, reassign, "
+        f"or close:"
     )
+    body = head + "\n" + "\n".join(lines)
+    remaining = total - len(shown)
+    if remaining > 0:
+        # The total is a FOOTNOTE, not the headline. It says "there is more" and
+        # how to see it, without drowning the three cards that matter.
+        body += (
+            f"\n  ({remaining} more open — the point is these {len(shown)}, not "
+            f"the pile; `scitex-todo list-tasks --status in_progress,blocked,"
+            f"deferred` for all {total}.)"
+        )
+    return body
 
 
 def _escalation_body(sc, owner: str, count: int) -> str:
@@ -81,7 +120,9 @@ def _creator_escalation_body(sc, owner: str, age_seconds: "int | None") -> str:
 
 
 __all__ = [
+    "DIGEST_ACT_ON",
     "DIGEST_CARD_CAP",
+    "_rank_key",
     "_card_line",
     "_creator_escalation_body",
     "_digest_body",
