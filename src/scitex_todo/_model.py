@@ -155,12 +155,61 @@ from ._validate import (  # noqa: E402,F401
     _warn_tolerated,
 )
 
-from ._store_write import (  # noqa: E402,F401  (re-export)
-    _git_autocommit_store,
-    _save_doc_unlocked,
-    _save_tasks_unlocked,
-    _store_lock,
-    edit_tasks,
-    save_tasks,
-    store_generation,
+# ---------------------------------------------------------------------------
+# `_store_write` re-exports — LAZY, and the laziness is load-bearing.
+#
+# `_store_write` imports FROM `_model` (StaleStoreError, load_doc, ...), so an
+# eager `from ._store_write import ...` here closes an import CYCLE that only
+# survives in ONE direction:
+#
+#   import scitex_todo._model         -> _model runs to here, pulls in
+#                                        _store_write, which imports _model back
+#                                        — already in sys.modules with everything
+#                                        above this line bound. FINE.
+#
+#   import scitex_todo._store_write   -> _store_write runs to its line 42, pulls
+#                                        in _model, which reaches HERE and asks
+#                                        _store_write for names it has not defined
+#                                        yet (it is only 42 lines in).
+#                                        ImportError. NOT FINE.
+#
+# So the package worked only because nothing ever imported `_store_write` first
+# — every real path reaches it through `_model` or the public API. That is luck,
+# not design, and it broke a live data-repair script on 2026-07-14: an external
+# caller whose FIRST scitex_todo import was `from scitex_todo._store_write import
+# edit_tasks` got an ImportError blaming a circular import rather than their call.
+#
+# PEP 562 module __getattr__ defers the import to first ATTRIBUTE ACCESS, by
+# which time both modules are fully initialised. `from scitex_todo._model import
+# save_tasks` still works — `from X import Y` falls back to X.__getattr__.
+#
+# DO NOT "simplify" this back to a top-level import. The cycle is real; this is
+# what breaks it. tests/scitex_todo/test__import_order.py imports each module
+# first IN A SUBPROCESS and fails if any order raises.
+# ---------------------------------------------------------------------------
+_STORE_WRITE_EXPORTS = frozenset(
+    {
+        "_git_autocommit_store",
+        "_save_doc_unlocked",
+        "_save_tasks_unlocked",
+        "_store_lock",
+        "edit_tasks",
+        "save_tasks",
+        "store_generation",
+    }
 )
+
+
+def __getattr__(name: str):
+    """Resolve the `_store_write` re-exports on first access (PEP 562)."""
+    if name in _STORE_WRITE_EXPORTS:
+        from . import _store_write
+
+        value = getattr(_store_write, name)
+        globals()[name] = value  # cache: __getattr__ runs once per name
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__():
+    return sorted([*globals(), *_STORE_WRITE_EXPORTS])

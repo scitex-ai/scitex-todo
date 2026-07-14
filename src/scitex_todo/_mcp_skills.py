@@ -25,7 +25,7 @@ import json
 import anyio
 
 from . import _help_wait, _inbox, _store, _threads
-from ._mcp_server import mcp
+from ._mcp_app import mcp  # the LEAF — importing _mcp_server here would cycle
 
 
 def _skills_dir():
