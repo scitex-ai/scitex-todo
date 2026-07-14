@@ -387,9 +387,29 @@ def _git_autocommit_store(path: Path) -> None:
     store_dir = path.parent
     git_dir = store_dir / ".git"
     if not git_dir.exists():
-        # Lazy-init. Disable auto-gc + auto-pack so every snapshot stays
-        # reachable; the store is small enough that aggressive gc would
-        # waste cycles + risk reachable-but-old snapshots being pruned.
+        # Lazy-init.
+        #
+        # `gc.pruneExpire=never` is the guard that ACTUALLY protects old
+        # snapshots: with it, gc NEVER deletes anything. It only PACKS.
+        #
+        # *** DO NOT SET gc.auto=0 HERE. IT USED TO BE SET, AND IT COST 13 GB. ***
+        # The old code disabled auto-gc "so every snapshot stays reachable",
+        # which conflated two different things. gc does not prune REACHABLE
+        # objects — every commit on the branch is reachable by definition — and
+        # `pruneExpire=never` already forbids pruning even unreachable ones. All
+        # gc.auto=0 achieved was stopping git from ever PACKING, so every save's
+        # full ~6.5 MB blob stayed a separate loose object forever.
+        #
+        # MEASURED on the live fleet store, 2026-07-14 (5 weeks, 10,828 commits):
+        #     .git = 13 GB, 23,252 loose objects, on a 94%-full shared disk
+        #     after `git gc`: 90 MB, 3 loose objects, ALL 10,829 commits preserved
+        # 144x smaller, zero history lost. The "small store" assumption was the
+        # error: the STORE is 6.5 MB, but a store committed on EVERY card write
+        # grows a repo without bound unless something packs it.
+        #
+        # So: keep pruneExpire=never (nothing is ever deleted), and let git's
+        # auto-gc do its job (default threshold; git auto-detaches it, so a
+        # commit does not block on packing).
         subprocess.run(
             ["git", "init", "-q", "-b", "main", str(store_dir)],
             check=False,
@@ -397,7 +417,6 @@ def _git_autocommit_store(path: Path) -> None:
             stdout=subprocess.DEVNULL,
         )
         for cfg in (
-            ("gc.auto", "0"),
             ("gc.pruneExpire", "never"),
             ("user.name", "scitex-todo"),
             ("user.email", "scitex-todo@localhost"),
