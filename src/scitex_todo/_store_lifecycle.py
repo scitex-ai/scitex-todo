@@ -27,6 +27,45 @@ from ._model import _save_doc_unlocked, _store_lock
 from ._store_events import _emit_card_event, _emit_unblock_for_dependents
 from ._store_list import _resolved_store
 
+#: The ONLY status that means "this work was delivered". ``failed`` and
+#: ``cancelled`` are terminal too, but they are NOT completions — a card can
+#: stop without having shipped, and the throughput surfaces must not conflate
+#: the two.
+COMPLETED_STATUS = "done"
+
+#: The ``_log_meta`` keys :func:`complete_task` stamps. They are the SOLE
+#: input to the throughput/timeline aggregates (``_django/handlers/fleet/
+#: timing.py``, ``_django/handlers/timeline.py``), which never consult
+#: ``status`` — so leaving them on a non-``done`` card reports work that was
+#: not delivered.
+COMPLETION_STAMP_KEYS = ("completed_at", "completed_by")
+
+
+def clear_completion_stamp(task: dict) -> bool:
+    """Drop ``_log_meta.completed_{at,by}`` from ``task``. True if anything went.
+
+    Call this from ANY transition that takes a card OUT of ``done``. The stamp
+    is what the throughput surfaces believe; the status is what the sweeps
+    believe. Move one without the other and the card becomes two different
+    facts to two different readers — completed to the timeline, open to the
+    digest — which is how 5 cards on the live board came to be counted as
+    delivered work while still nagging their owners (2026-07-14).
+
+    Keeping this as a named helper rather than two inline ``pop`` calls is the
+    point: the next person to add an un-complete transition should find an
+    obvious thing to call, not have to REMEMBER an invariant.
+    """
+    meta = task.get("_log_meta")
+    if not isinstance(meta, dict):
+        return False
+    cleared = False
+    for key in COMPLETION_STAMP_KEYS:
+        if meta.pop(key, None) is not None:
+            cleared = True
+    if not meta:
+        task.pop("_log_meta", None)
+    return cleared
+
 
 def complete_task(
     store: str | Path | None = None,
@@ -255,6 +294,20 @@ def reopen_task(
     """Un-resolve a task — flip ``status=done`` back to ``blocked`` with
     ``blocker=operator-decision`` (the original LOUD halo state). Used
     by the board v3 Resolve→Undo loop.
+
+    ALSO CLEARS ``_log_meta.completed_{at,by}``. Un-completing a card that
+    keeps its completion stamp is not a reopen — it is a card that is open
+    and completed at the same time, and the stamp is the half that gets
+    believed: ``_django/handlers/fleet/timing.py`` and ``timeline.py``
+    aggregate throughput *solely* on ``completed_at``, never on ``status``.
+    So a stamped-but-open card is counted as delivered work forever, while
+    simultaneously nagging its owner as backlog.
+
+    (2026-07-14: found 5 such cards on the live board — one of them
+    ``sac-keystone``, whose status had just been corrected from a mistaken
+    ``done`` to ``cancelled``. The STATUS was fixed; the STAMP was not, so
+    the false completion survived the correction. A lie outlives its
+    retraction if it is written in two places and you only fix one.)
     """
     from . import _model
     from ._store import TaskNotFoundError, _default_agent, _read_write_doc, _utc_now_iso
@@ -270,14 +323,15 @@ def reopen_task(
             raise TaskNotFoundError(f"reopen_task: unknown id {task_id!r}")
         target["status"] = "blocked"
         target["blocker"] = "operator-decision"
+        cleared = clear_completion_stamp(target)
         comments = target.setdefault("comments", [])
-        comments.append(
-            {
-                "author": who,
-                "ts": _utc_now_iso(),
-                "text": "[REOPENED via mcp.reopen_task] flipped status='done'->blocked, blocker=operator-decision restored.",
-            }
+        text = (
+            "[REOPENED via mcp.reopen_task] flipped status='done'->blocked, "
+            "blocker=operator-decision restored."
         )
+        if cleared:
+            text += " Cleared _log_meta.completed_{at,by} — the card is no longer completed."
+        comments.append({"author": who, "ts": _utc_now_iso(), "text": text})
         _model._save_doc_unlocked(doc, tasks_path, tasks=tasks)
     return {"task_id": task_id, "by": who, "task": dict(target)}
 
