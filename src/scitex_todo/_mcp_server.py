@@ -36,34 +36,22 @@ import json
 
 import anyio
 
-try:
-    from fastmcp import FastMCP
-except ImportError as _exc:  # pragma: no cover — exercised in the doctor test
-    raise ImportError(
-        "scitex-todo MCP tools require the [mcp] extra. Install with:\n"
-        "  pip install 'scitex-todo[mcp]'"
-    ) from _exc
-
 from . import _store
-from ._channel_identity import resolve_agent_id_optional
-from ._mcp_instructions import build_instructions
-from ._store_enums import CLEARABLE_ENUM_FIELDS, UNCLEARABLE_ENUM_FIELDS
 
-# Closed-enum fields — the store owns what `""` means on each of them, so
-# this surface must NOT pre-translate them (see `update_task` below).
-# Sourced from `_store_enums` rather than re-listed, so the two cannot drift.
-_ENUM_FIELDS: frozenset[str] = frozenset(
-    CLEARABLE_ENUM_FIELDS + UNCLEARABLE_ENUM_FIELDS
-)
-
-# The instructions name THIS agent's OWN scope, interpolated from its resolved
-# identity ($SCITEX_TODO_AGENT_ID) — never a hard-coded example, which is how
-# every agent came to be taught the scope of the long-dead `proj-scitex-todo`.
-# An UNRESOLVED identity names no scope at all; see `_mcp_instructions`.
-mcp = FastMCP(
-    name="scitex-todo",
-    instructions=build_instructions(resolve_agent_id_optional()),
-)
+# `mcp` and `_ENUM_FIELDS` now live in `_mcp_app`, a LEAF module — it imports
+# nothing that imports it back. They are re-exported here because 8 modules and
+# the CLI already do `from ._mcp_server import mcp`, and that surface must not
+# move.
+#
+# THIS IS NOT COSMETIC. The satellites (`_mcp_write`, `_mcp_relations`,
+# `_mcp_skills`, `_mcp_channel`) need `mcp` to decorate with, and THIS module
+# imports THEM at its tail for the registration side effect. When `mcp` lived
+# here, that was a cycle: importing a satellite FIRST raised ImportError, because
+# it pulled in `_mcp_server`, which reached its tail and asked the satellite for
+# names it had not defined yet. Hoisting the shared symbol to a leaf is what
+# breaks it — see `_mcp_app`'s docstring for why a lazy re-export would have
+# silently unregistered two tools instead.
+from ._mcp_app import _ENUM_FIELDS, mcp  # noqa: F401  (re-export)
 
 
 # --------------------------------------------------------------------------- #

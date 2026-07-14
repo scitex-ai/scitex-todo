@@ -26,7 +26,7 @@ import json
 import anyio
 
 from . import _store
-from ._mcp_server import mcp
+from ._mcp_app import mcp  # the LEAF — importing _mcp_server here would cycle
 
 
 @mcp.tool()
