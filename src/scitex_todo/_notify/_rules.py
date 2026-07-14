@@ -59,6 +59,12 @@ VALID_ROLES: frozenset[str] = frozenset(
 #: * ``released``       → subscribers (release announcement)
 #: * ``deployed``       → subscribers (deploy announcement)
 #: * ``reassigned``     → owner (the new owner should learn they own it)
+#: * ``reassigned_batch`` → owner (mirrors ``reassigned`` for the bulk verb;
+#:   the event carries a SYNTHETIC ``batch:<old>-><new>`` card_id, so owner-role
+#:   resolution against a real card is a no-op — actual delivery to the new
+#:   owner is the caller's job, per the reassign_all recover-via-caller contract.
+#:   The rule exists so the coverage invariant holds and any subscriber tooling
+#:   watching renames has a declared surface.)
 #: * ``created``        → assignee (whoever it was filed against)
 #: * ``status_changed`` → subscribers (state transitions are subscriber-level)
 #: * ``committed``      → owner (low-ish signal; the owner tracks commits)
@@ -72,6 +78,7 @@ VALID_ROLES: frozenset[str] = frozenset(
 DEFAULT_NOTIFY_RULES: dict[str, list[str]] = {
     EventType.CREATED: [ROLE_ASSIGNEE],
     EventType.REASSIGNED: [ROLE_OWNER],
+    EventType.REASSIGNED_BATCH: [ROLE_OWNER],
     EventType.STATUS_CHANGED: [ROLE_SUBSCRIBERS],
     EventType.COMMENTED: [ROLE_OWNER, ROLE_COLLABORATORS, ROLE_SUBSCRIBERS],
     EventType.COMPLETED: [ROLE_OWNER, ROLE_SUBSCRIBERS],

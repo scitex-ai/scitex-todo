@@ -338,6 +338,7 @@ from ._store_lifecycle import (  # noqa: E402,F401  (re-export)
     resolve_task,
     restore_task,
 )
+from ._store_reassign import reassign_all  # noqa: E402,F401  (re-export)
 from ._store_mutate import (  # noqa: E402,F401  (re-export)
     _stamp_deferred_at,
     _wip_statuses,
@@ -362,6 +363,7 @@ __all__ = [
     "delete_task",
     "get_task",
     "list_tasks",
+    "reassign_all",
     "reassign_task",
     "reopen_task",
     "resolve_store",
