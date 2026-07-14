@@ -27,7 +27,10 @@ import json
 import anyio
 
 from . import _store
-from ._mcp_server import _ENUM_FIELDS, mcp
+# From the LEAF (`_mcp_app`), NOT from `_mcp_server` — importing the server here
+# closed a cycle (it imports this module at its tail, for the registration side
+# effect), so `import scitex_todo._mcp_write` cold raised ImportError.
+from ._mcp_app import _ENUM_FIELDS, mcp
 
 
 @mcp.tool()
