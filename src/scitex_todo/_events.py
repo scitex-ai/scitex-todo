@@ -67,6 +67,7 @@ class EventType:
 
     CREATED = "created"
     REASSIGNED = "reassigned"
+    REASSIGNED_BATCH = "reassigned_batch"
     STATUS_CHANGED = "status_changed"
     COMMENTED = "commented"
     COMPLETED = "completed"
@@ -84,6 +85,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
     {
         EventType.CREATED,
         EventType.REASSIGNED,
+        EventType.REASSIGNED_BATCH,
         EventType.STATUS_CHANGED,
         EventType.COMMENTED,
         EventType.COMPLETED,
@@ -200,6 +202,21 @@ class Event:
     @classmethod
     def reassigned(cls, card_id: str, actor: str | None = None, **kw: Any) -> "Event":
         return cls(type=EventType.REASSIGNED, card_id=card_id, actor=actor, **kw)
+
+    @classmethod
+    def reassigned_batch(
+        cls, card_id: str, actor: str | None = None, **kw: Any
+    ) -> "Event":
+        """A ONE-event summary of a BULK reassignment (``reassign_all``).
+
+        Models the ACT of moving every card owned by one agent to another,
+        NOT the individual rows it touched — so a rename that reassigns 158
+        cards emits ONE ``reassigned_batch`` (with ``count`` + ``card_ids``
+        in ``extra``), never 158 per-card ``reassigned`` events. ``card_id``
+        is a synthetic batch marker (e.g. ``"batch:<old>-><new>"``); it is
+        not a real board card.
+        """
+        return cls(type=EventType.REASSIGNED_BATCH, card_id=card_id, actor=actor, **kw)
 
     @classmethod
     def status_changed(
