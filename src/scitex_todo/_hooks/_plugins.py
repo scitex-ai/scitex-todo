@@ -52,6 +52,7 @@ is being clipped.
 
 from __future__ import annotations
 
+import functools
 import importlib.metadata
 import logging
 import os
@@ -278,9 +279,25 @@ def _record_raise(
     )
 
 
+@functools.cache
 def _iter_entry_points() -> Iterable:
-    """importlib.metadata API varies across Python versions. Wrap the
-    safest cross-version surface."""
+    """Entry points for this group, discovered ONCE per process.
+
+    ``importlib.metadata.entry_points()`` re-reads every installed package's
+    ``entry_points.txt`` — ~126 files in a real fleet venv — on each call. This
+    runs on EVERY card event via :func:`dispatch_event`, so uncached it was the
+    single largest cost in a card write: sac profiled 2.18 s of a 3.24 s warm
+    ``add_task`` HERE (card todo-reassign-all-bulk-primitive, 2026-07-14). It is
+    FIXED overhead — paid in full on every write regardless of store size — so
+    the cache makes every card write in the fleet ~2.2 s faster.
+
+    Caching is correct: installed-package entry points do not change during a
+    process's lifetime (installing a plugin requires a restart to load it
+    anyway). A test or a live plugin reload that genuinely needs rediscovery
+    calls ``_iter_entry_points.cache_clear()`` — which ``functools.cache``
+    provides for free. Note ``dispatch_event`` also takes an explicit
+    ``entry_points=`` override, so tests inject rather than depend on discovery.
+    """
     try:
         eps = importlib.metadata.entry_points()
     except Exception:  # noqa: BLE001 — packaging surprises
