@@ -250,6 +250,75 @@ def _check_channel_capable() -> dict[str, Any]:
     }
 
 
+#: A card that carries ``_log_meta.closed_at`` has been CLOSED. These are the
+#: statuses that mean it is still OPEN. The two sets must not intersect.
+_OPEN_STATUSES = ("goal", "in_progress", "blocked", "deferred")
+
+
+def _check_terminal_state_honest(store: str | Path | None) -> dict[str, Any]:
+    """ok when no card is CLOSED and OPEN at the same time.
+
+    THE INVARIANT: a card that carries ``_log_meta.closed_at`` was closed. It
+    cannot also be sitting in ``deferred`` / ``in_progress`` / ``blocked`` /
+    ``goal``. If it is, the close DID NOT STICK, and the card is a ZOMBIE:
+    finished work that keeps nagging its owner in every digest, forever.
+
+    *** THIS EXISTS BECAUSE IT ALREADY HAPPENED, TWICE, AND NOBODY NOTICED FOR
+    TWO DAYS. *** (2026-07-13: `selftest-card-20260701` and
+    `todo-board-reads-stale-project-store-not-canonical-20260706` both carried
+    `closed_at` and both sat in `deferred`. Both had COMMENTS saying they had
+    been moved to a terminal state — the prose claimed the change; the FIELD
+    never took it. They were found only by hand-scanning all 1,467 rows.)
+
+    A zombie is invisible precisely BECAUSE it looks like ordinary backlog. It
+    is a signal that keeps emitting after it stopped carrying information —
+    which is this codebase's recurring defect, and the reason the check is one
+    query rather than a note in a file nobody re-reads. AN INVARIANT NOBODY RUNS
+    IS NOT AN INVARIANT.
+
+    Never raises: an unreadable store is reported, not thrown.
+    """
+    try:
+        from ._store import load_tasks
+
+        tasks = load_tasks(store)
+    except Exception as exc:  # noqa: BLE001 — an unreadable store is a reportable state
+        return {
+            "ok": False,
+            "detail": f"cannot read the task store ({type(exc).__name__}: {exc})",
+            "hint": "check the store path with `scitex-todo resolve-store`.",
+        }
+
+    zombies = [
+        str(t.get("id") or "?")
+        for t in tasks
+        if (t.get("_log_meta") or {}).get("closed_at")
+        and t.get("status") in _OPEN_STATUSES
+    ]
+    if zombies:
+        shown = ", ".join(zombies[:5])
+        more = f" (+{len(zombies) - 5} more)" if len(zombies) > 5 else ""
+        return {
+            "ok": False,
+            "detail": (
+                f"{len(zombies)} card(s) are CLOSED and OPEN at once — they carry "
+                f"_log_meta.closed_at but still sit in an open status, so they nag "
+                f"their owner forever as work that is already done: {shown}{more}"
+            ),
+            "hint": (
+                "the close did not stick. Set the honest terminal state — `done` if "
+                "the work landed, `cancelled` if it was closed as not-planned — with "
+                "`scitex-todo update <id> --status done|cancelled`. A comment saying "
+                "a card is closed is NOT a decision; the STATUS FIELD is."
+            ),
+        }
+    return {
+        "ok": True,
+        "detail": f"no zombie cards ({len(tasks)} scanned): closed cards are closed",
+        "hint": None,
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Aggregator                                                                  #
 # --------------------------------------------------------------------------- #
@@ -329,6 +398,13 @@ def health(
         # to a store that is confidently wrong. One failure is enough to fail this
         # check: there is no partial credit for a store that is only mostly right.
         _run_check("dual_write_mirror", check_mirror_healthy),
+        # Is any card CLOSED and OPEN at the same time? A card carrying
+        # _log_meta.closed_at that still sits in `deferred` is a ZOMBIE: finished
+        # work that nags its owner in every digest, forever, and is invisible
+        # precisely because it looks like ordinary backlog. It happened twice and
+        # went unnoticed for two days — the comments SAID they were closed; the
+        # status field never took it. A conclusion in a comment is not a decision.
+        _run_check("terminal_state_honest", lambda: _check_terminal_state_honest(store)),
     ]
     ok = all(c["ok"] for c in checks)
     n_ok = sum(1 for c in checks if c["ok"])

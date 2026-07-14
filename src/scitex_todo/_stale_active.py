@@ -266,6 +266,11 @@ class StaleCard:
     title: str
     status: str
     age_hours: float | None  # None when no parseable timestamp.
+    # Priority drives digest RANKING (P1 before P2; None sorts last). Added so
+    # the digest can lead with "act on THESE", not "here are 15 of your 98" —
+    # a list of 98 is a list of 0. Defaulted for back-compat with any caller
+    # constructing a StaleCard positionally.
+    priority: int | None = None
 
 
 def _detect_owned_untouched(
@@ -312,6 +317,7 @@ def _detect_owned_untouched(
                 title=str(t.get("title") or "(untitled)"),
                 status=str(t.get("status") or "?"),
                 age_hours=age,
+                priority=t.get("priority") if isinstance(t.get("priority"), int) else None,
             )
         )
     for cards in out.values():
