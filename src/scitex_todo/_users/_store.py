@@ -86,57 +86,67 @@ def _load_users_section(path: Path) -> list[dict]:
 def _save_users_unlocked(users: list[dict], path: Path) -> None:
     """Write the ``users:`` section, preserving the ``tasks:`` payload.
 
-    Reuses the ruamel round-trip writer so the existing ``tasks:`` list,
-    its inline comments, and document key order survive untouched — only
-    the ``users:`` key is replaced. Mirrors the atomic tmp-file + os.replace
-    + reparse-verify dance in ``_model._save_tasks_unlocked``.
+    *** DO NOT restore the ruamel round-trip here. IT COST ~46–171 s PER CARD
+    WRITE. *** This is the liveness-HEARTBEAT write: every ``update_task`` /
+    ``add_task`` / ``comment`` by a registered agent stamps ``last_seen`` and
+    lands here. The old body used a ruamel round-trip loader+dumper to preserve
+    the ``tasks:`` list's inline comments and key order — but ``_store_write.
+    _save_doc_unlocked`` (the TASK write path) already abandoned comment
+    preservation ("the store is machine-managed, so dropping those comments is
+    accepted") and writes with the fast safe loader/dumper. So this path was
+    ruamel-round-tripping the ENTIRE 6.5 MB store to preserve comments the task
+    path had ALREADY dropped — pure cost, on every write.
+
+    MEASURED 2026-07-15 on the live store (actor registered → heartbeat fires):
+    0.9.4 = 46 s/write, 0.13.x = 171 s/write. Root cause of the board's
+    per-write latency and today's write timeouts.
+
+    Now uses the SAME fast safe path as the task write: ``safe_load`` the doc,
+    replace only ``users:``, ``safe_dump``, and keep the identical crash-safety
+    (atomic tmp + fsync + reparse-verify + ``os.replace``). Comment-preservation
+    is intentionally gone — it was already gone one module over.
 
     Direct callers MUST already hold ``_store_lock(path)``.
     """
     import os
 
-    from ruamel.yaml import YAML
+    from .._yaml import safe_dump, safe_load
 
     for row in users:
         validate_user(row)
 
-    yaml_rt = YAML()
-    yaml_rt.preserve_quotes = True
-    yaml_rt.indent(mapping=2, sequence=4, offset=2)
-
-    doc = None
+    doc: dict = {}
     if path.exists():
         with path.open(encoding="utf-8") as handle:
-            loaded = yaml_rt.load(handle)
+            loaded = safe_load(handle)
         if isinstance(loaded, dict):
             doc = loaded
-    if doc is None:
-        doc = {}
     doc["users"] = users
     # Keep the document valid for ``_model.load_tasks`` even when this is a
     # users-FIRST write (no task ever added yet): that loader hard-requires a
     # top-level ``tasks:`` list, so a file carrying only ``users:`` would make
     # a later ``add_task`` (which calls ``load_tasks`` on the existing file)
     # fail-loud. Seed an empty ``tasks:`` list when absent; never touch an
-    # existing one (the round-trip preserves its payload + comments).
+    # existing one.
     if not isinstance(doc.get("tasks"), list):
         doc["tasks"] = []
 
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.parent / f".{path.name}.tmp"
     try:
+        dumped = safe_dump(doc)  # serialize to a string once (stream=None)
         with tmp_path.open("w", encoding="utf-8") as handle:
-            yaml_rt.dump(doc, handle)
+            handle.write(dumped)
             handle.flush()
             try:
                 os.fsync(handle.fileno())
             except OSError:
                 pass
-        # Reparse-verify the tmp file before promoting it — never replace
-        # the canonical SSOT with bytes that don't round-trip.
+        # Reparse-verify the tmp file before promoting it — never replace the
+        # canonical SSOT with bytes that don't round-trip. Fast safe loader.
         try:
             with tmp_path.open(encoding="utf-8") as verify_handle:
-                verify_doc = yaml_rt.load(verify_handle)
+                verify_doc = safe_load(verify_handle)
         except Exception as verify_exc:  # noqa: BLE001 — any parse fail = abort
             raise RuntimeError(
                 f"refusing to replace {path}: tmp file at {tmp_path} did "
