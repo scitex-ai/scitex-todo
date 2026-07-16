@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Tests for the `scitex-todo skills install` verb.
+
+The existing `test__skills.py` covers `list` and `get`; `install`
+was untested. This file fills the gap (lead a2a `1397f103` —
+quality work between PR done-record re-sweeps).
+
+Real `tmp_path` destination + `os.symlink` (POSIX-only — Linux
+ci-runner is the target). No mocks (STX-NM / PA-306). Each test
+points `--dest` at a tmp dir so the install never touches the
+operator's real `~/.scitex/dev/skills/`.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+
+import pytest
+from click.testing import CliRunner
+
+from scitex_cards._cli import main
+
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="install relies on POSIX symlinks",
+)
+
+
+class TestInstallDryRun:
+    """`--dry-run` previews the planned action without touching disk."""
+
+    def test_dry_run_exits_zero(self, tmp_path):
+        # Arrange
+        runner = CliRunner()
+        # Act
+        result = runner.invoke(
+            main, [
+                "skills", "install",
+                "--dest", str(tmp_path),
+                "--dry-run",
+            ],
+        )
+        # Assert
+        assert result.exit_code == 0
+
+    def test_dry_run_mentions_symlink_action(self, tmp_path):
+        # Arrange
+        runner = CliRunner()
+        # Act
+        result = runner.invoke(
+            main, [
+                "skills", "install",
+                "--dest", str(tmp_path),
+                "--dry-run",
+            ],
+        )
+        # Assert — default mode is symlink.
+        assert "symlink" in result.output
+
+    def test_dry_run_with_no_link_mentions_copy(self, tmp_path):
+        # Arrange
+        runner = CliRunner()
+        # Act
+        result = runner.invoke(
+            main, [
+                "skills", "install",
+                "--dest", str(tmp_path),
+                "--no-link",
+                "--dry-run",
+            ],
+        )
+        # Assert
+        assert "copy" in result.output
+
+    def test_dry_run_does_not_create_target(self, tmp_path):
+        # Arrange
+        runner = CliRunner()
+        # Act
+        runner.invoke(
+            main, [
+                "skills", "install",
+                "--dest", str(tmp_path),
+                "--dry-run",
+            ],
+        )
+        # Assert — destination dir is unchanged.
+        assert not (tmp_path / "scitex-todo").exists()
+
+
+class TestInstallSymlink:
+    """Default mode: symlink the bundled skills root into <dest>/scitex-todo."""
+
+    def test_symlink_target_exists_after_install(self, tmp_path):
+        # Arrange
+        runner = CliRunner()
+        # Act
+        runner.invoke(
+            main, ["skills", "install", "--dest", str(tmp_path)],
+        )
+        # Assert
+        assert (tmp_path / "scitex-todo").is_symlink()
+
+    def test_symlink_resolves_to_bundled_skills(self, tmp_path):
+        # Arrange
+        runner = CliRunner()
+        # Act
+        runner.invoke(
+            main, ["skills", "install", "--dest", str(tmp_path)],
+        )
+        target = tmp_path / "scitex-todo"
+        # Assert — the symlink points at the package's `_skills/scitex-todo/`.
+        assert target.resolve().name == "scitex-todo"
+
+    def test_install_is_idempotent(self, tmp_path):
+        # Arrange — install twice. The second run must replace the
+        # existing symlink, not error.
+        runner = CliRunner()
+        runner.invoke(
+            main, ["skills", "install", "--dest", str(tmp_path)],
+        )
+        # Act
+        result = runner.invoke(
+            main, ["skills", "install", "--dest", str(tmp_path)],
+        )
+        # Assert
+        assert result.exit_code == 0
+
+
+class TestInstallNoLink:
+    """`--no-link` copies the tree instead of symlinking."""
+
+    def test_no_link_target_is_real_dir(self, tmp_path):
+        # Arrange
+        runner = CliRunner()
+        # Act
+        runner.invoke(
+            main, [
+                "skills", "install",
+                "--dest", str(tmp_path),
+                "--no-link",
+            ],
+        )
+        target = tmp_path / "scitex-todo"
+        # Assert
+        assert target.is_dir() and not target.is_symlink()
+
+    def test_no_link_contains_quick_start(self, tmp_path):
+        # Arrange
+        runner = CliRunner()
+        # Act
+        runner.invoke(
+            main, [
+                "skills", "install",
+                "--dest", str(tmp_path),
+                "--no-link",
+            ],
+        )
+        # Assert — the copied tree carries the canonical 02_quick-start.md.
+        assert any(
+            p.name == "02_quick-start.md"
+            for p in (tmp_path / "scitex-todo").rglob("*.md")
+        )

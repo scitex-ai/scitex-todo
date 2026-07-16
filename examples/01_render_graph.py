@@ -14,9 +14,9 @@ Run:
 
 from __future__ import annotations
 
-from scitex_todo._diagram import build_mermaid
-from scitex_todo._model import load_tasks
-from scitex_todo._paths import bundled_example
+from scitex_cards._diagram import build_mermaid
+from scitex_cards._model import load_tasks
+from scitex_cards._paths import bundled_example
 
 if __name__ == "__main__":
     store = bundled_example()

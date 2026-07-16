@@ -16,7 +16,7 @@ The contract these tests pin:
 
 from click.testing import CliRunner
 
-from scitex_todo._cli import main
+from scitex_cards._cli import main
 
 
 def _run(*args):

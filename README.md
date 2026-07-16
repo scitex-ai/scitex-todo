@@ -83,7 +83,7 @@ pushes into that agent's Claude session.</sub>
 
 ### Where your task data lives (store resolution)
 
-The store is resolved by the precedence chain (first existing wins), from `scitex_todo._paths`:
+The store is resolved by the precedence chain (first existing wins), from `scitex_cards._paths`:
 
 | Precedence | Source | Path |
 |---|---|---|
@@ -91,7 +91,7 @@ The store is resolved by the precedence chain (first existing wins), from `scite
 | 2 | `$SCITEX_TODO_TASKS_YAML_SHARED` | any path |
 | 3 | project scope | `<git-root>/.scitex/todo/tasks.yaml` |
 | 4 | user scope (the shared-fleet default) | `$SCITEX_DIR/todo/tasks.yaml` (default `~/.scitex/todo`) |
-| 5 | bundled generic example | `scitex_todo/examples/tasks.yaml` |
+| 5 | bundled generic example | `scitex_cards/examples/tasks.yaml` |
 
 Runtime state (pidfiles, the delivery ledger, the reminder sidecar) lives under
 `<store-dir>/runtime/` (gitignored); the notify + reminder sidecars (`notify.yaml`,
@@ -115,7 +115,7 @@ Roles are mutated through first-class verbs — `set_collaborator`, `set_subscri
 
 A role member is a name string, but names drift (`proj-scitex-dev`, `scitex-dev`,
 `lead-ywata-note-win`, `sac`, `scitex-agent-container` …). The `users:` registry
-(`scitex_todo._users`) gives every member a **stable id** (`u_` + 12 hex) plus a `names[]`
+(`scitex_cards._users`) gives every member a **stable id** (`u_` + 12 hex) plus a `names[]`
 alias list, an optional `host_at_name` join key, and a `last_seen` liveness stamp. Renaming an
 owner no longer breaks references — the id is durable, the display name is just an alias.
 
@@ -251,7 +251,7 @@ NOT alive escalates straight to the card's creator (the assignee will never act)
 
 | Command | Role | What it does |
 |---|---|---|
-| `scitex-todo mcp start` | MCP server (stdio/HTTP) | Exposes the CRUD + roles + edges tools (`add_task`, `comment_task`, `update_task`, `complete_task`, `reassign_task`, `set_collaborator`, `set_subscriber`, `set_edge`, `resolve_task`, `list_tasks`, `poll_notifications`, …). Every tool is a thin wrapper over `scitex_todo._store` so MCP / CLI / GUI share one logic path. |
+| `scitex-todo mcp start` | MCP server (stdio/HTTP) | Exposes the CRUD + roles + edges tools (`add_task`, `comment_task`, `update_task`, `complete_task`, `reassign_task`, `set_collaborator`, `set_subscriber`, `set_edge`, `resolve_task`, `list_tasks`, `poll_notifications`, …). Every tool is a thin wrapper over `scitex_cards._store` so MCP / CLI / GUI share one logic path. |
 | `scitex-todo mcp channel --agent X` | per-agent channel server (stdio) | Drains agent `X`'s inbox and pushes `notifications/claude/channel` into its Claude session. Fail-loud on an unresolved agent id (never drains an `unknown`/blank inbox). |
 | `scitex-todo notifyd` | always-on delivery + reminder daemon | Ticks the reminder sweep + delivery pass every `--interval` seconds under a single-instance lock; `--once` runs a single pass; `notifyd install-unit` writes an operator-gated systemd user unit. |
 | `scitex-todo board [start] --port 8051` | board GUI (Django) | Serves the `board_v3` app (kanban columns, timeline, multi-select toolbar, resolve→notify). Lifecycle verbs `start` / `stop` / `restart` / `status` via a pidfile at `~/.scitex/todo/board.pid`. Embedded in the scitex-ui shell. |
@@ -263,7 +263,7 @@ user service; `board` is started by the operator or the UI shell.
 ## Quick Start
 
 ```python
-import scitex_todo as todo
+import scitex_cards as todo
 
 # Task CRUD + roles (the same functions the MCP tools wrap)
 todo.add_task(None, id="c1", title="Wire the notify rail", status="in_progress")
