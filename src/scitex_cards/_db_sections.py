@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import secrets
 
+from ._db_payload import card_payload_json as _record_json
 from ._db_payload import json_or_none as _json_or_none
 
 
@@ -43,7 +44,8 @@ def _insert_users(conn, users: list) -> dict[str, int]:
         conn.execute(
             "INSERT OR REPLACE INTO users"
             "(id, kind, host_at_name, notify_json, turn_url, a2a_port, "
-            " created_at, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            " created_at, last_seen, record_json)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 uid,
                 u.get("kind"),
@@ -53,6 +55,11 @@ def _insert_users(conn, users: list) -> dict[str, int]:
                 u.get("a2a_port"),
                 u.get("created_at"),
                 u.get("last_seen"),
+                # Verbatim payload (v3): the columns are the index, this is
+                # the record — the yaml exporter reproduces it exactly.
+                # STRICT encoder (key order kept, no coercion, NULL on
+                # non-round-trippable) — same policy as tasks.card_json.
+                _record_json(u),
             ),
         )
         counts["users"] += 1
@@ -84,8 +91,9 @@ def _insert_notifications(conn, inboxes) -> int:
                 continue
             conn.execute(
                 "INSERT OR REPLACE INTO notifications"
-                "(id, recipient_id, event_type, card_id, body, actor, ts, seen)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "(id, recipient_id, event_type, card_id, body, actor, ts, "
+                " seen, record_json)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     r.get("id") or _gen_id("n_"),
                     recipient_id,
@@ -95,6 +103,7 @@ def _insert_notifications(conn, inboxes) -> int:
                     r.get("actor"),
                     "" if r.get("ts") is None else str(r.get("ts")),
                     1 if r.get("seen") else 0,
+                    _record_json(r),
                 ),
             )
             n += 1
@@ -115,8 +124,9 @@ def _insert_messages(conn, threads) -> int:
                 continue
             conn.execute(
                 "INSERT OR REPLACE INTO messages"
-                "(id, thread_key, sender, recipient, body, ts, read)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "(id, thread_key, sender, recipient, body, ts, read, "
+                " record_json)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     r.get("id") or _gen_id("m_"),
                     thread_key,
@@ -125,6 +135,7 @@ def _insert_messages(conn, threads) -> int:
                     "" if r.get("body") is None else str(r.get("body")),
                     "" if r.get("ts") is None else str(r.get("ts")),
                     1 if r.get("read") else 0,
+                    _record_json(r),
                 ),
             )
             n += 1
