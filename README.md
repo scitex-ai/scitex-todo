@@ -1,4 +1,7 @@
-# scitex-todo (`scitex-todo`)
+# scitex-cards (`scitex-cards`)
+
+> Renamed from **scitex-todo** (2026-07-16). `pip install scitex-todo`, `import scitex_todo`,
+> and the `scitex-todo` CLI keep working through one transition window via the bundled shim.
 
 <p align="center">
   <a href="https://scitex.ai">
@@ -6,23 +9,23 @@
   </a>
 </p>
 
-<p align="center"><b>A standalone, YAML-backed fleet task board — the single source of truth for tasks <em>and</em> the agent-to-agent communication medium that rides on top of the cards.</b></p>
+<p align="center"><b>A standalone fleet task-card board — the single source of truth for tasks <em>and</em> the agent-to-agent communication medium that rides on top of the cards.</b></p>
 
 <p align="center">
-  <a href="https://scitex-todo.readthedocs.io/">Full Documentation</a> · <code>uv pip install scitex-todo[all]</code>
+  <a href="https://scitex-todo.readthedocs.io/">Full Documentation</a> · <code>uv pip install scitex-cards[all]</code>
 </p>
 
 <!-- scitex-badges:start -->
 <p align="center">
-  <a href="https://pypi.org/project/scitex-todo/"><img src="https://img.shields.io/pypi/v/scitex-todo?label=pypi" alt="pypi"></a>
-  <a href="https://pypi.org/project/scitex-todo/"><img src="https://img.shields.io/pypi/pyversions/scitex-todo?label=python" alt="python"></a>
+  <a href="https://pypi.org/project/scitex-cards/"><img src="https://img.shields.io/pypi/v/scitex-cards?label=pypi" alt="pypi"></a>
+  <a href="https://pypi.org/project/scitex-cards/"><img src="https://img.shields.io/pypi/pyversions/scitex-cards?label=python" alt="python"></a>
   <a href="https://img.shields.io/readthedocs/scitex-todo?label=docs"><img src="https://img.shields.io/readthedocs/scitex-todo?label=docs" alt="docs"></a>
 </p>
 <p align="center">
-  <a href="https://github.com/ywatanabe1989/scitex-todo/actions/workflows/pytest-matrix-on-ubuntu-py3-11-3-12-3-13.yml"><img src="https://img.shields.io/github/actions/workflow/status/ywatanabe1989/scitex-todo/pytest-matrix-on-ubuntu-py3-11-3-12-3-13.yml?branch=develop&label=tests" alt="tests"></a>
-  <a href="https://github.com/ywatanabe1989/scitex-todo/actions/workflows/import-smoke-on-ubuntu-py3-12.yml"><img src="https://img.shields.io/github/actions/workflow/status/ywatanabe1989/scitex-todo/import-smoke-on-ubuntu-py3-12.yml?branch=develop&label=install-check" alt="install-check"></a>
-  <a href="https://github.com/ywatanabe1989/scitex-todo/actions/workflows/scitex-dev-quality-audit-on-ubuntu-latest.yml"><img src="https://img.shields.io/github/actions/workflow/status/ywatanabe1989/scitex-todo/scitex-dev-quality-audit-on-ubuntu-latest.yml?branch=develop&label=quality" alt="quality"></a>
-  <a href="https://codecov.io/gh/ywatanabe1989/scitex-todo"><img src="https://img.shields.io/codecov/c/github/ywatanabe1989/scitex-todo/develop?label=cov" alt="cov"></a>
+  <a href="https://github.com/scitex-ai/scitex-cards/actions/workflows/pytest-matrix-on-ubuntu-py3-11-3-12-3-13.yml"><img src="https://img.shields.io/github/actions/workflow/status/scitex-ai/scitex-cards/pytest-matrix-on-ubuntu-py3-11-3-12-3-13.yml?branch=develop&label=tests" alt="tests"></a>
+  <a href="https://github.com/scitex-ai/scitex-cards/actions/workflows/import-smoke-on-ubuntu-py3-12.yml"><img src="https://img.shields.io/github/actions/workflow/status/scitex-ai/scitex-cards/import-smoke-on-ubuntu-py3-12.yml?branch=develop&label=install-check" alt="install-check"></a>
+  <a href="https://github.com/scitex-ai/scitex-cards/actions/workflows/scitex-dev-quality-audit-on-ubuntu-latest.yml"><img src="https://img.shields.io/github/actions/workflow/status/scitex-ai/scitex-cards/scitex-dev-quality-audit-on-ubuntu-latest.yml?branch=develop&label=quality" alt="quality"></a>
+  <a href="https://codecov.io/gh/scitex-ai/scitex-cards"><img src="https://img.shields.io/codecov/c/github/scitex-ai/scitex-cards/develop?label=cov" alt="cov"></a>
 </p>
 <!-- scitex-badges:end -->
 

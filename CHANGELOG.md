@@ -35,9 +35,14 @@ All notable changes to this project are documented here. The format follows
   `scitex_todo.delivery_channels` stay discoverable alongside the new
   `scitex_cards.*` groups until producers re-release.
 
+### Changed (repo)
+- GitHub repository renamed **scitex-ai/scitex-todo → scitex-ai/scitex-cards**
+  (operator-approved); old URLs auto-redirect. `[project.urls]` and README
+  badges follow. RTD project rename is still pending (docs URL unchanged).
+
 ### Unchanged (deliberately — later stages)
-- The store path (`~/.scitex/todo/tasks.yaml`) and the GitHub URLs: the store
-  move is the history-migration stage; the URL flip is the repo-rename stage.
+- The store path (`~/.scitex/todo/tasks.yaml`): the store engine flips to
+  sqlite-as-truth and the file moves in the migration's later stages.
 
 ## [0.9.9] - 2026-07-13 — fix: a flag that outran its deploy cost 135 seconds per card write
 

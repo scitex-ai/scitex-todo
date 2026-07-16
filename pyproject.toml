@@ -80,13 +80,13 @@ all = [
 scitex-cards = "scitex_cards._cli:main"
 scitex-todo = "scitex_cards._cli:main"
 
-# The GitHub repository is STILL named scitex-todo — the repo rename (S2 of
-# the migration, operator-approved 2026-07-16) updates these URLs; GitHub then
-# auto-redirects the old ones.
+# Repo renamed to scitex-ai/scitex-cards (2026-07-16); old URLs auto-redirect.
+# Documentation stays on the scitex-todo RTD project until that console-side
+# rename lands (tracked on the S2 migration card).
 [project.urls]
-Homepage = "https://github.com/ywatanabe1989/scitex-todo"
-Repository = "https://github.com/ywatanabe1989/scitex-todo"
-Issues = "https://github.com/ywatanabe1989/scitex-todo/issues"
+Homepage = "https://github.com/scitex-ai/scitex-cards"
+Repository = "https://github.com/scitex-ai/scitex-cards"
+Issues = "https://github.com/scitex-ai/scitex-cards/issues"
 Documentation = "https://scitex-todo.readthedocs.io"
 
 # scitex_dev.* groups are ITERATED by scitex-dev (not looked up by key), so
