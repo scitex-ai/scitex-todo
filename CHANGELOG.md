@@ -4,6 +4,47 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.15.0] - 2026-07-17 — cards.db is the store's future; the yaml export is its backup rail
+
+### Added
+- **`db export`** — DB → YAML text, exact by construction: every record is
+  reconstructed from its verbatim JSON payload (`tasks.card_json` — v2;
+  `users`/`notifications`/`messages.record_json` — new schema v3), never from
+  typed columns; unknown keys and per-record key order survive; a payload-less
+  row is REFUSED loudly (re-import first), never exported stripped. Mutable
+  flags (`seen`/`read`/`last_seen`) overlay from live columns.
+- **`db snapshot`** — exports into a self-contained git repo and commits: the
+  ADR-0010 backup/audit rail (git tracks an EXPORT, never live data).
+- **`db rehearse`** — the cutover equivalence gate as one command: freeze
+  (copy) the store + threads sidecar, import into a throwaway DB, export,
+  deep-compare every section. READ-ONLY on the live store; exit 0 iff all
+  sections equal; a failing run keeps its workdir as evidence. Proven EQUAL
+  on the live 1,713-card store.
+- **Schema v4** — `inbox_recipients` records the `inboxes:` map keys, so a
+  drained (empty) inbox survives the round-trip instead of vanishing with its
+  zero rows.
+- **The scitex-todo deprecation stub** (`stub/scitex-todo/`) — a
+  metadata-only dist depending on `scitex-cards>=0.14.0`, published from the
+  same tag, so old `scitex-todo` pins keep resolving. Version sync with the
+  main package is test-enforced.
+- **ADR-0010** — `~/.scitex/cards/cards.db` as the single source of truth,
+  the yaml-snapshot-export backup rail, and the fleet-cutover sequencing that
+  gates the canonicality flip.
+
+### Changed
+- **The canonical DB path is `~/.scitex/cards/cards.db`** —
+  `resolve_db_path`: explicit arg → `$SCITEX_CARDS_DB` → `$SCITEX_TODO_DB`
+  (deprecated, warned) → `local_state.user_path("cards", "cards.db")`. The
+  pre-rename shadow `~/.scitex/todo/todo.db` is never moved or trusted;
+  `cards.db` is rebuilt by the importer at cutover.
+
+### Fixed
+- **`health` no longer cries wolf on env-less shells** — the two card-state
+  checks (`terminal_state_honest`, `no_falsely_blocked`) fed a bare `None`
+  straight to `load_tasks` and reported "cannot read the task store
+  (TypeError…)" (7/9 UNHEALTHY on healthy installs); both now resolve through
+  the standard precedence chain like every other check.
+
 ## [0.14.0] - 2026-07-16 — the package is scitex-cards now (scitex-todo stays as a shim)
 
 ### Changed

@@ -87,9 +87,15 @@ def _check_terminal_state_honest(store: str | Path | None) -> dict[str, Any]:
     Never raises: an unreadable store is reported, not thrown.
     """
     try:
+        from ._paths import resolve_tasks_path
         from ._store import load_tasks
 
-        tasks = load_tasks(store)
+        # Resolve through the SAME precedence chain as every other reader —
+        # a bare None must fall through env -> user store, never reach a
+        # path API raw. (2026-07-16: these two checks fed None straight to
+        # load_tasks and turned "no env var in this shell" into a TypeError,
+        # reading as 7/9 UNHEALTHY on perfectly healthy installs.)
+        tasks = load_tasks(resolve_tasks_path(store))
     except Exception as exc:  # noqa: BLE001 — an unreadable store is a reportable state
         return {
             "ok": False,
@@ -208,9 +214,15 @@ def _check_no_falsely_blocked(store: str | Path | None) -> dict[str, Any]:
     Never raises: an unreadable store is reported, not thrown.
     """
     try:
+        from ._paths import resolve_tasks_path
         from ._store import load_tasks
 
-        tasks = load_tasks(store)
+        # Resolve through the SAME precedence chain as every other reader —
+        # a bare None must fall through env -> user store, never reach a
+        # path API raw. (2026-07-16: these two checks fed None straight to
+        # load_tasks and turned "no env var in this shell" into a TypeError,
+        # reading as 7/9 UNHEALTHY on perfectly healthy installs.)
+        tasks = load_tasks(resolve_tasks_path(store))
     except Exception as exc:  # noqa: BLE001 — an unreadable store is a reportable state
         return {
             "ok": False,

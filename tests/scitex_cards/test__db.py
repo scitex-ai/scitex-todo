@@ -144,12 +144,13 @@ def test_resolve_db_path_env_over_userpath(tmp_path, monkeypatch):
 
 
 def test_resolve_db_path_delegates_to_user_path(tmp_path, monkeypatch):
-    """Tier 3 DELEGATES to local_state.user_path — no re-rolled precedence."""
+    """Final tier DELEGATES to local_state.user_path — no re-rolled precedence."""
     monkeypatch.delenv(_db.ENV_DB, raising=False)
+    monkeypatch.delenv(_db.ENV_DB_DEPRECATED, raising=False)
     from scitex_config._ecosystem import local_state
 
     calls = []
-    sentinel = tmp_path / "delegated" / "todo.db"
+    sentinel = tmp_path / "delegated" / "cards.db"
 
     def fake_user_path(pkg_short, *parts):
         calls.append((pkg_short, parts))
@@ -158,7 +159,27 @@ def test_resolve_db_path_delegates_to_user_path(tmp_path, monkeypatch):
     monkeypatch.setattr(local_state, "user_path", fake_user_path)
     got = _db.resolve_db_path()
     assert got == sentinel
-    assert calls == [("todo", ("todo.db",))]
+    assert calls == [("cards", ("cards.db",))]
+
+
+def test_resolve_db_path_legacy_env_honoured_with_warning(
+    tmp_path, monkeypatch, caplog
+):
+    """SCITEX_TODO_DB (pre-rename) still resolves, loudly, when it is the only export."""
+    monkeypatch.delenv(_db.ENV_DB, raising=False)
+    monkeypatch.setenv(_db.ENV_DB_DEPRECATED, str(tmp_path / "legacy.db"))
+    with caplog.at_level("WARNING", logger="scitex_cards._db"):
+        got = _db.resolve_db_path()
+    assert got == (tmp_path / "legacy.db")
+    assert any("deprecated" in r.message for r in caplog.records)
+
+
+def test_resolve_db_path_new_env_wins_over_legacy(tmp_path, monkeypatch):
+    """When both names are set, SCITEX_CARDS_DB wins."""
+    monkeypatch.setenv(_db.ENV_DB, str(tmp_path / "new.db"))
+    monkeypatch.setenv(_db.ENV_DB_DEPRECATED, str(tmp_path / "legacy.db"))
+    got = _db.resolve_db_path()
+    assert got == (tmp_path / "new.db")
 
 
 # --------------------------------------------------------------------------- #

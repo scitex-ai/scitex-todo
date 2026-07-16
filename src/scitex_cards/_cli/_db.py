@@ -46,19 +46,20 @@ _DB_OPTION = click.option(
     "--db",
     "db_path",
     default=None,
-    help="Explicit DB path (default: $SCITEX_TODO_DB, else ~/.scitex/todo/todo.db).",
+    help="Explicit DB path (default: $SCITEX_CARDS_DB, else ~/.scitex/cards/cards.db).",
 )
 
 
 @db_group.command(
     "path",
     help=(
-        "Print the resolved shadow-DB path.\n\n"
-        "Precedence: --db arg > $SCITEX_TODO_DB > local_state.user_path "
-        "('todo','todo.db'). Delegates the user tier to the ecosystem "
-        "resolver (never a re-rolled project/user precedence).\n\n"
+        "Print the resolved DB path.\n\n"
+        "Precedence: --db arg > $SCITEX_CARDS_DB > $SCITEX_TODO_DB "
+        "(deprecated, warned) > local_state.user_path('cards','cards.db'). "
+        "Delegates the user tier to the ecosystem resolver (never a "
+        "re-rolled project/user precedence).\n\n"
         "Example:\n"
-        "  scitex-todo db path"
+        "  scitex-cards db path"
     ),
 )
 @_DB_OPTION
@@ -160,6 +161,160 @@ def db_import_cmd(
         f"  users={summary['users']} user_names={summary['user_names']} "
         f"notifications={summary['notifications']} messages={summary['messages']}"
     )
+
+
+def _echo_export_report(report: dict) -> None:
+    """Print an export's counts — a silent bulk export leaves no audit trace."""
+    click.echo(
+        f"# exported DB -> YAML\n"
+        f"  db:      {report['db']}\n"
+        f"  tasks:   {report['tasks_yaml']}  ({report['tasks']} tasks, "
+        f"{report['users']} users, {report['notifications']} notifications)\n"
+        f"  threads: {report['threads_yaml']}  ({report['threads']} threads, "
+        f"{report['messages']} messages)"
+    )
+
+
+@db_group.command(
+    "export",
+    help=(
+        "Export the DB to YAML text (ADR-0010 backup/audit rail).\n\n"
+        "Every record is reconstructed from its VERBATIM json payload "
+        "(card_json / record_json) — never from typed columns — so the "
+        "export is exact by construction. REFUSES loudly if any row has no "
+        "payload (a pre-v3 DB: re-run `db import --from-yaml` first).\n\n"
+        "Example:\n"
+        "  scitex-cards db export\n"
+        "  scitex-cards db export --out /tmp/tasks.yaml --json"
+    ),
+)
+@_DB_OPTION
+@click.option("--out", "out_path", default=None, help="tasks.yaml output path (default: <db_dir>/export/tasks.yaml).")
+@click.option("--threads-out", "threads_out", default=None, help="threads.yaml output path (default: beside --out).")
+@click.option("--json", "as_json", is_flag=True, help="Emit the export report as JSON.")
+def db_export_cmd(
+    db_path: str | None,
+    out_path: str | None,
+    threads_out: str | None,
+    as_json: bool,
+) -> None:
+    """Export the DB to YAML snapshot files."""
+    from .._db_export import export_yaml
+
+    report = export_yaml(db_path=db_path, out=out_path, threads_out=threads_out)
+    if as_json:
+        click.echo(json.dumps(report))
+        return
+    _echo_export_report(report)
+
+
+@db_group.command(
+    "snapshot",
+    help=(
+        "Export the DB to the snapshot dir and git-commit the export.\n\n"
+        "The ADR-0010 backup rail: git tracks an EXPORT, never live data, so "
+        "no git operation can ever roll back the live store. Initialises the "
+        "snapshot dir as its own git repo on first run.\n\n"
+        "Example:\n"
+        "  scitex-cards db snapshot\n"
+        "  scitex-cards db snapshot --dir ~/.scitex/cards/snapshots"
+    ),
+)
+@_DB_OPTION
+@click.option(
+    "--dir",
+    "snap_dir",
+    default=None,
+    help="Snapshot directory (default: <db_dir>/snapshots; its own git repo).",
+)
+@click.option("--json", "as_json", is_flag=True, help="Emit the snapshot report as JSON.")
+def db_snapshot_cmd(db_path: str | None, snap_dir: str | None, as_json: bool) -> None:
+    """Export to the snapshot dir and commit the export in its own git repo."""
+    import subprocess
+    from pathlib import Path
+
+    from .._db import resolve_db_path
+    from .._db_export import export_yaml
+
+    root = (
+        Path(snap_dir).expanduser()
+        if snap_dir
+        else resolve_db_path(db_path).parent / "snapshots"
+    )
+    root.mkdir(parents=True, exist_ok=True)
+
+    report = export_yaml(
+        db_path=db_path,
+        out=root / "tasks.yaml",
+        threads_out=root / "threads.yaml",
+    )
+
+    def _git(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    if not (root / ".git").exists():
+        _git("init", "-q")
+        _git("config", "user.name", "scitex-cards")
+        _git("config", "user.email", "cards@scitex.ai")
+    _git("add", "-A")
+    committed = _git("commit", "-q", "-m", f"snapshot: {report['tasks']} tasks")
+    # exit 1 with nothing staged = no changes since the last snapshot — a
+    # legitimate outcome, reported as such rather than swallowed.
+    report["committed"] = committed.returncode == 0
+    report["snapshot_dir"] = str(root)
+
+    if as_json:
+        click.echo(json.dumps(report))
+        return
+    _echo_export_report(report)
+    state = "committed" if report["committed"] else "no changes since last snapshot"
+    click.echo(f"  snapshot: {root} ({state})")
+
+
+@db_group.command(
+    "rehearse",
+    help=(
+        "Cutover rehearsal: prove yaml -> cards.db -> yaml is exact.\n\n"
+        "Freezes (copies) the store + threads sidecar, imports into a "
+        "throwaway DB, exports, and deep-compares every section. "
+        "READ-ONLY on the live store. Exit 0 iff ALL sections equal; "
+        "a failing rehearsal keeps its workdir as evidence.\n\n"
+        "Example:\n"
+        "  scitex-cards db rehearse\n"
+        "  scitex-cards db rehearse --json"
+    ),
+)
+@click.option("--tasks", "tasks_path", default=None, help="Store to rehearse against (default: resolved store).")
+@click.option("--workdir", default=None, help="Rehearsal dir (default: fresh temp dir).")
+@click.option("--keep", is_flag=True, help="Keep the workdir even when the rehearsal passes.")
+@click.option("--json", "as_json", is_flag=True, help="Emit the verdict report as JSON.")
+def db_rehearse_cmd(tasks_path, workdir, keep, as_json):
+    """Run the frozen-copy equivalence rehearsal (the R4 cutover gate)."""
+    from .._db_rehearse import rehearse
+
+    report = rehearse(tasks_path=tasks_path, workdir=workdir, keep=keep)
+    if as_json:
+        click.echo(json.dumps(report))
+        raise SystemExit(0 if report["equal"] else 1)
+    verdict = "EQUAL" if report["equal"] else "NOT EQUAL"
+    click.echo(f"# db rehearse: {verdict} — {report['store']}")
+    for name, ok in report["sections"].items():
+        click.echo(f"  {name}: {'ok' if ok else 'MISMATCH'}")
+    click.echo(
+        f"  tasks={report['tasks']} users={report['users']} "
+        f"inbox_recipients={report['inbox_recipients']} threads={report['threads']} "
+        f"(import {report['import_s']}s / export {report['export_s']}s)"
+    )
+    if not report["equal"]:
+        click.echo(f"  evidence kept in: {report['workdir']}")
+        if report["mismatch_sample"]:
+            click.echo(f"  mismatched task ids: {report['mismatch_sample']}")
+    raise SystemExit(0 if report["equal"] else 1)
 
 
 # EOF
