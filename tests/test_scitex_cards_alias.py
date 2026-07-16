@@ -33,6 +33,6 @@ def test_scitex_cards_points_at_the_same_cli():
     assert scripts["scitex-cards"] == scripts["scitex-todo"]
 
 
-def test_scitex_todo_console_script_still_exists():
+def test_scitex_cards_console_script_still_exists():
     """The old name must keep working — the whole fleet still calls it."""
     assert "scitex-todo" in _scripts()

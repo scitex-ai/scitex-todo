@@ -4,7 +4,7 @@
 
 **One-line summary.** `scitex-todo` is the fleet's shared task store. The
 canonical data is a YAML file at `~/.scitex/todo/tasks.yaml`. You read and
-write it from CLI, from Python (`import scitex_todo`), from MCP tools, or
+write it from CLI, from Python (`import scitex_cards`), from MCP tools, or
 from the web board at `http://127.0.0.1:8051/`. Filter your view to your
 own slice via the `scope` and `assignee` fields.
 
@@ -116,7 +116,7 @@ The board has drill-down (click a parent card), drag-reorder (changes
 ## 3 — The Python API (for agent code)
 
 ```python
-import scitex_todo as todo
+import scitex_cards as todo
 
 # ── read (snapshot, no lock) ────────────────────────────────────
 mine = todo.list_tasks(scope="agent:scitex-todo",        # 🟡 PHASE-1
@@ -135,8 +135,8 @@ todo.complete_task(task_id="my-task")                          # 🟡 PHASE-1
 # ── load + raw read (submodule imports — these helpers are not on
 #    the narrowed top-level surface; the audit §6 1:1 rule keeps the
 #    top level == the MCP tool set) ───────────────────────────────
-from scitex_todo._model import load_tasks
-from scitex_todo._paths import resolve_tasks_path
+from scitex_cards._model import load_tasks
+from scitex_cards._paths import resolve_tasks_path
 tasks = load_tasks(resolve_tasks_path())
 ```
 
@@ -174,7 +174,7 @@ scitex-todo mcp list-tools       # 🟡 PHASE-1
 scitex-todo mcp install          # 🟡 PHASE-1 — wire into local MCP config
 ```
 
-**Install hint.** If `import scitex_todo._mcp_server` raises ImportError,
+**Install hint.** If `import scitex_cards._mcp_server` raises ImportError,
 you didn't install the `[mcp]` extra. `pip install 'scitex-todo[mcp]'`.
 
 ---
@@ -407,7 +407,7 @@ the backlog sweep does the same for untouched `deferred` cards.
 | Symptom                                   | Fix                                                |
 | ----------------------------------------- | -------------------------------------------------- |
 | `scitex-todo` not found                   | `pip install 'scitex-todo[mcp]'`                   |
-| `import scitex_todo._mcp_server` fails    | You didn't install the `[mcp]` extra              |
+| `import scitex_cards._mcp_server` fails    | You didn't install the `[mcp]` extra              |
 | `list` returns nothing                    | `$SCITEX_TODO_SCOPE` is filtering you out; try `--scope ''` |
 | Concurrent writers seem to lose data      | `fcntl.flock` should serialize them; check that all writers go through `_store.py` / `save_tasks` (NOT raw YAML writes) |
 | `add` fails with `TaskValidationError`    | Duplicate `id`, invalid `status`, or `priority` not an int |

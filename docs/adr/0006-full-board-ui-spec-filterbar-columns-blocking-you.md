@@ -49,7 +49,7 @@ this lens; the next section names every port the design needs.
 │   • SacChannelNotificationAdapter (rides the a2a/channel bus)        │
 │   • SacAgentsLivenessAdapter (SSH-fanout of `sac agents list`)       │
 │   • SacFleetGroupsACLAdapter (sac fleet groups model — task #2)      │
-│  → LIVES OUTSIDE `scitex_todo` (separate package, e.g. `scitex-      │
+│  → LIVES OUTSIDE `scitex_cards` (separate package, e.g. `scitex-      │
 │    todo-fleet`; or in `scitex-agent-container` / a similar glue pkg) │
 └──────────────────────────────────────────────────────────────────────┘
                                 ↑ implements
@@ -62,7 +62,7 @@ this lens; the next section names every port the design needs.
 └──────────────────────────────────────────────────────────────────────┘
                                 ↑ used-by
 ┌──────────────────────────────────────────────────────────────────────┐
-│  CORE — `scitex_todo` package, ZERO knowledge of fleet/sac/etc.      │
+│  CORE — `scitex_cards` package, ZERO knowledge of fleet/sac/etc.      │
 │   • Task dataclass, store, CRUD                                      │
 │   • Board UI rendering (filter bar / columns / cards / drawer / lens)│
 │   • Filtering, tags, the BLOCKING YOU predicate                      │
@@ -85,11 +85,11 @@ same code becomes the fleet's shared SSoT.
 ### The four extension ports (interface contracts)
 
 Each port is a `typing.Protocol` (duck-typed) in
-`scitex_todo._ports` — implementations live in adapter packages and
+`scitex_cards._ports` — implementations live in adapter packages and
 are registered via constructor injection on `Board()` / `Store()`:
 
 ```python
-# scitex_todo/_ports.py — CORE; zero fleet knowledge.
+# scitex_cards/_ports.py — CORE; zero fleet knowledge.
 from typing import Protocol, Callable
 from ._model import Task
 
@@ -147,18 +147,18 @@ class IdentityACLPort(Protocol):
 
 ### Wiring (dependency injection at the edges)
 
-The core's entrypoints (`scitex_todo.create_board()`, the Django app
+The core's entrypoints (`scitex_cards.create_board()`, the Django app
 factory) take optional port arguments. Without them, the core wires
 the defaults. The fleet's deployment script wires the real adapters:
 
 ```python
 # Single-user / standalone — uses defaults; works with no fleet code.
-from scitex_todo import create_board
+from scitex_cards import create_board
 app = create_board()    # uses LocalFileSync + InProcessPubSub + NullLiveness + OpenACL
 
 # Fleet deployment — wires the real adapters from a separate package.
-from scitex_todo import create_board
-from scitex_todo_fleet import (
+from scitex_cards import create_board
+from scitex_cards_fleet import (
     GitTaskSyncAdapter,
     SacChannelNotificationAdapter,
     SacAgentsLivenessAdapter,
