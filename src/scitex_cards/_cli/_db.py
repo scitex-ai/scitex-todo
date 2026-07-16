@@ -276,4 +276,45 @@ def db_snapshot_cmd(db_path: str | None, snap_dir: str | None, as_json: bool) ->
     click.echo(f"  snapshot: {root} ({state})")
 
 
+@db_group.command(
+    "rehearse",
+    help=(
+        "Cutover rehearsal: prove yaml -> cards.db -> yaml is exact.\n\n"
+        "Freezes (copies) the store + threads sidecar, imports into a "
+        "throwaway DB, exports, and deep-compares every section. "
+        "READ-ONLY on the live store. Exit 0 iff ALL sections equal; "
+        "a failing rehearsal keeps its workdir as evidence.\n\n"
+        "Example:\n"
+        "  scitex-cards db rehearse\n"
+        "  scitex-cards db rehearse --json"
+    ),
+)
+@click.option("--tasks", "tasks_path", default=None, help="Store to rehearse against (default: resolved store).")
+@click.option("--workdir", default=None, help="Rehearsal dir (default: fresh temp dir).")
+@click.option("--keep", is_flag=True, help="Keep the workdir even when the rehearsal passes.")
+@click.option("--json", "as_json", is_flag=True, help="Emit the verdict report as JSON.")
+def db_rehearse_cmd(tasks_path, workdir, keep, as_json):
+    """Run the frozen-copy equivalence rehearsal (the R4 cutover gate)."""
+    from .._db_rehearse import rehearse
+
+    report = rehearse(tasks_path=tasks_path, workdir=workdir, keep=keep)
+    if as_json:
+        click.echo(json.dumps(report))
+        raise SystemExit(0 if report["equal"] else 1)
+    verdict = "EQUAL" if report["equal"] else "NOT EQUAL"
+    click.echo(f"# db rehearse: {verdict} — {report['store']}")
+    for name, ok in report["sections"].items():
+        click.echo(f"  {name}: {'ok' if ok else 'MISMATCH'}")
+    click.echo(
+        f"  tasks={report['tasks']} users={report['users']} "
+        f"inbox_recipients={report['inbox_recipients']} threads={report['threads']} "
+        f"(import {report['import_s']}s / export {report['export_s']}s)"
+    )
+    if not report["equal"]:
+        click.echo(f"  evidence kept in: {report['workdir']}")
+        if report["mismatch_sample"]:
+            click.echo(f"  mismatched task ids: {report['mismatch_sample']}")
+    raise SystemExit(0 if report["equal"] else 1)
+
+
 # EOF
