@@ -79,7 +79,13 @@ ENV_DB_DEPRECATED = "SCITEX_TODO_DB"
 #: re-order the rest — serving confidently-wrong cards to the whole fleet, which is
 #: far worse than being slow. Reconstructing from ``card_json`` is exact BY
 #: CONSTRUCTION, and it cannot rot as new fields are added.
-SCHEMA_VERSION = 2
+#: v3 (S4 export rail) extends the same verbatim-payload rule to the NON-CARD
+#: sections: ``users.record_json``, ``notifications.record_json``,
+#: ``messages.record_json`` hold each record EXACTLY as the YAML doc carried
+#: it. Same rationale as ``card_json``: typed columns are the INDEX, the JSON
+#: is the PAYLOAD — a column-based export would silently drop unknown keys,
+#: and the yaml-snapshot backup rail (ADR-0010) must be exact by construction.
+SCHEMA_VERSION = 3
 
 
 def resolve_db_path(explicit: str | Path | None = None) -> Path:
@@ -210,7 +216,8 @@ CREATE TABLE IF NOT EXISTS users (
     turn_url     TEXT,
     a2a_port     INTEGER,
     created_at   TEXT,
-    last_seen    TEXT
+    last_seen    TEXT,
+    record_json  TEXT
 );
 CREATE TABLE IF NOT EXISTS user_names (
     name    TEXT PRIMARY KEY,
@@ -226,7 +233,8 @@ CREATE TABLE IF NOT EXISTS notifications (
     body         TEXT,
     actor        TEXT,
     ts           TEXT NOT NULL,
-    seen         INTEGER NOT NULL DEFAULT 0
+    seen         INTEGER NOT NULL DEFAULT 0,
+    record_json  TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_notif_recipient_seen
     ON notifications(recipient_id, seen);
@@ -238,7 +246,8 @@ CREATE TABLE IF NOT EXISTS messages (
     recipient  TEXT NOT NULL,
     body       TEXT NOT NULL,
     ts         TEXT NOT NULL,
-    read       INTEGER NOT NULL DEFAULT 0
+    read       INTEGER NOT NULL DEFAULT 0,
+    record_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_key, ts);
 
@@ -316,6 +325,19 @@ def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE tasks ADD COLUMN card_json TEXT")
 
 
+def _migrate_v2_to_v3(conn: sqlite3.Connection) -> None:
+    """Add ``record_json`` to users/notifications/messages. Idempotent, additive.
+
+    Same contract as :func:`_migrate_v1_to_v2`: existing rows get NULL and are
+    NOT back-filled here — the exporter REFUSES NULL payloads loudly, which is
+    what forces a ``db import`` re-run instead of silently exporting stripped
+    records.
+    """
+    for table in ("users", "notifications", "messages"):
+        if "record_json" not in table_columns(conn, table):
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN record_json TEXT")
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     """Create the schema idempotently + stamp version. Commits on success.
 
@@ -326,6 +348,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
     """
     conn.executescript(_SCHEMA_SQL)
     _migrate_v1_to_v2(conn)
+    _migrate_v2_to_v3(conn)
     conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
     conn.execute(
         "INSERT INTO schema_meta(key, value) VALUES('schema_version', ?) "
