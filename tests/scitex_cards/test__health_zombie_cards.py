@@ -122,3 +122,29 @@ def test_an_unreadable_store_is_REPORTED_not_raised(tmp_path: Path):
     # Assert — it reports the problem instead of taking the whole doctor down.
     assert result["ok"] in (True, False)
     assert isinstance(result["detail"], str)
+
+
+def test_check_with_none_store_resolves_instead_of_typeerror(
+    store, monkeypatch
+):
+    """A bare ``None`` store resolves through the standard chain, never a TypeError.
+
+    Regression (2026-07-16, reported by the dotfiles agent on v0.13.5): in a
+    shell with no store env var, these checks fed ``None`` straight to
+    ``load_tasks`` and reported "cannot read the task store (TypeError…)" —
+    7/9 UNHEALTHY on a perfectly healthy install.
+    """
+    # Arrange — the fixture store becomes what the precedence chain resolves to.
+    monkeypatch.delenv("SCITEX_CARDS_TASKS_YAML_SHARED", raising=False)
+    monkeypatch.setenv("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
+    from scitex_cards._health import _check_no_falsely_blocked
+
+    # Act
+    honest = _check_terminal_state_honest(None)
+    blocked = _check_no_falsely_blocked(None)
+
+    # Assert — both resolve and judge the store; neither reports a read error.
+    assert honest["ok"] is True
+    assert blocked["ok"] is True
+    assert "TypeError" not in honest.get("detail", "")
+    assert "TypeError" not in blocked.get("detail", "")
