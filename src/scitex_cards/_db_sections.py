@@ -86,6 +86,14 @@ def _insert_notifications(conn, inboxes) -> int:
             continue
         if not isinstance(records, list):
             continue
+        # The map KEY is data too: a drained (empty) inbox must survive
+        # the round-trip, and zero notification rows cannot carry the
+        # key (schema v4).
+        conn.execute(
+            "INSERT OR REPLACE INTO inbox_recipients(recipient_id) "
+            "VALUES (?)",
+            (recipient_id,),
+        )
         for r in records:
             if not isinstance(r, dict):
                 continue
