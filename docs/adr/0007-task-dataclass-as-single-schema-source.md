@@ -28,7 +28,7 @@ adapter / frontmatter parser) can derive its shape from the dataclass.
 
 ## Decision
 
-Define `scitex_todo._model.Task` as the canonical `@dataclass(slots=True)`
+Define `scitex_cards._model.Task` as the canonical `@dataclass(slots=True)`
 schema source. Every consumer reads from it:
 
 1. **The validator** — `_validate_tasks` checks each task dict against

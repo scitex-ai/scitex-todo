@@ -67,7 +67,7 @@ can do.
    ┌──────────┴──────────┐  ┌──────────┴──────────┐  ┌──────────┴──────────┐
    │  _store.py          │  │  _django handlers   │  │  _mcp_server.py     │
    │  Python API         │  │  HTTP /graph etc.   │  │  FastMCP tools      │
-   │  (add/update/done/  │  │  (drag-reorder,     │  │  (scitex_todo_*)    │
+   │  (add/update/done/  │  │  (drag-reorder,     │  │  (scitex_cards_*)    │
    │  list/summary)      │  │  /priority, drawer) │  │                     │
    └────────┬────────────┘  └──────────┬──────────┘  └──────────┬──────────┘
             │                          │                        │
@@ -85,7 +85,7 @@ The six participant levels:
 | Level                    | How they reach the store            | Default scope           |
 | ------------------------ | ----------------------------------- | ----------------------- |
 | Single human (operator)  | CLI + web board on localhost        | unfiltered              |
-| Single agent (standalone)| Python API (`import scitex_todo`)   | `agent:<self>`          |
+| Single agent (standalone)| Python API (`import scitex_cards`)   | `agent:<self>`          |
 | sac peer ↔ sac peer      | MCP tools + `$SCITEX_TODO_SCOPE` env| `agent:<self>`          |
 | Team (operator + agents) | Shared YAML + scope filters         | mixed                   |
 | scitex-hub app           | `_django` module mounted at `/todo/`| as configured           |
@@ -310,7 +310,7 @@ with `scope: private` so they don't pollute fleet views.
 ### 5.2 Single agent (one Claude/process, no fleet)
 
 ```python
-import scitex_todo as todo
+import scitex_cards as todo
 # Default scope from $SCITEX_TODO_SCOPE = "agent:proj-scitex-todo"
 mine = todo.list_tasks(status="pending")           # only my pending work
 todo.update_task(task_id="my-task", status="in_progress")
@@ -338,7 +338,7 @@ local edits and pull peers' edits. Conflict-resolve via per-task LWW on
 
 The `_django/` module is already shaped as a scitex-app. The hub PR
 (opened on the *scitex-hub* repo, not here) registers the module:
-URL prefix `/todo/`, app config `scitex_todo._django.apps.SciTeXTodoConfig`.
+URL prefix `/todo/`, app config `scitex_cards._django.apps.SciTeXTodoConfig`.
 Static files are bundled into the wheel. See `GITIGNORED/DESIGN/hub-embed.md`.
 
 ### 5.6 Orochi todo tab

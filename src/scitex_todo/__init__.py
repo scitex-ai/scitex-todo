@@ -1,146 +1,74 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""scitex-todo: a canonical YAML task store with pluggable adapters.
+"""Deprecated import alias: ``scitex_todo`` -> :mod:`scitex_cards`.
 
-The task store (YAML, top-level ``tasks:`` list) is the single source of
-truth. Adapters render or import it; the mermaid adapter (YAML -> dependency
-PNG) ships today. See the project roadmap for org and Web-UI adapters.
+The package was renamed 2026-07-16 (operator directive). This shim keeps
+``import scitex_todo`` and ``import scitex_todo.<submodule>`` working for one
+transition window by aliasing BOTH to the very same module objects as their
+``scitex_cards`` counterparts — one import, one module state, never a second
+copy (a duplicate module execution would fork singletons: locks, caches,
+entry-point registries).
 
-Quick Start
------------
->>> import scitex_todo as todo
->>> tasks = todo.load_tasks("tasks.yaml")        # doctest: +SKIP
->>> src = todo.build_mermaid(tasks)              # doctest: +SKIP
->>> todo.render(src, "tasks.png")                # doctest: +SKIP
-'mmdc'
+Mechanism: this module replaces itself in ``sys.modules`` with the canonical
+package and installs a meta-path finder that resolves any ``scitex_todo.X``
+import to the already-imported ``scitex_cards.X``.
 """
 
 from __future__ import annotations
 
-try:
-    from importlib.metadata import PackageNotFoundError
-    from importlib.metadata import version as _v
+import importlib
+import importlib.abc
+import importlib.util
+import sys
+import warnings
 
-    try:
-        __version__ = _v("scitex-todo")
-    except PackageNotFoundError:
-        __version__ = "0.0.0+local"
-    del _v, PackageNotFoundError
-except ImportError:  # pragma: no cover — only on ancient Pythons
-    __version__ = "0.0.0+local"
+import scitex_cards as _canonical
 
-#: Public API — Convention A (audit §6: every public Python API must match a
-#: registered MCP tool name 1:1). The MCP tool surface is documented in
-#: ``_skills/scitex-todo/05_mcp-tools.md`` and registered in ``_mcp_server.py``.
-#:
-#: Render / mermaid / paths / model helpers used to be re-exported here.
-#: They were moved off the top level (audit §6) but remain importable from
-#: their submodules:
-#:
-#:     from scitex_todo._diagram  import render, render_with_kroki, render_with_mmdc, find_chromium, RenderError
-#:     from scitex_todo._diagram import build_mermaid, STATUS_STYLE
-#:     from scitex_todo._model   import load_tasks, save_tasks, VALID_STATUSES, TaskValidationError
-#:     from scitex_todo._paths   import resolve_tasks_path, bundled_example
+_OLD = "scitex_todo"
+_NEW = "scitex_cards"
 
-# PEP 562 lazy attribute resolution — keeps `import scitex_todo` cold-start
-# well under the audit-cli §10 budget (500 ms) by deferring every submodule
-# load until the attribute is actually touched. Click tab-completion taps
-# `import scitex_todo` once per Tab press, so the savings compound.
-#
-# Public surface stays identical: every name in ``__all__`` resolves on
-# ``scitex_todo.NAME`` access via :func:`__getattr__`, and gets cached in
-# ``globals()`` for O(1) repeat lookups.
-_LAZY_IMPORTS = {
-    "TaskValidationError": ("._model", "TaskValidationError"),
-    # Agent career — host@name identity join key + agent-directory port
-    # (ADR-0009). Library seams; exposed here so consumers can wire a
-    # provider / canonicalise ids without reaching into the private module.
-    "AGENT_DIRECTORY_GROUP": ("._ports", "AGENT_DIRECTORY_GROUP"),
-    "AgentDirectoryPort": ("._ports", "AgentDirectoryPort"),
-    "AgentIdentityError": ("._ports", "AgentIdentityError"),
-    "AgentInfo": ("._ports", "AgentInfo"),
-    "EmptyAgentDirectory": ("._ports", "EmptyAgentDirectory"),
-    "canonical_agent_id": ("._ports", "canonical_agent_id"),
-    "dedup_agents": ("._ports", "dedup_agents"),
-    "parse_agent_id": ("._ports", "parse_agent_id"),
-    "resolve_agent_directory": ("._ports", "resolve_agent_directory"),
-    "ENV_AGENT": ("._store", "ENV_AGENT"),
-    "ENV_SCOPE": ("._store", "ENV_SCOPE"),
-    "TaskNotFoundError": ("._store", "TaskNotFoundError"),
-    "add_task": ("._store", "add_task"),
-    "comment_task": ("._store", "comment_task"),
-    "complete_task": ("._store", "complete_task"),
-    "delete_task": ("._store", "delete_task"),
-    "get_task": ("._store", "get_task"),
-    "list_tasks": ("._store", "list_tasks"),
-    "reassign_task": ("._store", "reassign_task"),
-    "reopen_task": ("._store", "reopen_task"),
-    "resolve_store": ("._store", "resolve_store"),
-    "resolve_task": ("._store", "resolve_task"),
-    "restore_task": ("._store", "restore_task"),
-    "set_collaborator": ("._store", "set_collaborator"),
-    "set_edge": ("._store", "set_edge"),
-    "set_subscriber": ("._store", "set_subscriber"),
-    "summarize_tasks": ("._store", "summarize_tasks"),
-    "update_task": ("._store", "update_task"),
-}
+warnings.warn(
+    "the 'scitex_todo' import name was renamed to 'scitex_cards' "
+    "(2026-07-16); this alias ships for one transition window only — "
+    "switch imports to 'scitex_cards'",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
-def __getattr__(name: str):
-    """PEP 562 lazy loader — resolve public-API names on first access.
+class _AliasLoader(importlib.abc.Loader):
+    """Hand the import system the ALREADY-imported canonical module."""
 
-    Imports the source submodule, fetches the attribute, caches it
-    into module ``globals()`` so subsequent accesses skip the lookup.
-    Unknown names raise ``AttributeError`` per the PEP.
-    """
-    target = _LAZY_IMPORTS.get(name)
-    if target is None:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    import importlib
+    def __init__(self, real_name: str) -> None:
+        self._real_name = real_name
 
-    mod_path, attr = target
-    value = getattr(importlib.import_module(mod_path, __name__), attr)
-    globals()[name] = value
-    return value
+    def create_module(self, spec):
+        return importlib.import_module(self._real_name)
+
+    def exec_module(self, module) -> None:
+        """The canonical module is already executed; nothing to run."""
 
 
-def __dir__():
-    """Make tab-completion / ``dir(scitex_todo)`` see the public surface
-    even before any attribute has been touched."""
-    return sorted(set(__all__) | set(globals()))
+class _AliasFinder(importlib.abc.MetaPathFinder):
+    """Resolve ``scitex_todo`` / ``scitex_todo.*`` to ``scitex_cards`` twins."""
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname != _OLD and not fullname.startswith(_OLD + "."):
+            return None
+        real_name = _NEW + fullname[len(_OLD) :]
+        return importlib.util.spec_from_loader(
+            fullname, _AliasLoader(real_name), is_package=True
+        )
 
 
-__all__ = [
-    "__version__",
-    "AGENT_DIRECTORY_GROUP",
-    "AgentDirectoryPort",
-    "AgentIdentityError",
-    "AgentInfo",
-    "EmptyAgentDirectory",
-    "ENV_AGENT",
-    "ENV_SCOPE",
-    "TaskNotFoundError",
-    "TaskValidationError",
-    "add_task",
-    "canonical_agent_id",
-    "comment_task",
-    "complete_task",
-    "dedup_agents",
-    "delete_task",
-    "get_task",
-    "list_tasks",
-    "parse_agent_id",
-    "reassign_task",
-    "reopen_task",
-    "resolve_agent_directory",
-    "resolve_store",
-    "resolve_task",
-    "restore_task",
-    "set_collaborator",
-    "set_edge",
-    "set_subscriber",
-    "summarize_tasks",
-    "update_task",
-]
+# One finder is enough; match by name so a re-executed shim never stacks a
+# second copy (class objects differ between executions of this file).
+if not any(type(f).__name__ == "_AliasFinder" for f in sys.meta_path):
+    sys.meta_path.insert(0, _AliasFinder())
+
+# Replace THIS module with the canonical package: after `import scitex_todo`,
+# ``scitex_todo is scitex_cards`` holds and every attribute (including
+# already-imported submodules) resolves identically under both names.
+sys.modules[_OLD] = _canonical
 
 # EOF

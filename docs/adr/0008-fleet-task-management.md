@@ -154,7 +154,7 @@ optional). Three reasons:
    `[web]` extra = operator-side only. ~2 MB to the image.
 3. **Skill auto-load depends on it** — the `@path` propagation
    (PR #63 § Propagation) reads from `<site-packages>/
-   scitex_todo/_skills/scitex-todo/`. No install = no skill load
+   scitex_cards/_skills/scitex-todo/`. No install = no skill load
    = consuming agents fall back to memory.
 
 Needs agent-container's buy-in (lead is looping; the 2026-06-07

@@ -30,7 +30,7 @@ export LC_ALL=C.UTF-8 LANG=C.UTF-8
 # path that does NOT resolve inside the container; tests (tmp_path) and the
 # install target both need a working, writable tmp. Node-local /tmp is writable
 # + ephemeral and per-version-isolated so concurrent matrix legs don't collide.
-export TMPDIR="/tmp/ci-scitex_todo-${GITHUB_RUN_ID:-0}-${GITHUB_RUN_ATTEMPT:-0}-$V"
+export TMPDIR="/tmp/ci-scitex_cards-${GITHUB_RUN_ID:-0}-${GITHUB_RUN_ATTEMPT:-0}-$V"
 rm -rf "$TMPDIR"
 mkdir -p "$TMPDIR/site" "$TMPDIR/uv-cache"
 
@@ -111,5 +111,5 @@ fi
 # keep the CI log compact.
 exec nice -n 19 ionice -c 3 \
     python -m pytest tests/ -q \
-    --cov=src/scitex_todo --cov-report=xml --cov-report=term \
+    --cov=src/scitex_cards --cov-report=xml --cov-report=term \
     -p no:cacheprovider

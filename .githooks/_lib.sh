@@ -16,7 +16,7 @@
 #
 # This file is sourced, not executed; it defines functions only.
 
-# Resolve a python interpreter that can import scitex_todo. Preference:
+# Resolve a python interpreter that can import scitex_cards. Preference:
 #   1. repo-local venv (.venv/bin/python) -- CI-parity dev setup
 #   2. `scitex-todo` console-script's interpreter (best proxy on PATH)
 #   3. plain python3
@@ -68,8 +68,8 @@ sttc_emit_push() {
     local py slug author event
     py="$(sttc_python "${repo_root}")"
 
-    # If the interpreter can't import scitex_todo, give up softly.
-    "${py}" -c "import scitex_todo._git_link" >/dev/null 2>&1 || return 0
+    # If the interpreter can't import scitex_cards, give up softly.
+    "${py}" -c "import scitex_cards._git_link" >/dev/null 2>&1 || return 0
 
     slug="$(sttc_repo_slug "${repo_root}")"
     author="$(git -C "${repo_root}" log -1 --format='%an' "${sha}" 2>/dev/null)"
@@ -81,7 +81,7 @@ sttc_emit_push() {
 
     # Build the canonical push-event JSON in python (safe quoting of the
     # commit message). Empty stdout == no card id == SOFT skip.
-    event="$("${py}" -m scitex_todo._git_link emit-event \
+    event="$("${py}" -m scitex_cards._git_link emit-event \
         --repo "${slug}" \
         --branch "${branch}" \
         --sha "${sha}" \
@@ -91,7 +91,7 @@ sttc_emit_push() {
     [ -n "${event}" ] || return 0
 
     # Pipe to the consumer. Prefer the repo-venv console script; fall back
-    # to `scitex-todo` on PATH, then to `python -m scitex_todo`.
+    # to `scitex-todo` on PATH, then to `python -m scitex_cards`.
     if [ -x "${repo_root}/.venv/bin/scitex-todo" ]; then
         printf '%s\n' "${event}" |
             "${repo_root}/.venv/bin/scitex-todo" hook push --payload - \
@@ -101,7 +101,7 @@ sttc_emit_push() {
             scitex-todo hook push --payload - >/dev/null 2>&1 || true
     else
         printf '%s\n' "${event}" |
-            "${py}" -m scitex_todo hook push --payload - \
+            "${py}" -m scitex_cards hook push --payload - \
                 >/dev/null 2>&1 || true
     fi
     return 0

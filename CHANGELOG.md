@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.14.0] - 2026-07-16 — the package is scitex-cards now (scitex-todo stays as a shim)
+
+### Changed
+- **Package identity: `scitex-todo` → `scitex-cards`** (operator directive
+  2026-07-15/16; stage 1 of the migration, card
+  `scitex-cards-s1-package-identity-rename-20260716`).
+  - PyPI/dist name `scitex-cards`; import package `scitex_todo` → `scitex_cards`
+    (380 files, `scitex-dev rename-symbols`, CHANGELOG history left untouched).
+  - Both console scripts ship and resolve to the same CLI: `scitex-cards`
+    (canonical) and `scitex-todo` (legacy, kept for the un-cutover fleet).
+  - MCP server identity is `scitex-cards`.
+  - Entry points under `scitex_dev.*` register the new key only (those groups
+    are iterated, so a legacy twin key would list the package twice — and
+    `scitex_dev.jobs` would double-schedule every job).
+
+### Added
+- **`scitex_todo` import shim** — `import scitex_todo` (and any
+  `scitex_todo.<submodule>`) resolves to the very same module objects as
+  `scitex_cards` via a meta-path finder: one import, one module state, never a
+  duplicated copy. Emits a `DeprecationWarning`; ships for one transition
+  window only.
+- **Environment dual-read** (`scitex_cards._env_compat`, operator-requested) —
+  every `SCITEX_CARDS_<X>` env var is mirrored onto `SCITEX_TODO_<X>` at
+  import, so shells already exporting the new names work today while the
+  un-cutover fleet's old names keep working with one deprecation warning per
+  process. When both are set, the new name wins, loudly.
+- **Legacy entry-point groups honoured** — hook plugins registered under
+  `scitex_todo.hooks` and delivery channels under
+  `scitex_todo.delivery_channels` stay discoverable alongside the new
+  `scitex_cards.*` groups until producers re-release.
+
+### Unchanged (deliberately — later stages)
+- The store path (`~/.scitex/todo/tasks.yaml`) and the GitHub URLs: the store
+  move is the history-migration stage; the URL flip is the repo-rename stage.
+
 ## [0.9.9] - 2026-07-13 — fix: a flag that outran its deploy cost 135 seconds per card write
 
 ### Fixed

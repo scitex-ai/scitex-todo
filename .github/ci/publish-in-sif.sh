@@ -49,7 +49,7 @@ echo "=== dist to publish ==="
 ls -l dist
 
 # --- writable scratch (compute-node HOME is RO inside the container) ---
-TMPDIR="/tmp/publish-scitex_todo-${GITHUB_RUN_ID:-0}-${GITHUB_RUN_ATTEMPT:-0}-$V"
+TMPDIR="/tmp/publish-scitex_cards-${GITHUB_RUN_ID:-0}-${GITHUB_RUN_ATTEMPT:-0}-$V"
 export TMPDIR
 rm -rf "$TMPDIR"
 mkdir -p "$TMPDIR/site" "$TMPDIR/uv-cache"

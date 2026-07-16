@@ -15,9 +15,9 @@ import sqlite3
 
 import pytest
 
-from scitex_todo._db import init_schema
-from scitex_todo._db_bootstrap import _rebuild_from_doc
-from scitex_todo._db_mirror import HASH_TABLE, mirror_doc_incremental
+from scitex_cards._db import init_schema
+from scitex_cards._db_bootstrap import _rebuild_from_doc
+from scitex_cards._db_mirror import HASH_TABLE, mirror_doc_incremental
 
 
 def _doc(*cards, users=None, inboxes=None):
@@ -209,7 +209,7 @@ def test_no_change_at_all_writes_nothing(tmp_path):
 def test_any_field_change_is_detected(field):
     """The hash must not miss a change — a mirror that silently skips an edit is
     the failure mode that would make S2 cut over to a wrong store."""
-    from scitex_todo._db_mirror import _card_hash
+    from scitex_cards._db_mirror import _card_hash
 
     base = _card("a")
     edited = dict(base)

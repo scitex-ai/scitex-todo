@@ -50,7 +50,7 @@ explicitly named on 2026-06-06:
 ## Decision
 
 `kind` is a **closed validated enum** defined in
-`src/scitex_todo/_model.py`:
+`src/scitex_cards/_model.py`:
 
 ```python
 VALID_KINDS: tuple[str, ...] = ("task", "compute")

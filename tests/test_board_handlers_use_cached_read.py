@@ -22,8 +22,8 @@ re-parsed on every poll again and these fail.
 
 import inspect
 
-from scitex_todo._django.handlers import chat, runnable, timeline
-from scitex_todo._django.handlers.fleet import timing_view
+from scitex_cards._django.handlers import chat, runnable, timeline
+from scitex_cards._django.handlers.fleet import timing_view
 
 
 def _src(fn) -> str:

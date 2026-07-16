@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Cross-package integration gate (PS-140) — runtime import contract.
 
-``scitex_todo._django`` optionally integrates with two sibling SciTeX
+``scitex_cards._django`` optionally integrates with two sibling SciTeX
 packages: ``scitex_app._django`` (so the board can register as a scitex-hub
 module) and ``scitex_ui`` (shared Django shell components). Both imports are
 guarded in source, so a lean install still works. This gate proves that when
@@ -42,7 +42,7 @@ def test_cross_package_dependency_imports_cleanly(module_name):
 def test_board_appconfig_subclasses_scitex_app_when_installed():
     # Arrange — only meaningful once scitex-app is on the path.
     scitex_app_django = pytest.importorskip("scitex_app._django")
-    from scitex_todo._django.apps import ScitexTodoConfig
+    from scitex_cards._django.apps import ScitexTodoConfig
 
     # Act
     is_scitex_app_subclass = issubclass(

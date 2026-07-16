@@ -1,0 +1,525 @@
+/* board_v3 — comment thread + per-card priority/hide + project-hide
+ *
+ * Extracted from src/scitex_cards/_django/templates/scitex_cards/board_v3.html
+ * Owns: comment thread (.d-comments-section, .comment-*), per-card
+ *       priority up/down (.card-priority, .card-prio-*),
+ *       per-card hide + show-hidden dropdown (.card-hide-btn,
+ *       .hidden-list*), empty column placeholder (.col-empty),
+ *       Add-Task button + project-hide popover (.add-task-btn,
+ *       .proj-hide*).
+ */
+
+/* ── Comment thread (Word-style threaded comments per lead a2a a7e53184)
+   ──────────────────────────────────────────────────────────────────────
+   Lives in the drawer below the field rows. Renders the existing
+   comments[] trail (chronological, oldest first like a chat) + an
+   add-comment textarea that POSTs /comment. The model + endpoint are
+   already there — this is the FE wiring the lead correctly anticipated. */
+.d-comments-section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.d-comments-section h3 {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 0 0 10px 0;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.comment-list {
+  max-height: 240px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+.comment-bubble {
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 3px solid #4a90e2;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 0.86rem;
+}
+/* Color-by-author so the operator's voice is visually distinct from
+   agent voice + the system-trail (RESOLVED / UNDONE / re-opened). */
+.comment-bubble--operator {
+  border-left-color: var(--green);
+}
+.comment-bubble--system {
+  border-left-color: #ffa726;
+  opacity: 0.85;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+.comment-meta {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  align-items: baseline;
+}
+.comment-author {
+  font-weight: 600;
+  color: var(--text);
+}
+.comment-ts {
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+}
+.comment-text {
+  color: #fff;
+  white-space: pre-wrap;
+  line-height: 1.45;
+  word-wrap: break-word;
+}
+.comment-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  padding: 10px;
+  font-style: italic;
+}
+.comment-add {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.comment-add textarea {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+  color: #fff;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.86rem;
+  resize: vertical;
+  min-height: 56px;
+}
+.comment-add textarea:focus {
+  outline: none;
+  border-color: #4a90e2;
+}
+.comment-add-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  align-items: center;
+}
+.comment-add-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-right: auto;
+}
+.comment-post-btn {
+  background: #4a90e2;
+  color: #fff;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.comment-post-btn:hover {
+  background: #5ba0f2;
+}
+.comment-post-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+/* ── Per-card priority ↑↓ buttons (operator TG 9776 / 276) ──────────────
+   Click ↑ moves the card one slot up in priority order (rank 1 is top);
+   click ↓ moves it one slot down. Posts the full reordered list to
+   /priority (existing endpoint). stopPropagation so the click doesn't
+   bubble into the card's openDetail handler. */
+.card-priority {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-left: 6px;
+}
+.card-prio-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 0 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.65rem;
+  line-height: 1;
+  height: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card-prio-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+.card-prio-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+/* Priority rank pill — shown when a task has an explicit numeric rank
+   so the operator can see "this card is rank 3 in the visible list". */
+.card-prio-rank {
+  font-size: 0.66rem;
+  color: var(--text-muted);
+  font-family: ui-monospace, monospace;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+.card-prio-rank--top {
+  color: #ffa726;
+  border-color: #ffa726;
+}
+
+/* ── Per-card Hide button + Show-hidden toggle (operator TG 256) ────────
+   Soft-hide via localStorage (no schema change). Each card gets a small
+   Hide chip; the filter bar gets a "👁 show hidden (N)" toggle to bring
+   them back. This is user-local — fine for now since the operator is
+   working from one host today. Cross-device persistence later if asked. */
+.card-hide-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.card-hide-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.toggle-show-hidden {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 5px 11px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.toggle-show-hidden.on {
+  background: #4a90e2;
+  color: #fff;
+  border-color: #4a90e2;
+}
+.card--hidden {
+  opacity: 0.55;
+  filter: grayscale(0.3);
+}
+
+/* Hidden-cards dropdown (operator TG 381) — replace the simple
+   "show hidden" toggle with a `<details>` list that names every
+   hidden card + offers one-click un-hide. The single show-hidden
+   toggle still lives inside the dropdown for "reveal them in
+   place" UX. */
+.hidden-list {
+  position: relative;
+  font-size: 0.78rem;
+}
+.hidden-list > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 5px 11px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.hidden-list > summary::-webkit-details-marker {
+  display: none;
+}
+.hidden-list > summary:hover {
+  color: var(--text);
+  border-color: #4a90e2;
+}
+.hidden-list[open] > summary {
+  background: #4a90e2;
+  color: #fff;
+  border-color: #4a90e2;
+}
+.hidden-list-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 25;
+  min-width: 280px;
+  max-width: 360px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+}
+.hidden-list-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  color: var(--text);
+  cursor: default;
+}
+.hidden-list-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.hidden-list-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hidden-list-meta {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  margin-top: 2px;
+  font-family: ui-monospace, monospace;
+}
+.hidden-list-unhide {
+  appearance: none;
+  background: transparent;
+  color: #4a90e2;
+  border: 1px solid #4a90e2;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.hidden-list-unhide:hover {
+  background: #4a90e2;
+  color: #fff;
+}
+.hidden-list-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 8px;
+  text-align: center;
+}
+.hidden-list-reveal {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  font-size: 0.74rem;
+}
+
+/* Empty column placeholder (operator TG 381): hide-all-cards keeps
+   the column visible so the operator can still Add Task into it.
+   Click the placeholder = open Add Task with the project pre-filled. */
+.col-empty {
+  margin: 12px;
+  padding: 14px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  text-align: center;
+  cursor: pointer;
+  font-size: 0.82rem;
+  transition:
+    border-color 100ms ease,
+    color 100ms ease,
+    background 100ms ease;
+}
+.col-empty:hover {
+  border-color: var(--green);
+  color: var(--green);
+  background: rgba(76, 175, 80, 0.05);
+}
+
+/* ── CRUD wiring — Add Task button + Add Task modal + project-hide ──
+   Operator TG 344 — operator could not create/update/delete/hide
+   projects from the browser. All four ops wire to the existing
+   /create /update /delete /restore endpoints (board v3 was
+   read-only-plus-Resolve before this PR). */
+.add-task-btn {
+  padding: 5px 11px;
+  background: rgba(76, 175, 80, 0.2);
+  color: var(--green);
+  border: 1px solid var(--green);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.add-task-btn:hover {
+  background: var(--green);
+  color: #fff;
+  box-shadow: 0 0 8px 1px rgba(76, 175, 80, 0.45);
+}
+.proj-hide {
+  position: relative;
+  font-size: 0.78rem;
+}
+.proj-hide > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 5px 11px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.proj-hide > summary::-webkit-details-marker {
+  display: none;
+}
+.proj-hide > summary:hover {
+  color: var(--text);
+  border-color: var(--purple);
+}
+.proj-hide[open] > summary {
+  background: var(--purple);
+  color: #fff;
+  border-color: var(--purple);
+}
+.proj-hide-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 25;
+  min-width: 220px;
+  max-width: 320px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+}
+.proj-hide-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+.proj-hide-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.proj-hide-row input {
+  cursor: pointer;
+}
+.proj-hide-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 6px 8px;
+}
+.col--proj-hidden {
+  display: none;
+} /* hide whole project column */
+
+/* ── Route trace (operator 2026-06-17) — "how the card was routed".
+   Renders the card's event stream as a vertical journey of ring hops in
+   the detail drawer. Themed via the board --* vars (dark/light aware). */
+.route-hint {
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: var(--text-muted, #8a96a8);
+}
+.route-hop {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0 6px 10px;
+  margin-left: 4px;
+  border-left: 2px solid var(--border, #2a3140);
+}
+.route-hop--push {
+  border-left-color: var(--green, #30a46c);
+}
+.route-hop--done {
+  border-left-color: var(--grey, #6b7280);
+}
+.route-hop--escalate {
+  border-left-color: var(--red, #e5484d);
+}
+.route-badge {
+  flex: 0 0 auto;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.route-badge--created {
+  color: var(--text-muted, #8a96a8);
+  border-color: var(--border, #2a3140);
+}
+.route-badge--push {
+  color: var(--green, #30a46c);
+  border-color: var(--green, #30a46c);
+}
+.route-badge--ci {
+  color: var(--amber, #f5a524);
+  border-color: var(--amber, #f5a524);
+}
+.route-badge--done {
+  color: var(--grey, #6b7280);
+  border-color: var(--grey, #6b7280);
+}
+.route-badge--message {
+  color: var(--accent, #6ea8fe);
+  border-color: var(--accent, #6ea8fe);
+}
+.route-badge--system {
+  color: var(--amber, #f5a524);
+  border-color: var(--amber, #f5a524);
+}
+.route-badge--escalate {
+  color: var(--red, #e5484d);
+  border-color: var(--red, #e5484d);
+}
+.route-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.route-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.68rem;
+  color: var(--text-muted, #8a96a8);
+}
+.route-actor {
+  font-weight: 600;
+}
+.route-ts {
+  white-space: nowrap;
+}
+.route-text {
+  font-size: 0.82rem;
+  color: var(--text, #e0e6f0);
+  line-height: 1.4;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
