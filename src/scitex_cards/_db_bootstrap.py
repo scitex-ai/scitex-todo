@@ -104,6 +104,7 @@ _CLEAR_ORDER: tuple[str, ...] = (
     "tasks",
     "user_names",
     "users",
+    "inbox_recipients",
     "notifications",
     "messages",
 )

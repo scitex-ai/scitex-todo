@@ -89,7 +89,14 @@ def export_doc(db_path: str | Path | None = None) -> tuple[dict, dict]:
             ).fetchall()
         ]
 
-        inboxes: dict[str, list[dict]] = {}
+        # Seed from the recipients table first so a DRAINED inbox (a
+        # key with zero rows) still appears as an empty list (v4).
+        inboxes: dict[str, list[dict]] = {
+            r["recipient_id"]: []
+            for r in conn.execute(
+                "SELECT recipient_id FROM inbox_recipients ORDER BY rowid"
+            ).fetchall()
+        }
         for r in conn.execute(
             "SELECT * FROM notifications ORDER BY rowid"
         ).fetchall():

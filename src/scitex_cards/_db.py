@@ -79,13 +79,17 @@ ENV_DB_DEPRECATED = "SCITEX_TODO_DB"
 #: re-order the rest — serving confidently-wrong cards to the whole fleet, which is
 #: far worse than being slow. Reconstructing from ``card_json`` is exact BY
 #: CONSTRUCTION, and it cannot rot as new fields are added.
+#: v4 adds ``inbox_recipients`` — the inboxes: MAP KEYS, so a recipient
+#: whose inbox is currently EMPTY (drained) still round-trips through the
+#: yaml export instead of silently vanishing with their zero rows.
+#:
 #: v3 (S4 export rail) extends the same verbatim-payload rule to the NON-CARD
 #: sections: ``users.record_json``, ``notifications.record_json``,
 #: ``messages.record_json`` hold each record EXACTLY as the YAML doc carried
 #: it. Same rationale as ``card_json``: typed columns are the INDEX, the JSON
 #: is the PAYLOAD — a column-based export would silently drop unknown keys,
 #: and the yaml-snapshot backup rail (ADR-0010) must be exact by construction.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def resolve_db_path(explicit: str | Path | None = None) -> Path:
@@ -225,6 +229,10 @@ CREATE TABLE IF NOT EXISTS user_names (
 );
 CREATE INDEX IF NOT EXISTS idx_user_names_uid ON user_names(user_id);
 
+CREATE TABLE IF NOT EXISTS inbox_recipients (
+    recipient_id TEXT PRIMARY KEY
+);
+
 CREATE TABLE IF NOT EXISTS notifications (
     id           TEXT PRIMARY KEY,
     recipient_id TEXT NOT NULL,
@@ -266,6 +274,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "task_roles",
     "users",
     "user_names",
+    "inbox_recipients",
     "notifications",
     "messages",
     "schema_meta",

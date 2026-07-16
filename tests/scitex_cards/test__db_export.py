@@ -145,3 +145,29 @@ def test_resolve_db_path_still_delegates(monkeypatch, tmp_path):
     """Guard: the exporter's default path rides the S4a resolution chain."""
     monkeypatch.setenv("SCITEX_CARDS_DB", str(tmp_path / "x.db"))
     assert resolve_db_path() == tmp_path / "x.db"
+
+
+def test_export_preserves_drained_empty_inboxes(tmp_path):
+    """A recipient whose inbox list is EMPTY survives the round-trip (v4).
+
+    Regression: live-store rehearsal 2026-07-16 — 2 of 56 recipients had
+    drained ([]) inboxes; zero notification rows carried no key, so the
+    export silently dropped those recipients.
+    """
+    # Arrange — one populated inbox, one drained.
+    doc = {
+        "tasks": [{"id": "t", "title": "t", "status": "done"}],
+        "inboxes": {
+            "busy": [{"id": "n_1", "event_type": "x", "ts": "2026", "seen": True}],
+            "drained": [],
+        },
+    }
+    tasks_yaml = tmp_path / "tasks.yaml"
+    tasks_yaml.write_text(safe_dump(doc), encoding="utf-8")
+    db = tmp_path / "cards.db"
+    import_from_yaml(tasks_path=tasks_yaml, db_path=db)
+    # Act
+    out, _threads = export_doc(db)
+    # Assert — the drained key is present, as an empty list.
+    assert out["inboxes"]["drained"] == []
+    assert set(out["inboxes"]) == {"busy", "drained"}
