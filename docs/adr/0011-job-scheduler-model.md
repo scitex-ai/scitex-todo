@@ -143,12 +143,20 @@ scitex-cards agent may-stop --agent <id> --json
       "blocking_cards": [{id, state, since, why_yours}]}
 ```
 
-LEGAL stops: the agent owns no running/dispatched card; or every owned
-open card is blocked on a NAMED edge. Converting running →
-blocked(WHO, WHAT, DEADLINE) is the deadlock escape — allowed, audited,
-and it transfers the escalation clock to the owed party. ILLEGAL: owning
-running or dispatched work and going idle — the one state to kill. A
-refusal always names the card and its age: an unexplained refusal is
+THE ONLY LEGAL STOP: **zero runnable cards exist for this agent** —
+nothing running, nothing dispatched, and nothing in the queue this
+agent's partition makes it eligible to take. An earlier draft allowed
+"all my cards are blocked" as a stop; the operator refuted it on sight
+(translated): "when you're waiting on someone, you must advance OTHER
+independent cards." One blocked card is not a blocked agent — a SLURM
+job waiting on a dependency does not idle the NODE; the node runs
+another job. So converting running → blocked(WHO, WHAT, DEADLINE) is
+still the legitimate move for stuck work (audited; the escalation clock
+transfers to the owed party) — but it leads to the NEXT card, not to
+idleness. The may-stop check therefore consults the queue, and a refusal
+may carry a dispatch: "you may not stop; card Y is yours." ILLEGAL:
+going idle while runnable work exists — the one state to kill. A refusal
+always names the card and its age: an unexplained refusal is
 unfalsifiable and teaches agents to fight the hook. Decoupling holds: it
 is a QUESTION cards answers, never a rule cards enforces remotely — no
 hook installed means today's behavior. A nudge is a message an agent may
@@ -181,13 +189,40 @@ the satisfying green is returned only on verified consumption.** The
 catalog is expected to grow; every new hole gets filed under one of the
 two instruments, never under "we'll remember".
 
-### 8. The two-axis view (urgency × importance)
+### 8. The two-axis view (urgency × importance) — now a build order
 
-A new board view renders the Eisenhower quadrant; dragging a card in the
-quadrant re-scores it and therefore re-ranks it — the matrix is the HUMAN
-instrument, the queue is the machine's; same data, two projections, always
-synchronized. (Operator hedge preserved: this view is a should, not a
-must — it ships after the queue itself works.)
+Directed 2026-07-17 (translated): "build a view that displays cards on
+the two axes of importance and urgency; humans update by DRAGGING, the
+priority is recomputed and shared with the agents." Quadrants, operator-
+enumerated: **I** urgent∧important, **II** important∧¬urgent, **III**
+urgent∧¬important, **IV** neither. Dragging a card re-scores its axes,
+re-ranks the queue, and the new order is immediately what the scheduler
+deals from — the matrix is the HUMAN instrument, the queue the
+machine's; same data, always synchronized.
+
+**Maximize quadrants I and II** (operator directive): the scoring
+function weights IMPORTANCE above URGENCY — f(u,i) = w_i·i + w_u·u with
+w_i > w_u — so II outranks III even though III shouts louder; aging lifts
+II steadily (important work must not wait forever behind loud trivia);
+and the board reports quadrant occupancy over time, making "are we
+living in II?" a reviewable metric instead of a hope.
+
+### 9. Two kinds of nudger — mechanical and agentic
+
+The operator's observation (translated): "this risks staying
+request-based… we need DECISIVE nudges (hooks, periodic notifications)
+AND an agentic nudger." Adopted as architecture:
+
+- **The mechanical rail** (decisive): validators, the may-stop hook,
+  walltime, dispatch ACK bounds, the observers — refusals and
+  escalations that need no one's cooperation. Already specified above.
+- **The agentic nudger** (a ROLE, not a cron): an agent seat whose queue
+  IS the escalation stream — it reads observer output (stalled
+  dispatches, aging blocked edges, silent owed parties), chases the
+  responsible party conversationally, judges excuses, and files what it
+  learns back onto the cards. Mechanics catch what is formal; the nudger
+  handles what needs judgment. It runs on the same scheduler as everyone
+  else — its work is cards, so it cannot itself stop.
 
 ## Migration
 
