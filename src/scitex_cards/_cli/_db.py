@@ -311,7 +311,9 @@ def db_snapshot_cmd(
             report["pushed"] = False
             report["push_detail"] = "no remote configured — snapshot is local-only"
         else:
-            pushed = _git("push", "-q")
+            # -u origin HEAD: works on the FIRST push to a freshly-wired
+            # remote (no upstream yet) and every push after.
+            pushed = _git("push", "-q", "-u", "origin", "HEAD")
             report["pushed"] = pushed.returncode == 0
             report["push_detail"] = (pushed.stderr or pushed.stdout).strip()
             if not report["pushed"]:
