@@ -25,7 +25,7 @@ import os
 
 from django.http import JsonResponse
 
-from .crud import _parse_body, _save
+from .crud import _parse_body
 
 logger = logging.getLogger(__name__)
 
@@ -63,56 +63,70 @@ def handle_resolve(request, board):
     if not isinstance(actor, str) or not actor.strip():
         actor = os.environ.get("USER") or "operator"
 
-    tasks = list(board.tasks)
-    task = next((t for t in tasks if t["id"] == task_id), None)
-    if task is None:
-        return JsonResponse({"error": f"no task with id {task_id!r}"}, status=404)
+    from scitex_cards import TaskValidationError
+    from scitex_cards._model import _save_doc_unlocked, _store_lock
+    from scitex_cards._store import _read_write_doc
 
-    # Idempotent: already-done = no-op success (a double-click on the FE
-    # button shouldn't double-publish or fail-noisily).
-    if task.get("status") == "done":
-        return JsonResponse(
-            {
-                "id": task_id,
-                "status": "done",
-                "noop": True,
-                "store_path": str(board.store_path),
-            }
+    from ..services import _reset_cache
+
+    # One flock'd read-modify-write against the GLOBAL store — never the
+    # request-scoped board cache, whose staleness window used to clobber any
+    # concurrent write landing between the cache read and the save. (The GUI's
+    # ``_store.resolve_task`` sibling is not used here: this endpoint's pinned
+    # contract differs — the audit comment names the prior status/blocker, and
+    # the already-done noop must not write at all.)
+    with _store_lock(board.store_path):
+        doc, tasks = _read_write_doc(board.store_path)
+        task = next(
+            (t for t in tasks if isinstance(t, dict) and t.get("id") == task_id),
+            None,
         )
+        if task is None:
+            return JsonResponse({"error": f"no task with id {task_id!r}"}, status=404)
 
-    # Capture pre-resolve state for the comment trail.
-    prior_status = task.get("status")
-    prior_blocker = task.get("blocker")
-
-    task["status"] = "done"
-    # Pop rather than set-None: the schema validator rejects blocker on
-    # non-blocked rows, so leaving blocker present after status=done would
-    # round-trip-fail the next load.
-    task.pop("blocker", None)
-
-    resolve_comment = {
-        "ts": datetime.datetime.now(datetime.timezone.utc)
-        .replace(microsecond=0)
-        .isoformat(),
-        "author": actor.strip(),
-        "text": (
-            f"[RESOLVED via board-v3] flipped status={prior_status!r}→done"
-            + (
-                f", blocker={prior_blocker!r}→null"
-                if prior_blocker
-                else ""
+        # Idempotent: already-done = no-op success (a double-click on the FE
+        # button shouldn't double-publish or fail-noisily). No write happens.
+        if task.get("status") == "done":
+            return JsonResponse(
+                {
+                    "id": task_id,
+                    "status": "done",
+                    "noop": True,
+                    "store_path": str(board.store_path),
+                }
             )
-            + ". Owning agent will pick up via AutoRefresh / NotificationPort.publish."
-        ),
-    }
-    existing = task.get("comments")
-    task["comments"] = (
-        [*existing] if isinstance(existing, list) else []
-    ) + [resolve_comment]
 
-    err = _save(tasks, board)
-    if err:
-        return err
+        # Capture pre-resolve state for the comment trail.
+        prior_status = task.get("status")
+        prior_blocker = task.get("blocker")
+
+        task["status"] = "done"
+        # Pop rather than set-None: the schema validator rejects blocker on
+        # non-blocked rows, so leaving blocker present after status=done would
+        # round-trip-fail the next load.
+        task.pop("blocker", None)
+
+        resolve_comment = {
+            "ts": datetime.datetime.now(datetime.timezone.utc)
+            .replace(microsecond=0)
+            .isoformat(),
+            "author": actor.strip(),
+            "text": (
+                f"[RESOLVED via board-v3] flipped status={prior_status!r}→done"
+                + (f", blocker={prior_blocker!r}→null" if prior_blocker else "")
+                + ". Owning agent will pick up via AutoRefresh / NotificationPort.publish."
+            ),
+        }
+        existing = task.get("comments")
+        task["comments"] = ([*existing] if isinstance(existing, list) else []) + [
+            resolve_comment
+        ]
+
+        try:
+            _save_doc_unlocked(doc, board.store_path, tasks=tasks)
+        except TaskValidationError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
+    _reset_cache()
 
     # Notification publish — uses scitex_cards._adapters.InProcessPubSub default
     # from PR #55. The fleet wires SacChannelNotificationAdapter via
@@ -130,12 +144,15 @@ def handle_resolve(request, board):
             _BUS = InProcessPubSub()
             handle_resolve._BUS = _BUS  # type: ignore[attr-defined]
         channel = f"scitex-todo:task:{task.get('project', 'unknown')}/{task_id}"
-        _BUS.publish(channel, {
-            "task_id": task_id,
-            "changes": {"status": "done", "blocker": None},
-            "ts": resolve_comment["ts"],
-            "actor": actor.strip(),
-        })
+        _BUS.publish(
+            channel,
+            {
+                "task_id": task_id,
+                "changes": {"status": "done", "blocker": None},
+                "ts": resolve_comment["ts"],
+                "actor": actor.strip(),
+            },
+        )
     except Exception:  # noqa: BLE001 — publish-failure is non-fatal
         logger.exception("[scitex-todo] resolve notify-publish failed (non-fatal)")
 

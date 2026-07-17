@@ -7,20 +7,15 @@ Exports the ``HANDLERS`` dict consumed by the catch-all dispatcher in
 ``JsonResponse``.
 """
 
-from .crud import (
-    handle_comment,
-    handle_create,
-    handle_delete,
-    handle_edge,
-    handle_restore,
-    handle_update,
-)
+from .crud import handle_comment, handle_create, handle_update
+from .edge import handle_edge
 from .graph import handle_graph, handle_ping, handle_rev, handle_tasks
 from .nudge import handle_nudge
 from .priority import handle_priority
 from .reopen import handle_reopen
 from .resolve import handle_resolve
 from .stale import handle_archive, handle_stale
+from .undo import handle_delete, handle_restore
 
 # endpoint string -> handler function
 HANDLERS = {
