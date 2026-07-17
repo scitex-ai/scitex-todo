@@ -95,6 +95,9 @@ _CONVENTION_A_NAMES = {
     # C5 reassign primitive — 1:1 with `_store.reassign_task` (Convention
     # A; registered in `_mcp_skills` to keep `_mcp_server` under budget).
     "reassign_task",
+    # The rank engine's write verb (v5-lite, ADR-0011 §1/§8) — 1:1 with
+    # `_store.rescore_task` (Convention A; registered in `_mcp_relations`).
+    "rescore_task",
     # Card roles (ADR-0009) — 1:1 with `_store.set_collaborator` /
     # `_store.set_subscriber` (Convention A).
     "set_collaborator",
@@ -143,9 +146,7 @@ def test_no_tool_uses_dropped_scitex_cards_prefix():
     bad_prefix = [n for n in names if n.startswith("scitex_cards_")]
     # `health` is a cross-package STANDARD single-token name (shared verbatim
     # with sac/cct), so it is exempt from the no-single-token audit rule.
-    single_token = [
-        n for n in names if "_" not in n and n not in _STANDARD_NAMES
-    ]
+    single_token = [n for n in names if "_" not in n and n not in _STANDARD_NAMES]
     # Assert
     assert not bad_prefix and not single_token, (
         f"tools {bad_prefix + single_token!r} regress audit §6 / §2"
@@ -424,7 +425,9 @@ def test_update_task_with_deadline_sets_deadline_field(tmp_path):
     from scitex_cards._mcp_server import add_task, list_tasks, update_task
 
     store = str(tmp_path / "tasks.yaml")
-    asyncio.run(_call_tool(add_task, id="a", title="A", assignee="agent:x", tasks_path=store))
+    asyncio.run(
+        _call_tool(add_task, id="a", title="A", assignee="agent:x", tasks_path=store)
+    )
     asyncio.run(
         _call_tool(
             update_task,

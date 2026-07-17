@@ -67,6 +67,11 @@ VALID_ROLES: frozenset[str] = frozenset(
 #:   watching renames has a declared surface.)
 #: * ``created``        → assignee (whoever it was filed against)
 #: * ``status_changed`` → subscribers (state transitions are subscriber-level)
+#: * ``rank_changed``   → owner + subscribers (the owner's DISPATCH POSITION
+#:   moved — ADR-0011 §8's "the new order is immediately shared with agents"
+#:   lands here for the card most affected; subscribers are the watching
+#:   parties, e.g. a lane blocked on the rank engine. One event per rescore,
+#:   for the rescored card only — neighbours shift silently by design.)
 #: * ``committed``      → owner (low-ish signal; the owner tracks commits)
 #: * ``pushed``         → owner (same)
 #: * ``pulled``         → [] (low-signal; default-quiet — opt-in via watch)
@@ -82,6 +87,7 @@ DEFAULT_NOTIFY_RULES: dict[str, list[str]] = {
     EventType.STATUS_CHANGED: [ROLE_SUBSCRIBERS],
     EventType.COMMENTED: [ROLE_OWNER, ROLE_COLLABORATORS, ROLE_SUBSCRIBERS],
     EventType.COMPLETED: [ROLE_OWNER, ROLE_SUBSCRIBERS],
+    EventType.RANK_CHANGED: [ROLE_OWNER, ROLE_SUBSCRIBERS],
     EventType.COMMITTED: [ROLE_OWNER],
     EventType.PUSHED: [ROLE_OWNER],
     # Default-quiet: a PR-merge-close already fires `completed` (the

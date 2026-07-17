@@ -11,13 +11,13 @@ directly. Two implementations exist by design:
   ZERO behavior change: each method delegates to exactly the call the MCP
   tool made before the seam existed (including the dm/inbox compositions,
   which move here so a future HTTP backend can map each to ONE round trip).
-- ``HubBackend`` (a later PR) — the HTTP client for ``scitex-cards serve``,
-  selected by ``SCITEX_CARDS_HUB_URL``.
+- :class:`scitex_cards._backend_http.HubBackend` — the HTTP client for
+  ``scitex-cards serve``, selected by ``SCITEX_CARDS_HUB_URL``.
 
-Until the HTTP backend ships, a set ``SCITEX_CARDS_HUB_URL`` is a HARD error
-here — never a silent fall-through to the local file. A silent local
-fallback would mint exactly the "separate copy of the store" the one-database
-ruling forbids (operator, 2026-07-17; ADR-0010/0011).
+A hub that cannot actually be used fails LOUD at the first call — never a
+silent fall-through to the local file. A silent local fallback would mint
+exactly the "separate copy of the store" the one-database ruling forbids
+(operator, 2026-07-17; ADR-0010/0011).
 
 ``resolve_store`` and ``health`` are deliberately NOT backend verbs: they
 stay local and become backend-AWARE (reporting which backend is active) when
@@ -49,6 +49,7 @@ BACKEND_VERBS: tuple[str, ...] = (
     "resolve_task",
     "reopen_task",
     "reassign_task",
+    "rescore_task",
     "set_edge",
     "set_collaborator",
     "set_subscriber",
@@ -144,6 +145,19 @@ class LocalBackend:
         by: str | None = None,
     ) -> dict:
         return _store.reassign_task(tasks_path, task_id, new_owner, by=by)
+
+    def rescore_task(
+        self,
+        tasks_path: Any,
+        task_id: str,
+        *,
+        urgency: int,
+        importance: int,
+        by: str | None = None,
+    ) -> dict:
+        return _store.rescore_task(
+            tasks_path, task_id, urgency=urgency, importance=importance, by=by
+        )
 
     # -- relationship verbs --------------------------------------------- #
 

@@ -118,4 +118,37 @@ async def set_subscriber(
     return json.dumps(result)
 
 
+@mcp.tool()
+async def rescore_task(
+    task_id: str,
+    urgency: int,
+    importance: int,
+    by: str | None = None,
+    tasks_path: str | None = None,
+) -> str:
+    """Set a card's urgency+importance (1-5 each) and recompute the RANK
+    total order (ADR-0011 §1/§8 — the matrix drag's write path).
+
+    Rank is COMPUTED server-side, never asserted: importance dominates
+    (quadrant II always outranks III), ties break by first-scored time
+    (waiting never costs position) then id. Returns
+    ``{"task": <card>, "rank": r, "of": N}`` — ``rank`` is null when the
+    card is in a terminal state (finished work holds axes but no rank).
+    Appends an auditable ``kind: rescore`` comment carrying the full
+    old→new transition and emits ONE ``rank_changed`` card-event for THIS
+    card (neighbours shift silently; read the new order via list_tasks).
+    """
+    result = await anyio.to_thread.run_sync(
+        functools.partial(
+            get_backend().rescore_task,
+            tasks_path,
+            task_id,
+            urgency=urgency,
+            importance=importance,
+            by=by,
+        )
+    )
+    return json.dumps(result)
+
+
 # EOF

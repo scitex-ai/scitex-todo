@@ -61,6 +61,7 @@ _IDENTITY_KWARG = {
     "comment_task": "by",
     "reopen_task": "by",
     "reassign_task": "by",
+    "rescore_task": "by",
     "resolve_task": "actor",
 }
 
@@ -274,6 +275,27 @@ class HubBackend:
             {"task_id": task_id, "new_owner": new_owner, "by": by},
         )
         return self._call("reassign_task", kwargs)
+
+    def rescore_task(
+        self,
+        tasks_path: Any,
+        task_id: str,
+        *,
+        urgency: int,
+        importance: int,
+        by: str | None = None,
+    ) -> dict:
+        self._forbid_store(tasks_path)
+        kwargs = self._identity(
+            "rescore_task",
+            {
+                "task_id": task_id,
+                "urgency": urgency,
+                "importance": importance,
+                "by": by,
+            },
+        )
+        return self._call("rescore_task", kwargs)
 
     # -- relationship verbs --------------------------------------------- #
 
