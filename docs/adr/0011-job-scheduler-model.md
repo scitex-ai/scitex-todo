@@ -265,6 +265,23 @@ Three rules, all validator/observer-enforced:
    (§3, §7). The four inert features would each have read
    "merged, not live — for N days" on the board instead of nothing.
 
+### 11. The remote board rail — one board, every host
+
+Operator (2026-07-17, translated): "like scitex-agent-container, the
+channels must treat the HOST as the single source of truth and apply to
+agents on EVERY host." Consequence for cards: an agent on a remote host
+(spartan, NAS) connects its cards channel OVER THE NETWORK to the one
+hub board — never to a local island file. The split-brain class (a
+remote agent clobbering a local store; the spec-level contradiction
+found today) becomes unrepresentable: there is no local store in the
+path at all. This finally answers the store RFC's multi-host question:
+the board/API is the sync boundary — file-level sync is dead. Channel
+CONFIGURATION is host-SSOT on sac's side (their default-channels
+mechanism, mirroring their default-binds pattern); the network CONTRACT
+the channel connects to is this package's surface, specified with the
+other ports. Sequencing: reachability first, default flip second — a
+host whose agents cannot yet reach the hub rail keeps a null default.
+
 ## Migration
 
 ~150 live `deferred` cards: a one-shot triage tool walks them oldest-last —
