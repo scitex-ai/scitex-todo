@@ -162,6 +162,22 @@ class RpcHandler(BaseHTTPRequestHandler):
         if self.path == "/v1/health":
             self._send_json(200, {"ok": True, "verbs": len(BACKEND_VERBS)})
             return
+        if self.path == "/v1/whoami":
+            # The doctor's authenticated round-trip probe (design §4): proves
+            # the bearer works AND echoes the identity header back, so the
+            # client can verify its declared identity survives the transport
+            # intact. Also the "cheap authenticated read" the TTL-scheduling
+            # guidance wants — no store I/O at all.
+            tokens = _load_tokens(self.server.tokens_dir)
+            if not _authorized(self.headers.get("Authorization"), tokens):
+                self._send_json(401, {"error": "missing or invalid bearer token"})
+                return
+            agent = (self.headers.get("X-Scitex-Agent") or "").strip()
+            if not agent:
+                self._send_json(400, {"error": "X-Scitex-Agent header is required"})
+                return
+            self._send_json(200, {"agent": agent})
+            return
         self._send_json(404, {"error": f"no route {self.path!r}"})
 
     def do_POST(self) -> None:  # noqa: N802 — http.server contract
