@@ -55,6 +55,69 @@
   border-color: var(--purple);
 }
 
+/* ── Occupancy over time (ADR-0011 §8): a compact stacked-bar strip, one thin
+ * column per state in the history, oldest left / newest right. The newest
+ * column's split equals the pills above. Each column stacks I,II,III,IV by
+ * SHARE of the scored set, so the strip answers "what fraction is in I+II over
+ * time". I+II (the important pair the operator maximizes) carry hue; III+IV
+ * recede to neutral, so the important share reads at a glance. All theme
+ * tokens — the dark/light flip rides the scitex-ui palette. */
+.mx-trend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mx-trend__head {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mx-trend__bars {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  height: 36px;
+  overflow-x: auto;
+}
+
+.mx-trend__col {
+  flex: 1 0 4px;
+  min-width: 4px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 1px;
+  overflow: hidden;
+  background: var(--card-bg);
+}
+
+.mx-trend__seg {
+  display: block;
+  flex: 0 0 auto; /* height comes from the inline flex-basis share */
+}
+
+.mx-trend__seg[data-quadrant="I"] {
+  background: var(--purple);
+}
+
+.mx-trend__seg[data-quadrant="II"] {
+  background: var(--green);
+}
+
+.mx-trend__seg[data-quadrant="III"] {
+  background: var(--text);
+}
+
+.mx-trend__seg[data-quadrant="IV"] {
+  background: var(--text-muted);
+}
+
+.mx-trend__seg[data-quadrant="empty"] {
+  background: var(--border);
+}
+
 /* ── The plane. */
 .mx-plane {
   display: grid;

@@ -268,3 +268,99 @@ test("dropAxes rejects any target without valid in-scale coordinates", () => {
   assert.equal(MX.dropAxes({}), null);
   assert.equal(MX.dropAxes(null), null);
 });
+
+/* ── 8. Occupancy over time (PR 3). A read model replayed from the rescore
+ * audit trail; it counts, it does not score. The invariant that matters most:
+ * the series' LAST point always equals occupancy() (the header pills). ─── */
+
+// A card carrying a rescore history. `transitions` = [{ou,oi,nu,ni,ts}, ...];
+// the card's CURRENT axes are the last transition's (nu,ni).
+const histCard = (id, transitions) => {
+  const comments = transitions.map((t) => ({
+    kind: "rescore",
+    ts: t.ts,
+    rescore: {
+      urgency: [t.ou, t.nu],
+      importance: [t.oi, t.ni],
+      rank: [null, null],
+      of: 1,
+    },
+  }));
+  const last = transitions[transitions.length - 1];
+  return {
+    id: id,
+    title: id,
+    status: "queued",
+    urgency: last.nu,
+    importance: last.ni,
+    comments: comments,
+  };
+};
+
+test("occupancyHistory: no rescores → a single 'now' point equal to the pills", () => {
+  const nodes = [card("a", 5, 5), card("b", 1, 1)]; // I and IV, no history
+  const h = MX.occupancyHistory(nodes);
+  assert.equal(h.length, 1);
+  assert.deepEqual(h[0].occ, MX.occupancy(nodes));
+});
+
+test("occupancyHistory: a first-scoring reads unscored → its quadrant", () => {
+  const n = histCard("a", [{ ou: null, oi: null, nu: 1, ni: 5, ts: "2026-07-18T00:00:01Z" }]);
+  const h = MX.occupancyHistory([n]); // (1,5) = II
+  assert.equal(h.length, 2);
+  assert.equal(h[0].occ.unscored, 1); // before the drag: unscored, no quadrant
+  assert.equal(h[0].occ.II, 0);
+  assert.equal(h[1].occ.II, 1); // after: in II
+  assert.equal(h[1].occ.unscored, 0);
+  assert.deepEqual(h[h.length - 1].occ, MX.occupancy([n]));
+});
+
+test("occupancyHistory: two drags on one card replay unscored → I → II", () => {
+  const n = histCard("a", [
+    { ou: null, oi: null, nu: 5, ni: 5, ts: "t1" }, // → I (5,5)
+    { ou: 5, oi: 5, nu: 1, ni: 5, ts: "t2" }, // → II (1,5)
+  ]);
+  const h = MX.occupancyHistory([n]);
+  assert.equal(h.length, 3);
+  assert.equal(h[0].occ.unscored, 1);
+  assert.equal(h[1].occ.I, 1);
+  assert.equal(h[2].occ.II, 1);
+  assert.deepEqual(h[h.length - 1].occ, MX.occupancy([n]));
+});
+
+test("occupancyHistory: a no-audit card sits flat across the series", () => {
+  const flat = card("flat", 5, 5); // I, never rescored
+  const moved = histCard("moved", [{ ou: null, oi: null, nu: 1, ni: 5, ts: "t1" }]); // → II
+  const h = MX.occupancyHistory([flat, moved]);
+  assert.equal(h.length, 2);
+  assert.equal(h[0].occ.I, 1); // flat already in I at series start
+  assert.equal(h[0].occ.unscored, 1); // moved not yet scored
+  assert.equal(h[1].occ.I, 1); // flat unchanged — no fabricated move
+  assert.equal(h[1].occ.II, 1); // moved now II
+  assert.deepEqual(h[h.length - 1].occ, MX.occupancy([flat, moved]));
+});
+
+test("occupancyHistory: last point always equals the live pills", () => {
+  const nodes = [
+    histCard("a", [{ ou: null, oi: null, nu: 5, ni: 5, ts: "t1" }]),
+    card("b", 1, 1),
+    card("c", 3, 3),
+  ];
+  assert.deepEqual(
+    MX.occupancyHistory(nodes)[MX.occupancyHistory(nodes).length - 1].occ,
+    MX.occupancy(nodes),
+  );
+});
+
+test("matrixHtml renders the trend strip once there is history, and omits it otherwise", () => {
+  const n = histCard("a", [
+    { ou: null, oi: null, nu: 5, ni: 5, ts: "t1" },
+    { ou: 5, oi: 5, nu: 1, ni: 5, ts: "t2" },
+  ]);
+  const withHistory = MX.matrixHtml([n]);
+  assert.equal(withHistory.includes("mx-trend"), true);
+  assert.equal(withHistory.includes('mx-trend__seg" data-quadrant="II"'), true);
+
+  const noHistory = MX.matrixHtml([card("a", 5, 5)]); // 1 point → no strip
+  assert.equal(noHistory.includes("mx-trend"), false);
+});
