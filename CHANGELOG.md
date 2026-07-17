@@ -170,7 +170,8 @@ the live 1,390-card store, not inferred from the diff.
 - **The header is quiet again**: no Reload button, no Hide-project control, no oversized
   "Blocking me" readout (the legend already says it), no `new/24h` counter in the bar.
 - **The status ring around each agent icon is gone.** The icons stay — the operator likes them.
-  The *ring* nobody could read: "エージェントアイコンの周りが何を表すのかよくわかりませんでした."
+  The *ring* nobody could read: "I could not tell what the ring around
+  the agent icons represents" (operator, translated).
   It encoded status around a glyph that encodes identity, with no legend entry to decode it.
   Displayed is not the same as read.
 - **Wall: one icon per agent tile**, not one per card. 50 islands, 50 icons — down from 161.
@@ -480,7 +481,8 @@ that each bit multiple agents in production, plus the board-UI review batch.
   `--status`, MCP `add_task`, board create handler, `Task` dataclass) is now
   `deferred` — a new card carries a real decision. The CLI Choice and the
   board handlers reject `pending` at the boundary (HTTP 400 / usage error).
-- `deferred` is NOT terminal (operator ruling: deferred は終了ではない). It is
+- `deferred` is NOT terminal (operator ruling, translated: "deferred is
+  not an end state"). It is
   open backlog: it shows in active views, counts as open, and CAN be overdue
   when it carries a missed deadline. `close` writes `cancelled` (the real
   "closed as not planned" state) instead of overloading `deferred`.
@@ -1220,8 +1222,9 @@ broken (see Fixed below), so the accumulated work below shipped only now.
 ### Added
 
 - **Sort by time + Group by time on the v3 board** (PR #201
-  cherry-picked via #202; lead a2a `ff1441d7`, operator request
-  「時間でのビュー」). The v3 board at `/` (the operator's home view)
+  cherry-picked via #202; lead a2a `ff1441d7`, operator request for
+  "a time-based view", translated). The v3 board at `/` (the
+  operator's home view)
   now exposes time-based controls in the existing
   `.stx-todo-filterbar__group--view` group:
   - Sort dropdown extends with `created_at` + `completed_at` options
