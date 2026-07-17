@@ -227,14 +227,35 @@ def db_export_cmd(
     default=None,
     help="Snapshot directory (default: <db_dir>/snapshots; its own git repo).",
 )
+@click.option(
+    "--refresh",
+    is_flag=True,
+    help=(
+        "Rebuild the DB from the canonical YAML first (import), then "
+        "snapshot. The honest pre-cutover cadence: import IS the freshness "
+        "step while the yaml is still canonical; after the flip, drop it."
+    ),
+)
 @click.option("--json", "as_json", is_flag=True, help="Emit the snapshot report as JSON.")
-def db_snapshot_cmd(db_path: str | None, snap_dir: str | None, as_json: bool) -> None:
+def db_snapshot_cmd(
+    db_path: str | None, snap_dir: str | None, refresh: bool, as_json: bool
+) -> None:
     """Export to the snapshot dir and commit the export in its own git repo."""
     import subprocess
     from pathlib import Path
 
     from .._db import resolve_db_path
     from .._db_export import export_yaml
+
+    if refresh:
+        from .._db_bootstrap import import_from_yaml
+
+        summary = import_from_yaml(db_path=db_path)
+        if not as_json:
+            click.echo(
+                f"# refreshed DB from YAML: {summary['yaml_path']} -> "
+                f"{summary['db_path']} ({summary['tasks']} tasks)"
+            )
 
     root = (
         Path(snap_dir).expanduser()

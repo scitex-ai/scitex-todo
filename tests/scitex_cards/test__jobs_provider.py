@@ -102,3 +102,17 @@ def test_board_description_mentions_the_canonical_url():
 
 
 # EOF
+
+
+def test_provide_jobs_includes_the_snapshot_cadence():
+    """The ADR-0010 backup rail runs on a timer, not on somebody remembering."""
+    # Arrange
+    from scitex_cards._jobs_provider import provide_jobs
+
+    jobs = {j.name: j for j in provide_jobs()}
+    # Assert
+    snap = jobs["scitex-cards.snapshot"]
+    assert snap.kind == "cron"
+    assert snap.command == "scitex-cards db snapshot --refresh"
+    # --refresh is load-bearing pre-cutover: import IS the freshness step.
+    assert "--refresh" in snap.command

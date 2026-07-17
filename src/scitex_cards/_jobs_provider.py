@@ -184,6 +184,29 @@ def provide_jobs() -> list[JobSpec]:
         # humans); the core is fail-soft (unknown merge-state -> skip, never
         # wrongly close). kind=cron / restart_policy=no: a missed tick just
         # closes on the next one — no long-running process to keep alive.
+        # cards-snapshot (ADR-0010 backup rail cadence, card
+        # scitex-cards-snapshot-cadence-and-offsite-20260717) — hourly
+        # rebuild-then-export: `db snapshot --refresh` imports the canonical
+        # YAML into ~/.scitex/cards/cards.db, exports it back to YAML text,
+        # and git-commits the export in the self-contained snapshots repo.
+        # Import-first is DELIBERATE while the yaml is still canonical (it
+        # is the freshness step); after the S6 canonicality flip the
+        # --refresh flag drops away and this becomes a pure export.
+        # Minute 7: off the */5, */10 and */15 stampedes above.
+        JobSpec(
+            name="scitex-cards.snapshot",
+            kind="cron",
+            schedule="7 * * * *",
+            command="scitex-cards db snapshot --refresh",
+            description=(
+                "scitex-cards snapshot — hourly backup rail (ADR-0010): "
+                "rebuild cards.db from the canonical store, export to YAML "
+                "text, git-commit the export. Git tracks an EXPORT, never "
+                "live data."
+            ),
+            restart_policy="no",
+            timeout_sec=300,
+        ),
         JobSpec(
             name="scitex-todo.reconcile-merged-prs",
             kind="cron",

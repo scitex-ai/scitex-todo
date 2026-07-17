@@ -171,3 +171,33 @@ def test_export_preserves_drained_empty_inboxes(tmp_path):
     # Assert — the drained key is present, as an empty list.
     assert out["inboxes"]["drained"] == []
     assert set(out["inboxes"]) == {"busy", "drained"}
+
+
+def test_snapshot_refresh_imports_then_exports(tmp_path, monkeypatch):
+    """`db snapshot --refresh` = rebuild from yaml, export, commit — one command.
+
+    The cadence job's exact invocation shape (systemd ExecStart runs a
+    single argv — no shell `&&` available), so the flag must do both halves
+    itself.
+    """
+    from click.testing import CliRunner
+
+    from scitex_cards._cli import main
+
+    # Arrange — canonical yaml resolved via env, like the host cadence run.
+    doc = {"tasks": [{"id": "t", "title": "t", "status": "done"}]}
+    store = tmp_path / "tasks.yaml"
+    store.write_text(safe_dump(doc), encoding="utf-8")
+    monkeypatch.setenv("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
+    db = tmp_path / "cards.db"
+    snap = tmp_path / "snapshots"
+    # Act
+    result = CliRunner().invoke(
+        main,
+        ["db", "snapshot", "--refresh", "--db", str(db), "--dir", str(snap)],
+    )
+    # Assert — refreshed, exported, committed; read the export back.
+    assert result.exit_code == 0, result.output
+    assert "refreshed DB from YAML" in result.output
+    assert safe_load((snap / "tasks.yaml").read_text()) == doc
+    assert (snap / ".git").exists()
