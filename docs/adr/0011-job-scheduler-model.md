@@ -5,20 +5,23 @@ refutation; implementation on the 0.17 line)
 **Owner:** scitex-cards
 **Card:** `scitex-cards-slurm-model-queued-replaces-deferred-20260717`
 
-## Context — the operator's five statements (verbatim, same day)
+## Context — the operator's five statements (2026-07-17, translated; the
+## Japanese originals live on the board card, which is the internal record)
 
-1. 「deffered はおかしい、queued で優先度じゃない？スラームみたいな、止まる
-   意味がわからないので、止まることができる仕組みを治さなければならない」
-2. 「はい、エージェント版のジョブ管理システムとなるようにしてください」
-3. 「待つということが出来ない仕組みを作らなければならないです。」
-4. 「P0 とか P1 とか意味が分からなくて、それを数値化しないから悪いのでは？
-   何番目にやるもの、として、一つ一つ達磨落としのように減りながら、一方で
-   積みあがりながら、ではないのですか？（緊急度と重要度の二軸なんてよく
-   言われますよね；それをユーザと可視化したら良さそうですが；cards の新しい
-   ビューにしてもよいかも）とにかく、止まる理由、止められる理由がわからない。
-   cards は常にうるさくうるさくナッジしてエージェントは止まることを許され
-   ない；抜け道をふさぐ」
-5. 「N 個のカードがあれば、N のランクがあるということです」
+1. "`deferred` is wrong — it should be *queued* with a priority, like
+   SLURM. I don't understand what 'stopping' even means here; the
+   mechanism that ALLOWS stopping is what must be fixed."
+2. "Yes — make it the agent-fleet version of a job management system."
+3. "We must build a mechanism in which *waiting* is impossible."
+4. "P0/P1 mean nothing — isn't the problem that priority isn't a number?
+   It should be 'what position you'll do it at': pieces knocked out one
+   at a time from the bottom like a *daruma-otoshi* stack while new ones
+   pile on top, ordered by priority. (Urgency × importance, the classic
+   two axes — visualizing that together with the user would be good;
+   maybe a new cards view.) Above all: I see no reason a card can stop or
+   be stopped. cards must nudge loudly and constantly; agents are not
+   permitted to stop; close the loopholes."
+5. "If there are N cards, there are N ranks."
 
 And two same-day case studies that motivated them, both measured:
 
@@ -61,10 +64,10 @@ blocked  — waiting on a NAMED edge: blocked_on(WHO, WHAT, DEADLINE) — all
            three MANDATORY, validator-enforced. The escalation clock fires
            at the OWED party, not the waiter.
 done / cancelled / failed — terminal. Cancelling — deciding NOT to do —
-           is a legitimate exit (operator, 2026-07-17: 「やらないという判断で
-           cancel するのも結構です」) BUT its reason and the transition record
-           are MANDATORY (「ただし理由とカード遷移の記録は必須です、抜け道は
-           作らせてはなりません」).
+           is a legitimate exit (operator, 2026-07-17: deciding not to
+           do something and cancelling is fine) BUT its reason and the
+           transition record are MANDATORY ("no loopholes may be
+           created").
 goal     — the standing-umbrella card (today's justified `parked` use);
            carries a mandatory reason; its runnable work lives in children.
 ```
@@ -75,7 +78,8 @@ strategic hold is either a `goal` or a `blocked` edge on a named external
 condition — both keep the mandatory-reason property that made `parked`
 legitimate; nothing keeps the silence.
 
-**Write-time enforcement, not nudges** (統一・忘れない・hook で強制): the
+**Write-time enforcement, not nudges** (the operator's standing
+doctrine: uniformity, never-forget, enforce by hooks): the
 validator REJECTS a reason-free blocked, a reason-free cancel, a tie in
 rank, an anonymous wait, a running card with no seat, a queued card with
 no rank. A rule someone must remember is one they will forget — both case
@@ -92,7 +96,7 @@ makes "no loopholes" checkable after the fact rather than asserted.
 The head of the queue is DEALT to an eligible seat (partition = agent
 group; the ACL mesh exists). An agent's next job arrives; it does not
 browse 144 cards for the interesting one. Silence after dispatch escalates
-loudly and automatically — 常にうるさくうるさく is the design, not a
+loudly and automatically — "constantly and loudly" is the design, not a
 failure mode. Every should-be→is gap gets an observer: dispatched-but-not-
 started, running-past-walltime, branch-without-PR, PR-without-review,
 merged-without-release. The done-but-undelivered class dies by
