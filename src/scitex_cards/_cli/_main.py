@@ -60,7 +60,10 @@ _COMMAND_CATEGORIES = (
         ),
     ),
     ("Data & Sync", ("db", "sync-github", "sync-store", "deliver")),
-    ("Service", ("board", "gui", "mcp", "notifyd", "serve", "watch", "watch-ci")),
+    (
+        "Service",
+        ("board", "gui", "hub", "mcp", "notifyd", "serve", "watch", "watch-ci"),
+    ),
     ("Diagnostics", ("blocked", "print-stats", "health", "resolve-store")),
     ("Introspection", ("list-python-apis", "skills")),
     ("Shell", ("install-shell-completion", "print-shell-completion")),

@@ -1,0 +1,41 @@
+# scitex-cards hub tunnel — HUB-side systemd USER unit template (remote-hub PR-4).
+#
+# docs/design/remote-hub-backend.md §4: the HUB pushes the rail out — a
+# persistent reverse tunnel so the remote host's agents reach the hub's
+# loopback-only `scitex-cards serve` at THEIR OWN 127.0.0.1:8765. No bastion,
+# no new inbound surface, no non-loopback bind anywhere; transport encryption
+# is the ssh channel.
+#
+# INSTALL (hub, once per remote host):
+#   1. Replace <REMOTE> below with the ssh alias (e.g. spartan, nas).
+#   2. cp to ~/.config/systemd/user/scitex-cards-hub-tunnel-<REMOTE>.service
+#   3. systemctl --user daemon-reload
+#   4. systemctl --user enable --now scitex-cards-hub-tunnel-<REMOTE>
+#   VERIFY end-to-end (the whole loop, from the hub):
+#      ssh <REMOTE> 'curl -s http://127.0.0.1:8765/v1/health'
+#   → {"ok": true, ...} proves tunnel + serve together.
+#
+# WSL note: if `systemctl --user` is unavailable, run the ExecStart line
+# under any supervisor that restarts on exit (the loop fallback the design
+# names); the unit shape is the documentation of intent either way.
+#
+# The ssh alias carries all trust (keys, ProxyCommand/cloudflared) from the
+# operator's existing config — this unit adds none. -o ExitOnForwardFailure
+# makes a failed forward a RESTART (loud), never a half-up tunnel (silent).
+
+[Unit]
+Description=scitex-cards hub reverse tunnel to <REMOTE> (127.0.0.1:8765 both ends)
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ssh -N \
+    -o ServerAliveInterval=30 \
+    -o ServerAliveCountMax=3 \
+    -o ExitOnForwardFailure=yes \
+    -R 127.0.0.1:8765:127.0.0.1:8765 <REMOTE>
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
