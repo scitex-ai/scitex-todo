@@ -96,8 +96,15 @@ def handle_edge(request, board):
         )
     except TaskNotFoundError as exc:
         # The id passed the cached-union fast-path but is absent from the
-        # GLOBAL store the verb writes (a lane-only card, or a race).
-        missing = verb_source if "source" in str(exc) else verb_target
+        # GLOBAL store the verb writes (a lane-only card, or a race). Match
+        # the message PREFIX, not a bare substring — the missing id's repr
+        # appears after the prefix, so an id containing "source" must not
+        # flip the answer.
+        missing = (
+            verb_source
+            if str(exc).startswith("set_edge: unknown source id ")
+            else verb_target
+        )
         return JsonResponse({"error": f"no task with id {missing!r}"}, status=404)
     _reset_cache()
     logger.info(

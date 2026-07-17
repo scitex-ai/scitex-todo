@@ -225,6 +225,16 @@ def handle_update(request, board):
     err = _check_status(payload)
     if err:
         return err
+    # An EXPLICIT null status must not reach update_task: status is exempt
+    # from the clear-map below, and the verb deletes any field passed as
+    # None — leaving a status-less card that drops out of every lane, the
+    # exact state the verb's own contract forbids ("status cannot be
+    # cleared"). No GUI control emits null here; reject it loudly.
+    if "status" in payload and payload["status"] is None:
+        return JsonResponse(
+            {"error": "status cannot be cleared — every card carries a decision"},
+            status=400,
+        )
 
     # 404 fast-path on the cached union (mirrors handle_comment) so an unknown
     # id never reaches the verb; the verb re-checks under its lock anyway.
@@ -310,15 +320,20 @@ def handle_comment(request, board):
     if not any(t["id"] == task_id for t in board.tasks):
         return JsonResponse({"error": f"no task with id {task_id!r}"}, status=404)
 
-    from scitex_cards._store import comment_task
+    from scitex_cards._store import TaskNotFoundError, comment_task
 
     from ..services import _reset_cache
     from ._comment_relay import comment_inbox_toast
 
     # SSOT append + `commented` emit (→ C4 enqueues to each recipient's inbox).
-    result = comment_task(
-        store=board.store_path, task_id=task_id, text=text.strip(), by=author
-    )
+    try:
+        result = comment_task(
+            store=board.store_path, task_id=task_id, text=text.strip(), by=author
+        )
+    except TaskNotFoundError:
+        # Passed the cached-union fast-path but absent from the GLOBAL store
+        # (a lane-only card, or a delete race) -> clean 404, not a 500.
+        return JsonResponse({"error": f"no task with id {task_id!r}"}, status=404)
     _reset_cache()
     comment = result["comment"]
     logger.info(
