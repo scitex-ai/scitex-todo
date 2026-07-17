@@ -12,6 +12,8 @@ from pathlib import Path
 
 from django.http import JsonResponse
 
+from ._comment_digest import comment_digest
+
 #: The board's HTML templates live here (board_v3.html + any partials). Their
 #: max mtime is a cheap fingerprint for "the GUI code changed" — see
 #: :func:`_board_asset_rev`.
@@ -87,9 +89,11 @@ def _build_graph(board) -> dict:
             # id the frontend treats this task as top-level (same lenient
             # stance as edges to unknown ids).
             "parent": t.get("parent"),
-            # Append-only comment thread (list of {ts, author, text}); always
-            # a list so the frontend can render / count without null-checks.
-            "comments": t.get("comments") or [],
+            # Derived comment scalars (count + last/first digests) instead of
+            # the full append-only thread, which dominated this payload. The
+            # whole thread is fetched per card from `/chat/<card_id>`.
+            # See `_comment_digest`.
+            **comment_digest(t),
             # `kind` discriminator + compute metadata (north-star pillar #1,
             # validated by `_model._validate_tasks`). `kind: null` over the
             # wire = "task" (the default). FE renders compute affordances
