@@ -26,7 +26,8 @@ import json
 
 import anyio
 
-from . import _store
+from ._backend import get_backend
+
 # From the LEAF (`_mcp_app`), NOT from `_mcp_server` — importing the server here
 # closed a cycle (it imports this module at its tail, for the registration side
 # effect), so `import scitex_cards._mcp_write` cold raised ImportError.
@@ -117,7 +118,7 @@ async def add_task(
     on purpose. (hook-bypass: line-limit.)
     """
     _call = functools.partial(
-        _store.add_task,
+        get_backend().add_task,
         tasks_path,
         id=id,
         title=title,
@@ -281,7 +282,7 @@ async def update_task(
     if deadlines is not None:
         fields["deadlines"] = list(deadlines) if deadlines else None
     merged = await anyio.to_thread.run_sync(
-        functools.partial(_store.update_task, tasks_path, task_id, **fields)
+        functools.partial(get_backend().update_task, tasks_path, task_id, **fields)
     )
     return json.dumps(merged)
 

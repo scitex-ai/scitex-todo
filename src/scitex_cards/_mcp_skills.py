@@ -24,7 +24,7 @@ import json
 
 import anyio
 
-from . import _help_wait, _inbox, _store, _threads
+from ._backend import get_backend
 from ._mcp_app import mcp  # the LEAF — importing _mcp_server here would cycle
 
 
@@ -86,7 +86,9 @@ async def reassign_task(
       by: the actor ($SCITEX_TODO_AGENT_ID → $USER precedence).
     """
     result = await anyio.to_thread.run_sync(
-        functools.partial(_store.reassign_task, tasks_path, task_id, new_owner, by=by)
+        functools.partial(
+            get_backend().reassign_task, tasks_path, task_id, new_owner, by=by
+        )
     )
     return json.dumps(result)
 
@@ -109,7 +111,7 @@ async def help_wait(
     """
     result = await anyio.to_thread.run_sync(
         functools.partial(
-            _help_wait.help_wait, tasks_path, agent, question=question, host=host
+            get_backend().help_wait, tasks_path, agent, question=question, host=host
         )
     )
     return json.dumps(result)
@@ -126,7 +128,7 @@ async def help_clear(
     ``{"task_id": <id>, "cleared": bool, ...}``.
     """
     result = await anyio.to_thread.run_sync(
-        functools.partial(_help_wait.help_clear, tasks_path, agent)
+        functools.partial(get_backend().help_clear, tasks_path, agent)
     )
     return json.dumps(result)
 
@@ -163,43 +165,18 @@ async def poll_notifications(
       ack: when true, advance the cursor — mark the RETURNED notifications
         seen so a later poll does not return them again.
     """
-    from ._users import resolve_user, touch_user
-
-    user = await anyio.to_thread.run_sync(
-        functools.partial(resolve_user, agent, store=tasks_path)
-    )
-    recipient_id = user.id if user is not None else agent
-    # Liveness heartbeat (assignee-liveness feature): polling the inbox is an
-    # agent touching the store → stamp its own registry ``last_seen`` so
-    # ``is_alive`` can surface it as running. Fail-soft: a stamping failure
-    # (e.g. unregistered agent) must never break the poll. Reuses the SAME
-    # identity seam (no second path); STANDALONE (local registry write only).
-    try:
-        await anyio.to_thread.run_sync(
-            functools.partial(touch_user, agent, store=tasks_path)
-        )
-    except Exception:  # noqa: BLE001 — heartbeat must not break the poll
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "poll_notifications: heartbeat failed for %r", agent, exc_info=True
-        )
-    notifications = await anyio.to_thread.run_sync(
+    # The composition (user resolution, fail-soft liveness heartbeat, poll)
+    # lives in the backend so a remote backend can make it ONE round trip.
+    result = await anyio.to_thread.run_sync(
         functools.partial(
-            _inbox.poll_inbox,
-            recipient_id,
+            get_backend().poll_notifications,
+            agent,
             unseen_only=unseen_only,
-            mark_seen=ack,
+            ack=ack,
             store=tasks_path,
         )
     )
-    return json.dumps(
-        {
-            "agent": agent,
-            "recipient_id": recipient_id,
-            "notifications": notifications,
-        }
-    )
+    return json.dumps(result)
 
 
 @mcp.tool()
@@ -240,7 +217,7 @@ def _dm_sender_or_error() -> "tuple[str | None, str | None]":
             {
                 "error": "dm: no agent identity configured. Set "
                 "SCITEX_TODO_AGENT_ID=<your-agent> in the MCP server env "
-                "(.mcp.json: \"SCITEX_TODO_AGENT_ID\": "
+                '(.mcp.json: "SCITEX_TODO_AGENT_ID": '
                 "\"${SCITEX_TODO_AGENT_ID}\") so the DM 'from' field names a "
                 "real agent."
             }
@@ -269,9 +246,7 @@ async def dm_send(
     if err is not None:
         return err
     record = await anyio.to_thread.run_sync(
-        functools.partial(
-            _threads.append_message, sender, to, body, store=tasks_path
-        )
+        functools.partial(get_backend().dm_send, sender, to, body, store=tasks_path)
     )
     return json.dumps(record)
 
@@ -292,16 +267,13 @@ async def dm_list(
     sender, err = _dm_sender_or_error()
     if err is not None:
         return err
-    other = peer or _threads.OPERATOR_NAME
-    key = _threads.thread_key(sender, other)
-    if ack:
-        await anyio.to_thread.run_sync(
-            functools.partial(_threads.mark_read, key, sender, store=tasks_path)
+    # Thread-key + ack + read composition lives in the backend (one RPC later).
+    result = await anyio.to_thread.run_sync(
+        functools.partial(
+            get_backend().dm_list, sender, peer=peer, ack=ack, store=tasks_path
         )
-    messages = await anyio.to_thread.run_sync(
-        functools.partial(_threads.get_thread, sender, other, store=tasks_path)
     )
-    return json.dumps({"thread": key, "peer": other, "messages": messages})
+    return json.dumps(result)
 
 
 __all__ = [

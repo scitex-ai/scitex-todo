@@ -1,0 +1,283 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""The verb-level backend seam (remote-hub design, docs/design/remote-hub-backend.md §2).
+
+One seam, above the storage engine and below the MCP/CLI surfaces: every
+store-touching MCP tool calls ``get_backend().<verb>(...)`` instead of
+importing the ``_store`` / ``_threads`` / ``_inbox`` / ``_help_wait`` verbs
+directly. Two implementations exist by design:
+
+- :class:`LocalBackend` — the passthrough to today's locked in-process verbs.
+  ZERO behavior change: each method delegates to exactly the call the MCP
+  tool made before the seam existed (including the dm/inbox compositions,
+  which move here so a future HTTP backend can map each to ONE round trip).
+- ``HubBackend`` (a later PR) — the HTTP client for ``scitex-cards serve``,
+  selected by ``SCITEX_CARDS_HUB_URL``.
+
+Until the HTTP backend ships, a set ``SCITEX_CARDS_HUB_URL`` is a HARD error
+here — never a silent fall-through to the local file. A silent local
+fallback would mint exactly the "separate copy of the store" the one-database
+ruling forbids (operator, 2026-07-17; ADR-0010/0011).
+
+``resolve_store`` and ``health`` are deliberately NOT backend verbs: they
+stay local and become backend-AWARE (reporting which backend is active) when
+the HTTP backend lands.
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
+from . import _help_wait, _inbox, _store, _threads
+
+_HUB_URL_ENV = "SCITEX_CARDS_HUB_URL"
+
+#: The complete backend verb surface, 1:1 with the MCP task/DM/inbox tools
+#: (docs/design/remote-hub-backend.md §3 coverage table). A backend MUST
+#: implement every name; the parity test walks this tuple.
+BACKEND_VERBS: tuple[str, ...] = (
+    "add_task",
+    "update_task",
+    "complete_task",
+    "get_task",
+    "list_tasks",
+    "summarize_tasks",
+    "delete_task",
+    "restore_task",
+    "comment_task",
+    "resolve_task",
+    "reopen_task",
+    "reassign_task",
+    "set_edge",
+    "set_collaborator",
+    "set_subscriber",
+    "help_wait",
+    "help_clear",
+    "poll_notifications",
+    "dm_send",
+    "dm_list",
+)
+
+
+class BackendUnavailableError(RuntimeError):
+    """Raised when the configured backend cannot be constructed.
+
+    Deliberately loud: the alternative (falling back to the local file when
+    the hub is configured but unreachable) would silently write a second
+    store — the exact state the one-database ruling forbids.
+    """
+
+
+class LocalBackend:
+    """Passthrough to the locked in-process verbs — zero behavior change.
+
+    Every method body is byte-for-byte the call its MCP tool made before
+    the seam existed. The dm/inbox methods carry the COMPOSITION (thread
+    key, ack, user resolution, heartbeat) that used to live inline in
+    ``_mcp_skills`` — moved here so the future HTTP backend can implement
+    each as one RPC instead of re-composing client-side.
+    """
+
+    name = "local"
+
+    # -- task verbs (1:1 with _store) ----------------------------------- #
+
+    def add_task(self, tasks_path: Any = None, **fields: Any) -> dict:
+        return _store.add_task(tasks_path, **fields)
+
+    def update_task(self, tasks_path: Any, task_id: str, **fields: Any) -> dict:
+        return _store.update_task(tasks_path, task_id, **fields)
+
+    def complete_task(
+        self, tasks_path: Any, task_id: str, by: str | None = None
+    ) -> dict:
+        return _store.complete_task(tasks_path, task_id, by=by)
+
+    def get_task(self, tasks_path: Any, task_id: str) -> dict:
+        return _store.get_task(tasks_path, task_id)
+
+    def list_tasks(self, tasks_path: Any = None, **filters: Any) -> list:
+        return _store.list_tasks(tasks_path, **filters)
+
+    def summarize_tasks(
+        self,
+        tasks_path: Any = None,
+        scope: str | None = None,
+        assignee: str | None = None,
+    ) -> dict:
+        return _store.summarize_tasks(tasks_path, scope=scope, assignee=assignee)
+
+    def delete_task(self, tasks_path: Any, task_id: str) -> dict:
+        return _store.delete_task(tasks_path, task_id)
+
+    def restore_task(
+        self,
+        tasks_path: Any,
+        task: dict,
+        refs: list[str] | None = None,
+    ) -> dict:
+        return _store.restore_task(tasks_path, task=task, refs=refs)
+
+    def comment_task(
+        self,
+        tasks_path: Any,
+        task_id: str,
+        text: str,
+        by: str | None = None,
+    ) -> dict:
+        return _store.comment_task(tasks_path, task_id, text, by=by)
+
+    def resolve_task(
+        self, tasks_path: Any, task_id: str, actor: str | None = None
+    ) -> dict:
+        return _store.resolve_task(tasks_path, task_id, actor=actor)
+
+    def reopen_task(self, tasks_path: Any, task_id: str, by: str | None = None) -> dict:
+        return _store.reopen_task(tasks_path, task_id, by=by)
+
+    def reassign_task(
+        self,
+        tasks_path: Any,
+        task_id: str,
+        new_owner: str,
+        by: str | None = None,
+    ) -> dict:
+        return _store.reassign_task(tasks_path, task_id, new_owner, by=by)
+
+    # -- relationship verbs --------------------------------------------- #
+
+    def set_edge(
+        self,
+        tasks_path: Any = None,
+        *,
+        action: str,
+        kind: str,
+        source: str,
+        target: str,
+    ) -> dict:
+        return _store.set_edge(
+            tasks_path, action=action, kind=kind, source=source, target=target
+        )
+
+    def set_collaborator(
+        self,
+        tasks_path: Any = None,
+        *,
+        task_id: str,
+        who: str,
+        action: str = "add",
+    ) -> dict:
+        return _store.set_collaborator(
+            tasks_path, task_id=task_id, who=who, action=action
+        )
+
+    def set_subscriber(
+        self,
+        tasks_path: Any = None,
+        *,
+        task_id: str,
+        who: str,
+        action: str = "add",
+    ) -> dict:
+        return _store.set_subscriber(
+            tasks_path, task_id=task_id, who=who, action=action
+        )
+
+    # -- help-wait verbs ------------------------------------------------ #
+
+    def help_wait(
+        self,
+        tasks_path: Any,
+        agent: str,
+        question: str | None = None,
+        host: str | None = None,
+    ) -> dict:
+        return _help_wait.help_wait(tasks_path, agent, question=question, host=host)
+
+    def help_clear(self, tasks_path: Any, agent: str) -> dict:
+        return _help_wait.help_clear(tasks_path, agent)
+
+    # -- inbox (composition: user resolution + heartbeat + poll) -------- #
+
+    def poll_notifications(
+        self,
+        agent: str,
+        unseen_only: bool = True,
+        ack: bool = False,
+        store: Any = None,
+    ) -> dict:
+        from ._users import resolve_user, touch_user
+
+        user = resolve_user(agent, store=store)
+        recipient_id = user.id if user is not None else agent
+        # Liveness heartbeat — fail-soft, exactly as the tool did inline:
+        # a stamping failure must never break the poll.
+        try:
+            touch_user(agent, store=store)
+        except Exception:  # noqa: BLE001 — heartbeat must not break the poll
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "poll_notifications: heartbeat failed for %r", agent, exc_info=True
+            )
+        notifications = _inbox.poll_inbox(
+            recipient_id, unseen_only=unseen_only, mark_seen=ack, store=store
+        )
+        return {
+            "agent": agent,
+            "recipient_id": recipient_id,
+            "notifications": notifications,
+        }
+
+    # -- DMs (composition: thread key + ack + read) --------------------- #
+
+    def dm_send(self, sender: str, to: str, body: str, store: Any = None) -> dict:
+        return _threads.append_message(sender, to, body, store=store)
+
+    def dm_list(
+        self,
+        sender: str,
+        peer: str | None = None,
+        ack: bool = False,
+        store: Any = None,
+    ) -> dict:
+        other = peer or _threads.OPERATOR_NAME
+        key = _threads.thread_key(sender, other)
+        if ack:
+            _threads.mark_read(key, sender, store=store)
+        messages = _threads.get_thread(sender, other, store=store)
+        return {"thread": key, "peer": other, "messages": messages}
+
+
+_LOCAL_BACKEND = LocalBackend()
+
+
+def get_backend() -> LocalBackend:
+    """Resolve the active backend from the environment, per call.
+
+    ``SCITEX_CARDS_HUB_URL`` unset (the default everywhere today) returns the
+    shared :class:`LocalBackend` — behavior identical to before the seam.
+    Set, it raises :class:`BackendUnavailableError` until the HTTP client
+    ships: refusing loudly beats silently writing a second store.
+    """
+    url = os.environ.get(_HUB_URL_ENV)
+    if url:
+        raise BackendUnavailableError(
+            f"{_HUB_URL_ENV}={url!r} is set, but this build has no HTTP hub "
+            "backend yet (it ships with the `scitex-cards serve` line). "
+            "Unset the variable to use the local store, or upgrade "
+            "scitex-cards. Refusing a silent local fallback: it would write "
+            "a store the hub never sees."
+        )
+    return _LOCAL_BACKEND
+
+
+__all__ = [
+    "BACKEND_VERBS",
+    "BackendUnavailableError",
+    "LocalBackend",
+    "get_backend",
+]
+
+# EOF

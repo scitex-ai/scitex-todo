@@ -25,7 +25,7 @@ import json
 
 import anyio
 
-from . import _store
+from ._backend import get_backend
 from ._mcp_app import mcp  # the LEAF — importing _mcp_server here would cycle
 
 
@@ -46,7 +46,7 @@ async def set_edge(
     """
     result = await anyio.to_thread.run_sync(
         functools.partial(
-            _store.set_edge,
+            get_backend().set_edge,
             tasks_path,
             action=action,
             kind=kind,
@@ -78,7 +78,11 @@ async def set_collaborator(
     """
     result = await anyio.to_thread.run_sync(
         functools.partial(
-            _store.set_collaborator, tasks_path, task_id=task_id, who=who, action=action
+            get_backend().set_collaborator,
+            tasks_path,
+            task_id=task_id,
+            who=who,
+            action=action,
         )
     )
     return json.dumps(result)
@@ -104,7 +108,11 @@ async def set_subscriber(
     """
     result = await anyio.to_thread.run_sync(
         functools.partial(
-            _store.set_subscriber, tasks_path, task_id=task_id, who=who, action=action
+            get_backend().set_subscriber,
+            tasks_path,
+            task_id=task_id,
+            who=who,
+            action=action,
         )
     )
     return json.dumps(result)
