@@ -155,7 +155,33 @@ hook installed means today's behavior. A nudge is a message an agent may
 decline; a stop-hook refusal needs no cooperation. Only the second kind
 works, by the evidence of this very night.
 
-### 7. The two-axis view (urgency × importance)
+### 7. The adversarial catalog — every loophole gets a closer
+
+Operator question (2026-07-17, translated): "Are there other holes? For
+instance deliberately sleeping, or running long meaningless computation?"
+Yes. The governing principle for all of them: **only artifacts are
+evidence of progress — never elapsed time.** Each evasion is closed by
+exactly one of two instruments: the write-time validator (makes the state
+inexpressible) or an observer (makes the gap visible and escalates).
+
+| Evasion | Closer |
+|---|---|
+| Fake work: sleep loops, meaningless computation | walltime auto-fails the card; `running` requires artifact-bearing heartbeats (commit / PR event / delta-carrying comment) — clock ticks count for nothing |
+| Sleeping before starting | dispatch must be ACKed by a start event within a bound; silence escalates (observer) |
+| Fake `blocked`: bogus or circular edges | edge targets must be real entities (card/PR/live agent); cycle detection at write; the OWED party can REJECT the edge, returning the card to `running` |
+| Cancel as escape | reason mandatory (validator); per-agent cancel rate is a visible metric the operator reviews |
+| Card-splitting as procrastination | children inherit the parent's rank neighborhood — splitting never resets work to the tail; split events audited |
+| Axis gaming (inflated urgency/importance) | rank is computed with operator override; axis changes audited; aging rebalances honest low scores |
+| Fake `done` (no outcome) | artifact-producing kinds require an outcome reference; the reconcile observers cross-check (the merged-PR reconciler is the existing template) |
+| Shedding ownership to dead/fictional agents | assignee must resolve against the live registry (NodeStatePort); dispatch to a dead seat bounces back with escalation |
+
+And the submission/consumption asymmetry, per the operator's refinement:
+**submit returns a receipt ("queued at rank N of M — OWED, not done");
+the satisfying green is returned only on verified consumption.** The
+catalog is expected to grow; every new hole gets filed under one of the
+two instruments, never under "we'll remember".
+
+### 8. The two-axis view (urgency × importance)
 
 A new board view renders the Eisenhower quadrant; dragging a card in the
 quadrant re-scores it and therefore re-ranks it — the matrix is the HUMAN
