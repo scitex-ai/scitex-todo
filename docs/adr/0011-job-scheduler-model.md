@@ -224,6 +224,47 @@ AND an agentic nudger." Adopted as architecture:
   handles what needs judgment. It runs on the same scheduler as everyone
   else — its work is cards, so it cannot itself stop.
 
+### 10. The cycle position — `done` means LIVE, not merged
+
+Operator (2026-07-17, translated): "a red PR must be fixed; you must go
+check that CI is even running; a green PR must then be released,
+deployed, made live, made live on the other agents too — right? The
+cycle is already defined. Isn't a function needed that always records
+and tracks WHERE in that cycle a card currently is?"
+
+The diagnosis is the `add_task`-returns-0 defect one layer out: MERGING
+ALSO RETURNS 0. The last event an owner observes becomes the event they
+treat as completion — and four features in one night were merged and
+INERT (never ran / never scheduled / never installed / merged to a
+branch where the trigger cannot fire), invisible because the gap between
+"merged" and "live" has no name in the model.
+
+Therefore a card carries a **stage** alongside its state — its position
+in the already-defined delivery cycle:
+
+```
+building → pr-open → ci-green → merged → released → deployed →
+live-on-host → live-on-fleet
+```
+
+Three rules, all validator/observer-enforced:
+
+1. **`done` requires the terminal stage** for cards whose kind walks the
+   chain. "I merged it" cannot close a card whose definition of done is
+   "the fleet runs it".
+2. **Stages are set by OBSERVATION, never by the owner's assertion.**
+   A self-declared stage is a `deferred` in disguise. The emitters are
+   the existing content-probe family: PyPI 200s, manifest inspection,
+   symbol probes, run history — each transition event arrives through
+   the hooks entry-point group (`scitex_cards.hooks`), which external
+   observers (sac's probes, CI) already know how to produce into. cards
+   defines the event schema; it never imports the emitters.
+3. **Stalls between stages are observer territory**: merged-without-
+   release, released-without-deploy, deployed-not-live — each gap gets
+   the same clock-and-escalation treatment as every other named wait
+   (§3, §7). The four inert features would each have read
+   "merged, not live — for N days" on the board instead of nothing.
+
 ## Migration
 
 ~150 live `deferred` cards: a one-shot triage tool walks them oldest-last —
