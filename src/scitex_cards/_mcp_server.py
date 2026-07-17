@@ -280,6 +280,9 @@ TOOL_NAMES: tuple[str, ...] = (
     "set_subscriber",
     "resolve_task",
     "reopen_task",
+    # The rank engine's write verb (ADR-0011 §1/§8; registered in
+    # _mcp_relations — the matrix drag's target).
+    "rescore_task",
     # Registered in `_mcp_skills` (budget): reassign (1:1 `_store.reassign_task`)
     "reassign_task",
     # Help-wait SoC lift — semantics lifted out of the dotfiles hook.

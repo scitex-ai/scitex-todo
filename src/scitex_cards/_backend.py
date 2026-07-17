@@ -11,13 +11,13 @@ directly. Two implementations exist by design:
   ZERO behavior change: each method delegates to exactly the call the MCP
   tool made before the seam existed (including the dm/inbox compositions,
   which move here so a future HTTP backend can map each to ONE round trip).
-- ``HubBackend`` (a later PR) — the HTTP client for ``scitex-cards serve``,
-  selected by ``SCITEX_CARDS_HUB_URL``.
+- :class:`scitex_cards._backend_http.HubBackend` — the HTTP client for
+  ``scitex-cards serve``, selected by ``SCITEX_CARDS_HUB_URL``.
 
-Until the HTTP backend ships, a set ``SCITEX_CARDS_HUB_URL`` is a HARD error
-here — never a silent fall-through to the local file. A silent local
-fallback would mint exactly the "separate copy of the store" the one-database
-ruling forbids (operator, 2026-07-17; ADR-0010/0011).
+A hub that cannot actually be used fails LOUD at the first call — never a
+silent fall-through to the local file. A silent local fallback would mint
+exactly the "separate copy of the store" the one-database ruling forbids
+(operator, 2026-07-17; ADR-0010/0011).
 
 ``resolve_store`` and ``health`` are deliberately NOT backend verbs: they
 stay local and become backend-AWARE (reporting which backend is active) when
