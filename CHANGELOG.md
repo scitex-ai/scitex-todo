@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.16.0] - 2026-07-17 — the backup rail runs itself, off-site, and the decoupling is a CI invariant
+
+### Added
+- **`db snapshot --push`** — pushes the snapshot repo to its remote after
+  committing (`-u origin HEAD`, so the first push to a freshly-wired remote
+  works). No remote = reported local-only (exit 0). A FAILED push exits 1:
+  the rail's job is the off-site copy, and a local-only commit reported as
+  success would be a lie. The off-site remote is the operator-chosen private
+  repo `ywatanabe1989/scitex-cards-cards` (first snapshot verified by
+  reading the remote back).
+- **`scitex-cards.snapshot` cron JobSpec** (hourly, minute 7) running
+  `db snapshot --refresh --push`: rebuild `cards.db` from the canonical
+  yaml (import IS the freshness step pre-cutover), export to YAML text,
+  git-commit, push off-site. Provisioned by `scitex-dev ecosystem up`.
+- **`db snapshot --refresh`** — the rebuild-then-export halves as one
+  systemd-safe argv.
+- **The S7 decoupling gate** (`tests/test_decoupling_gate.py`) — CI-enforced:
+  an AST scan proves no module imports `scitex_agent_container` /
+  `claude_code_telegrammer` / `sac` (lazy in-function imports included), and
+  a runtime CRUD probe proves none loads laterally. The operator's
+  independently-usable rule is now an invariant, not a fact about today.
+
 ## [0.15.0] - 2026-07-17 — cards.db is the store's future; the yaml export is its backup rail
 
 ### Added
