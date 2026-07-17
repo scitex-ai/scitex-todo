@@ -21,7 +21,7 @@ import os
 
 from django.http import JsonResponse
 
-from .crud import _parse_body, _save
+from .crud import _parse_body
 
 logger = logging.getLogger(__name__)
 
@@ -60,46 +60,64 @@ def handle_reopen(request, board):
     if new_status == "blocked" and not new_blocker:
         new_blocker = "operator-decision"
 
-    tasks = list(board.tasks)
-    task = next((t for t in tasks if t["id"] == task_id), None)
-    if task is None:
-        return JsonResponse({"error": f"no task with id {task_id!r}"}, status=404)
+    from scitex_cards import TaskValidationError
+    from scitex_cards._model import _save_doc_unlocked, _store_lock
+    from scitex_cards._store import _read_write_doc
 
-    pre_status = task.get("status")
-    pre_blocker = task.get("blocker")
+    from ..services import _reset_cache
 
-    task["status"] = new_status
-    if new_status == "blocked" and new_blocker:
-        task["blocker"] = new_blocker
-    else:
-        # Schema disallows blocker on non-blocked rows.
-        task.pop("blocker", None)
+    # One flock'd read-modify-write against the GLOBAL store — never the
+    # request-scoped board cache, whose staleness window used to clobber any
+    # concurrent write landing between the cache read and the save. (The
+    # ``_store.reopen_task`` verb is not used here: it always forces
+    # ``blocked``/``operator-decision``, while this endpoint's pinned contract
+    # restores the caller-supplied prior_status / prior_blocker.)
+    with _store_lock(board.store_path):
+        doc, tasks = _read_write_doc(board.store_path)
+        task = next(
+            (t for t in tasks if isinstance(t, dict) and t.get("id") == task_id),
+            None,
+        )
+        if task is None:
+            return JsonResponse({"error": f"no task with id {task_id!r}"}, status=404)
 
-    reopen_comment = {
-        "ts": datetime.datetime.now(datetime.timezone.utc)
-        .replace(microsecond=0)
-        .isoformat(),
-        "author": actor.strip(),
-        "text": (
-            f"[UNDONE via board-v3] re-opened by {actor.strip()}; "
-            f"status={pre_status!r}→{new_status!r}"
-            + (
-                f", blocker={pre_blocker!r}→{new_blocker!r}"
-                if (pre_blocker or new_blocker)
-                else ""
-            )
-            + ". Reverses the prior /resolve. Lossless: SacChannel wake "
-            "adapter not wired yet, dependent agent was never notified."
-        ),
-    }
-    existing = task.get("comments")
-    task["comments"] = (
-        [*existing] if isinstance(existing, list) else []
-    ) + [reopen_comment]
+        pre_status = task.get("status")
+        pre_blocker = task.get("blocker")
 
-    err = _save(tasks, board)
-    if err:
-        return err
+        task["status"] = new_status
+        if new_status == "blocked" and new_blocker:
+            task["blocker"] = new_blocker
+        else:
+            # Schema disallows blocker on non-blocked rows.
+            task.pop("blocker", None)
+
+        reopen_comment = {
+            "ts": datetime.datetime.now(datetime.timezone.utc)
+            .replace(microsecond=0)
+            .isoformat(),
+            "author": actor.strip(),
+            "text": (
+                f"[UNDONE via board-v3] re-opened by {actor.strip()}; "
+                f"status={pre_status!r}→{new_status!r}"
+                + (
+                    f", blocker={pre_blocker!r}→{new_blocker!r}"
+                    if (pre_blocker or new_blocker)
+                    else ""
+                )
+                + ". Reverses the prior /resolve. Lossless: SacChannel wake "
+                "adapter not wired yet, dependent agent was never notified."
+            ),
+        }
+        existing = task.get("comments")
+        task["comments"] = ([*existing] if isinstance(existing, list) else []) + [
+            reopen_comment
+        ]
+
+        try:
+            _save_doc_unlocked(doc, board.store_path, tasks=tasks)
+        except TaskValidationError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
+    _reset_cache()
 
     # Mirror the resolve publish path so any in-process subscriber gets the
     # reopen as a first-class change event.
@@ -111,13 +129,16 @@ def handle_reopen(request, board):
             _BUS = InProcessPubSub()
             handle_reopen._BUS = _BUS  # type: ignore[attr-defined]
         channel = f"scitex-todo:task:{task.get('project', 'unknown')}/{task_id}"
-        _BUS.publish(channel, {
-            "task_id": task_id,
-            "changes": {"status": new_status, "blocker": new_blocker},
-            "ts": reopen_comment["ts"],
-            "actor": actor.strip(),
-            "undo_of": "resolve",
-        })
+        _BUS.publish(
+            channel,
+            {
+                "task_id": task_id,
+                "changes": {"status": new_status, "blocker": new_blocker},
+                "ts": reopen_comment["ts"],
+                "actor": actor.strip(),
+                "undo_of": "resolve",
+            },
+        )
     except Exception:  # noqa: BLE001 — publish-failure is non-fatal
         logger.exception("[scitex-todo] reopen notify-publish failed (non-fatal)")
 
