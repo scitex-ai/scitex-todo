@@ -236,9 +236,23 @@ def db_export_cmd(
         "step while the yaml is still canonical; after the flip, drop it."
     ),
 )
+@click.option(
+    "--push",
+    is_flag=True,
+    help=(
+        "Push the snapshot repo to its remote after committing. No remote "
+        "configured = reported local-only (exit 0); a FAILED push exits 1 — "
+        "the rail's job is the off-site copy, so a silent local-only "
+        "success would be a lie."
+    ),
+)
 @click.option("--json", "as_json", is_flag=True, help="Emit the snapshot report as JSON.")
 def db_snapshot_cmd(
-    db_path: str | None, snap_dir: str | None, refresh: bool, as_json: bool
+    db_path: str | None,
+    snap_dir: str | None,
+    refresh: bool,
+    push: bool,
+    as_json: bool,
 ) -> None:
     """Export to the snapshot dir and commit the export in its own git repo."""
     import subprocess
@@ -288,6 +302,27 @@ def db_snapshot_cmd(
     # legitimate outcome, reported as such rather than swallowed.
     report["committed"] = committed.returncode == 0
     report["snapshot_dir"] = str(root)
+
+    if push:
+        has_remote = bool(_git("remote").stdout.strip())
+        if not has_remote:
+            # Local-only mode is legitimate BEFORE a remote is wired; the
+            # report says so instead of pretending an off-site copy exists.
+            report["pushed"] = False
+            report["push_detail"] = "no remote configured — snapshot is local-only"
+        else:
+            pushed = _git("push", "-q")
+            report["pushed"] = pushed.returncode == 0
+            report["push_detail"] = (pushed.stderr or pushed.stdout).strip()
+            if not report["pushed"]:
+                # A failed push means the backup did NOT go off-site. That is
+                # the rail's whole job — fail LOUD so the cron tick reads red.
+                _emit = json.dumps(report) if as_json else (
+                    f"::error:: snapshot committed LOCALLY but push FAILED: "
+                    f"{report['push_detail']}"
+                )
+                click.echo(_emit)
+                raise SystemExit(1)
 
     if as_json:
         click.echo(json.dumps(report))

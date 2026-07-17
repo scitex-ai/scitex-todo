@@ -113,6 +113,6 @@ def test_provide_jobs_includes_the_snapshot_cadence():
     # Assert
     snap = jobs["scitex-cards.snapshot"]
     assert snap.kind == "cron"
-    assert snap.command == "scitex-cards db snapshot --refresh"
+    assert snap.command == "scitex-cards db snapshot --refresh --push"
     # --refresh is load-bearing pre-cutover: import IS the freshness step.
     assert "--refresh" in snap.command
