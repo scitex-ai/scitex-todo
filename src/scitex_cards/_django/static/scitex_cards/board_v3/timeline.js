@@ -26,8 +26,11 @@
 (function () {
   // D/W/M → window_hours. Published on STX so Details > Stats uses this SAME
   // definition of a day/week/month, not a second one that can drift.
-  var WINDOWS = ((globalThis.STX = globalThis.STX || {}).timelineWindows =
-    { "1d": 24, "1w": 168, "1m": 720 });
+  var WINDOWS = ((globalThis.STX = globalThis.STX || {}).timelineWindows = {
+    "1d": 24,
+    "1w": 168,
+    "1m": 720,
+  });
 
   // Layout constants for the raster SVG.
   var LANE_H = 26; // px floor per lane row (a 1-row lane keeps this height)
@@ -229,7 +232,7 @@
           cx: LABEL_W + it.x,
           cy: cursor + (packed.rows[k] || 0) * SUB_ROW_H + SUB_ROW_H / 2,
           ev: it.ev,
-          lane: lane,  // carried onto the dot so row-hover can grow it
+          lane: lane, // carried onto the dot so row-hover can grow it
         };
         dots.push(dot);
         dotById[it.ev.id] = dot;
@@ -278,10 +281,14 @@
       svg +=
         '<rect class="tl-lane-bg' +
         (i % 2 === 0 ? " tl-lane-bg--even" : "") +
-        '" data-lane="' + escapeHtml(String(lane)) +
-        '" x="0" y="' + yTop +
-        '" width="' + (LABEL_W + width) +
-        '" height="' + laneH +
+        '" data-lane="' +
+        escapeHtml(String(lane)) +
+        '" x="0" y="' +
+        yTop +
+        '" width="' +
+        (LABEL_W + width) +
+        '" height="' +
+        laneH +
         '"></rect>';
       svg += _avatar
         ? _avatar.laneLabelSvg(cy, lane, laneStatus[lane], isAgentLane)
@@ -330,7 +337,8 @@
       svg +=
         '<circle class="tl-dot' +
         (done ? " tl-dot--done" : " tl-dot--live") +
-        '" data-lane="' + escapeHtml(String(d.lane || "")) +
+        '" data-lane="' +
+        escapeHtml(String(d.lane || "")) +
         '" data-card-id="' +
         escapeHtml(String(d.ev.id)) +
         '" data-status="' +
@@ -391,15 +399,8 @@
     var cards = rows
       .map(function (r) {
         var t = r.t;
-        var comments = Array.isArray(t.comments) ? t.comments : [];
-        var last = comments.length ? comments[comments.length - 1] : null;
-        var commentHtml = last
-          ? '<div class="tl-card-comment"><span class="tl-card-comment-author">' +
-            escapeHtml(last.author || "?") +
-            "</span> " +
-            escapeHtml(_truncate(last.text || "", 160)) +
-            "</div>"
-          : '<div class="tl-card-comment tl-card-comment--none">no comments yet</div>';
+        // /graph ships derived scalars, not the thread — see commentDigest.js.
+        var commentHtml = STX.commentDigest.lastCommentHtml(t, escapeHtml);
         var meta = [
           t.project ? escapeHtml(t.project) : null,
           t.agent ? "@" + escapeHtml(t.agent) : null,
@@ -426,9 +427,7 @@
           "</div>" +
           (meta ? '<div class="tl-card-meta">' + meta + "</div>" : "") +
           commentHtml +
-          (comments.length
-            ? '<div class="tl-card-count">💬 ' + comments.length + "</div>"
-            : "") +
+          STX.commentDigest.countHtml(t) +
           "</div>"
         );
       })
@@ -441,11 +440,6 @@
         ? '<div class="tl-simple">' + cards + "</div>"
         : '<div class="loading">no activity in this window 🌙</div>') +
       "</div>";
-  }
-
-  function _truncate(s, n) {
-    s = String(s == null ? "" : s);
-    return s.length > n ? s.slice(0, n - 1) + "…" : s;
   }
 
   // ── entry point (called by the inline render() dispatch) ─────────────

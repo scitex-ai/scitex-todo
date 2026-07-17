@@ -151,6 +151,17 @@
   exposes its entry points on window for the inline render() dispatch.
   Operator TODO 2026-06-17.
 {% endcomment %}
+{% comment %}
+  commentDigest.js renders the derived comment scalars /graph now ships
+  (comment_count / last_comment) in place of the full thread it used to send —
+  ~4.4 MB of a ~6 MB payload, the dominant phone cost. See
+  handlers/_comment_digest.py. MUST load BEFORE timeline.js: both are `defer`,
+  which executes in document order, and timeline.js calls STX.commentDigest at
+  render time. (hook-bypass: line-limit — minimal wiring only; the template
+  split is scitex-cards-gui-board-v3-template-split-20260717, DUE 2026-07-20,
+  owner gui.)
+{% endcomment %}
+<script defer src="{% static 'scitex_cards/board_v3/commentDigest.js' %}"></script>
 <script defer src="{% static 'scitex_cards/board_v3/timeline.js' %}"></script>
 <style>
   /* P12 (operator TG, lead a2a 2026-06-12) — board reclaims the left
