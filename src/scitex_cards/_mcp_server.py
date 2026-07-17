@@ -36,7 +36,8 @@ import json
 
 import anyio
 
-from . import _store
+from . import _store  # resolve_store only — every verb routes via the seam
+from ._backend import get_backend
 
 # `mcp` and `_ENUM_FIELDS` now live in `_mcp_app`, a LEAF module — it imports
 # nothing that imports it back. They are re-exported here because 8 modules and
@@ -52,7 +53,6 @@ from . import _store
 # breaks it — see `_mcp_app`'s docstring for why a lazy re-export would have
 # silently unregistered two tools instead.
 from ._mcp_app import _ENUM_FIELDS, mcp  # noqa: F401  (re-export)
-
 
 # --------------------------------------------------------------------------- #
 # Task-store tools — Convention A (tool name == Python API name).             #
@@ -75,7 +75,7 @@ async def complete_task(
     `by` overrides the $SCITEX_TODO_AGENT_ID → $USER precedence.
     """
     done = await anyio.to_thread.run_sync(
-        functools.partial(_store.complete_task, tasks_path, task_id, by=by)
+        functools.partial(get_backend().complete_task, tasks_path, task_id, by=by)
     )
     return json.dumps(done)
 
@@ -115,7 +115,7 @@ async def list_tasks(
     (hook-bypass: line-limit.)
     """
     _call = functools.partial(
-        _store.list_tasks,
+        get_backend().list_tasks,
         tasks_path,
         scope=scope,
         assignee=assignee,
@@ -143,7 +143,7 @@ async def summarize_tasks(
     """Numeric progress: counts by status / scope / assignee."""
     result = await anyio.to_thread.run_sync(
         functools.partial(
-            _store.summarize_tasks, tasks_path, scope=scope, assignee=assignee
+            get_backend().summarize_tasks, tasks_path, scope=scope, assignee=assignee
         )
     )
     return json.dumps(result)
@@ -171,7 +171,7 @@ async def get_task(
     MCP agents can use it without going through HTTP.
     """
     result = await anyio.to_thread.run_sync(
-        functools.partial(_store.get_task, tasks_path, task_id)
+        functools.partial(get_backend().get_task, tasks_path, task_id)
     )
     return json.dumps(result)
 
@@ -188,7 +188,7 @@ async def delete_task(
     Wraps the board v3 Delete-with-Undo flow for MCP agents.
     """
     result = await anyio.to_thread.run_sync(
-        functools.partial(_store.delete_task, tasks_path, task_id)
+        functools.partial(get_backend().delete_task, tasks_path, task_id)
     )
     return json.dumps(result)
 
@@ -203,7 +203,7 @@ async def restore_task(
     must be the exact dict ``delete_task`` returned in ``"removed"``.
     """
     result = await anyio.to_thread.run_sync(
-        functools.partial(_store.restore_task, tasks_path, task=task, refs=refs)
+        functools.partial(get_backend().restore_task, tasks_path, task=task, refs=refs)
     )
     return json.dumps(result)
 
@@ -220,7 +220,7 @@ async def comment_task(
     author resolution ($SCITEX_TODO_AGENT_ID → $USER).
     """
     result = await anyio.to_thread.run_sync(
-        functools.partial(_store.comment_task, tasks_path, task_id, text, by=by)
+        functools.partial(get_backend().comment_task, tasks_path, task_id, text, by=by)
     )
     return json.dumps(result)
 
@@ -238,7 +238,7 @@ async def resolve_task(
     button (ADR-0006/0007).
     """
     result = await anyio.to_thread.run_sync(
-        functools.partial(_store.resolve_task, tasks_path, task_id, actor=actor)
+        functools.partial(get_backend().resolve_task, tasks_path, task_id, actor=actor)
     )
     return json.dumps(result)
 
@@ -253,7 +253,7 @@ async def reopen_task(
     ``blocker=operator-decision``. The Resolve→Undo partner.
     """
     result = await anyio.to_thread.run_sync(
-        functools.partial(_store.reopen_task, tasks_path, task_id, by=by)
+        functools.partial(get_backend().reopen_task, tasks_path, task_id, by=by)
     )
     return json.dumps(result)
 
@@ -300,9 +300,11 @@ TOOL_NAMES: tuple[str, ...] = (
 # Imports for the registration side effect: these modules (kept separate for
 # this module's line budget) decorate their tools onto the shared ``mcp``
 # instance, so ``from scitex_cards._mcp_server import mcp`` exposes every tool.
-from . import _mcp_relations  # noqa: E402,F401
-from . import _mcp_skills  # noqa: E402,F401
-from . import _mcp_write  # noqa: E402,F401 — add_task + update_task
+from . import (
+    _mcp_relations,  # noqa: E402,F401
+    _mcp_skills,  # noqa: E402,F401
+    _mcp_write,  # noqa: E402,F401 — add_task + update_task
+)
 
 # RE-EXPORT the two write tools. Registering them on `mcp` from `_mcp_write` was
 # enough for the MCP surface, but NOT for the PYTHON one: callers and tests do
