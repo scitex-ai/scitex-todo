@@ -8,12 +8,13 @@
  *   new order is immediately shared with agents; quadrant occupancy is
  *   tracked over time (maximize I+II).
  *
- * THIS FILE IS READ-ONLY (PR 1 of 3). It RENDERS the axes; it never
- * computes rank and never writes. Rank is the engine's output
- * (scitex-cards, ADR-0011 §1) — a second scoring implementation here
- * would render plausibly and lie the moment the engine's weights moved,
- * so there deliberately isn't one. Drag lands in PR 2 against the
- * `rescore_task` verb; occupancy-over-time in PR 3 by audit-trail replay.
+ * PR 2 adds DRAG: cards render `draggable`, and `dropAxes()` turns a drop
+ * onto a grid cell into the two axis values the client POSTs to /rescore.
+ * It STILL never computes rank and never scores — rank is the engine's
+ * output (scitex-cards, ADR-0011 §1); a second scoring implementation here
+ * would render plausibly and lie the moment the engine's weights moved, so
+ * there deliberately isn't one. `dropAxes` reads coordinates, it does not
+ * rank. Occupancy-over-time (PR 3) is audit-trail replay.
  *
  * LAYOUT — a 5×5 grid of (urgency, importance) cells, not four boxes of
  * lists. The axes are the stored fact (1–5 each); the quadrant is DERIVED
@@ -153,7 +154,7 @@
         ? '<span class="mx-card__rank">#' + _esc(n.rank) + "</span>"
         : "";
     return (
-      '<div class="mx-card" data-id="' +
+      '<div class="mx-card" draggable="true" data-id="' +
       _esc(n.id) +
       '" data-card-id="' +
       _esc(n.id) +
@@ -270,6 +271,27 @@
     );
   }
 
+  /* Drag → re-score (PR 2): translate a drop onto a grid cell into the two
+   * axis values the `rescore_task` verb needs. `dataset` is the dropped
+   * cell's DOMStringMap (its data-urgency / data-importance, which the grid
+   * was built to carry — a cell IS an (u,i) pair, so no pixel arithmetic).
+   * Coerces to number and validates against the scale; returns
+   * {urgency, importance} of ints, or null for a non-cell or a target with
+   * no valid coordinates — e.g. the unscored tray, which has no axes: you
+   * cannot un-score by dragging, the verb requires 1..5.
+   *
+   * This is the ONLY new logic PR 2 adds to the module and it deliberately
+   * does NOT score — it reads coordinates; rank stays the engine's, computed
+   * server-side. Kept here (not in the template) so node can test the drop
+   * arithmetic against the SHIPPED file. */
+  function dropAxes(dataset) {
+    if (!dataset) return null;
+    var u = Number(dataset.urgency);
+    var i = Number(dataset.importance);
+    if (!isAxisValue(u) || !isAxisValue(i)) return null;
+    return { urgency: u, importance: i };
+  }
+
   var _api = {
     AXIS_MIN: AXIS_MIN,
     AXIS_MAX: AXIS_MAX,
@@ -283,6 +305,7 @@
     cellsOf: cellsOf,
     occupancy: occupancy,
     matrixHtml: matrixHtml,
+    dropAxes: dropAxes,
   };
   if (typeof globalThis !== "undefined") {
     globalThis.STX = globalThis.STX || {};

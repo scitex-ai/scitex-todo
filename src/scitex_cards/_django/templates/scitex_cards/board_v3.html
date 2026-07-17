@@ -1325,6 +1325,30 @@
         toast(`✗ ${e.message}`, true);
       }
     }
+    // Matrix drag -> re-score (ADR-0011 §8). Sets a card's two axes from the
+    // grid cell it was dropped on; the `rescore_task` verb recomputes the
+    // WHOLE rank order server-side and emits `rank_changed`, so agents see the
+    // new order within the 5s poller. The client sends ONLY the axes, never a
+    // rank (computed, never asserted). loadGraph() repaints from the store.
+    async function rescoreCard(cardId, urgency, importance) {
+      try {
+        const r = await fetch("/rescore", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: cardId, urgency: urgency, importance: importance }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${r.status}`);
+        }
+        const data = await r.json().catch(() => ({}));
+        const rankNote = data && data.rank ? ` · rank ${data.rank}/${data.of}` : "";
+        toast(`✓ ${cardId} → urgency ${urgency}, importance ${importance}${rankNote}`);
+        await loadGraph();
+      } catch (e) {
+        toast(`✗ ${e.message}`, true);
+      }
+    }
     // Delete-from-context-menu (mirrors deleteCurrentTask but takes an id).
     async function deleteCardById(cardId) {
       const t = (STATE.graph?.nodes || []).find(x => x.id === cardId);
@@ -1632,13 +1656,16 @@
       groupBy: (() => { try { return localStorage.getItem("scitex-todo:wall-group") || "assignee"; } catch { return "assignee"; } })(),
       selected: (() => { try { return localStorage.getItem("scitex-todo:wall-selected") || null; } catch { return null; } })(),
     };
-    // Matrix layout (ADR-0011 §8). Read-only in this PR: it RENDERS the
-    // urgency/importance axes the store carries and the rank the engine
-    // computed. It does not score — a JS-side f(u,i) would be a second
-    // implementation of the engine and would lie the moment the weights
-    // moved. Drag-to-re-score lands in PR 2 against the `rescore_task`
-    // store verb (so the `rank_changed` event still reaches agents).
-    // (hook-bypass: line-limit — pre-existing 3425-line template.)
+    // Matrix layout (ADR-0011 §8). RENDERS the urgency/importance axes the
+    // store carries and the rank the engine computed; it does NOT score — a
+    // JS-side f(u,i) would be a second implementation of the engine and would
+    // lie the moment the weights moved. Drag-to-re-score is wired below (the
+    // delegated dragstart/drop listeners) and goes through the `rescore_task`
+    // store verb via /rescore, so the `rank_changed` event still reaches
+    // agents. innerHTML is replaced wholesale each render, which is why the
+    // drag listeners are DELEGATED on document, not bound per card.
+    // (hook-bypass: line-limit — pre-existing 3400+-line template; split is
+    // carded as scitex-cards-gui-board-v3-template-split-20260717.)
     function _renderMatrixView(canvas, visible) {
       canvas.innerHTML = window.STX.matrix.matrixHtml(visible, {});
     }
@@ -1682,6 +1709,62 @@
       const id =
         el.getAttribute("data-card-id") || el.getAttribute("data-id");
       if (id) openCardCtx(ev, id);
+    });
+
+    // Matrix drag-to-re-score (ADR-0011 §8), delegated on `document` so it
+    // survives the matrix's wholesale innerHTML re-render. Only `.mx-card`s
+    // are `draggable`, so dragstart fires for the matrix view ALONE — no
+    // other layout is affected and no per-card binding is needed. The drop
+    // target is a grid cell (`.mx-cell`), which carries its own
+    // (urgency, importance) in data-*; window.STX.matrix.dropAxes parses and
+    // validates them. A drop anywhere without valid axes (the unscored tray,
+    // the gaps between cells) is a NO-OP — you cannot un-score by dragging,
+    // and the verb requires 1..5 regardless.
+    let _mxDragId = null;
+    function _mxClearDropTargets() {
+      document
+        .querySelectorAll(".mx-cell--drop")
+        .forEach((c) => c.classList.remove("mx-cell--drop"));
+    }
+    document.addEventListener("dragstart", (ev) => {
+      const card = ev.target.closest && ev.target.closest(".mx-card");
+      if (!card) return;
+      _mxDragId = card.getAttribute("data-id") || card.getAttribute("data-card-id");
+      card.classList.add("mx-card--dragging");
+      if (ev.dataTransfer) {
+        ev.dataTransfer.effectAllowed = "move";
+        try { ev.dataTransfer.setData("text/plain", _mxDragId || ""); } catch {}
+      }
+    });
+    document.addEventListener("dragend", (ev) => {
+      const card = ev.target.closest && ev.target.closest(".mx-card");
+      if (card) card.classList.remove("mx-card--dragging");
+      _mxClearDropTargets();
+      _mxDragId = null;
+    });
+    document.addEventListener("dragover", (ev) => {
+      if (!_mxDragId) return;
+      const cell = ev.target.closest && ev.target.closest(".mx-cell");
+      if (!cell) return;
+      const mx = window.STX && window.STX.matrix;
+      if (!mx || !mx.dropAxes(cell.dataset)) return; // not a valid target
+      ev.preventDefault(); // permit the drop
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+      if (!cell.classList.contains("mx-cell--drop")) {
+        _mxClearDropTargets();
+        cell.classList.add("mx-cell--drop");
+      }
+    });
+    document.addEventListener("drop", (ev) => {
+      if (!_mxDragId) return;
+      const cell = ev.target.closest && ev.target.closest(".mx-cell");
+      const mx = window.STX && window.STX.matrix;
+      const axes = cell && mx ? mx.dropAxes(cell.dataset) : null;
+      if (!axes) return; // dropped off any valid cell -> no-op
+      ev.preventDefault();
+      const id = _mxDragId;
+      _mxClearDropTargets();
+      rescoreCard(id, axes.urgency, axes.importance);
     });
 
     // Status-transition glow (operator msg 933). Cheap by construction: a

@@ -235,3 +235,36 @@ test("matrixHtml never invents a rank pill for an unranked card", () => {
   const ranked = MX.matrixHtml([card("b", 1, 1, { rank: 7 })]);
   assert.equal(ranked.includes(">#7<"), true);
 });
+
+/* ── 7. Drag → re-score (PR 2). dropAxes reads a dropped cell's coordinate;
+ * it does NOT score. The event wiring lives in the template (DOM), but this
+ * pure translation is unit-tested against the shipped module. ─────────── */
+
+test("cards render draggable so the matrix drag can start", () => {
+  const html = MX.matrixHtml([card("a", 3, 3)]);
+  assert.equal(html.includes('draggable="true"'), true);
+});
+
+test("dropAxes turns a valid cell dataset into integer axes", () => {
+  // The DOM hands data-* through as STRINGS; dropAxes coerces + validates.
+  assert.deepEqual(MX.dropAxes({ urgency: "4", importance: "5" }), {
+    urgency: 4,
+    importance: 5,
+  });
+  assert.deepEqual(MX.dropAxes({ urgency: "1", importance: "1" }), {
+    urgency: 1,
+    importance: 1,
+  });
+});
+
+test("dropAxes rejects any target without valid in-scale coordinates", () => {
+  // Out of the 1..5 scale, non-integer, missing, or non-cell (the tray, the
+  // gaps) -> null. A null result is a NO-OP drop: you cannot un-score, and the
+  // verb requires 1..5 regardless.
+  assert.equal(MX.dropAxes({ urgency: "0", importance: "3" }), null);
+  assert.equal(MX.dropAxes({ urgency: "6", importance: "3" }), null);
+  assert.equal(MX.dropAxes({ urgency: "3.5", importance: "3" }), null);
+  assert.equal(MX.dropAxes({ urgency: "4" }), null); // importance missing
+  assert.equal(MX.dropAxes({}), null);
+  assert.equal(MX.dropAxes(null), null);
+});
