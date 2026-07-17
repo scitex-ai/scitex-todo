@@ -146,6 +146,25 @@ def _build_graph(board) -> dict:
             "created_by": t.get("created_by"),
             "collaborators": t.get("collaborators") or [],
             "subscribers": t.get("subscribers") or [],
+            # ADR-0011 §8 — the urgency×importance matrix layout's two axes
+            # (1-5 each) and the engine's computed `rank`. Forwarded VERBATIM,
+            # like every other Task field above, so the matrix renders from
+            # the same wire format instead of needing a second endpoint.
+            #
+            # `None` until the schema-v5 work lands (scitex-cards' card
+            # scitex-cards-schema-v5-axes-rank-rescore-verb-20260717), which
+            # is why these are `.get()` and not required: 14-matrix.js treats
+            # an absent axis as UNSCORED and renders the card in its tray. It
+            # never coerces a missing axis to a coordinate — a card drawn at a
+            # position nobody chose is a claim nobody made.
+            #
+            # READ-ONLY here. `rank` is the engine's output (ADR-0011 §1:
+            # computed, never asserted); the GUI never writes it, and a drag
+            # (PR 2) goes through the `rescore_task` store verb so the
+            # `rank_changed` card-event still reaches agents' inboxes.
+            "urgency": t.get("urgency"),
+            "importance": t.get("importance"),
+            "rank": t.get("rank"),
         }
         for t in board.tasks
     ]

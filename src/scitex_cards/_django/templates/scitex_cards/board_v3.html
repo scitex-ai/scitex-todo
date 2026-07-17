@@ -49,6 +49,7 @@
 <link rel="stylesheet" href="{% static 'scitex_cards/board_v3/13-details-pane.css' %}">{# 13-details-pane.css: right-hand Details column (filters + legend-aligned stats), scitex-writer convention #}
 <link rel="stylesheet" href="{% static 'scitex_cards/board_v3/09-timeline.css' %}">{# 09-timeline.css: Timeline layout — raster + per-task simple cards (operator TODO 2026-06-17) #}
 <link rel="stylesheet" href="{% static 'scitex_cards/board_v3/11-sticky-wall.css' %}">{# 11-sticky-wall.css: Wall layout (notes + islands) + the shared .stx-flash status-transition glow #}
+<link rel="stylesheet" href="{% static 'scitex_cards/board_v3/14-matrix.css' %}">{# 14-matrix.css: Matrix layout — urgency×importance 5x5 plane + quadrant divide + unscored tray (ADR-0011 §8). (hook-bypass: line-limit) #}
 {# combobox.css (loaded below the page-CSS so its specificity sits ON TOP if needed) #}
 <link rel="stylesheet" href="{% static 'scitex_ui/css/app/combobox.css' %}">
 <script defer src="{% static 'scitex_ui/js/app/combobox.js' %}"></script>
@@ -104,6 +105,18 @@
   todo-board-sticky-wall-view-20260710.
 {% endcomment %}
 <script defer src="{% static 'scitex_cards/board_v3/11-sticky-wall.js' %}"></script>
+{% comment %}
+  14-matrix.js — the urgency×importance matrix layout (ADR-0011 §8): a 5x5
+  plane of (urgency, importance) cells, the quadrant divide drawn at the
+  threshold, and an explicit tray for cards with no axes yet. Pure + node-
+  testable (tests/scitex_cards/test__matrix.js runs the REAL file, not a
+  mirror); publishes window.STX.matrix, and render() falls back to Timeline
+  when absent. READ-ONLY: rank is the engine's output (ADR-0011 §1), so
+  this module deliberately contains no scoring function. Operator build
+  order, card scitex-cards-gui-matrix-view-20260717.
+  (hook-bypass: line-limit — pre-existing 3425-line template.)
+{% endcomment %}
+<script defer src="{% static 'scitex_cards/board_v3/14-matrix.js' %}"></script>
 {% comment %}
   12-hover-tip.js — cursor-OFFSET hover tooltip for any [data-tip] element.
   Replaces the browser's native tooltip (SVG <title> / title=""), which
@@ -290,6 +303,17 @@
                 data-layout="graph" onclick="onLayoutChange('graph')"
                 role="radio" aria-checked="false"
                 title="Dependency / blocker graph (mermaid)">📊 Graph</button>
+        {% comment %}
+          Matrix — urgency×importance quadrants (ADR-0011 §8). The layout
+          itself lives in 14-matrix.js; this is only the toggle.
+          (hook-bypass: line-limit — this template is 3425 lines, already
+          over the 1024 cap before this change; splitting it is tracked
+          separately rather than smuggled into the matrix PR.)
+        {% endcomment %}
+        <button type="button" class="filt-layout-btn" id="f-layout-matrix"
+                data-layout="matrix" onclick="onLayoutChange('matrix')"
+                role="radio" aria-checked="false"
+                title="Matrix — urgency × importance quadrants (I urgent+important / II important / III urgent / IV neither)">🎯 Matrix</button>
       </div>
     </span>
     </div>{# end VIEW group #}
@@ -700,7 +724,8 @@
     // (operator), Stale on 2026-07-10. `const` declarations are NOT hoisted
     // into the TDZ-free zone, so these must be declared ABOVE the STATE
     // initializer, which calls normalizeLayout() at boot.
-    const VALID_LAYOUTS = ["timeline", "wall", "graph"];
+    // (hook-bypass: line-limit — pre-existing 3425-line template.)
+    const VALID_LAYOUTS = ["timeline", "wall", "graph", "matrix"];
     const DEFAULT_LAYOUT = "timeline";
 
     // Owner SSOT (client mirror of scitex_cards._owner.card_owner) — the
@@ -1547,6 +1572,13 @@
         // Unreachable from the UI (button removed 2026-07-10); the
         // render path stays as shared code for the /stale endpoint.
         _renderStaleView(canvas);
+      } else if (layout === "matrix" && window.STX && window.STX.matrix) {
+        // Matrix — urgency×importance quadrants (ADR-0011 §8, 14-matrix.js).
+        // Same filtered `visible` set as every other layout; the matrix adds
+        // no predicates of its own. Falls through to Timeline when the
+        // deferred module hasn't executed yet (same stance as Wall).
+        // (hook-bypass: line-limit — pre-existing 3425-line template.)
+        _renderMatrixView(canvas, visible);
       } else if (layout === "wall" && window.STX && window.STX.stickyWall) {
         // Wall layout — sticky notes clustered by assignee (11-sticky-wall.js).
         // Uses the SAME filtered `visible` set the filter bar produces. The
@@ -1655,6 +1687,16 @@
       groupBy: (() => { try { return localStorage.getItem("scitex-todo:wall-group") || "assignee"; } catch { return "assignee"; } })(),
       selected: (() => { try { return localStorage.getItem("scitex-todo:wall-selected") || null; } catch { return null; } })(),
     };
+    // Matrix layout (ADR-0011 §8). Read-only in this PR: it RENDERS the
+    // urgency/importance axes the store carries and the rank the engine
+    // computed. It does not score — a JS-side f(u,i) would be a second
+    // implementation of the engine and would lie the moment the weights
+    // moved. Drag-to-re-score lands in PR 2 against the `rescore_task`
+    // store verb (so the `rank_changed` event still reaches agents).
+    // (hook-bypass: line-limit — pre-existing 3425-line template.)
+    function _renderMatrixView(canvas, visible) {
+      canvas.innerHTML = window.STX.matrix.matrixHtml(visible, {});
+    }
     function _renderWallView(canvas, visible) {
       const edges = (STATE.graph && STATE.graph.edges) || [];
       canvas.innerHTML = window.STX.stickyWall.wallHtml(visible, edges, {
