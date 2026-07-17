@@ -157,9 +157,9 @@ store, and the adapters.
 
 ---
 
-## 3.5 — Cross-cutting (串刺し / *kushizashi*) is first-class
+## 3.5 — Cross-cutting (*kushizashi*, the skewer view) is first-class
 
-The operator's framing — a 串刺し ("skewered") view that pierces ALL
+The operator's framing — a *kushizashi* ("skewered") view that pierces ALL
 projects and ALL hosts at once — is the LOAD-BEARING use case for the
 universal task layer. Both axes are first-class:
 
@@ -170,14 +170,14 @@ universal task layer. Both axes are first-class:
 | **Across projects** | One user-level store at `~/.scitex/todo/tasks.yaml` holds tasks from EVERY project. A per-project store at `<project>/.scitex/todo/tasks.yaml` is an **override** for project-internal lists the operator doesn't want in the cross-cut view. Precedence: project store > user store, when both exist (per the SciTeX local-state-directories convention). |
 | **Across hosts**    | The user-level store is per-host by physical location (`~/.scitex` lives on each host's local filesystem). A **git-backed sync substrate** linearizes the per-host writes into one canonical history, so reading the store on host B sees host A's edits after a `git pull`. |
 
-The 串刺し view is what falls out when both axes are unfiltered:
+The skewer view is what falls out when both axes are unfiltered:
 `list --scope ''` (no scope filter) on a fresh-pulled store shows every
 task on every project on every host — one skewer, all targets.
 
 ### Why this re-justifies the GitHub backend (over sac listen DB)
 
 The cross-host axis is the one that forced the storage decision. Section 3
-listed six general reasons; the 串刺し requirement specifically demands
+listed six general reasons; the skewer-view requirement specifically demands
 two more guarantees that the sac listen DB cannot give:
 
 7. **The canonical view must be readable when offline.** An operator on
@@ -212,7 +212,7 @@ scitex-todo add memo-call-sarah "Call Sarah re: grant" --scope user:operator
 # All my tasks on this host
 scitex-todo list-tasks --scope "host:$(hostname)"
 
-# All my tasks across every host — the 串刺し view
+# All my tasks across every host — the skewer view
 scitex-todo list-tasks --scope ""
 ```
 

@@ -49,7 +49,7 @@ truth, one wire, zero memory.
    spec.yaml.
 6. **Task-creation hook**: Claude Code hook so creation
    auto-lands in `.scitex/todo/`.
-7. **Periodic reminders / nudges**: "お尻を叩く" daemon for stale
+7. **Periodic reminders / nudges**: a kick-in-the-pants daemon for stale
    in_progress + assignee digests.
 8. **Push-notif inter-agent status**: state changes notify
    dependents via sac a2a push.

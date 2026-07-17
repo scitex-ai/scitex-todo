@@ -36,7 +36,7 @@ whole purpose.
 This sits inside the broader **fail-loud principle** the operator + lead
 explicitly named on 2026-06-06:
 
-- Operator TG 9517: "形を約束して" — promise the shape and ENFORCE it.
+- Operator TG 9517 (translated): "promise the shape" — and ENFORCE it.
   scitex-todo should be a high-quality package; the defined schema must
   be structurally enforceable, not just documented.
 - Lead a2a `2c7a431d` (compute-state-deps design nod): "kind: use a

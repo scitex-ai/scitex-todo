@@ -17,7 +17,7 @@ backend graph payload (`handlers/graph.py`) were updating in lockstep;
 the Gitea field-map in HANDOFF.md tracks every field. **Four places**
 encoding the same schema. Drift is inevitable.
 
-Operator TG 9517 ("形を約束して") + lead a2a `28967019` named this
+Operator TG 9517 ("promise the shape", translated) + lead a2a `28967019` named this
 explicitly: the defined schema must be **structurally enforceable**,
 and the validator + UI render + Gitea field-map + future README-
 frontmatter (HANDOFF.md SSoT DATA LAYOUT pivot) must read from
