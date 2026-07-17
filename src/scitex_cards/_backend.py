@@ -253,23 +253,24 @@ class LocalBackend:
 _LOCAL_BACKEND = LocalBackend()
 
 
-def get_backend() -> LocalBackend:
+def get_backend():
     """Resolve the active backend from the environment, per call.
 
     ``SCITEX_CARDS_HUB_URL`` unset (the default everywhere today) returns the
     shared :class:`LocalBackend` — behavior identical to before the seam.
-    Set, it raises :class:`BackendUnavailableError` until the HTTP client
-    ships: refusing loudly beats silently writing a second store.
+    Set, it returns a fresh :class:`scitex_cards._backend_http.HubBackend`
+    bound to that URL (fresh per call, deliberately: the client re-reads
+    the token file lazily, so a rotation on the hub is picked up without
+    any restart). A hub that cannot actually be used fails LOUD at the
+    first call (:class:`HubBackendError`, a
+    :class:`BackendUnavailableError` subclass) — never a silent local
+    fallback, which would write a store the hub never sees.
     """
     url = os.environ.get(_HUB_URL_ENV)
     if url:
-        raise BackendUnavailableError(
-            f"{_HUB_URL_ENV}={url!r} is set, but this build has no HTTP hub "
-            "backend yet (it ships with the `scitex-cards serve` line). "
-            "Unset the variable to use the local store, or upgrade "
-            "scitex-cards. Refusing a silent local fallback: it would write "
-            "a store the hub never sees."
-        )
+        from ._backend_http import HubBackend
+
+        return HubBackend(url)
     return _LOCAL_BACKEND
 
 
