@@ -5,7 +5,13 @@
  *   - GET  /dm/thread/<peer>?mark_read=1 -> open thread (poll ~5s)
  *   - POST /dm/thread/<peer>        -> compose (from=operator)
  *
- * Kept in a separate static file per the board's line-limit discipline
+ * The thread pane repaints INCREMENTALLY: every poll is diffed against what
+ * is already on screen, so an unchanged poll paints nothing, an arriving
+ * message appends only itself, and reading back through history is not
+ * interrupted every 5s. chat_diff.js holds that decision as pure, DOM-free
+ * functions; this file owns the DOM and the network.
+ *
+ * Kept in a separate static file per the GUI's line-limit discipline
  * (js <512 lines). Plain browser JS, no build step, no dependencies.
  */
 (function () {
@@ -14,9 +20,17 @@
   var THREAD_POLL_MS = 5000;
   var LIST_POLL_MS = 10000;
 
+  /* How close to the bottom still counts as "at the bottom" when deciding
+   * whether new messages follow down. A few px of rounding drift must not
+   * strand the operator off the newest message. */
+  var STICK_THRESHOLD_PX = 40;
+
+  var diff = window.ChatDiff;
+
   var state = {
     peer: null, // currently open peer name, or null
-    lastCount: -1, // message count last rendered (skip redundant paints)
+    rendered: [], // fingerprints of the messages in the DOM, in order
+    emptyShown: false, // the pane is currently the "no messages yet" hint
     timerThread: null,
     timerList: null,
   };
@@ -108,25 +122,73 @@
 
   // ---- thread pane -------------------------------------------------------
 
-  function renderMessages(messages) {
-    $messages.textContent = "";
-    if (!messages.length) {
-      $messages.appendChild(
-        el("div", "hint", "No messages yet — say hello below."),
-      );
-      return;
-    }
-    messages.forEach(function (m) {
-      var mine = m.from === "operator";
-      var wrap = el("div", "msg " + (mine ? "from-operator" : "from-agent"));
-      wrap.appendChild(el("div", "bubble", m.body || ""));
-      wrap.appendChild(el("div", "meta", m.from + " · " + shortTs(m.ts)));
-      $messages.appendChild(wrap);
-    });
-    $messages.scrollTop = $messages.scrollHeight;
+  function messageNode(m) {
+    var mine = m.from === "operator";
+    var wrap = el("div", "msg " + (mine ? "from-operator" : "from-agent"));
+    wrap.appendChild(el("div", "bubble", m.body || ""));
+    wrap.appendChild(el("div", "meta", m.from + " · " + shortTs(m.ts)));
+    return wrap;
   }
 
-  function refreshThread(force) {
+  function atBottom() {
+    return diff.shouldStickToBottom(
+      $messages.scrollTop,
+      $messages.scrollHeight,
+      $messages.clientHeight,
+      STICK_THRESHOLD_PX,
+    );
+  }
+
+  function showHint(text) {
+    $messages.textContent = "";
+    $messages.appendChild(el("div", "hint", text));
+  }
+
+  function renderEmpty() {
+    if (state.emptyShown && !state.rendered.length) return; // already shown
+    showHint("No messages yet — say hello below.");
+    state.rendered = [];
+    state.emptyShown = true;
+  }
+
+  /* Bring the pane in line with `messages` by the smallest edit that will
+   * do, holding the operator's scroll position unless they were already at
+   * the bottom. */
+  function applyPlan(plan, messages) {
+    if (plan.mode === "noop") return;
+
+    // Measure BEFORE mutating — afterwards the heights have already moved.
+    var stick = atBottom();
+    var prevTop = $messages.scrollTop;
+
+    if (plan.mode === "rebuild") {
+      $messages.textContent = "";
+      messages.forEach(function (m) {
+        $messages.appendChild(messageNode(m));
+      });
+    } else {
+      // append: the pane may still hold a hint ("Loading…" on open, or the
+      // empty-thread hint before the first message lands).
+      if (state.emptyShown || !state.rendered.length) $messages.textContent = "";
+      plan.added.forEach(function (m) {
+        $messages.appendChild(messageNode(m));
+      });
+    }
+
+    state.rendered = plan.fingerprints;
+    state.emptyShown = false;
+
+    if (stick) {
+      $messages.scrollTop = $messages.scrollHeight;
+    } else if (plan.mode === "rebuild") {
+      // A rebuild replaced every node, taking the scroll offset with it.
+      // An append leaves everything above it untouched, so it needs no
+      // restore.
+      $messages.scrollTop = prevTop;
+    }
+  }
+
+  function refreshThread() {
     if (!state.peer) return;
     var peer = state.peer;
     getJSON("/dm/thread/" + encodeURIComponent(peer) + "?mark_read=1")
@@ -134,10 +196,11 @@
         if (state.peer !== peer) return; // switched away mid-flight
         clearError();
         var msgs = data.messages || [];
-        if (force || msgs.length !== state.lastCount) {
-          state.lastCount = msgs.length;
-          renderMessages(msgs);
+        if (!msgs.length) {
+          renderEmpty();
+          return;
         }
+        applyPlan(diff.planRender(state.rendered, msgs), msgs);
       })
       .catch(function (err) {
         showError("Thread failed: " + err.message);
@@ -146,20 +209,20 @@
 
   function openThread(peer) {
     state.peer = peer;
-    state.lastCount = -1;
+    // The pane is cleared just below, so the rendered set must be cleared
+    // with it — the two describe one fact and must not drift apart.
+    state.rendered = [];
+    state.emptyShown = false;
     $title.innerHTML = "";
     $title.appendChild(document.createTextNode("Thread with "));
     $title.appendChild(el("b", null, peer));
     $body.disabled = false;
     $send.disabled = false;
-    $messages.textContent = "";
-    $messages.appendChild(el("div", "hint", "Loading…"));
-    refreshThread(true);
+    showHint("Loading…");
+    refreshThread();
     refreshAgents(); // repaint the active highlight + clear the badge
     if (state.timerThread) clearInterval(state.timerThread);
-    state.timerThread = setInterval(function () {
-      refreshThread(false);
-    }, THREAD_POLL_MS);
+    state.timerThread = setInterval(refreshThread, THREAD_POLL_MS);
   }
 
   // ---- compose -----------------------------------------------------------
@@ -188,7 +251,7 @@
         }
         $body.value = "";
         clearError();
-        refreshThread(true);
+        refreshThread();
         refreshAgents();
       })
       .catch(function (err) {

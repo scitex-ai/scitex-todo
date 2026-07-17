@@ -140,8 +140,10 @@ def chat_page(request):
     ``fleet-agent-direct-message-board-pane-20260707``): agent list +
     per-agent thread + compose + history. Server-rendered template
     (``chat.html``, separate from the oversized ``board_v3.html``) whose JS
-    lives in ``static/scitex_cards/chat/chat.js`` and polls the ``/dm/*``
-    JSON endpoints (:mod:`.handlers.dm`) every ~5s.
+    lives in ``static/scitex_cards/chat/`` — ``chat_diff.js`` (pure render
+    planning) then ``chat.js`` (DOM + network) — and polls the ``/dm/*``
+    JSON endpoints (:mod:`.handlers.dm`) every ~5s, repainting the thread
+    incrementally.
     """
     from django.template.loader import render_to_string
 
