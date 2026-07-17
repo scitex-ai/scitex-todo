@@ -66,10 +66,14 @@ def test_no_module_imports_sac_or_telegrammer_anywhere():
 
 def test_crud_surface_runs_without_loading_forbidden_modules(tmp_path, monkeypatch):
     """Exercise the real store surface; no forbidden module may load laterally."""
-    # Arrange
+    # Arrange — hermetic env: pin BOTH the store and the identity, so the
+    # test neither reads a live store nor silently depends on the agent id
+    # of whoever runs it (it passed locally and failed on CI for exactly
+    # that reason: add_task resolves its creator from the env).
     monkeypatch.setenv(
         "SCITEX_TODO_TASKS_YAML_SHARED", str(tmp_path / "tasks.yaml")
     )
+    monkeypatch.setenv("SCITEX_TODO_AGENT_ID", "decoupling-gate-test")
     from scitex_cards import _store
 
     # Act — a representative write/read/mutate cycle.
