@@ -843,4 +843,45 @@ class TestStaleReviewPanel:
         assert ".stale-archive-btn" in css_text
 
 
+# -----------------------------------------------------------------------------
+# Matrix drag -> re-score (ADR-0011 §8; PR 2 of card
+# scitex-cards-gui-matrix-view-20260717)
+# -----------------------------------------------------------------------------
+
+
+class TestMatrixDragRescore:
+    """Pins for the urgency×importance matrix drag-to-re-score wiring.
+
+    The drop arithmetic (`dropAxes`) is unit-tested in test__matrix.js, but
+    the DOM event wiring (the delegated drag listeners + the /rescore fetch)
+    is inline template code with no browser-level test — exactly the code the
+    board_v3 template split could silently drop between merge and the next
+    wave. These pins are its guard.
+    """
+
+    def test_cards_render_draggable(self, board_js):
+        # 14-matrix.js emits draggable cards so a matrix drag can start.
+        assert 'draggable="true"' in board_js
+
+    def test_drop_axes_helper_present(self, board_js):
+        # The pure cell-coordinate -> validated axes translation (module-side,
+        # node-tested); reads coordinates, never scores.
+        assert "function dropAxes" in board_js
+
+    def test_rescore_fetch_helper_defined(self, board_js):
+        # The client write helper that POSTs only the dropped axes.
+        assert "async function rescoreCard" in board_js
+
+    def test_rescore_posts_to_the_rescore_endpoint(self, board_js):
+        # Drag goes through /rescore -> the rescore_task verb, so the
+        # rank_changed event still reaches agents (never a handler-flock write).
+        assert '"/rescore"' in board_js
+
+    def test_drag_drop_listener_wired(self, board_js):
+        # The delegated drop listener that turns a drop into a rescore —
+        # delegated on `document` because the matrix canvas is innerHTML-
+        # replaced every render.
+        assert 'addEventListener("drop"' in board_js
+
+
 # EOF

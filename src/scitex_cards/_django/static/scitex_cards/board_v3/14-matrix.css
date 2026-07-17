@@ -144,12 +144,30 @@
   color: var(--text);
   font-size: 11px;
   line-height: 1.3;
-  cursor: pointer;
+  cursor: grab;
   min-width: 0;
 }
 
 .mx-card:hover {
   border-color: var(--purple);
+}
+
+/* ── Drag → re-score (PR 2). The card is draggable onto any grid cell; the
+ * cell IS the (urgency, importance) target, so dropping sets both axes. The
+ * dead `.card--dragging` classes in 01-filterbar.css target `.card`, not
+ * `.mx-card`, so the matrix carries its own drag state here. */
+.mx-card:active {
+  cursor: grabbing;
+}
+
+.mx-card--dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.mx-cell--drop {
+  background: rgba(76, 175, 80, 0.12);
+  box-shadow: 0 0 0 2px var(--green) inset;
 }
 
 .mx-card__rank {
