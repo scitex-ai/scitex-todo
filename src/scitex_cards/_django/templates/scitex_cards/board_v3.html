@@ -118,6 +118,15 @@
 {% endcomment %}
 <script defer src="{% static 'scitex_cards/board_v3/14-matrix.js' %}"></script>
 {% comment %}
+  15-dateinfo.js — date extraction + proximity helpers (dateInfo and its
+  parsers), extracted VERBATIM from the inline <script> as split PR-1. Pure,
+  DOM-free, node-testable against the shipped file (tests/scitex_cards/
+  test__dateinfo.js); publishes window.STX.dateInfo. The filter predicate
+  passes() consumes it at call time. Behaviour unchanged.
+  (hook-bypass: line-limit — pre-existing over-cap template.)
+{% endcomment %}
+<script defer src="{% static 'scitex_cards/board_v3/15-dateinfo.js' %}"></script>
+{% comment %}
   12-hover-tip.js — cursor-OFFSET hover tooltip for any [data-tip] element.
   Replaces the browser's native tooltip (SVG <title> / title=""), which
   renders under the cursor and covers the dot or note being pointed at
@@ -918,7 +927,9 @@
       // Date filter (operator TG 440 / 442): proximity buckets derived
       // from the next future date parsed out of the title.
       if (f.date) {
-        const di = dateInfo(t);
+        // Date helpers extracted to 15-dateinfo.js; call-time lookup so
+        // script load order is irrelevant. (hook-bypass: line-limit.)
+        const di = window.STX.dateInfo.dateInfo(t);
         if (f.date === "undated" && di) return false;
         if (f.date === "overdue" && !(di && di.daysFromNow < 0)) return false;
         if (f.date === "today" && !(di && di.daysFromNow === 0)) return false;
@@ -1138,76 +1149,10 @@
     }
 
     // === Date extraction + proximity color (operator TG 440/442) =====
-    // Pulls every YYYY-MM-DD pattern out of the title (also YYYY/MM/DD)
-    // and picks the NEXT future date (or, if all dates are past, the
-    // most recent past one). Renders an inline 📅 pill colored by
-    // proximity: red ≤3d, amber ≤7d, blue ≤30d, plain otherwise.
-    const _DATE_RX = /(20\d{2})[-\/](\d{1,2})[-\/](\d{1,2})/g;
-    function _parseAllDates(title) {
-      const out = [];
-      let m;
-      _DATE_RX.lastIndex = 0;
-      while ((m = _DATE_RX.exec(title)) !== null) {
-        const y = +m[1], mo = +m[2], d = +m[3];
-        const dt = new Date(y, mo - 1, d);
-        if (!isNaN(dt) && dt.getMonth() === mo - 1) out.push(dt);
-      }
-      return out;
-    }
-    function dateInfo(t) {
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
-      // P4 (lead approved 2026-06-12) — prefer the SERVER-COMPUTED
-      // `deadline_next` over the raw `deadline` over the title-parsed
-      // date. The server expands recurring + multi forms before the wire,
-      // so the FE never re-derives the next occurrence. Back-compat:
-      // tasks without any of those fall through to the existing _DATE_RX
-      // title scan. (hook-bypass: line-limit — see REFACTORING.md.)
-      const next = t.deadline_next || t.deadline;
-      if (next) {
-        const dl = new Date(next);
-        if (!isNaN(dl)) {
-          dl.setHours(0, 0, 0, 0);
-          const days = Math.round((dl - now) / 86400000);
-          return {
-            date: dl, daysFromNow: days, all: [dl],
-            source: t.deadline_next ? "deadline_next" : "deadline",
-            // Pass the recurring info forward so datePillHtml can append
-            // "every Nu" — extracted lazily from the raw deadline.
-            repeater: _extractRepeaterSuffix(t.deadline) ||
-                      _extractRepeaterSuffix(_firstRecurringDeadline(t)),
-          };
-        }
-      }
-      const title = (t.title || "") + " " + (t.task || "");
-      const dates = _parseAllDates(title);
-      if (dates.length === 0) return null;
-      const future = dates.filter(d => d >= now).sort((a, b) => a - b);
-      const pick = future.length ? future[0] : dates.sort((a, b) => b - a)[0];
-      const days = Math.round((pick - now) / 86400000);
-      return { date: pick, daysFromNow: days, all: dates, source: "title" };
-    }
-
-    // P4 PR3: scan the raw deadline (or deadlines[]) for an org repeater
-    // suffix like " +1w" / " ++2m" and return a human-readable form
-    // ("every 1w") for the date-pill label. Returns null when absent.
-    // (hook-bypass: line-limit.)
-    function _extractRepeaterSuffix(rawDeadline) {
-      if (!rawDeadline) return null;
-      const m = String(rawDeadline).match(/\s\+\+?(\d+)([dwmy])$/);
-      if (!m) return null;
-      return `every ${m[1]}${m[2]}`;
-    }
-    function _firstRecurringDeadline(t) {
-      const arr = Array.isArray(t.deadlines) ? t.deadlines : [];
-      for (const e of arr) {
-        if (typeof e === "string" && /\s\+\+?\d+[dwmy]$/.test(e)) {
-          return e;
-        }
-      }
-      return null;
-    }
-
+    // Pulls every YYYY-MM-DD out of the title, picks the NEXT future date,
+    // and colors the 📅 pill by proximity. EXTRACTED to 15-dateinfo.js
+    // (window.STX.dateInfo) as split PR-1 — pure, node-testable, unchanged
+    // behaviour. Consumed at call time; see passes(). (hook-bypass: line-limit.)
 
     function populateFilters() {
       if (!STATE.graph) return;
