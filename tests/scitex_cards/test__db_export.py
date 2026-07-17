@@ -171,3 +171,107 @@ def test_export_preserves_drained_empty_inboxes(tmp_path):
     # Assert — the drained key is present, as an empty list.
     assert out["inboxes"]["drained"] == []
     assert set(out["inboxes"]) == {"busy", "drained"}
+
+
+def test_snapshot_refresh_imports_then_exports(tmp_path, monkeypatch):
+    """`db snapshot --refresh` = rebuild from yaml, export, commit — one command.
+
+    The cadence job's exact invocation shape (systemd ExecStart runs a
+    single argv — no shell `&&` available), so the flag must do both halves
+    itself.
+    """
+    from click.testing import CliRunner
+
+    from scitex_cards._cli import main
+
+    # Arrange — canonical yaml resolved via env, like the host cadence run.
+    doc = {"tasks": [{"id": "t", "title": "t", "status": "done"}]}
+    store = tmp_path / "tasks.yaml"
+    store.write_text(safe_dump(doc), encoding="utf-8")
+    monkeypatch.setenv("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
+    db = tmp_path / "cards.db"
+    snap = tmp_path / "snapshots"
+    # Act
+    result = CliRunner().invoke(
+        main,
+        ["db", "snapshot", "--refresh", "--db", str(db), "--dir", str(snap)],
+    )
+    # Assert — refreshed, exported, committed; read the export back.
+    assert result.exit_code == 0, result.output
+    assert "refreshed DB from YAML" in result.output
+    assert safe_load((snap / "tasks.yaml").read_text()) == doc
+    assert (snap / ".git").exists()
+
+
+def test_snapshot_push_lands_in_the_remote(tmp_path, monkeypatch):
+    """--push delivers the commit to origin — verified by reading the BARE
+    repo back, not by exit code (the rail's job is the off-site copy)."""
+    import subprocess
+
+    from click.testing import CliRunner
+
+    from scitex_cards._cli import main
+
+    # Arrange — a store, a bare origin, and a snapshot dir wired to it.
+    doc = {"tasks": [{"id": "t", "title": "t", "status": "done"}]}
+    store = tmp_path / "tasks.yaml"
+    store.write_text(safe_dump(doc), encoding="utf-8")
+    monkeypatch.setenv("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
+    bare = tmp_path / "offsite.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+    db = tmp_path / "cards.db"
+    snap = tmp_path / "snapshots"
+    runner = CliRunner()
+    first = runner.invoke(
+        main,
+        ["db", "snapshot", "--refresh", "--db", str(db), "--dir", str(snap)],
+    )
+    assert first.exit_code == 0, first.output
+    subprocess.run(
+        ["git", "-C", str(snap), "remote", "add", "origin", str(bare)],
+        check=True,
+    )
+    # Act
+    result = runner.invoke(
+        main,
+        [
+            "db", "snapshot", "--refresh", "--push",
+            "--db", str(db), "--dir", str(snap),
+        ],
+    )
+    # Assert — the BARE side has the snapshot commit.
+    assert result.exit_code == 0, result.output
+    log = subprocess.run(
+        ["git", "-C", str(bare), "log", "--oneline", "-1"],
+        capture_output=True, text=True, check=True,
+    )
+    assert "snapshot:" in log.stdout
+
+
+def test_snapshot_push_without_remote_is_reported_local_only(tmp_path, monkeypatch):
+    """No remote yet = legitimate local-only, exit 0, said out loud."""
+    import json as _json
+
+    from click.testing import CliRunner
+
+    from scitex_cards._cli import main
+
+    # Arrange
+    doc = {"tasks": [{"id": "t", "title": "t", "status": "done"}]}
+    store = tmp_path / "tasks.yaml"
+    store.write_text(safe_dump(doc), encoding="utf-8")
+    monkeypatch.setenv("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
+    # Act
+    result = CliRunner().invoke(
+        main,
+        [
+            "db", "snapshot", "--refresh", "--push", "--json",
+            "--db", str(tmp_path / "cards.db"),
+            "--dir", str(tmp_path / "snapshots"),
+        ],
+    )
+    # Assert
+    assert result.exit_code == 0, result.output
+    report = _json.loads(result.output.strip().splitlines()[-1])
+    assert report["pushed"] is False
+    assert "no remote" in report["push_detail"]

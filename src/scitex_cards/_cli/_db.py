@@ -227,14 +227,49 @@ def db_export_cmd(
     default=None,
     help="Snapshot directory (default: <db_dir>/snapshots; its own git repo).",
 )
+@click.option(
+    "--refresh",
+    is_flag=True,
+    help=(
+        "Rebuild the DB from the canonical YAML first (import), then "
+        "snapshot. The honest pre-cutover cadence: import IS the freshness "
+        "step while the yaml is still canonical; after the flip, drop it."
+    ),
+)
+@click.option(
+    "--push",
+    is_flag=True,
+    help=(
+        "Push the snapshot repo to its remote after committing. No remote "
+        "configured = reported local-only (exit 0); a FAILED push exits 1 — "
+        "the rail's job is the off-site copy, so a silent local-only "
+        "success would be a lie."
+    ),
+)
 @click.option("--json", "as_json", is_flag=True, help="Emit the snapshot report as JSON.")
-def db_snapshot_cmd(db_path: str | None, snap_dir: str | None, as_json: bool) -> None:
+def db_snapshot_cmd(
+    db_path: str | None,
+    snap_dir: str | None,
+    refresh: bool,
+    push: bool,
+    as_json: bool,
+) -> None:
     """Export to the snapshot dir and commit the export in its own git repo."""
     import subprocess
     from pathlib import Path
 
     from .._db import resolve_db_path
     from .._db_export import export_yaml
+
+    if refresh:
+        from .._db_bootstrap import import_from_yaml
+
+        summary = import_from_yaml(db_path=db_path)
+        if not as_json:
+            click.echo(
+                f"# refreshed DB from YAML: {summary['yaml_path']} -> "
+                f"{summary['db_path']} ({summary['tasks']} tasks)"
+            )
 
     root = (
         Path(snap_dir).expanduser()
@@ -267,6 +302,29 @@ def db_snapshot_cmd(db_path: str | None, snap_dir: str | None, as_json: bool) ->
     # legitimate outcome, reported as such rather than swallowed.
     report["committed"] = committed.returncode == 0
     report["snapshot_dir"] = str(root)
+
+    if push:
+        has_remote = bool(_git("remote").stdout.strip())
+        if not has_remote:
+            # Local-only mode is legitimate BEFORE a remote is wired; the
+            # report says so instead of pretending an off-site copy exists.
+            report["pushed"] = False
+            report["push_detail"] = "no remote configured — snapshot is local-only"
+        else:
+            # -u origin HEAD: works on the FIRST push to a freshly-wired
+            # remote (no upstream yet) and every push after.
+            pushed = _git("push", "-q", "-u", "origin", "HEAD")
+            report["pushed"] = pushed.returncode == 0
+            report["push_detail"] = (pushed.stderr or pushed.stdout).strip()
+            if not report["pushed"]:
+                # A failed push means the backup did NOT go off-site. That is
+                # the rail's whole job — fail LOUD so the cron tick reads red.
+                _emit = json.dumps(report) if as_json else (
+                    f"::error:: snapshot committed LOCALLY but push FAILED: "
+                    f"{report['push_detail']}"
+                )
+                click.echo(_emit)
+                raise SystemExit(1)
 
     if as_json:
         click.echo(json.dumps(report))
