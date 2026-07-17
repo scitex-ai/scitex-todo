@@ -119,7 +119,43 @@ scitex-cards DEFINES a port; it never imports sac. Two surfaces:
 With no adapter present the board degrades to today's pull mode (null
 scheduler) and stays fully usable — the S7 CI gate keeps this honest.
 
-### 5. The two-axis view (urgency × importance)
+### 5. A card is a promise, not an outcome — and the API must say so
+
+Operator diagnosis (2026-07-17, translated): "isn't the problem that the
+exit code becomes 0 when you write a card?" Writing a card currently
+returns the same green as finishing something, so the caller's loop —
+and the caller's sense of completion — reads card-written as done. The
+write's exit code stays honest (the write DID succeed; lying about that
+would mirror the same defect), but the RESPONSE becomes a dispatch
+statement, not a receipt: "queued at rank N of M; owner X; this card is
+now OWED, not done." The enforcement then lives where the loophole
+actually lives:
+
+### 6. The stop hook — going idle while owing work is refused
+
+Operator mechanism (same message, translated): "scitex-cards provides a
+hook; it is caught by the agent's stop hook; stopping is not permitted."
+cards EXPOSES the check; the agent harness wires it (sac's half):
+
+```
+scitex-cards agent may-stop --agent <id> --json
+  -> {"may_stop": bool, "reason": str,
+      "blocking_cards": [{id, state, since, why_yours}]}
+```
+
+LEGAL stops: the agent owns no running/dispatched card; or every owned
+open card is blocked on a NAMED edge. Converting running →
+blocked(WHO, WHAT, DEADLINE) is the deadlock escape — allowed, audited,
+and it transfers the escalation clock to the owed party. ILLEGAL: owning
+running or dispatched work and going idle — the one state to kill. A
+refusal always names the card and its age: an unexplained refusal is
+unfalsifiable and teaches agents to fight the hook. Decoupling holds: it
+is a QUESTION cards answers, never a rule cards enforces remotely — no
+hook installed means today's behavior. A nudge is a message an agent may
+decline; a stop-hook refusal needs no cooperation. Only the second kind
+works, by the evidence of this very night.
+
+### 7. The two-axis view (urgency × importance)
 
 A new board view renders the Eisenhower quadrant; dragging a card in the
 quadrant re-scores it and therefore re-ranks it — the matrix is the HUMAN
