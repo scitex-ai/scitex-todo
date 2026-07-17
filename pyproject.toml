@@ -179,7 +179,19 @@ testpaths = ["tests"]
 #
 # If you ever add a genuinely anyio-driven test, drop this flag and give that ONE mechanism
 # ownership of the loop — do not let two things manage event loops in the same session.
-addopts = "-x -q -p no:anyio"
+# `-x` (fail-fast) — KEPT, but know what it does when you read a run: it stops at the
+# FIRST failure, so a full-suite run silently TRUNCATES there and the output reads as
+# "only one thing is broken" when more may be. That is intentional (a fast CI signal), not
+# a bug — but do not mistake a truncated run for a clean one.
+#
+# `-q` — DELETED ON PURPOSE (2026-07-18); DO NOT RE-ADD. pytest's `-q` is ADDITIVE: any
+# caller that passes its own `-q` — the obvious thing to do — then runs `-qq`, which
+# SUPPRESSES the final summary line while the dots and `[100%]` still render. The result is
+# a run that LOOKS healthy and reports NOTHING. Two agents destroyed real test evidence to
+# exactly this in one night (a base rate, not carelessness), because the tool makes the
+# obvious action silently eat the one artifact you use to decide whether to ship. Quiet is
+# now OPT-IN: pass `-q` yourself when you want it; the default prints a summary you can trust.
+addopts = "-x -p no:anyio"
 
 [tool.coverage.run]
 parallel = true
