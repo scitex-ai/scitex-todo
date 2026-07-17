@@ -197,7 +197,11 @@ def provide_jobs() -> list[JobSpec]:
             name="scitex-cards.snapshot",
             kind="cron",
             schedule="7 * * * *",
-            command="scitex-cards db snapshot --refresh",
+            # --push: the rail's job is the OFF-SITE copy (private repo
+            # ywatanabe1989/scitex-cards-cards, operator-chosen 2026-07-17);
+            # a failed push exits 1 so the cron tick reads red, never
+            # "backed up" with a local-only commit.
+            command="scitex-cards db snapshot --refresh --push",
             description=(
                 "scitex-cards snapshot — hourly backup rail (ADR-0010): "
                 "rebuild cards.db from the canonical store, export to YAML "
