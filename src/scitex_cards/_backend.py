@@ -49,6 +49,7 @@ BACKEND_VERBS: tuple[str, ...] = (
     "resolve_task",
     "reopen_task",
     "reassign_task",
+    "rescore_task",
     "set_edge",
     "set_collaborator",
     "set_subscriber",
@@ -144,6 +145,19 @@ class LocalBackend:
         by: str | None = None,
     ) -> dict:
         return _store.reassign_task(tasks_path, task_id, new_owner, by=by)
+
+    def rescore_task(
+        self,
+        tasks_path: Any,
+        task_id: str,
+        *,
+        urgency: int,
+        importance: int,
+        by: str | None = None,
+    ) -> dict:
+        return _store.rescore_task(
+            tasks_path, task_id, urgency=urgency, importance=importance, by=by
+        )
 
     # -- relationship verbs --------------------------------------------- #
 

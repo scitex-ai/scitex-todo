@@ -345,6 +345,7 @@ from ._store_mutate import (  # noqa: E402,F401  (re-export)
     add_task,
     update_task,
 )
+from ._store_rescore import rescore_task  # noqa: E402,F401  (re-export)
 from ._store_relations import (  # noqa: E402,F401  (re-export)
     _set_list_member,
     set_collaborator,
@@ -366,6 +367,7 @@ __all__ = [
     "reassign_all",
     "reassign_task",
     "reopen_task",
+    "rescore_task",
     "resolve_store",
     "resolve_task",
     "restore_task",

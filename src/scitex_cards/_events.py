@@ -71,6 +71,7 @@ class EventType:
     STATUS_CHANGED = "status_changed"
     COMMENTED = "commented"
     COMPLETED = "completed"
+    RANK_CHANGED = "rank_changed"
     COMMITTED = "committed"
     PUSHED = "pushed"
     MERGED = "merged"
@@ -89,6 +90,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
         EventType.STATUS_CHANGED,
         EventType.COMMENTED,
         EventType.COMPLETED,
+        EventType.RANK_CHANGED,
         EventType.COMMITTED,
         EventType.PUSHED,
         EventType.MERGED,
@@ -229,6 +231,19 @@ class Event:
         return cls(type=EventType.COMMENTED, card_id=card_id, actor=actor, **kw)
 
     @classmethod
+    def rank_changed(cls, card_id: str, actor: str | None = None, **kw: Any) -> "Event":
+        """The rank engine re-scored ``card_id`` and the TOTAL ORDER moved.
+
+        ONE event per rescore — for the card whose axes changed, never one
+        per shifted neighbour (an N-card cascade of events per drag would
+        be the notification storm ADR-0011's two-nudger design forbids).
+        Consumers wanting the full new order read it from the store; the
+        event's ``extra`` carries the audited transition (axes + rank,
+        old→new, and ``of`` = the scored-set size).
+        """
+        return cls(type=EventType.RANK_CHANGED, card_id=card_id, actor=actor, **kw)
+
+    @classmethod
     def completed(cls, card_id: str, actor: str | None = None, **kw: Any) -> "Event":
         return cls(type=EventType.COMPLETED, card_id=card_id, actor=actor, **kw)
 
@@ -322,7 +337,9 @@ class Event:
         extra = dict(kw.pop("extra", {}) or {})
         if service is not None:
             extra.setdefault("service", service)
-        return cls(type=EventType.DEPLOYED, card_id=card_id, repo=repo, extra=extra, **kw)
+        return cls(
+            type=EventType.DEPLOYED, card_id=card_id, repo=repo, extra=extra, **kw
+        )
 
 
 def emit(
