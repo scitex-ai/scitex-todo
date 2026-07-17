@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Chat — scitex-todo v{{ scitex_cards_version }}</title>
+<title>Chat — scitex-cards v{{ scitex_cards_version }}</title>
 <link rel="icon" type="image/svg+xml" href="{% static 'scitex_cards/favicon.svg' %}">
 {% comment %}
 Operator↔agent DM view — minimal slice (card
@@ -35,8 +35,8 @@ reads window.ChatDiff. Line-limit discipline: template <1024 lines, js
   }
   header h1 { font-size: 1rem; margin: 0; color: var(--accent-2); font-weight: 600; }
   header .ver { color: var(--dim); font-size: 0.72rem; }
-  header a.board-link { margin-left: auto; color: var(--dim); font-size: 0.8rem; text-decoration: none; }
-  header a.board-link:hover { color: var(--text); }
+  header a.gui-link { margin-left: auto; color: var(--dim); font-size: 0.8rem; text-decoration: none; }
+  header a.gui-link:hover { color: var(--text); }
   #menu-btn {
     background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
     border-radius: 6px; padding: 6px 10px; font-size: 0.9rem; cursor: pointer;
@@ -128,8 +128,8 @@ reads window.ChatDiff. Line-limit discipline: template <1024 lines, js
 <header>
   <button id="menu-btn" aria-label="Toggle agent list">&#9776;</button>
   <h1>Direct messages</h1>
-  <span class="ver">scitex-todo v{{ scitex_cards_version }}</span>
-  <a class="board-link" href="/">&larr; board</a>
+  <span class="ver">scitex-cards v{{ scitex_cards_version }}</span>
+  <a class="gui-link" href="/">&larr; GUI</a>
 </header>
 <div id="error-bar"></div>
 <div id="layout">
