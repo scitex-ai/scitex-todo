@@ -23,7 +23,6 @@ import pytest
 from scitex_cards import _store
 from scitex_cards._backend import (
     BACKEND_VERBS,
-    BackendUnavailableError,
     LocalBackend,
     get_backend,
 )
@@ -49,10 +48,20 @@ def test_resolution_local_when_hub_url_unset(monkeypatch):
     assert isinstance(get_backend(), LocalBackend)
 
 
-def test_resolution_fails_loud_when_hub_url_set(monkeypatch):
+def test_resolution_returns_the_hub_client_when_url_set(monkeypatch):
+    """PR-3 replaced PR-1's resolve-time refusal with the real client.
+
+    The fail-loud property MOVED, not vanished: it now fires at the first
+    CALL when the hub is unusable (no token / unreachable) — pinned in
+    test__hub_backend.py — because resolution must stay import-safe while
+    a silent local fallback stays impossible.
+    """
     monkeypatch.setenv("SCITEX_CARDS_HUB_URL", "http://127.0.0.1:8765")
-    with pytest.raises(BackendUnavailableError, match="SCITEX_CARDS_HUB_URL"):
-        get_backend()
+    from scitex_cards._backend_http import HubBackend
+
+    backend = get_backend()
+    assert isinstance(backend, HubBackend)
+    assert backend.url == "http://127.0.0.1:8765"
 
 
 def test_task_verbs_round_trip_through_the_seam(store):
