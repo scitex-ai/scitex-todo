@@ -148,6 +148,78 @@
     return out;
   }
 
+  /* Classify a rescore payload's axis pair. The `old` side of a first-ever
+   * scoring is [null] — the card was UNSCORED before, so it belongs to no
+   * quadrant, never quadrantOf(null, …). */
+  function _payloadQuadrant(u, i) {
+    return isAxisValue(u) && isAxisValue(i) ? quadrantOf(u, i) : "unscored";
+  }
+
+  function _countState(state) {
+    var out = { I: 0, II: 0, III: 0, IV: 0, unscored: 0 };
+    Object.keys(state).forEach(function (id) {
+      out[state[id]] += 1;
+    });
+    return out;
+  }
+
+  /* Occupancy OVER TIME (ADR-0011 §8) — "are we living in I+II?" as a
+   * reviewable series, not a hope. A READ MODEL, never storage: reconstructed
+   * by replaying the rescore audit trail (kind:"rescore" comments, each
+   * carrying {urgency:[old,new], importance:[old,new]} + the comment ts) that
+   * rescore_task appends. Client-side — /graph already ships comments[].
+   *
+   * Reconstructed BACKWARD from the authoritative live occupancy so the
+   * series' LAST point is EXACTLY occupancy(nodes) (the header pills): start
+   * "now", then walk transitions newest-first, reverting each dragged card to
+   * its PRE-drag quadrant. The honest limits fall out of that construction:
+   *  - SURVIVING cards only. A card rescored then DELETED is gone from /graph,
+   *    so its past occupancy is unrecoverable — the series can only reflect
+   *    history it can still see. Stated, not hidden.
+   *  - A card with axes but NO rescore comment (a direct write / seed) never
+   *    transitioned, so it sits in its CURRENT quadrant across the whole
+   *    series — a flat baseline, never a fabricated move.
+   *  - First-ever scoring reverts a card to UNSCORED (old=[null]).
+   *  - Counts ALL scored cards incl. terminal, matching the live pills.
+   *
+   * Returns a chronological array of {ts, occ} where occ is a full
+   * {I,II,III,IV,unscored} count and ts is the ISO stamp of the rescore that
+   * produced that state (null for the pre-history baseline). Length 1 (just
+   * "now") when there are no rescores yet. */
+  function occupancyHistory(nodes) {
+    nodes = nodes || [];
+    var state = {};
+    nodes.forEach(function (n) {
+      var ax = axesOf(n);
+      state[n.id] = ax ? quadrantOf(ax.urgency, ax.importance) : "unscored";
+    });
+    var trans = [];
+    nodes.forEach(function (n) {
+      (n.comments || []).forEach(function (c) {
+        if (!c || c.kind !== "rescore" || !c.rescore) return;
+        trans.push({
+          ts: String(c.ts || ""),
+          gi: trans.length, // insertion order — the same-ts stable tiebreak
+          id: n.id,
+          fromQ: _payloadQuadrant(c.rescore.urgency[0], c.rescore.importance[0]),
+        });
+      });
+    });
+    // Chronological; insertion order breaks same-ts ties deterministically.
+    trans.sort(function (a, b) {
+      return a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : a.gi - b.gi;
+    });
+    var pts = [
+      { ts: trans.length ? trans[trans.length - 1].ts : null, occ: _countState(state) },
+    ];
+    for (var k = trans.length - 1; k >= 0; k--) {
+      var t = trans[k];
+      state[t.id] = t.fromQ; // revert to the quadrant held BEFORE this drag
+      pts.push({ ts: k > 0 ? trans[k - 1].ts : null, occ: _countState(state) });
+    }
+    return pts.reverse();
+  }
+
   function _cardHtml(n) {
     var rank =
       typeof n.rank === "number" && isFinite(n.rank)
@@ -236,6 +308,69 @@
     );
   }
 
+  /* The most recent points shown in the trend strip. Older history is
+   * dropped from the STRIP (not the model) and the drop is LABELLED — never a
+   * silent truncation. */
+  var TREND_MAX = 48;
+
+  /* Render occupancyHistory as a compact stacked-bar strip: one thin column
+   * per state, oldest left / newest right, the newest column's split equal to
+   * the header pills. Each column stacks I,II,III,IV top-to-bottom by SHARE of
+   * the scored set (not absolute count) — so the strip reads as "what fraction
+   * is in I+II over time", the operator's actual question. Colour is by
+   * data-quadrant in CSS (theme tokens). Returns "" when there is no history
+   * yet (length < 2): the pills already show the single "now" point. */
+  function _occupancyTrendHtml(series) {
+    series = series || [];
+    if (series.length < 2) return "";
+    var truncated = series.length > TREND_MAX ? series.length - TREND_MAX : 0;
+    var shown = truncated ? series.slice(series.length - TREND_MAX) : series;
+    var order = ["I", "II", "III", "IV"];
+    var cols = shown
+      .map(function (pt) {
+        var occ = pt.occ;
+        var total = order.reduce(function (s, q) {
+          return s + occ[q];
+        }, 0);
+        var segs = total
+          ? order
+              .map(function (q) {
+                if (!occ[q]) return "";
+                var pct = ((occ[q] / total) * 100).toFixed(2);
+                return (
+                  '<span class="mx-trend__seg" data-quadrant="' +
+                  q +
+                  '" style="flex-basis:' +
+                  pct +
+                  '%" title="' +
+                  q +
+                  " " +
+                  occ[q] +
+                  '"></span>'
+                );
+              })
+              .join("")
+          : '<span class="mx-trend__seg" data-quadrant="empty"></span>';
+        return (
+          '<span class="mx-trend__col" title="' +
+          _esc(pt.ts || "start") +
+          '">' +
+          segs +
+          "</span>"
+        );
+      })
+      .join("");
+    return (
+      '<div class="mx-trend" role="img" aria-label="Quadrant occupancy over time">' +
+      '<div class="mx-trend__head">occupancy over time' +
+      (truncated ? " — last " + TREND_MAX + " of " + series.length : "") +
+      "</div>" +
+      '<div class="mx-trend__bars">' +
+      cols +
+      "</div></div>"
+    );
+  }
+
   /* Build the whole layout. `nodes` is the filter bar's already-filtered
    * set — the matrix applies no predicates of its own. */
   function matrixHtml(nodes, opts) {
@@ -257,6 +392,7 @@
     return (
       '<div class="mx-wrap">' +
       _occupancyHtml(occ) +
+      _occupancyTrendHtml(occupancyHistory(nodes)) +
       '<div class="mx-plane" data-threshold="' +
       QUADRANT_THRESHOLD +
       '">' +
@@ -304,6 +440,7 @@
     byRank: byRank,
     cellsOf: cellsOf,
     occupancy: occupancy,
+    occupancyHistory: occupancyHistory,
     matrixHtml: matrixHtml,
     dropAxes: dropAxes,
   };
