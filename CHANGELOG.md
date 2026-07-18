@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.16.2] - 2026-07-18 — upgrading no longer deletes your CLI
+
+### Fixed
+- **The scitex-todo stub now declares both console scripts** (`scitex-todo`
+  and `scitex-cards`), healing the upgrade kill: old scitex-todo wheels
+  (0.13.x–0.15.x) own both binaries in their RECORD, so `pip install -U
+  scitex-todo` deleted BOTH during the old wheel's uninstall — and pip
+  processes dependencies first, so a same-transaction scitex-cards
+  reinstall could not save them. The stub installs LAST and recreates
+  them. Venv-matrix verified: the 0.13.5 upgrade path, a fresh stub
+  install, and a later scitex-cards force-reinstall all end with both
+  CLIs present and running. Recovery for already-broken environments:
+  `pip install --force-reinstall --no-deps scitex-cards`.
+- **Hub token resolution fails loud on an explicitly-set but unreadable
+  `SCITEX_CARDS_HUB_TOKEN_FILE`** instead of silently falling through to
+  `~/.scitex/cards/hub.token` — the fall-through authenticated against
+  the wrong hub whenever the default path held a foreign token (measured
+  on CI the day a pilot host was provisioned). (#489, re-noted here
+  because 0.16.1's changelog predated it.)
+
 ## [0.16.1] - 2026-07-18 — the GUI chat stops re-reading megabytes per click
 
 ### Changed
