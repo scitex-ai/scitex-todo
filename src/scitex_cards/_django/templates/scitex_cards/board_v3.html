@@ -169,7 +169,7 @@
 {% comment %}
   timeline.js — the Timeline layout renderer (raster by agent/project +
   a rich per-task "simple" list). Classic <script defer> so it shares the
-  page globals (STATE / escapeHtml / openDetail / bucket / render); it
+  page globals (STATE / escapeHtml / openDetail / render); it
   exposes its entry points on window for the inline render() dispatch.
   Operator TODO 2026-06-17.
 {% endcomment %}
@@ -709,24 +709,6 @@
 
 {% block extra_js %}
   <script>
-    // Status mapping — the 7-value enum on the wire maps to 4 BUCKETS used
-    // ONLY for COLUMN placement + sort order + the blocked pulse animation.
-    // The per-status COLOR layer no longer uses these buckets: cards /
-    // timeline / mermaid read the SSOT --status-* CSS vars (from
-    // STATUS_STYLE via _status_colors) so all 7 statuses render distinct.
-    // (hook-bypass: line-limit.)
-    const STATUS_BUCKET = {
-      working: "working",
-      in_progress: "working",
-      goal: "working",
-      pending: "waiting",
-      waiting: "waiting",
-      deferred: "waiting",
-      blocked: "blocked",
-      done: "done",
-      failed: "done",
-    };
-    function bucket(status) { return STATUS_BUCKET[status] || "waiting"; }
 
     // === LAYOUT whitelist (SSOT) ==========================================
     // The only layouts that exist. Column + Table were removed 2026-07-13
@@ -3408,20 +3390,9 @@
         </div>`;
     }
 
-    // (renderFleetStrip removed with the #fleetstrip element — see the
-    //  filterbar comment near the top of this template. fleet-liveness
-    //  lives in the lead's periodic reports, not the board.)
-    function toggleAgentFilter(agent) {
-      // Click a dot: if it's not the current f-agent value, set it; if
-      // it IS, clear it back to "All assignees". Updates the <select> too
-      // so the existing filter pipeline stays consistent.
-      const sel = document.getElementById("f-agent");
-      if (!sel) return;
-      const newVal = STATE.filters.agent === agent ? "" : agent;
-      STATE.filters.agent = newVal;
-      sel.value = newVal;
-      render();
-    }
+    // (renderFleetStrip + toggleAgentFilter removed with the #fleetstrip
+    //  element — see the filterbar comment near the top of this template.
+    //  fleet-liveness lives in the lead's periodic reports, not the board.)
 
     // -- Keyboard shortcuts -------------------------------------------------
     // Cmd/Ctrl+N opens the Add Task modal (operator-friendly create entry).
