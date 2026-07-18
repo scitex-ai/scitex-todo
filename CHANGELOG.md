@@ -4,6 +4,58 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.17.0] - 2026-07-18 — an agent with work on the board cannot stop
+
+### Added
+- **`scitex-cards stop-hook` — the Claude Code Stop hook, emitted directly.**
+  While an agent's board holds runnable work, that agent is EXECUTING;
+  idle-with-work-pending is not a state the system passes through and
+  repairs, it is a state the design makes unreachable. Prints
+  `{"decision": "block", "reason": …}` to refuse a stop, feeding `reason`
+  back as the agent's NEXT INSTRUCTION — a refusal that does not say what
+  to do next just leaves the agent stopped-but-refused, which is still
+  idle. Prints `{}` to allow.
+
+  Three properties that are contract, not detail:
+  - **Exit code is ALWAYS 0.** The decision lives in the JSON, never in
+    `rc`. Anything gating on the exit status reads every verdict as fine.
+  - **FAIL-OPEN by construction.** Unreadable store, unresolvable agent
+    id, malformed card → allow the stop, with the reason on stderr. An
+    agent wedged by *our* bug is worse than one that stopped early: the
+    first is invisible and self-inflicted, the second is caught by the
+    failure-net sweep. So this REDUCES silent stops; it does not make
+    them impossible.
+  - **The reason is capped** at 5 named items with a COUNTED `+N more`
+    remainder. An instruction listing forty cards is not an instruction,
+    and a silently truncated one is a lie about the board.
+
+  Cards owns both ends of the format — what work exists AND what a useful
+  next instruction reads like — so the runtime's remaining job is
+  registration in `.claude/settings.json` and nothing else. An earlier
+  design had the runtime parsing `may-stop`'s stdout, which made our
+  output a public API it depended on. (#498)
+
+### Fixed
+- **The board could miss a write entirely — read-your-own-writes was
+  silently broken.** The cache compared `stat().st_mtime`, a float of
+  SECONDS; on a filesystem with 1-second timestamp granularity a write
+  and the stat following it report the same value, so a STRICT read
+  answered from the pre-write cache. The chat POST depends on this
+  guarantee — it writes a message and reads it straight back. It only
+  misfires when the machine is FAST enough to do both inside one granule,
+  which is why it surfaced as a "flaky test" rather than a bug report.
+
+  Invalidation now keys on `(mtime_ns, size, inode)` per source.
+  `(mtime_ns, size)` alone is NOT enough: `st_mtime_ns` is
+  nanosecond-TYPED, not nanosecond-ACCURATE, so a same-length edit (a
+  priority `1` → `2`) still collides; the inode moves on every atomic
+  `os.replace`. `BoardState.mtime` is unchanged and still reported — it
+  is part of the `/rev` contract the frontend polls.
+
+  The general rule, worth stating precisely because the loose version
+  breaks working code: **never use `st_mtime` as an EQUALITY key.**
+  Sorting by it and doing age arithmetic with it are unaffected. (#499)
+
 ## [0.16.2] - 2026-07-18 — upgrading no longer deletes your CLI
 
 ### Fixed
