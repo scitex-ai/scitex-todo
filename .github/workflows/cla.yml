@@ -14,8 +14,24 @@ permissions:
 
 jobs:
   CLAssistant:
-    # Self-hosted Spartan CPU runner — no GitHub-hosted (paid) runners (operator rule).
-    runs-on: [self-hosted, Linux, X64, spartan-cpu]
+    # DELIBERATE EXCEPTION to "no GitHub-hosted runners" — do NOT "fix" this
+    # back to self-hosted. Matching the exception scitex-agent-container made
+    # for this identical workflow on 2026-07-14.
+    #
+    # WHY: this job is THIRD-PARTY code on an ATTACKER-TRIGGERABLE trigger
+    # (pull_request_target + issue_comment — anyone may open a PR or comment),
+    # and it is handed a PERSONAL ACCESS TOKEN. The self-hosted runner is
+    # PERSISTENT and its $HOME holds the fleet's ~/.claude/.credentials.json.
+    # Running strangers' triggers next to fleet credentials is the exposure;
+    # a hosted runner is ephemeral and holds nothing of ours.
+    #
+    # The operator's rule exists to avoid PAYING for runners on real CI. This
+    # job is tiny, stateless, and free-tier — it buys none of the cost the
+    # rule guards against, and pays the whole risk the rule never considered.
+    # Reversible in one commit; decision carded for operator ratification.
+    # Card: cla-workflow-untrusted-action-on-selfhosted-runner-20260718
+    # Prior art: sac .github/hosted-runner-allowlist.yaml + _hosted_runner_guard.py
+    runs-on: ubuntu-latest
     steps:
       - name: CLA Assistant
         # SHA-PINNED, NOT TAG-PINNED — deliberately, and do not "tidy" this
