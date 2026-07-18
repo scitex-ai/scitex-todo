@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 
 import pytest
 
@@ -210,6 +211,42 @@ def test_a_write_inside_one_timestamp_granule_is_still_seen(store):
 
     # Assert: the write is visible despite an unchanged timestamp.
     assert {t["id"] for t in served.tasks} == {"a", "b", "z"}
+
+
+def test_a_same_length_edit_inside_one_granule_is_still_seen(store):
+    """The case SIZE alone does not catch — and the reason inode is in the key.
+
+    ``st_mtime_ns`` is nanosecond-TYPED, not nanosecond-ACCURATE: on a
+    filesystem stamping whole seconds the sub-second digits are zero. So a
+    (mtime_ns, size) key still collides when an edit changes neither — a
+    priority ``1`` -> ``2``, or a status swapped for one of equal length.
+
+    Every write to this store goes through atomic ``os.replace``, which
+    allocates a new inode, so the inode moves even when clock and length do
+    not. Written as a MUTATION test: it must go RED without ``st_ino`` in the
+    key, which a write-sleep-write scenario would not (the sleep alone would
+    make it pass under the buggy key).
+    """
+    # Arrange
+    first = services.get_board(store)
+    assert {t["id"] for t in first.tasks} == {"a", "b"}
+    before = os.stat(store)
+
+    # Act: rewrite atomically with the SAME byte length (in_progress -> done__
+    # is not equal-length, so swap a title instead: "a" -> "A" keeps length).
+    text = Path(store).read_text(encoding="utf-8").replace("title: a\n", "title: A\n")
+    tmp = Path(str(store) + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, store)
+    os.utime(store, ns=(before.st_atime_ns, before.st_mtime_ns))
+
+    after = os.stat(store)
+    assert after.st_size == before.st_size  # size unchanged
+    assert after.st_mtime_ns == before.st_mtime_ns  # stamp unchanged
+    served = services.get_board(store)
+
+    # Assert: the edit is visible even though only the inode moved.
+    assert {t["title"] for t in served.tasks} == {"A", "b"}
 
 
 def test_it_can_be_switched_off(store, monkeypatch):

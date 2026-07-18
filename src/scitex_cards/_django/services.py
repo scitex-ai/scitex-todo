@@ -72,7 +72,8 @@ class BoardState:
     tasks: list
     store_path: Path
     mtime: float
-    #: CACHE IDENTITY — ``((mtime_ns, size), *sorted lane (mtime_ns, size))``.
+    #: CACHE IDENTITY — per source ``(mtime_ns, size, inode)``; global first,
+    #: then the lanes in a stable order.
     #:
     #: WHY NOT ``mtime``: it is a float of SECONDS, and a filesystem whose
     #: timestamps are 1-second granular (CI's is — a write and the stat that
@@ -82,9 +83,15 @@ class BoardState:
     #: is exactly what the chat POST depends on. Caught by
     #: test_a_strict_caller_is_never_served_stale on py3.13.
     #:
-    #: SIZE is what closes it — any append changes it even when the clock does
-    #: not move. Same ``(mtime_ns, size)`` shape the store and thread read
-    #: caches already use; this was the one cache still keyed on bare mtime.
+    #: THE RULE, stated precisely, because the loose version breaks working
+    #: code: never use ``st_mtime`` as an EQUALITY key. Sorting by it and doing
+    #: age arithmetic with it are unaffected — a tie or a sub-second error
+    #: changes nothing there. Equality is where granularity becomes
+    #: correctness. (Sharpened by scitex-agent-container, who found the same
+    #: defect in their credential watcher.)
+    #:
+    #: Size and inode are BOTH needed; see ``_stat_sig`` for why size alone
+    #: leaves a same-length edit invisible.
     #:
     #: Defaulted so existing constructions keep working; a board built without
     #: a sig simply never matches a cache probe, which fails CLOSED (rebuild)
@@ -127,23 +134,38 @@ def _discover_lanes() -> List[Path]:
 
 
 def _stat_sig(path: Path) -> tuple:
-    """``(mtime_ns, size)`` for one file — the unit of cache identity.
+    """``(mtime_ns, size, inode)`` for one file — the unit of cache identity.
 
     Pairing the stamp with the SIZE is what makes this survive a filesystem
     with 1-second timestamp granularity, where a write and the stat after it
     can report the same mtime. See ``BoardState.sig``.
 
+    SIZE ALONE IS NOT ENOUGH, and it is worth being exact about why rather
+    than claiming this closes the hole: ``st_mtime_ns`` is nanosecond-TYPED,
+    not nanosecond-ACCURATE — on a filesystem that stamps whole seconds the
+    sub-second digits are simply zero. So (mtime_ns, size) still collides for
+    a SAME-LENGTH edit inside one granule: flipping a priority ``1`` -> ``2``,
+    or swapping a status for another of equal length, rewrites the file
+    without moving either component.
+
+    INODE closes that. Every write to this store lands via atomic
+    ``os.replace`` of a freshly-written temp file, which allocates a NEW
+    inode — so the inode changes on every write regardless of what the clock
+    or the length did. Inode numbers can be recycled, so this is not a
+    guarantee in the abstract; but a collision would need the same timestamp
+    granule AND an identical size AND a recycled inode at once.
+
     NEVER RAISES. A lane can be deleted between being loaded and being
     fingerprinted, and the board must not 500 because a file went away — the
     surrounding code is deliberately per-lane fail-soft and this has to match
-    it. A vanished file yields ``(0, 0)``, which DIFFERS from whatever it was,
-    so the cache correctly invalidates instead of pinning the old board.
+    it. A vanished file yields ``(0, 0, 0)``, which DIFFERS from whatever it
+    was, so the cache correctly invalidates instead of pinning the old board.
     """
     try:
         st = path.stat()
-        return (st.st_mtime_ns, st.st_size)
+        return (st.st_mtime_ns, st.st_size, st.st_ino)
     except OSError:
-        return (0, 0)
+        return (0, 0, 0)
 
 
 def _load_lane_safe(path: Path):
