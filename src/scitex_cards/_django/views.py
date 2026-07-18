@@ -179,9 +179,7 @@ def _maybe_announce_missing_turn_urls(request) -> None:
         board = get_board(_tasks_path_from_request(request))
         announce_missing_at_boot(list(board.tasks))
     except Exception:  # noqa: BLE001
-        logger.exception(
-            "[scitex-todo] turn-url boot announce failed (non-fatal)"
-        )
+        logger.exception("[scitex-todo] turn-url boot announce failed (non-fatal)")
 
 
 def _static_graph_page(request) -> str:
@@ -243,10 +241,23 @@ def _static_graph_page(request) -> str:
 </html>"""
 
 
-def _get_board(request):
+#: Endpoints allowed to answer from a board that is one refresh-cycle behind.
+#: STRICTLY read-only VIEW payloads: they repaint on a poll, so a stale answer
+#: is invisible, while a blocking rebuild costs the full store parse (measured
+#: 4.6s, and 31s for the board end-to-end on the live store).
+#:
+#: Nothing that WRITES may be listed here, and nothing that must reflect a
+#: write it just made — the chat POST reads its own message back through the
+#: board, and adding it here would make the operator's posted comment vanish
+#: until the next refresh. Read-your-own-writes beats latency; the default is
+#: strict and membership here is the deliberate exception.
+STALE_OK_ENDPOINTS = frozenset({"graph", "timeline"})
+
+
+def _get_board(request, *, allow_stale: bool = False):
     """Return the board for this request, or None when the store can't load."""
     try:
-        return get_board(_tasks_path_from_request(request))
+        return get_board(_tasks_path_from_request(request), allow_stale=allow_stale)
     except FileNotFoundError:
         logger.warning("[scitex-todo] task store not found")
         return None
@@ -262,7 +273,10 @@ def api_dispatch(request, endpoint):
     if endpoint in NO_BOARD_ENDPOINTS:
         return handler(request, None)
 
-    board = _get_board(request)
+    board = _get_board(
+        request,
+        allow_stale=(endpoint in STALE_OK_ENDPOINTS and request.method == "GET"),
+    )
     if board is None:
         return JsonResponse({"error": "No task store found."}, status=400)
 
