@@ -110,11 +110,7 @@ def threads_path(store: str | Path | None = None) -> Path:
     chain); the threads sidecar always sits NEXT TO it so both files live in
     the same scope.
     """
-    tasks = (
-        resolve_tasks_path(store)
-        if store is None
-        else Path(store).expanduser()
-    )
+    tasks = resolve_tasks_path(store) if store is None else Path(store).expanduser()
     return tasks.parent / THREADS_FILENAME
 
 
@@ -226,16 +222,18 @@ def _load_threads_cached(path: Path) -> dict[str, list[dict]]:
         return {}
     key = str(path)
     cached = _READ_CACHE.get(key)
-    if cached is not None and cached[0] == stat.st_mtime_ns and cached[1] == stat.st_size:
+    if (
+        cached is not None
+        and cached[0] == stat.st_mtime_ns
+        and cached[1] == stat.st_size
+    ):
         return cached[2]
     threads = _load_threads(path)
     _READ_CACHE[key] = (stat.st_mtime_ns, stat.st_size, threads)
     return threads
 
 
-def _is_unread_for(
-    record: dict, reader: str, wanted: set[str] | None
-) -> bool:
+def _is_unread_for(record: dict, reader: str, wanted: set[str] | None) -> bool:
     """Whether ``record`` is one that :func:`mark_read` would flip for ``reader``.
 
     ONE predicate, deliberately shared by the lock-free pre-check and the
@@ -401,28 +399,55 @@ def get_thread(a: str, b: str, *, store: str | Path | None = None) -> list[dict]
     return [dict(r) for r in records]
 
 
+#: ``list_threads`` summaries per path, keyed like ``_READ_CACHE`` — the
+#: unread-count pass rescans EVERY record of every thread (~0.7 s per call on
+#: the 3 MB live sidecar even with the parse cached), so it runs once per file
+#: change; the copy-out in ``list_threads`` keeps callers mutation-safe.
+_SUMMARY_CACHE: dict[str, tuple[int, int, dict[str, dict]]] = {}
+
+
 def list_threads(*, store: str | Path | None = None) -> dict[str, dict]:
     """Summarize every thread: peers, last message, counts, per-peer unread.
 
     Returns ``{thread_key: {"peers": (a, b), "last": <record|None>,
     "count": N, "unread": {peer: n}}}`` where ``unread[p]`` counts messages
     addressed TO ``p`` that are still ``read: false`` (i.e. what ``p`` has
-    not seen yet).
+    not seen yet). Served from ``_SUMMARY_CACHE`` while the sidecar's
+    ``(mtime_ns, size)`` is unchanged; same benign stat-then-parse race as
+    :func:`_load_threads_cached` (self-heals on the next call).
     """
-    out: dict[str, dict] = {}
-    for key, records in _load_threads_cached(threads_path(store)).items():
-        a, b = peers_of(key)
-        unread: dict[str, int] = {a: 0, b: 0}
-        for r in records:
-            if not r.get("read") and r.get("to") in unread:
-                unread[r["to"]] += 1
-        out[key] = {
-            "peers": (a, b),
-            "last": dict(records[-1]) if records else None,
-            "count": len(records),
-            "unread": unread,
+    path = threads_path(store)
+    try:
+        stat = path.stat()
+    except OSError:
+        return {}
+    cache_key = str(path)
+    cached = _SUMMARY_CACHE.get(cache_key)
+    if cached is None or cached[0] != stat.st_mtime_ns or cached[1] != stat.st_size:
+        summary: dict[str, dict] = {}
+        for key, records in _load_threads_cached(path).items():
+            a, b = peers_of(key)
+            unread: dict[str, int] = {a: 0, b: 0}
+            for r in records:
+                if not r.get("read") and r.get("to") in unread:
+                    unread[r["to"]] += 1
+            summary[key] = {
+                "peers": (a, b),
+                "last": records[-1] if records else None,
+                "count": len(records),
+                "unread": unread,
+            }
+        cached = (stat.st_mtime_ns, stat.st_size, summary)
+        _SUMMARY_CACHE[cache_key] = cached
+    return {
+        k: {
+            "peers": v["peers"],
+            "last": dict(v["last"]) if v["last"] else None,
+            "count": v["count"],
+            "unread": dict(v["unread"]),
         }
-    return out
+        for k, v in cached[2].items()
+    }
 
 
 def mark_read(
