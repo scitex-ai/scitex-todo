@@ -85,6 +85,14 @@ def default_token_file() -> Path:
 def _resolve_token() -> str:
     """Token precedence: env value > env-named file > the default file.
 
+    An EXPLICITLY-set token-file env that is unreadable is a hard error,
+    never a fall-through to the default path: the default file can belong
+    to a DIFFERENT hub than the one the explicit config meant (measured
+    2026-07-18 — a freshly provisioned host token on the CI machine leaked
+    into test rigs through exactly that fall-through, authenticating every
+    "token missing" scenario against the wrong hub as a 401). Explicit
+    config either works or fails loud.
+
     Raises :class:`HubBackendError` when nothing readable exists — the
     design's "URL set but no token → hard error at first call, never a
     silent local fallback".
@@ -92,18 +100,29 @@ def _resolve_token() -> str:
     env_value = os.environ.get(_TOKEN_ENV)
     if env_value and env_value.strip():
         return env_value.strip()
-    candidates = []
     file_env = os.environ.get(_TOKEN_FILE_ENV)
     if file_env:
-        candidates.append(Path(file_env))
-    candidates.append(default_token_file())
-    for path in candidates:
         try:
-            value = path.read_text(encoding="utf-8").strip()
-        except OSError:
-            continue
+            value = Path(file_env).read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise HubBackendError(
+                f"${_TOKEN_FILE_ENV} is set to {file_env} but no hub token "
+                f"is readable there ({exc}). Fix the path or re-provision "
+                "this host; the default token file is deliberately NOT "
+                "consulted when the explicit one fails."
+            ) from exc
         if value:
             return value
+        raise HubBackendError(
+            f"${_TOKEN_FILE_ENV} is set to {file_env} but the file is "
+            "empty — no hub token. Re-provision this host."
+        )
+    try:
+        value = default_token_file().read_text(encoding="utf-8").strip()
+    except OSError:
+        value = ""
+    if value:
+        return value
     raise HubBackendError(
         f"SCITEX_CARDS_HUB_URL is set but no hub token is readable "
         f"(checked ${_TOKEN_ENV}, ${_TOKEN_FILE_ENV}, {default_token_file()}). "
