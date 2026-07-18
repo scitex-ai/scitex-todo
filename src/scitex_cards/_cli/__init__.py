@@ -26,6 +26,7 @@ from . import _help_wait as _help_wait_cli
 from . import _hub as _hub_cli
 from . import _may_stop as _may_stop_cli
 from . import _serve as _serve_cli
+from . import _stop_hook as _stop_hook_cli
 from ._main import main
 
 _help_wait_cli.register(main)
@@ -42,6 +43,9 @@ _serve_cli.register(main)
 _hub_cli.register(main)
 # `may-stop` — the never-stop detector (exit 0 = may stop, 2 = work exists).
 _may_stop_cli.register(main)
+#  — the Claude Code Stop hook itself (cards owns both ends of the
+# contract; the runtime only registers it). See _stop_hook for why.
+_stop_hook_cli.register(main)
 
 __all__ = ["main"]
 
