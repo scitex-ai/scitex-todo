@@ -15,8 +15,8 @@
  * /timeline wire payload omits).
  *
  * Loaded as a classic <script defer> AFTER board_v3's inline extra_js, so
- * it shares the page globals (STATE, escapeHtml, openDetail, bucket,
- * render, toast). It exposes its entry points on `window` so the inline
+ * it shares the page globals (STATE, escapeHtml, openDetail, render,
+ * toast). It exposes its entry points on `window` so the inline
  * render() dispatch + the generated onclick handlers can reach them.
  *
  * No build step — served static like searchQuery.js / recentSort.js.
