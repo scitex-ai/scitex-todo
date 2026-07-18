@@ -35,6 +35,7 @@ board still renders the rest. Per-lane crash-loud, never whole-view.
 import glob
 import logging
 import os
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -111,6 +112,7 @@ def _load_lane_safe(path: Path):
     one repo must not blank the operator's board.
     """
     from scitex_cards._model import load_tasks
+
     try:
         tasks = load_tasks(path)
         mtime = path.stat().st_mtime
@@ -118,9 +120,108 @@ def _load_lane_safe(path: Path):
     except Exception as exc:  # noqa: BLE001 — intentional broad catch
         logger.warning(
             "[scitex-todo] skipping malformed per-project lane %s: %s",
-            path, exc,
+            path,
+            exc,
         )
         return None, None
+
+
+#: Board keys whose background refresh is already in flight. Guards against a
+#: refresh storm: the operator's browser polls every few seconds, and without
+#: this every poll during a slow rebuild would spawn another rebuild.
+_refreshing: set = set()
+_refresh_guard = threading.Lock()
+
+#: Stale-while-revalidate on the human board view. On by default; set
+#: ``SCITEX_CARDS_BOARD_SWR=0`` to force blocking rebuilds (debugging, or a
+#: deployment that would rather be slow than one cycle behind).
+_ENV_SWR = "SCITEX_CARDS_BOARD_SWR"
+
+
+def _swr_enabled() -> bool:
+    return os.environ.get(_ENV_SWR, "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+def _kick_board_refresh(key, resolved, lane_tasks_by_path, effective_mtime) -> None:
+    """Rebuild this board off the request path, once at a time.
+
+    Fail-soft by construction: if the rebuild raises, the cache keeps the
+    older board and the next request tries again — a background refresh must
+    never be able to blank the operator's board.
+    """
+    with _refresh_guard:
+        if key in _refreshing:
+            return
+        _refreshing.add(key)
+
+    def _run():
+        from scitex_cards._groups import load_groups
+
+        try:
+            global_tasks = _load_global_tasks(resolved) if resolved.exists() else []
+            unioned = _union_tasks(global_tasks, lane_tasks_by_path)
+            task_ids = {t["id"] for t in unioned if isinstance(t, dict) and t.get("id")}
+            groups = load_groups(resolved, task_ids=task_ids)
+            fresh = BoardState(
+                tasks=unioned,
+                store_path=resolved,
+                mtime=effective_mtime,
+                groups=groups,
+                lane_paths=list(lane_tasks_by_path),
+            )
+            _board_cache[key] = (fresh, time.time())
+        except Exception:  # noqa: BLE001 — never break the served board
+            logger.warning(
+                "[scitex-todo] background board refresh failed; keeping the "
+                "previous board (next request retries)",
+                exc_info=True,
+            )
+        finally:
+            with _refresh_guard:
+                _refreshing.discard(key)
+
+    threading.Thread(
+        target=_run, name=f"board-refresh-{Path(key).name}", daemon=True
+    ).start()
+
+
+def _load_global_tasks(path: Path) -> list:
+    """Global store rows — from the SQLite mirror when it is provably fresh.
+
+    THE BOARD'S HOT READ. The canonical YAML is ~9 MB and parses in **4.6 s**
+    on the live store (0.01 s once cached) — and the cache is invalidated by
+    every store write, so during ordinary fleet activity nearly every board
+    request pays the full parse. That is what the operator experiences as a
+    30-second board (measured 2026-07-18: ``/graph`` 19.3 s under write
+    pressure vs 0.40 s warm). The mirror serves the same rows from indexed
+    storage instead.
+
+    The guard is :func:`scitex_cards._store_read_sqlite.enabled`, which FAILS
+    CLOSED — an absent, stale, or incapable mirror falls back to the canonical
+    YAML rather than showing the fleet cards that are quietly wrong. Rows come
+    back from the verbatim ``card_json`` payload in document order, so the two
+    paths are row-identical; a divergence would be a mirror bug, not a
+    projection difference, and the freshness stamp exists to catch exactly
+    that.
+    """
+    from scitex_cards._model import load_tasks
+
+    try:
+        from scitex_cards import _store_read_sqlite as _sq
+
+        if _sq.enabled(path):
+            return _sq.list_tasks_sqlite(path)
+    except Exception:  # noqa: BLE001 — the board must never fail to render
+        logger.warning(
+            "[scitex-todo] sqlite board read failed; falling back to YAML",
+            exc_info=True,
+        )
+    return load_tasks(path)
 
 
 def _union_tasks(global_tasks: list, lane_tasks_by_path: Dict[Path, list]) -> list:
@@ -149,15 +250,28 @@ def _union_tasks(global_tasks: list, lane_tasks_by_path: Dict[Path, list]) -> li
             if tid in seen:
                 logger.warning(
                     "[scitex-todo] id %r collision — %s overrides %s",
-                    tid, lane_path, seen_origin[tid],
+                    tid,
+                    lane_path,
+                    seen_origin[tid],
                 )
             seen[tid] = t
             seen_origin[tid] = str(lane_path)
     return list(seen.values())
 
 
-def get_board(tasks_path: Optional[str] = None) -> BoardState:
+def get_board(
+    tasks_path: Optional[str] = None, *, allow_stale: bool = False
+) -> BoardState:
     """Resolve the task store, load + validate it, and cache by mtime.
+
+    ``allow_stale`` opts THIS call into stale-while-revalidate: when the store
+    has moved on, the cached board is returned immediately and the rebuild
+    runs behind the response. It is OFF by default and must stay that way —
+    an endpoint that writes and then reads back (the chat POST is the live
+    example) MUST see its own write, and a caller that opts in without that
+    property is a read-your-own-writes bug. Only the human BOARD read opts
+    in, because a self-refreshing view one cycle behind is invisible while a
+    31-second wait is not.
 
     Returns a :class:`BoardState` whose ``tasks`` field is the UNION of
     the global store and every per-project lane discovered by
@@ -214,8 +328,25 @@ def get_board(tasks_path: Optional[str] = None) -> BoardState:
         if board.mtime == effective_mtime:
             _board_cache[key] = (board, time.time())
             return board
+        # STALE-WHILE-REVALIDATE. The store changed, so this cached board is
+        # a few seconds behind — but rebuilding it costs a full parse of the
+        # multi-MB store (measured 4.6s, and the whole board request 31s cold
+        # on the live store), and the fleet writes every few seconds, so a
+        # blocking rebuild means the operator pays that on nearly every view.
+        #
+        # A BOARD IS A LIVE VIEW, NOT A DECISION READ: it self-refreshes every
+        # few seconds and shows a LIVE badge, so serving data that is one
+        # refresh-cycle old is invisible, while a 31-second wait is not. The
+        # refresh runs behind this response and the NEXT poll picks it up.
+        #
+        # Deliberately NOT applied to agent reads (list_tasks and friends go
+        # through the store API, never here) — an agent deciding what to work
+        # on must not act on a stale slice. This is the human-view path only.
+        if allow_stale and _swr_enabled():
+            _kick_board_refresh(key, resolved, lane_tasks_by_path, effective_mtime)
+            return board
 
-    global_tasks = load_tasks(resolved) if resolved.exists() else []
+    global_tasks = _load_global_tasks(resolved) if resolved.exists() else []
     unioned = _union_tasks(global_tasks, lane_tasks_by_path)
 
     # P10: load + validate groups against the GLOBAL store only.
@@ -233,9 +364,11 @@ def get_board(tasks_path: Optional[str] = None) -> BoardState:
     )
     _board_cache[key] = (board, time.time())
     logger.info(
-        "[scitex-todo] Loaded board from %s + %d lane(s) "
-        "(%d total tasks, %d groups)",
-        resolved, len(successful_lanes), len(unioned), len(groups),
+        "[scitex-todo] Loaded board from %s + %d lane(s) (%d total tasks, %d groups)",
+        resolved,
+        len(successful_lanes),
+        len(unioned),
+        len(groups),
     )
     return board
 
