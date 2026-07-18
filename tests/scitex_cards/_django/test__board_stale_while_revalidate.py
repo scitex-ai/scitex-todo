@@ -182,6 +182,36 @@ def test_a_strict_caller_is_never_served_stale(store):
     assert {t["id"] for t in served.tasks} == {"a", "b", "z"}
 
 
+def test_a_write_inside_one_timestamp_granule_is_still_seen(store):
+    """READ-YOUR-OWN-WRITES survives a filesystem whose clock did not move.
+
+    THE REAL BUG, and it was a product bug, not a test bug. The board cache
+    compared ``stat().st_mtime`` — a float of SECONDS. On a filesystem with
+    1-second timestamp granularity a write and the stat that follows it report
+    the SAME mtime, so a STRICT read answered from the pre-write cache and the
+    caller silently did not see its own write. The chat POST depends on
+    exactly this guarantee: it writes a message and reads it straight back.
+
+    CI found it before a user did — test_a_strict_caller_is_never_served_stale
+    failed on py3.13 with the appended card simply missing. This test pins the
+    condition deterministically on ANY filesystem by forcing the stamp back to
+    its pre-write value, which is what a coarse-granularity fs does for free.
+    """
+    # Arrange: warm the cache and capture the exact stamp it recorded.
+    services.get_board(store)
+    before = os.stat(store)
+
+    # Act: a real write, then rewind the clock so ONLY the size betrays it.
+    with open(store, "a", encoding="utf-8") as fh:
+        fh.write("  - id: z\n    title: z\n    status: in_progress\n")
+    os.utime(store, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert os.stat(store).st_mtime_ns == before.st_mtime_ns  # the trap is armed
+    served = services.get_board(store)
+
+    # Assert: the write is visible despite an unchanged timestamp.
+    assert {t["id"] for t in served.tasks} == {"a", "b", "z"}
+
+
 def test_it_can_be_switched_off(store, monkeypatch):
     # Arrange
     services.get_board(store, allow_stale=True)

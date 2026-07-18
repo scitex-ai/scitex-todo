@@ -63,11 +63,33 @@ class BoardState:
     discovered per-project lane. ``store_path`` is the global store
     path (the resolution anchor); ``mtime`` is the MAX mtime across
     every source so the cache invalidates whenever ANY lane writes.
+
+    ``mtime`` is REPORTED, not trusted: it is part of the ``/rev`` wire
+    contract the frontend polls, and it stays a float for that reason.
+    Cache invalidation keys off ``sig`` instead — see below.
     """
 
     tasks: list
     store_path: Path
     mtime: float
+    #: CACHE IDENTITY — ``((mtime_ns, size), *sorted lane (mtime_ns, size))``.
+    #:
+    #: WHY NOT ``mtime``: it is a float of SECONDS, and a filesystem whose
+    #: timestamps are 1-second granular (CI's is — a write and the stat that
+    #: follows it returned the SAME value) reports an unchanged mtime across a
+    #: real write. Keying the cache on that means the board can answer a STRICT
+    #: read with a pre-write board: read-your-own-writes silently broken, which
+    #: is exactly what the chat POST depends on. Caught by
+    #: test_a_strict_caller_is_never_served_stale on py3.13.
+    #:
+    #: SIZE is what closes it — any append changes it even when the clock does
+    #: not move. Same ``(mtime_ns, size)`` shape the store and thread read
+    #: caches already use; this was the one cache still keyed on bare mtime.
+    #:
+    #: Defaulted so existing constructions keep working; a board built without
+    #: a sig simply never matches a cache probe, which fails CLOSED (rebuild)
+    #: rather than serving something stale.
+    sig: tuple = ()
     # P10 (lead a2a 2026-06-12) — user-defined project clusters loaded
     # from the same YAML store. Empty list when the store has no
     # ``groups:`` key (back-compat). See :mod:`scitex_cards._groups`.
@@ -102,6 +124,26 @@ def _discover_lanes() -> List[Path]:
             if mpath.is_file():
                 out.append(mpath)
     return sorted(set(out))
+
+
+def _stat_sig(path: Path) -> tuple:
+    """``(mtime_ns, size)`` for one file — the unit of cache identity.
+
+    Pairing the stamp with the SIZE is what makes this survive a filesystem
+    with 1-second timestamp granularity, where a write and the stat after it
+    can report the same mtime. See ``BoardState.sig``.
+
+    NEVER RAISES. A lane can be deleted between being loaded and being
+    fingerprinted, and the board must not 500 because a file went away — the
+    surrounding code is deliberately per-lane fail-soft and this has to match
+    it. A vanished file yields ``(0, 0)``, which DIFFERS from whatever it was,
+    so the cache correctly invalidates instead of pinning the old board.
+    """
+    try:
+        st = path.stat()
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return (0, 0)
 
 
 def _load_lane_safe(path: Path):
@@ -147,7 +189,9 @@ def _swr_enabled() -> bool:
     }
 
 
-def _kick_board_refresh(key, resolved, lane_tasks_by_path, effective_mtime) -> None:
+def _kick_board_refresh(
+    key, resolved, lane_tasks_by_path, effective_mtime, effective_sig=()
+) -> None:
     """Rebuild this board off the request path, once at a time.
 
     Fail-soft by construction: if the rebuild raises, the cache keeps the
@@ -171,6 +215,7 @@ def _kick_board_refresh(key, resolved, lane_tasks_by_path, effective_mtime) -> N
                 tasks=unioned,
                 store_path=resolved,
                 mtime=effective_mtime,
+                sig=effective_sig,
                 groups=groups,
                 lane_paths=list(lane_tasks_by_path),
             )
@@ -315,17 +360,27 @@ def get_board(
         lane_mtimes.append(mt)
         successful_lanes.append(lane_path)
 
-    # Effective mtime = MAX(global, *lanes). Any source's write rolls
-    # the cache forward.
+    # Effective mtime = MAX(global, *lanes). REPORTED value only — it feeds
+    # the /rev wire contract the frontend polls. Invalidation uses `sig`.
     effective_mtime = max([global_mtime] + lane_mtimes) if lane_mtimes else global_mtime
 
+    # CACHE IDENTITY: per-source (mtime_ns, size), global first then lanes in
+    # a stable order. Unlike the max() above this changes when ANY source
+    # changes in EITHER direction — a lane shrinking, or a write landing
+    # inside the same 1-second timestamp granule, both move it. See
+    # BoardState.sig for the failure this replaces.
+    effective_sig = (
+        (_stat_sig(resolved) if resolved.exists() else (0, 0)),
+        tuple(sorted(_stat_sig(p) for p in successful_lanes)),
+    )
+
     # Cache key is the GLOBAL path; the lane set is implicit (any lane
-    # change bumps effective_mtime, which the cache check sees).
+    # change moves effective_sig, which the cache check sees).
     key = str(resolved)
     cached = _board_cache.get(key)
     if cached is not None:
         board, _ = cached
-        if board.mtime == effective_mtime:
+        if board.sig and board.sig == effective_sig:
             _board_cache[key] = (board, time.time())
             return board
         # STALE-WHILE-REVALIDATE. The store changed, so this cached board is
@@ -343,7 +398,9 @@ def get_board(
         # through the store API, never here) — an agent deciding what to work
         # on must not act on a stale slice. This is the human-view path only.
         if allow_stale and _swr_enabled():
-            _kick_board_refresh(key, resolved, lane_tasks_by_path, effective_mtime)
+            _kick_board_refresh(
+                key, resolved, lane_tasks_by_path, effective_mtime, effective_sig
+            )
             return board
 
     global_tasks = _load_global_tasks(resolved) if resolved.exists() else []
@@ -359,6 +416,7 @@ def get_board(
         tasks=unioned,
         store_path=resolved,
         mtime=effective_mtime,
+        sig=effective_sig,
         groups=groups,
         lane_paths=successful_lanes,
     )
