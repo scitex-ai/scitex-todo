@@ -49,6 +49,7 @@
 <link rel="stylesheet" href="{% static 'scitex_cards/board_v3/13-details-pane.css' %}">{# 13-details-pane.css: right-hand Details column (filters + legend-aligned stats), scitex-writer convention #}
 <link rel="stylesheet" href="{% static 'scitex_cards/board_v3/09-timeline.css' %}">{# 09-timeline.css: Timeline layout — raster + per-task simple cards (operator TODO 2026-06-17) #}
 <link rel="stylesheet" href="{% static 'scitex_cards/board_v3/11-sticky-wall.css' %}">{# 11-sticky-wall.css: Wall layout (notes + islands) + the shared .stx-flash status-transition glow #}
+<link rel="stylesheet" href="{% static 'scitex_cards/board_v3/14-matrix.css' %}">{# 14-matrix.css: Matrix layout — urgency×importance 5x5 plane + quadrant divide + unscored tray (ADR-0011 §8). (hook-bypass: line-limit) #}
 {# combobox.css (loaded below the page-CSS so its specificity sits ON TOP if needed) #}
 <link rel="stylesheet" href="{% static 'scitex_ui/css/app/combobox.css' %}">
 <script defer src="{% static 'scitex_ui/js/app/combobox.js' %}"></script>
@@ -105,6 +106,27 @@
 {% endcomment %}
 <script defer src="{% static 'scitex_cards/board_v3/11-sticky-wall.js' %}"></script>
 {% comment %}
+  14-matrix.js — the urgency×importance matrix layout (ADR-0011 §8): a 5x5
+  plane of (urgency, importance) cells, the quadrant divide drawn at the
+  threshold, and an explicit tray for cards with no axes yet. Pure + node-
+  testable (tests/scitex_cards/test__matrix.js runs the REAL file, not a
+  mirror); publishes window.STX.matrix, and render() falls back to Timeline
+  when absent. READ-ONLY: rank is the engine's output (ADR-0011 §1), so
+  this module deliberately contains no scoring function. Operator build
+  order, card scitex-cards-gui-matrix-view-20260717.
+  (hook-bypass: line-limit — pre-existing 3425-line template.)
+{% endcomment %}
+<script defer src="{% static 'scitex_cards/board_v3/14-matrix.js' %}"></script>
+{% comment %}
+  15-dateinfo.js — date extraction + proximity helpers (dateInfo and its
+  parsers), extracted VERBATIM from the inline <script> as split PR-1. Pure,
+  DOM-free, node-testable against the shipped file (tests/scitex_cards/
+  test__dateinfo.js); publishes window.STX.dateInfo. The filter predicate
+  passes() consumes it at call time. Behaviour unchanged.
+  (hook-bypass: line-limit — pre-existing over-cap template.)
+{% endcomment %}
+<script defer src="{% static 'scitex_cards/board_v3/15-dateinfo.js' %}"></script>
+{% comment %}
   12-hover-tip.js — cursor-OFFSET hover tooltip for any [data-tip] element.
   Replaces the browser's native tooltip (SVG <title> / title=""), which
   renders under the cursor and covers the dot or note being pointed at
@@ -147,7 +169,7 @@
 {% comment %}
   timeline.js — the Timeline layout renderer (raster by agent/project +
   a rich per-task "simple" list). Classic <script defer> so it shares the
-  page globals (STATE / escapeHtml / openDetail / bucket / render); it
+  page globals (STATE / escapeHtml / openDetail / render); it
   exposes its entry points on window for the inline render() dispatch.
   Operator TODO 2026-06-17.
 {% endcomment %}
@@ -290,6 +312,17 @@
                 data-layout="graph" onclick="onLayoutChange('graph')"
                 role="radio" aria-checked="false"
                 title="Dependency / blocker graph (mermaid)">📊 Graph</button>
+        {% comment %}
+          Matrix — urgency×importance quadrants (ADR-0011 §8). The layout
+          itself lives in 14-matrix.js; this is only the toggle.
+          (hook-bypass: line-limit — this template is 3425 lines, already
+          over the 1024 cap before this change; splitting it is tracked
+          separately rather than smuggled into the matrix PR.)
+        {% endcomment %}
+        <button type="button" class="filt-layout-btn" id="f-layout-matrix"
+                data-layout="matrix" onclick="onLayoutChange('matrix')"
+                role="radio" aria-checked="false"
+                title="Matrix — urgency × importance quadrants (I urgent+important / II important / III urgent / IV neither)">🎯 Matrix</button>
       </div>
     </span>
     </div>{# end VIEW group #}
@@ -676,31 +709,14 @@
 
 {% block extra_js %}
   <script>
-    // Status mapping — the 7-value enum on the wire maps to 4 BUCKETS used
-    // ONLY for COLUMN placement + sort order + the blocked pulse animation.
-    // The per-status COLOR layer no longer uses these buckets: cards /
-    // timeline / mermaid read the SSOT --status-* CSS vars (from
-    // STATUS_STYLE via _status_colors) so all 7 statuses render distinct.
-    // (hook-bypass: line-limit.)
-    const STATUS_BUCKET = {
-      working: "working",
-      in_progress: "working",
-      goal: "working",
-      pending: "waiting",
-      waiting: "waiting",
-      deferred: "waiting",
-      blocked: "blocked",
-      done: "done",
-      failed: "done",
-    };
-    function bucket(status) { return STATUS_BUCKET[status] || "waiting"; }
 
     // === LAYOUT whitelist (SSOT) ==========================================
     // The only layouts that exist. Column + Table were removed 2026-07-13
     // (operator), Stale on 2026-07-10. `const` declarations are NOT hoisted
     // into the TDZ-free zone, so these must be declared ABOVE the STATE
     // initializer, which calls normalizeLayout() at boot.
-    const VALID_LAYOUTS = ["timeline", "wall", "graph"];
+    // (hook-bypass: line-limit — pre-existing 3425-line template.)
+    const VALID_LAYOUTS = ["timeline", "wall", "graph", "matrix"];
     const DEFAULT_LAYOUT = "timeline";
 
     // Owner SSOT (client mirror of scitex_cards._owner.card_owner) — the
@@ -893,7 +909,9 @@
       // Date filter (operator TG 440 / 442): proximity buckets derived
       // from the next future date parsed out of the title.
       if (f.date) {
-        const di = dateInfo(t);
+        // Date helpers extracted to 15-dateinfo.js; call-time lookup so
+        // script load order is irrelevant. (hook-bypass: line-limit.)
+        const di = window.STX.dateInfo.dateInfo(t);
         if (f.date === "undated" && di) return false;
         if (f.date === "overdue" && !(di && di.daysFromNow < 0)) return false;
         if (f.date === "today" && !(di && di.daysFromNow === 0)) return false;
@@ -1113,76 +1131,10 @@
     }
 
     // === Date extraction + proximity color (operator TG 440/442) =====
-    // Pulls every YYYY-MM-DD pattern out of the title (also YYYY/MM/DD)
-    // and picks the NEXT future date (or, if all dates are past, the
-    // most recent past one). Renders an inline 📅 pill colored by
-    // proximity: red ≤3d, amber ≤7d, blue ≤30d, plain otherwise.
-    const _DATE_RX = /(20\d{2})[-\/](\d{1,2})[-\/](\d{1,2})/g;
-    function _parseAllDates(title) {
-      const out = [];
-      let m;
-      _DATE_RX.lastIndex = 0;
-      while ((m = _DATE_RX.exec(title)) !== null) {
-        const y = +m[1], mo = +m[2], d = +m[3];
-        const dt = new Date(y, mo - 1, d);
-        if (!isNaN(dt) && dt.getMonth() === mo - 1) out.push(dt);
-      }
-      return out;
-    }
-    function dateInfo(t) {
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
-      // P4 (lead approved 2026-06-12) — prefer the SERVER-COMPUTED
-      // `deadline_next` over the raw `deadline` over the title-parsed
-      // date. The server expands recurring + multi forms before the wire,
-      // so the FE never re-derives the next occurrence. Back-compat:
-      // tasks without any of those fall through to the existing _DATE_RX
-      // title scan. (hook-bypass: line-limit — see REFACTORING.md.)
-      const next = t.deadline_next || t.deadline;
-      if (next) {
-        const dl = new Date(next);
-        if (!isNaN(dl)) {
-          dl.setHours(0, 0, 0, 0);
-          const days = Math.round((dl - now) / 86400000);
-          return {
-            date: dl, daysFromNow: days, all: [dl],
-            source: t.deadline_next ? "deadline_next" : "deadline",
-            // Pass the recurring info forward so datePillHtml can append
-            // "every Nu" — extracted lazily from the raw deadline.
-            repeater: _extractRepeaterSuffix(t.deadline) ||
-                      _extractRepeaterSuffix(_firstRecurringDeadline(t)),
-          };
-        }
-      }
-      const title = (t.title || "") + " " + (t.task || "");
-      const dates = _parseAllDates(title);
-      if (dates.length === 0) return null;
-      const future = dates.filter(d => d >= now).sort((a, b) => a - b);
-      const pick = future.length ? future[0] : dates.sort((a, b) => b - a)[0];
-      const days = Math.round((pick - now) / 86400000);
-      return { date: pick, daysFromNow: days, all: dates, source: "title" };
-    }
-
-    // P4 PR3: scan the raw deadline (or deadlines[]) for an org repeater
-    // suffix like " +1w" / " ++2m" and return a human-readable form
-    // ("every 1w") for the date-pill label. Returns null when absent.
-    // (hook-bypass: line-limit.)
-    function _extractRepeaterSuffix(rawDeadline) {
-      if (!rawDeadline) return null;
-      const m = String(rawDeadline).match(/\s\+\+?(\d+)([dwmy])$/);
-      if (!m) return null;
-      return `every ${m[1]}${m[2]}`;
-    }
-    function _firstRecurringDeadline(t) {
-      const arr = Array.isArray(t.deadlines) ? t.deadlines : [];
-      for (const e of arr) {
-        if (typeof e === "string" && /\s\+\+?\d+[dwmy]$/.test(e)) {
-          return e;
-        }
-      }
-      return null;
-    }
-
+    // Pulls every YYYY-MM-DD out of the title, picks the NEXT future date,
+    // and colors the 📅 pill by proximity. EXTRACTED to 15-dateinfo.js
+    // (window.STX.dateInfo) as split PR-1 — pure, node-testable, unchanged
+    // behaviour. Consumed at call time; see passes(). (hook-bypass: line-limit.)
 
     function populateFilters() {
       if (!STATE.graph) return;
@@ -1350,6 +1302,30 @@
           throw new Error(err.error || `HTTP ${r.status}`);
         }
         toast(`✓ ${cardId} → ${newStatus}`);
+        await loadGraph();
+      } catch (e) {
+        toast(`✗ ${e.message}`, true);
+      }
+    }
+    // Matrix drag -> re-score (ADR-0011 §8). Sets a card's two axes from the
+    // grid cell it was dropped on; the `rescore_task` verb recomputes the
+    // WHOLE rank order server-side and emits `rank_changed`, so agents see the
+    // new order within the 5s poller. The client sends ONLY the axes, never a
+    // rank (computed, never asserted). loadGraph() repaints from the store.
+    async function rescoreCard(cardId, urgency, importance) {
+      try {
+        const r = await fetch("/rescore", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: cardId, urgency: urgency, importance: importance }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${r.status}`);
+        }
+        const data = await r.json().catch(() => ({}));
+        const rankNote = data && data.rank ? ` · rank ${data.rank}/${data.of}` : "";
+        toast(`✓ ${cardId} → urgency ${urgency}, importance ${importance}${rankNote}`);
         await loadGraph();
       } catch (e) {
         toast(`✗ ${e.message}`, true);
@@ -1547,6 +1523,13 @@
         // Unreachable from the UI (button removed 2026-07-10); the
         // render path stays as shared code for the /stale endpoint.
         _renderStaleView(canvas);
+      } else if (layout === "matrix" && window.STX && window.STX.matrix) {
+        // Matrix — urgency×importance quadrants (ADR-0011 §8, 14-matrix.js).
+        // Same filtered `visible` set as every other layout; the matrix adds
+        // no predicates of its own. Falls through to Timeline when the
+        // deferred module hasn't executed yet (same stance as Wall).
+        // (hook-bypass: line-limit — pre-existing 3425-line template.)
+        _renderMatrixView(canvas, visible);
       } else if (layout === "wall" && window.STX && window.STX.stickyWall) {
         // Wall layout — sticky notes clustered by assignee (11-sticky-wall.js).
         // Uses the SAME filtered `visible` set the filter bar produces. The
@@ -1655,6 +1638,19 @@
       groupBy: (() => { try { return localStorage.getItem("scitex-todo:wall-group") || "assignee"; } catch { return "assignee"; } })(),
       selected: (() => { try { return localStorage.getItem("scitex-todo:wall-selected") || null; } catch { return null; } })(),
     };
+    // Matrix layout (ADR-0011 §8). RENDERS the urgency/importance axes the
+    // store carries and the rank the engine computed; it does NOT score — a
+    // JS-side f(u,i) would be a second implementation of the engine and would
+    // lie the moment the weights moved. Drag-to-re-score is wired below (the
+    // delegated dragstart/drop listeners) and goes through the `rescore_task`
+    // store verb via /rescore, so the `rank_changed` event still reaches
+    // agents. innerHTML is replaced wholesale each render, which is why the
+    // drag listeners are DELEGATED on document, not bound per card.
+    // (hook-bypass: line-limit — pre-existing 3400+-line template; split is
+    // carded as scitex-cards-gui-board-v3-template-split-20260717.)
+    function _renderMatrixView(canvas, visible) {
+      canvas.innerHTML = window.STX.matrix.matrixHtml(visible, {});
+    }
     function _renderWallView(canvas, visible) {
       const edges = (STATE.graph && STATE.graph.edges) || [];
       canvas.innerHTML = window.STX.stickyWall.wallHtml(visible, edges, {
@@ -1695,6 +1691,62 @@
       const id =
         el.getAttribute("data-card-id") || el.getAttribute("data-id");
       if (id) openCardCtx(ev, id);
+    });
+
+    // Matrix drag-to-re-score (ADR-0011 §8), delegated on `document` so it
+    // survives the matrix's wholesale innerHTML re-render. Only `.mx-card`s
+    // are `draggable`, so dragstart fires for the matrix view ALONE — no
+    // other layout is affected and no per-card binding is needed. The drop
+    // target is a grid cell (`.mx-cell`), which carries its own
+    // (urgency, importance) in data-*; window.STX.matrix.dropAxes parses and
+    // validates them. A drop anywhere without valid axes (the unscored tray,
+    // the gaps between cells) is a NO-OP — you cannot un-score by dragging,
+    // and the verb requires 1..5 regardless.
+    let _mxDragId = null;
+    function _mxClearDropTargets() {
+      document
+        .querySelectorAll(".mx-cell--drop")
+        .forEach((c) => c.classList.remove("mx-cell--drop"));
+    }
+    document.addEventListener("dragstart", (ev) => {
+      const card = ev.target.closest && ev.target.closest(".mx-card");
+      if (!card) return;
+      _mxDragId = card.getAttribute("data-id") || card.getAttribute("data-card-id");
+      card.classList.add("mx-card--dragging");
+      if (ev.dataTransfer) {
+        ev.dataTransfer.effectAllowed = "move";
+        try { ev.dataTransfer.setData("text/plain", _mxDragId || ""); } catch {}
+      }
+    });
+    document.addEventListener("dragend", (ev) => {
+      const card = ev.target.closest && ev.target.closest(".mx-card");
+      if (card) card.classList.remove("mx-card--dragging");
+      _mxClearDropTargets();
+      _mxDragId = null;
+    });
+    document.addEventListener("dragover", (ev) => {
+      if (!_mxDragId) return;
+      const cell = ev.target.closest && ev.target.closest(".mx-cell");
+      if (!cell) return;
+      const mx = window.STX && window.STX.matrix;
+      if (!mx || !mx.dropAxes(cell.dataset)) return; // not a valid target
+      ev.preventDefault(); // permit the drop
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+      if (!cell.classList.contains("mx-cell--drop")) {
+        _mxClearDropTargets();
+        cell.classList.add("mx-cell--drop");
+      }
+    });
+    document.addEventListener("drop", (ev) => {
+      if (!_mxDragId) return;
+      const cell = ev.target.closest && ev.target.closest(".mx-cell");
+      const mx = window.STX && window.STX.matrix;
+      const axes = cell && mx ? mx.dropAxes(cell.dataset) : null;
+      if (!axes) return; // dropped off any valid cell -> no-op
+      ev.preventDefault();
+      const id = _mxDragId;
+      _mxClearDropTargets();
+      rescoreCard(id, axes.urgency, axes.importance);
     });
 
     // Status-transition glow (operator msg 933). Cheap by construction: a
@@ -3338,20 +3390,9 @@
         </div>`;
     }
 
-    // (renderFleetStrip removed with the #fleetstrip element — see the
-    //  filterbar comment near the top of this template. fleet-liveness
-    //  lives in the lead's periodic reports, not the board.)
-    function toggleAgentFilter(agent) {
-      // Click a dot: if it's not the current f-agent value, set it; if
-      // it IS, clear it back to "All assignees". Updates the <select> too
-      // so the existing filter pipeline stays consistent.
-      const sel = document.getElementById("f-agent");
-      if (!sel) return;
-      const newVal = STATE.filters.agent === agent ? "" : agent;
-      STATE.filters.agent = newVal;
-      sel.value = newVal;
-      render();
-    }
+    // (renderFleetStrip + toggleAgentFilter removed with the #fleetstrip
+    //  element — see the filterbar comment near the top of this template.
+    //  fleet-liveness lives in the lead's periodic reports, not the board.)
 
     // -- Keyboard shortcuts -------------------------------------------------
     // Cmd/Ctrl+N opens the Add Task modal (operator-friendly create entry).

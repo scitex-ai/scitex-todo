@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.16.1] - 2026-07-18 — the GUI chat stops re-reading megabytes per click
+
+### Changed
+- **`/dm/threads` 10.7 s → 6 ms warm; thread open 2.7 s → 5 ms** (measured on
+  the live GUI). Two read caches on the proven `(mtime_ns, size)` guard:
+  the validated `users:` section (previously a full parse of the multi-MB
+  store per request, for one registered row) and the `list_threads`
+  summaries (previously an unread-count rescan of every record per call).
+  Any store write rolls the key, so no reader — including the GUI unread
+  badge across a `mark_read` — can be served stale content. (#485)
+- **`_users/_store.py` split by data-flow direction** (`_store_read` /
+  `_store_write` / thin re-exporting `_store`) per the line-budget
+  protocol; every existing import keeps working. Write paths keep the
+  UNCACHED section read under the store lock. (#485)
+
 ## [0.16.0] - 2026-07-17 — the backup rail runs itself, off-site, and the decoupling is a CI invariant
 
 ### Added
@@ -170,7 +185,8 @@ the live 1,390-card store, not inferred from the diff.
 - **The header is quiet again**: no Reload button, no Hide-project control, no oversized
   "Blocking me" readout (the legend already says it), no `new/24h` counter in the bar.
 - **The status ring around each agent icon is gone.** The icons stay — the operator likes them.
-  The *ring* nobody could read: "エージェントアイコンの周りが何を表すのかよくわかりませんでした."
+  The *ring* nobody could read: "I could not tell what the ring around
+  the agent icons represents" (operator, translated).
   It encoded status around a glyph that encodes identity, with no legend entry to decode it.
   Displayed is not the same as read.
 - **Wall: one icon per agent tile**, not one per card. 50 islands, 50 icons — down from 161.
@@ -480,7 +496,8 @@ that each bit multiple agents in production, plus the board-UI review batch.
   `--status`, MCP `add_task`, board create handler, `Task` dataclass) is now
   `deferred` — a new card carries a real decision. The CLI Choice and the
   board handlers reject `pending` at the boundary (HTTP 400 / usage error).
-- `deferred` is NOT terminal (operator ruling: deferred は終了ではない). It is
+- `deferred` is NOT terminal (operator ruling, translated: "deferred is
+  not an end state"). It is
   open backlog: it shows in active views, counts as open, and CAN be overdue
   when it carries a missed deadline. `close` writes `cancelled` (the real
   "closed as not planned" state) instead of overloading `deferred`.
@@ -1220,8 +1237,9 @@ broken (see Fixed below), so the accumulated work below shipped only now.
 ### Added
 
 - **Sort by time + Group by time on the v3 board** (PR #201
-  cherry-picked via #202; lead a2a `ff1441d7`, operator request
-  「時間でのビュー」). The v3 board at `/` (the operator's home view)
+  cherry-picked via #202; lead a2a `ff1441d7`, operator request for
+  "a time-based view", translated). The v3 board at `/` (the
+  operator's home view)
   now exposes time-based controls in the existing
   `.stx-todo-filterbar__group--view` group:
   - Sort dropdown extends with `created_at` + `completed_at` options

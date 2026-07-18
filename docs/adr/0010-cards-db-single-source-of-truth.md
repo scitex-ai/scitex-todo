@@ -14,8 +14,9 @@ audit trail) and Q6 (multi-host). Since then (all 2026-07-16):
 1. The package was renamed **scitex-cards** (S1 shipped in v0.14.0: import
    shim, env dual-read, both CLIs; repo renamed to `scitex-ai/scitex-cards`).
 2. The operator ruled the **DATABASE is the single source of truth** — not
-   yaml-with-a-db-mirror: "データベースを唯一の真実にしないと、スピードの面でも
-   どこかで簡単に行き詰まる".
+   yaml-with-a-db-mirror: "unless the database is the single source of
+   truth, we will sooner or later hit a wall on speed somewhere"
+   (operator, translated; the original lives on the board card).
 3. The operator declared the SSOT path: **`~/.scitex/cards/cards.db`**.
    An optional per-card file view (`~/.scitex/cards/cards/<card-id>/…`) is
    allowed but strictly DERIVED — the db always wins.

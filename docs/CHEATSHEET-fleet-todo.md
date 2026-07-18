@@ -50,7 +50,7 @@ scitex-todo init-store --shared        # 🟡 PHASE-1
 | `user:<name>`   | A human                                          | `user:operator`                  |
 | `private`       | Operator-only memos                              | `private`                        |
 
-`host:<hostname>` is **first-class** for the cross-host 串刺し view —
+`host:<hostname>` is **first-class** for the cross-host kushizashi view —
 see §6 (storage axes) and §7.6 (cross-host workflow). Tag a task with
 `scope: host:$(hostname)` when it's locally rooted (e.g. local env
 setup, host-specific config) so cross-host filters keep it in its lane.
@@ -201,7 +201,7 @@ and the MCP tools — every adapter is the same writer.
 
 ## 6 — The store: where the data lives (two axes of cross-cutting)
 
-The operator's mental model — **串刺し** (*kushizashi*, "skewered"
+The operator's mental model — **kushizashi** ("skewered"
 through projects AND hosts) — has two independent axes. Both are
 first-class; the precedence chain handles axis 1, the git-backed sync
 substrate handles axis 2.
@@ -244,7 +244,7 @@ host: wsl2-dev                                 host: mba-arm64
 ```
 
 After a `sync --apply` on each host, both hosts see one canonical view.
-That view is the 串刺し view: read-only-equivalent across the fleet.
+That view is the kushizashi view: read-only-equivalent across the fleet.
 
 ### To see what your process is actually pointing at
 
@@ -301,7 +301,7 @@ scitex-todo summary --scope project:sac
 # → totals + by_status + by_scope + by_assignee, JSON-able with --json
 ```
 
-### 7.6 "Show me the 串刺し view — every project, every host" (cross-host workflow)
+### 7.6 "Show me the kushizashi view — every project, every host" (cross-host workflow)
 
 The user-scope store is the cross-PROJECT axis; the git-backed sync is
 the cross-HOST axis. With both, "every task on every host" is just
@@ -310,11 +310,11 @@ the cross-HOST axis. With both, "every task on every host" is just
 ```bash
 # On any host, after a sync:
 scitex-todo sync-store --apply             # 🟠 PHASE-2 — pull/push the state repo
-scitex-todo list-tasks --scope ''          # the full 串刺し view (no scope filter)
+scitex-todo list-tasks --scope ''          # the full kushizashi view (no scope filter)
 scitex-todo summary --scope ''       # numeric digest of the same
 ```
 
-Slice the 串刺し view by host with the `host:<hostname>` scope label
+Slice the kushizashi view by host with the `host:<hostname>` scope label
 (first-class convention — see §1.3 setup):
 
 ```bash
@@ -331,14 +331,14 @@ scitex-todo list-tasks --scope "host:mba-arm64"
 scitex-todo list-tasks --scope ''
 ```
 
-The web board (`scitex-todo board`) renders the same 串刺し view —
+The web board (`scitex-todo board`) renders the same kushizashi view —
 it reads whatever `where` resolves to, so on a host with the
 fleet-shared user-scope store, the board IS the fleet board.
 
 ### 7.7 "Override the fleet store with a project-local task list"
 
 When you want a project to keep its own task list that doesn't pollute
-the cross-project 串刺し view:
+the cross-project kushizashi view:
 
 ```bash
 cd ~/proj/scitex-foo

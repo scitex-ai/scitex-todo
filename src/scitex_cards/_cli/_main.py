@@ -34,16 +34,36 @@ _COMMAND_CATEGORIES = (
     (
         "Core",
         (
-            "add", "update", "done", "close", "comment", "reassign",
-            "list-tasks", "list-stale", "find-card", "next", "runnable",
+            "add",
+            "update",
+            "done",
+            "close",
+            "comment",
+            "reassign",
+            "list-tasks",
+            "list-stale",
+            "find-card",
+            "next",
+            "runnable",
             "triage",
-            "summary", "render-graph", "emit-event", "help-wait",
-            "help-clear", "hook", "migration", "index", "inbox",
-            "init-store", "reconcile-merged-prs",
+            "summary",
+            "render-graph",
+            "emit-event",
+            "help-wait",
+            "help-clear",
+            "hook",
+            "migration",
+            "index",
+            "inbox",
+            "init-store",
+            "reconcile-merged-prs",
         ),
     ),
     ("Data & Sync", ("db", "sync-github", "sync-store", "deliver")),
-    ("Service", ("board", "gui", "mcp", "notifyd", "watch", "watch-ci")),
+    (
+        "Service",
+        ("board", "gui", "hub", "mcp", "notifyd", "serve", "watch", "watch-ci"),
+    ),
     ("Diagnostics", ("blocked", "print-stats", "health", "resolve-store")),
     ("Introspection", ("list-python-apis", "skills")),
     ("Shell", ("install-shell-completion", "print-shell-completion")),
@@ -189,7 +209,7 @@ def render_graph_cmd(tasks_path: str | None, output: str, print_mermaid: bool) -
             "filters, matches are AND-composed."
         ),
         examples=(
-            ("{prog} list-tasks --assignee \"$SCITEX_TODO_AGENT_ID\" --json", ""),
+            ('{prog} list-tasks --assignee "$SCITEX_TODO_AGENT_ID" --json', ""),
             (
                 "{prog} list-tasks --project scitex-todo --status pending "
                 "--status in_progress",
@@ -452,7 +472,9 @@ _ci_watch.register(main)
 # cards whose linked PR (pr_url) has MERGED. Pure decision core + gh/REST
 # merge-state seam live in `_reconcile_prs.py`; DRY-RUN by default, --apply
 # to mutate. Paired with the scitex-todo.reconcile-merged-prs JobSpec.
-_reconcile.register(main)  # hook-bypass: line-limit (pre-existing over-cap; minimal wire)
+_reconcile.register(
+    main
+)  # hook-bypass: line-limit (pre-existing over-cap; minimal wire)
 # deliver (slice 1 of the standalone notification-DELIVERY rail). One-shot
 # delivery pass — reads each recipient's pending notifications (read-only,
 # never touches the user's `seen` cursor) and hands them to the channels in

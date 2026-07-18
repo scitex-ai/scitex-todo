@@ -47,6 +47,30 @@ is a separate fast-lane, not built here). The ``"operator"`` recipient is
 enqueued too, for symmetry: the inbox key is cheap, harmless, and keeps a
 future operator-side drain surface working without a special case (the board
 itself reads unread state from THIS sidecar, not the inbox).
+
+READ CACHE vs WRITERS (the one rule this module lives or dies by)
+----------------------------------------------------------------
+The GUI polls a thread every ~5s, and each poll used to cost TWO full parses
+of the entire sidecar plus a lock: ``mark_read`` (which sits on the poll path,
+not on a cold write path) and then ``get_thread``. So the READ paths
+(:func:`get_thread`, :func:`list_threads`) go through
+:func:`_load_threads_cached`, an mtime-guarded cache of the parsed content —
+the ``services.get_board`` pattern.
+
+WRITERS NEVER READ THE CACHE. :func:`append_message` and the authoritative
+half of :func:`mark_read` do a read-modify-write and MUST re-read the file
+fresh, under the lock, via the uncached :func:`_load_threads`. A stale read
+there would silently DROP a message: two writes landing inside one mtime tick
+and the second clobbers the first. Optimizing a writer onto the cache is the
+one failure mode of this design; there is a test that refuses it.
+
+:func:`mark_read` gets a lock-free FAST NO: it asks the cache whether this
+reader has anything to flip, and returns 0 without taking the lock or parsing
+when the answer is no. That is safe ONLY because marking-read is idempotent
+and self-healing — a stale cache costs at most one poll's delay (a badge
+clears ~5s late; the next poll sees a fresh mtime and flips it), never data.
+The instinct boundary in one sentence: this fast path is fine for
+``mark_read``; it would NOT be fine for ``append_message``.
 """
 
 from __future__ import annotations
@@ -86,11 +110,7 @@ def threads_path(store: str | Path | None = None) -> Path:
     chain); the threads sidecar always sits NEXT TO it so both files live in
     the same scope.
     """
-    tasks = (
-        resolve_tasks_path(store)
-        if store is None
-        else Path(store).expanduser()
-    )
+    tasks = resolve_tasks_path(store) if store is None else Path(store).expanduser()
     return tasks.parent / THREADS_FILENAME
 
 
@@ -174,6 +194,58 @@ def _load_threads(path: Path) -> dict[str, list[dict]]:
             continue
         out[key] = [r for r in records if isinstance(r, dict)]
     return out
+
+
+"""Parsed sidecar content per path, guarded by the file's mtime+size.
+
+``{path: (st_mtime_ns, st_size, threads)}``. READ-ONLY: the stored mapping is
+handed to readers that copy on the way out and never mutate it. A writer must
+NEVER be served from here — see the module docstring.
+"""
+_READ_CACHE: dict[str, tuple[int, int, dict[str, list[dict]]]] = {}
+
+
+def _load_threads_cached(path: Path) -> dict[str, list[dict]]:
+    """:func:`_load_threads` memoized on the file's ``(mtime_ns, size)``.
+
+    The ``services.get_board`` pattern: any write rolls the mtime forward, so
+    the next read re-parses and no reader can be served stale content across a
+    write. Absent file → ``{}`` and nothing cached.
+
+    FOR READERS ONLY. Callers must treat the result as immutable and copy what
+    they hand out (:func:`get_thread` and :func:`list_threads` both do).
+    Writers use the uncached :func:`_load_threads` under the lock instead.
+    """
+    try:
+        stat = path.stat()
+    except OSError:
+        return {}
+    key = str(path)
+    cached = _READ_CACHE.get(key)
+    if (
+        cached is not None
+        and cached[0] == stat.st_mtime_ns
+        and cached[1] == stat.st_size
+    ):
+        return cached[2]
+    threads = _load_threads(path)
+    _READ_CACHE[key] = (stat.st_mtime_ns, stat.st_size, threads)
+    return threads
+
+
+def _is_unread_for(record: dict, reader: str, wanted: set[str] | None) -> bool:
+    """Whether ``record`` is one that :func:`mark_read` would flip for ``reader``.
+
+    ONE predicate, deliberately shared by the lock-free pre-check and the
+    authoritative flip. If those two ever disagreed about what "unread" means,
+    the pre-check could answer "nothing to do" for a message the flip would
+    have taken — a message stuck unread forever rather than one poll late.
+    """
+    if record.get("to") != reader or record.get("read"):
+        return False
+    if wanted is not None and record.get("id") not in wanted:
+        return False
+    return True
 
 
 def _save_threads_unlocked(threads: dict[str, list[dict]], path: Path) -> None:
@@ -323,8 +395,15 @@ def get_thread(a: str, b: str, *, store: str | Path | None = None) -> list[dict]
     Direction-agnostic; missing file or unknown pair → ``[]``. Records are
     copies — mutating them does not touch the store.
     """
-    records = _load_threads(threads_path(store)).get(thread_key(a, b), [])
+    records = _load_threads_cached(threads_path(store)).get(thread_key(a, b), [])
     return [dict(r) for r in records]
+
+
+#: ``list_threads`` summaries per path, keyed like ``_READ_CACHE`` — the
+#: unread-count pass rescans EVERY record of every thread (~0.7 s per call on
+#: the 3 MB live sidecar even with the parse cached), so it runs once per file
+#: change; the copy-out in ``list_threads`` keeps callers mutation-safe.
+_SUMMARY_CACHE: dict[str, tuple[int, int, dict[str, dict]]] = {}
 
 
 def list_threads(*, store: str | Path | None = None) -> dict[str, dict]:
@@ -333,22 +412,42 @@ def list_threads(*, store: str | Path | None = None) -> dict[str, dict]:
     Returns ``{thread_key: {"peers": (a, b), "last": <record|None>,
     "count": N, "unread": {peer: n}}}`` where ``unread[p]`` counts messages
     addressed TO ``p`` that are still ``read: false`` (i.e. what ``p`` has
-    not seen yet).
+    not seen yet). Served from ``_SUMMARY_CACHE`` while the sidecar's
+    ``(mtime_ns, size)`` is unchanged; same benign stat-then-parse race as
+    :func:`_load_threads_cached` (self-heals on the next call).
     """
-    out: dict[str, dict] = {}
-    for key, records in _load_threads(threads_path(store)).items():
-        a, b = peers_of(key)
-        unread: dict[str, int] = {a: 0, b: 0}
-        for r in records:
-            if not r.get("read") and r.get("to") in unread:
-                unread[r["to"]] += 1
-        out[key] = {
-            "peers": (a, b),
-            "last": dict(records[-1]) if records else None,
-            "count": len(records),
-            "unread": unread,
+    path = threads_path(store)
+    try:
+        stat = path.stat()
+    except OSError:
+        return {}
+    cache_key = str(path)
+    cached = _SUMMARY_CACHE.get(cache_key)
+    if cached is None or cached[0] != stat.st_mtime_ns or cached[1] != stat.st_size:
+        summary: dict[str, dict] = {}
+        for key, records in _load_threads_cached(path).items():
+            a, b = peers_of(key)
+            unread: dict[str, int] = {a: 0, b: 0}
+            for r in records:
+                if not r.get("read") and r.get("to") in unread:
+                    unread[r["to"]] += 1
+            summary[key] = {
+                "peers": (a, b),
+                "last": records[-1] if records else None,
+                "count": len(records),
+                "unread": unread,
+            }
+        cached = (stat.st_mtime_ns, stat.st_size, summary)
+        _SUMMARY_CACHE[cache_key] = cached
+    return {
+        k: {
+            "peers": v["peers"],
+            "last": dict(v["last"]) if v["last"] else None,
+            "count": v["count"],
+            "unread": dict(v["unread"]),
         }
-    return out
+        for k, v in cached[2].items()
+    }
 
 
 def mark_read(
@@ -363,19 +462,33 @@ def mark_read(
     ``ids=None`` (default) marks ALL of the reader's unread messages in the
     thread; otherwise only the listed message ids. Idempotent; returns the
     number of records actually flipped. Unknown thread → 0.
+
+    Sits on the GUI's ~5s poll path, where the answer is almost always "nothing
+    to flip", so it opens with a lock-free FAST NO off the read cache and only
+    pays the lock + fresh parse when there is real work. The check derives the
+    answer for THIS reader from the cached content on every call — the boolean
+    itself is never memoized, because the reader varies per request and one
+    peer's "nothing unread" must never answer for another's.
     """
     wanted = set(ids) if ids is not None else None
     path = threads_path(store)
+
+    # Fast NO. A stale cache is tolerable here and only here: a false negative
+    # costs one poll's delay (the next poll sees a fresh mtime and flips), and
+    # a false positive costs one wasted lock. Neither can lose a message —
+    # everything below re-reads the file fresh and is the authority.
+    cached = _load_threads_cached(path).get(thread)
+    if not any(_is_unread_for(r, reader, wanted) for r in cached or []):
+        return 0
+
     flipped = 0
     with _threads_lock(path):
-        threads = _load_threads(path)
+        threads = _load_threads(path)  # authoritative: never the cache
         records = threads.get(thread)
         if not records:
             return 0
         for r in records:
-            if r.get("to") != reader or r.get("read"):
-                continue
-            if wanted is not None and r.get("id") not in wanted:
+            if not _is_unread_for(r, reader, wanted):
                 continue
             r["read"] = True
             flipped += 1

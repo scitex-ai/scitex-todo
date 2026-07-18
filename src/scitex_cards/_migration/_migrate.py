@@ -2,12 +2,9 @@
 # -*- coding: utf-8 -*-
 """Directory-card migration scanner + plan emitter (PR-D Stage 1).
 
-Operator-direct directive (2026-06-13, lead a2a `[operator-driven]`):
-
-  "Todo ではtasksディレクトリの中にディレクトリカードがないとダメですよ？
-   直接書くのは厳禁です、エラーで止めてくださいね"
-
-Translation: the canonical card shape is a per-task DIRECTORY at
+Operator-direct directive (2026-06-13, lead a2a `[operator-driven]`,
+translated — the verbatim original lives on the board's task history):
+the canonical card shape is a per-task DIRECTORY at
 ``<proj>/.scitex/todo/tasks/<card-id>/`` (with ``README.md`` for the
 body + ``adr.md`` for decisions per skill 30). Writes that lay a row
 directly into the flat ``tasks.yaml`` are FORBIDDEN — the system must
@@ -83,6 +80,7 @@ MAX_COMMENT_CHARS = 280
 @dataclass
 class RowPlan:
     """Per-row classification + migration delta the migrator will apply."""
+
     id: str
     lane_path: Path
     classifications: List[str] = field(default_factory=list)
@@ -106,6 +104,7 @@ class RowPlan:
 @dataclass
 class LanePlan:
     """Per-lane (= per-project) plan rollup."""
+
     lane_path: Path
     rows: List[RowPlan] = field(default_factory=list)
     total: int = 0
@@ -127,6 +126,7 @@ class LanePlan:
 @dataclass
 class FleetPlan:
     """Top-level plan emitted by :func:`scan_all_lanes`."""
+
     lanes: List[LanePlan] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -168,7 +168,8 @@ def classify_row(row: dict, lane_path: Path) -> RowPlan:
     comments = row.get("comments") or []
     if isinstance(comments, list):
         long_n = sum(
-            1 for c in comments
+            1
+            for c in comments
             if isinstance(c, dict)
             and isinstance(c.get("text"), str)
             and len(c["text"]) > MAX_COMMENT_CHARS
@@ -192,12 +193,15 @@ def scan_lane(lane_path: Path) -> LanePlan:
     abort would mask other findings the operator needs to see.
     """
     from scitex_cards._model import load_tasks
+
     plan = LanePlan(lane_path=lane_path)
     try:
         rows = load_tasks(lane_path)
     except Exception as exc:  # noqa: BLE001
         logger.warning(
-            "[scitex-todo._migrate] cannot load %s: %s", lane_path, exc,
+            "[scitex-todo._migrate] cannot load %s: %s",
+            lane_path,
+            exc,
         )
         return plan
     for row in rows:
@@ -227,8 +231,10 @@ def scan_all_lanes(
     (the scanner is pure-data and easy to fixture).
     """
     from scitex_cards._paths import resolve_tasks_path
+
     if lane_paths is None:
         from scitex_cards._django.services import _discover_lanes
+
         lanes = list(_discover_lanes())
         global_path = resolve_tasks_path(None)
         if global_path.exists() and global_path not in lanes:
@@ -276,9 +282,7 @@ def render_markdown(fleet: FleetPlan) -> str:
             out.append("Sample non-canonical rows:")
             for r in sample:
                 kinds = "/".join(r.classifications)
-                note_hint = (
-                    f" — note='{r.note_excerpt}'" if r.note_excerpt else ""
-                )
+                note_hint = f" — note='{r.note_excerpt}'" if r.note_excerpt else ""
                 out.append(f"- `{r.id}` [{kinds}]{note_hint}")
         out.append("")
     return "\n".join(out)
@@ -298,6 +302,7 @@ import subprocess as _subprocess
 @dataclass
 class RowApplyResult:
     """Per-row outcome from `apply_lane`."""
+
     id: str
     written_readme: bool = False
     yaml_updated: bool = False
@@ -317,6 +322,7 @@ class RowApplyResult:
 @dataclass
 class LaneApplyResult:
     """Per-lane outcome from `apply_lane`."""
+
     lane_path: Path
     rows: List[RowApplyResult] = field(default_factory=list)
     git_committed: bool = False
@@ -474,7 +480,8 @@ def _git_commit_lane(lane_path: Path, message: str) -> tuple[bool, Optional[str]
         # caller drives the migration; a clean repo is their precondition).
         _subprocess.run(
             ["git", "-C", str(git_root), "add", "-A"],
-            check=True, capture_output=True,
+            check=True,
+            capture_output=True,
         )
     except (_subprocess.CalledProcessError, FileNotFoundError) as e:
         return False, f"git add failed: {e}"
@@ -482,7 +489,9 @@ def _git_commit_lane(lane_path: Path, message: str) -> tuple[bool, Optional[str]
     try:
         status = _subprocess.run(
             ["git", "-C", str(git_root), "status", "--porcelain"],
-            check=True, capture_output=True, text=True,
+            check=True,
+            capture_output=True,
+            text=True,
         )
     except _subprocess.CalledProcessError as e:
         return False, f"git status failed: {e}"
@@ -491,7 +500,8 @@ def _git_commit_lane(lane_path: Path, message: str) -> tuple[bool, Optional[str]
     try:
         _subprocess.run(
             ["git", "-C", str(git_root), "commit", "-m", message],
-            check=True, capture_output=True,
+            check=True,
+            capture_output=True,
         )
     except _subprocess.CalledProcessError as e:
         return False, f"git commit failed: {e.stderr.decode('utf-8', 'replace')[-200:]}"
@@ -523,7 +533,9 @@ def apply_lane(
     intended actions in the result.
     """
     from scitex_cards._model import (
-        _save_tasks_unlocked, _store_lock, load_tasks,
+        _save_tasks_unlocked,
+        _store_lock,
+        load_tasks,
     )
 
     result = LaneApplyResult(lane_path=lane_path)
@@ -556,7 +568,8 @@ def apply_lane(
                 rid = row.get("id")
                 if not rid:
                     rr = RowApplyResult(
-                        id="<empty>", skipped_reason="EMPTY_ID",
+                        id="<empty>",
+                        skipped_reason="EMPTY_ID",
                     )
                     result.rows.append(rr)
                     new_rows.append(row)
@@ -610,9 +623,7 @@ def apply_lane(
                 note = row.get("note") or ""
                 if isinstance(note, str) and note:
                     if not content.startswith(note):
-                        rr.skipped_reason = (
-                            "note byte-equal head check FAILED"
-                        )
+                        rr.skipped_reason = "note byte-equal head check FAILED"
                         result.rows.append(rr)
                         new_rows.append(row)
                         continue
@@ -635,8 +646,7 @@ def apply_lane(
     if not dry_run and result.updated_count > 0:
         committed, skip_reason = _git_commit_lane(
             lane_path,
-            f"[scitex-todo migrate] flat → directory "
-            f"({result.updated_count} cards)",
+            f"[scitex-todo migrate] flat → directory ({result.updated_count} cards)",
         )
         result.git_committed = committed
         result.git_skip_reason = skip_reason
@@ -655,8 +665,9 @@ def apply_all_lanes(
     NOT abort the others. The caller (CLI) aggregates the results.
     """
     if lane_paths is None:
-        from scitex_cards._paths import resolve_tasks_path
         from scitex_cards._django.services import _discover_lanes
+        from scitex_cards._paths import resolve_tasks_path
+
         lanes = list(_discover_lanes())
         global_path = resolve_tasks_path(None)
         if global_path.exists() and global_path not in lanes:

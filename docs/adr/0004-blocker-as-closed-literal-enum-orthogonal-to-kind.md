@@ -34,10 +34,10 @@ Add `VALID_BLOCKERS` as a closed validated tuple on the Python side
 
 ```python
 VALID_BLOCKERS: tuple[str, ...] = (
-    "compute",            # 計算リソース    — waiting on a kind=compute row
-    "dep",                # 依存            — waiting on another task
-    "operator-decision",  # ユーザー判断    — waiting on the operator (LOUD)
-    "agent-wait",         # 他エージェント待ち — waiting on a specific agent action
+    "compute",            # compute resources — waiting on a kind=compute row
+    "dep",                # dependency       — waiting on another task
+    "operator-decision",  # user decision    — waiting on the operator (LOUD)
+    "agent-wait",         # other-agent wait — waiting on a specific agent action
 )
 ```
 

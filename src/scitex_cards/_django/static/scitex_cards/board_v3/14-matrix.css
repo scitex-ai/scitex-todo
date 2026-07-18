@@ -1,0 +1,287 @@
+/* 14-matrix.css — the urgency×importance matrix layout (ADR-0011 §8).
+ *
+ * Companion to 14-matrix.js. Read-only render (PR 1 of 3): a 5×5 plane of
+ * (urgency, importance) cells with the quadrant divide drawn between 2 and
+ * 3, plus the unscored tray.
+ *
+ * THEME CONTRACT: every colour is a var(--…) token — the dark/light flip
+ * rides entirely on the scitex-ui tokens, no hardcoded literals (same rule
+ * the other board_v3 CSS files are pinned to; dark mode is the default the
+ * operator reads in).
+ *
+ * The quadrant divide is drawn on the CELLS, not as an overlay: an overlay
+ * would need pixel maths that drifts from the grid, and PR 2's drop targets
+ * are the cells themselves.
+ */
+
+.mx-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  min-width: 0;
+}
+
+/* ── Occupancy pills — "are we living in II?" answerable from the render. */
+.mx-occ {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.mx-occ__pill {
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-muted);
+}
+
+.mx-occ__pill b {
+  color: var(--text);
+  margin-left: 2px;
+}
+
+/* Quadrants I and II are the ones the operator wants maximized — accent
+ * their pills so the ratio reads at a glance. */
+.mx-occ__pill[data-quadrant="I"] {
+  border-color: var(--purple);
+}
+
+.mx-occ__pill[data-quadrant="II"] {
+  border-color: var(--purple);
+}
+
+/* ── Occupancy over time (ADR-0011 §8): a compact stacked-bar strip, one thin
+ * column per state in the history, oldest left / newest right. The newest
+ * column's split equals the pills above. Each column stacks I,II,III,IV by
+ * SHARE of the scored set, so the strip answers "what fraction is in I+II over
+ * time". I+II (the important pair the operator maximizes) carry hue; III+IV
+ * recede to neutral, so the important share reads at a glance. All theme
+ * tokens — the dark/light flip rides the scitex-ui palette. */
+.mx-trend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mx-trend__head {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mx-trend__bars {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  height: 36px;
+  overflow-x: auto;
+}
+
+.mx-trend__col {
+  flex: 1 0 4px;
+  min-width: 4px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 1px;
+  overflow: hidden;
+  background: var(--card-bg);
+}
+
+.mx-trend__seg {
+  display: block;
+  flex: 0 0 auto; /* height comes from the inline flex-basis share */
+}
+
+.mx-trend__seg[data-quadrant="I"] {
+  background: var(--purple);
+}
+
+.mx-trend__seg[data-quadrant="II"] {
+  background: var(--green);
+}
+
+.mx-trend__seg[data-quadrant="III"] {
+  background: var(--text);
+}
+
+.mx-trend__seg[data-quadrant="IV"] {
+  background: var(--text-muted);
+}
+
+.mx-trend__seg[data-quadrant="empty"] {
+  background: var(--border);
+}
+
+/* ── The plane. */
+.mx-plane {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: 1fr auto;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mx-axis {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  align-self: center;
+  justify-self: center;
+}
+
+.mx-axis--y {
+  grid-column: 1;
+  grid-row: 1;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+.mx-axis--x {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.mx-grid {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mx-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  min-width: 0;
+  min-height: 84px;
+}
+
+.mx-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--card-bg);
+  min-width: 0;
+  overflow-y: auto;
+}
+
+/* The quadrant divide: a heavier edge on the cells that straddle the
+ * threshold (3). Urgency rises left→right, so the vertical divide sits on
+ * the LEFT of the urgency=3 column; importance rises bottom→top and the
+ * rows render 5→1, so the horizontal divide sits on the BOTTOM of the
+ * importance=3 row. Keyed off the same data-* the JS emits — the threshold
+ * lives in ONE place (14-matrix.js) and the CSS follows it. */
+.mx-cell[data-urgency="3"] {
+  border-left-color: var(--text-muted);
+  border-left-width: 2px;
+}
+
+.mx-row[data-importance="3"] .mx-cell {
+  border-bottom-color: var(--text-muted);
+  border-bottom-width: 2px;
+}
+
+/* ── Cards. Readable WITHOUT hover (the sticky-wall lesson, operator msg
+ * 929/931): the title is always on the face, never hover-only. */
+.mx-card {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 3px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.3;
+  cursor: grab;
+  min-width: 0;
+}
+
+.mx-card:hover {
+  border-color: var(--purple);
+}
+
+/* ── Drag → re-score (PR 2). The card is draggable onto any grid cell; the
+ * cell IS the (urgency, importance) target, so dropping sets both axes. The
+ * dead `.card--dragging` classes in 01-filterbar.css target `.card`, not
+ * `.mx-card`, so the matrix carries its own drag state here. */
+.mx-card:active {
+  cursor: grabbing;
+}
+
+.mx-card--dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.mx-cell--drop {
+  background: rgba(76, 175, 80, 0.12);
+  box-shadow: 0 0 0 2px var(--green) inset;
+}
+
+.mx-card__rank {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+.mx-card__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ── The unscored tray. Deliberately prominent: until the rank engine ships
+ * every card lands here, and that is the honest read of "no axes yet", not
+ * a broken view. It must never look like an error state, nor be mistaken
+ * for a quadrant. */
+.mx-tray {
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  background: var(--card-bg);
+}
+
+.mx-tray__head {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.mx-tray__body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.mx-tray__body .mx-card {
+  flex: 0 1 260px;
+}
+
+/* ── Narrow viewports: the grid keeps its 5×5 shape (a matrix with fewer
+ * than 5 columns is a different claim), but the cells shrink and the row
+ * min-height relaxes. */
+@media (max-width: 900px) {
+  .mx-row {
+    min-height: 64px;
+  }
+
+  .mx-card__rank {
+    display: none;
+  }
+}

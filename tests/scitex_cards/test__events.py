@@ -26,7 +26,6 @@ from scitex_cards._events import (
     emit,
 )
 
-
 # === Construction + defaults ===============================================
 
 
@@ -39,6 +38,7 @@ def test_event_type_constants_match_event_types_set():
         EventType.STATUS_CHANGED,
         EventType.COMMENTED,
         EventType.COMPLETED,
+        EventType.RANK_CHANGED,
         EventType.COMMITTED,
         EventType.PUSHED,
         EventType.MERGED,
@@ -46,9 +46,10 @@ def test_event_type_constants_match_event_types_set():
         EventType.PULLED,
         EventType.DEPLOYED,
     }
-    # Assert — the closed set is exactly the twelve declared constants.
+    # Assert — the closed set is exactly the thirteen declared constants
+    # (rank_changed joined with the v5-lite rank engine, ADR-0011 §1/§8).
     assert declared == set(EVENT_TYPES)
-    assert len(EVENT_TYPES) == 12
+    assert len(EVENT_TYPES) == 13
 
 
 def test_event_minimal_construction_defaults():

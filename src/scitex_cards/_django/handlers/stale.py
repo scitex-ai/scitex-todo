@@ -38,7 +38,6 @@ from collections import defaultdict
 
 from django.http import JsonResponse
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -63,7 +62,12 @@ def _is_unclear(task: dict) -> bool:
     """
     title = (task.get("title") or "").strip()
     if not title or len(title) < 12:
-        if not (task.get("assignee") or task.get("agent") or task.get("repo") or task.get("project")):
+        if not (
+            task.get("assignee")
+            or task.get("agent")
+            or task.get("repo")
+            or task.get("project")
+        ):
             return True
     return False
 
@@ -128,7 +132,10 @@ def handle_stale(request, board):
             if days < 0:
                 raise ValueError
         except ValueError:
-            return JsonResponse({"error": f"'days' must be a non-negative int, got {raw_days!r}"}, status=400)
+            return JsonResponse(
+                {"error": f"'days' must be a non-negative int, got {raw_days!r}"},
+                status=400,
+            )
 
     raw_inc = (request.GET.get("include_no_timestamp") or "true").lower()
     include_no_timestamp = raw_inc not in ("false", "0", "no", "off")
@@ -226,43 +233,52 @@ def handle_archive(request, board):
 
     by = payload.get("by")
     if not isinstance(by, str) or not by.strip():
-        by = (
-            os.environ.get("SCITEX_TODO_AGENT_ID")
-            or os.environ.get("USER")
-            or "user"
-        )
+        by = os.environ.get("SCITEX_TODO_AGENT_ID") or os.environ.get("USER") or "user"
     by = by.strip()
 
-    tasks = list(board.tasks)
-    task = next((t for t in tasks if t["id"] == task_id), None)
-    if task is None:
-        return JsonResponse({"error": f"no task with id {task_id!r}"}, status=404)
+    from scitex_cards import TaskValidationError
+    from scitex_cards._model import _save_doc_unlocked, _store_lock
+    from scitex_cards._store import _read_write_doc
+
+    from ..services import _reset_cache
 
     now_iso = (
-        datetime.datetime.now(datetime.timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
+        datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat()
     )
 
-    comment = {"ts": now_iso, "author": by, "text": f"[CLOSED] {reason}"}
-    existing = task.get("comments")
-    task["comments"] = ([*existing] if isinstance(existing, list) else []) + [comment]
-    task["status"] = "deferred"
+    # No `_store` verb closes-with-reason today, so hold the store lock
+    # across a FRESH read-modify-write of the global store — the same
+    # chokepoint every `_store` verb uses. Mutating the request-scoped
+    # board cache and saving the whole list (the old path) silently
+    # clobbered any concurrent write landing in between.
+    with _store_lock(board.store_path):
+        doc, tasks = _read_write_doc(board.store_path)
+        task = next(
+            (t for t in tasks if isinstance(t, dict) and t.get("id") == task_id),
+            None,
+        )
+        if task is None:
+            return JsonResponse({"error": f"no task with id {task_id!r}"}, status=404)
 
-    log_meta = task.get("_log_meta")
-    if not isinstance(log_meta, dict):
-        log_meta = {}
-    log_meta["closed_at"] = now_iso
-    log_meta["closed_by"] = by
-    task["_log_meta"] = log_meta
+        comment = {"ts": now_iso, "author": by, "text": f"[CLOSED] {reason}"}
+        existing = task.get("comments")
+        task["comments"] = ([*existing] if isinstance(existing, list) else []) + [
+            comment
+        ]
+        task["status"] = "deferred"
 
-    # Use the same save path the other CRUD handlers use to preserve
-    # the write-lock + the ruamel round-trip.
-    from .crud import _save
+        log_meta = task.get("_log_meta")
+        if not isinstance(log_meta, dict):
+            log_meta = {}
+        log_meta["closed_at"] = now_iso
+        log_meta["closed_by"] = by
+        task["_log_meta"] = log_meta
 
-    err = _save(tasks, board)
-    if err:
-        return err
+        try:
+            _save_doc_unlocked(doc, board.store_path, tasks=tasks)
+        except TaskValidationError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
+    _reset_cache()
     logger.info(
         "[scitex-todo] archive %s by %s (reason: %.80s) in %s",
         task_id,

@@ -10,8 +10,10 @@
 Operator↔agent DM view — minimal slice (card
 fleet-agent-direct-message-board-pane-20260707). Mobile-first: the agent
 list is a slide-in drawer on narrow screens, a fixed left column on wide
-ones. All behavior lives in static/scitex_cards/chat/chat.js (line-limit
-discipline: template <1024 lines, js <512); this file is layout + CSS.
+ones. All behavior lives in static/scitex_cards/chat/ — chat_diff.js (pure
+render planning) then chat.js (DOM + network); load order matters, chat.js
+reads window.ChatDiff. Line-limit discipline: template <1024 lines, js
+<512; this file is layout + CSS.
 {% endcomment %}
 <style>
   :root {
@@ -142,6 +144,7 @@ discipline: template <1024 lines, js <512); this file is layout + CSS.
     </form>
   </main>
 </div>
+<script defer src="{% static 'scitex_cards/chat/chat_diff.js' %}"></script>
 <script defer src="{% static 'scitex_cards/chat/chat.js' %}"></script>
 </body>
 </html>
