@@ -53,13 +53,43 @@ def _settle(deadline_s: float = 10.0) -> None:
         time.sleep(0.05)
 
 
+def _bump_mtime(store) -> None:
+    """Age the store forward by an UNAMBIGUOUS amount, standing in for a write.
+
+    NOT ``os.utime(path, None)``, which sets the stamp to *now* and merely
+    ASSUMES now is later than what the cache holds. The cache compares against
+    ``effective_mtime``, and the refresh only kicks when that value MOVES.
+
+    CONFIRMED: the flake is a missed invalidation. ``_load_global_tasks`` was
+    never called (``assert 0 == 1``), which is only reachable when the board
+    read judged the cache fresh — so ``utime(None)`` did not move
+    ``effective_mtime`` on that run.
+
+    NOT CONFIRMED — two mechanisms produce that and this test cannot tell them
+    apart, so neither is claimed here:
+      * coarse filesystem timestamps (set "now" twice inside one granule and
+        the float comes back equal). Measured 0/200 collisions on the dev
+        container's fs; CI's filesystem was never measured.
+      * ``effective_mtime`` is a ``max()`` over the global store AND the lane
+        files. Any lane file stamped later dominates the max, and bumping the
+        store to "now" then changes nothing.
+
+    Stepping the stamp explicitly past both is what makes this deterministic;
+    it does not depend on which mechanism was at fault. The flake reached
+    develop in #494 and turned two unrelated docs-only PRs red before it was
+    traced back here.
+    """
+    bumped = os.stat(store).st_mtime + 5
+    os.utime(store, (bumped, bumped))
+
+
 def test_a_write_does_not_make_the_next_read_pay_a_rebuild(store):
     # Arrange: warm the cache.
     first = services.get_board(store, allow_stale=True)
     assert len(first.tasks) == 2
 
     # Act: a writer rolls the store's mtime, then the board is read again.
-    os.utime(store, None)
+    _bump_mtime(store)
     t0 = time.time()
     served = services.get_board(store, allow_stale=True)
     elapsed = time.time() - t0
@@ -99,7 +129,7 @@ def test_a_poll_storm_starts_only_one_refresh(store, monkeypatch):
 
     # Act: ten rapid reads against a changed store (the operator's browser
     # polling while a rebuild is in flight).
-    os.utime(store, None)
+    _bump_mtime(store)
     for _ in range(10):
         services.get_board(store, allow_stale=True)
     _settle()
@@ -118,7 +148,7 @@ def test_a_failing_refresh_keeps_serving_the_previous_board(store, monkeypatch):
     monkeypatch.setattr(services, "_load_global_tasks", _boom)
 
     # Act: the store changes and the background rebuild blows up.
-    os.utime(store, None)
+    _bump_mtime(store)
     served = services.get_board(store, allow_stale=True)
     _settle()
 
