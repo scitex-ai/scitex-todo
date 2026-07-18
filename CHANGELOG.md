@@ -35,15 +35,14 @@ All notable changes to this project are documented here. The format follows
   design had the runtime parsing `may-stop`'s stdout, which made our
   output a public API it depended on. (#498)
 
-  **The hook honours `stop_hook_active`**, Claude Code's loop guard. Our
-  verdict is a pure function of the board, so it cannot differ on a
-  second ask — the board did not change because we refused it. Without
-  this, an agent whose cards cannot be advanced right now (waiting on
-  CI, on a peer, on a human) would be refused, re-read an identical
-  reason, make no progress, and be refused again. Absent or malformed
-  stdin degrades to "first attempt", never to "give up": fail-open is
-  right everywhere else in this hook, but here it would silently
-  disable the mechanism for an unanticipated runtime shape. (#502)
+  **It refuses for as long as the work is there.** There is no
+  second-attempt exemption and no "we already asked" escape: while
+  runnable cards remain, the stop is refused. The escape hatch is the
+  behaviour we want anyway — RECONCILE the card. Close it, or mark it
+  blocked with a NAMED gate, and `may_stop` stops counting it, so an
+  honestly-reconciled board lets you stop while an untouched one does
+  not. Runaway is bounded by the runtime's own consecutive-block floor,
+  so the hook does not need to duplicate that.
 
 ### Fixed
 - **The board could miss a write entirely — read-your-own-writes was
