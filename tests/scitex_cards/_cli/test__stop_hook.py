@@ -109,6 +109,72 @@ def test_another_agents_work_does_not_block_this_agent(store):
     assert payload == {}
 
 
+def test_a_second_attempt_in_one_turn_is_allowed_through(store):
+    """THE LOOP GUARD. Blocking twice on an unchanged board is pure waste.
+
+    Claude Code sets ``stop_hook_active`` once a stop has already been refused
+    this turn. Our verdict is a pure function of the board, so it cannot
+    differ on the second ask — refusing again just burns a turn to arrive
+    where we started. An agent whose cards are all waiting on CI or a peer
+    would otherwise be refused repeatedly while making no progress.
+    """
+    # Arrange — real runnable work, so the FIRST attempt genuinely blocks.
+    add_task(store=store, id="w1", title="w1", status="in_progress", agent="worker-x")
+    _drain(store, "worker-x")
+    first = CliRunner().invoke(stop_hook_cmd, ["--agent", "worker-x", "--tasks", store])
+    assert json.loads(first.stdout)["decision"] == "block"
+
+    # Act — same board, but Claude Code says we already blocked once.
+    result = CliRunner().invoke(
+        stop_hook_cmd,
+        ["--agent", "worker-x", "--tasks", store],
+        input=json.dumps({"hook_event_name": "Stop", "stop_hook_active": True}),
+    )
+
+    # Assert — allowed, despite the work still being there.
+    assert json.loads(result.stdout) == {}
+    assert result.exit_code == 0
+
+
+def test_a_first_attempt_payload_still_blocks(store):
+    """stop_hook_active FALSE must not be read as "give up" — only true is."""
+    # Arrange
+    add_task(store=store, id="w1", title="w1", status="in_progress", agent="worker-x")
+    _drain(store, "worker-x")
+
+    # Act
+    result = CliRunner().invoke(
+        stop_hook_cmd,
+        ["--agent", "worker-x", "--tasks", store],
+        input=json.dumps({"hook_event_name": "Stop", "stop_hook_active": False}),
+    )
+
+    # Assert
+    assert json.loads(result.stdout)["decision"] == "block"
+
+
+@pytest.mark.parametrize("payload", ["", "   ", "not json at all", "[]", "null"])
+def test_absent_or_malformed_stdin_degrades_to_first_attempt(store, payload):
+    """A payload we cannot read means "first attempt", NEVER "give up".
+
+    The command is invoked by hand and by these tests with no stdin at all,
+    and it must still do its job there. Degrading an unreadable payload into
+    "allow the stop" would silently disable the hook for anyone whose runtime
+    shape we did not anticipate — a fail-open in the one place it is wrong.
+    """
+    # Arrange
+    add_task(store=store, id="w1", title="w1", status="in_progress", agent="worker-x")
+    _drain(store, "worker-x")
+
+    # Act
+    result = CliRunner().invoke(
+        stop_hook_cmd, ["--agent", "worker-x", "--tasks", store], input=payload
+    )
+
+    # Assert — still blocks; the guard did not swallow the verdict.
+    assert json.loads(result.stdout)["decision"] == "block"
+
+
 def test_the_reason_stays_bounded_on_a_large_board(store):
     """An instruction listing forty cards is not an instruction."""
     # Arrange

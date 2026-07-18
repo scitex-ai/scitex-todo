@@ -41,6 +41,44 @@ import click
 _MAX_ITEMS = 5
 
 
+def _already_blocked_once(stream=None) -> bool:
+    """True when Claude Code says a Stop hook ALREADY blocked this turn.
+
+    THE LOOP GUARD, and it is not optional. Claude Code hands a Stop hook a
+    JSON payload on stdin carrying ``stop_hook_active``. It is set once a stop
+    has already been refused this turn, and the documented contract is that
+    the hook then allows the stop.
+
+    WHY IT MATTERS HERE SPECIFICALLY: our verdict is a pure function of the
+    board, so it does not change just because we blocked. An agent whose
+    runnable cards cannot be advanced RIGHT NOW — waiting on CI, on a peer, on
+    a human — would be refused, re-read the identical reason, make no
+    progress, and be refused again. Claude Code force-stops after a bounded
+    number of consecutive blocks, so this is waste rather than a true hang;
+    but burning turns to arrive where we started is not the never-stop
+    invariant working. A BROKEN never-stop is worse than a stop: an agent that
+    cannot yield also cannot answer the operator.
+
+    ABSENT OR MALFORMED STDIN MEANS FALSE, deliberately. The command is also
+    invoked by hand and by the tests with no stdin at all, and there the
+    normal check must run. So a missing payload degrades to "first attempt",
+    never to "give up".
+    """
+    stream = stream if stream is not None else sys.stdin
+    try:
+        if stream is None or stream.isatty():
+            return False
+        raw = stream.read()
+    except Exception:  # noqa: BLE001 — stdin is best-effort, never fatal
+        return False
+    if not raw or not raw.strip():
+        return False
+    try:
+        return bool(json.loads(raw).get("stop_hook_active"))
+    except Exception:  # noqa: BLE001 — a payload we cannot parse is not a veto
+        return False
+
+
 def _reason_for(verdict: dict) -> str:
     """Render the verdict as an instruction the agent can act on."""
     items = verdict.get("items") or []
@@ -82,6 +120,14 @@ def stop_hook_cmd(agent, tasks_path):
     try:
         from .._may_stop import may_stop
         from .._store import _default_agent
+
+        # Loop guard FIRST — before touching the store. If a stop was already
+        # refused this turn, blocking again cannot help: the verdict is a
+        # function of the board, and the board has not changed because we
+        # refused. Answer immediately and cheaply.
+        if _already_blocked_once():
+            click.echo(json.dumps({}))
+            return
 
         verdict = may_stop(_default_agent(agent), tasks_path)
         if verdict.get("runnable"):
