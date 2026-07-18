@@ -50,11 +50,17 @@ reads window.ChatDiff. Line-limit discipline: template <1024 lines, js
     border-right: 1px solid var(--line); overflow-y: auto;
   }
   #agents .agent {
-    display: flex; flex-direction: column; gap: 2px;
+    display: flex; flex-direction: row; align-items: center; gap: 9px;
     padding: 10px 12px; cursor: pointer; border-bottom: 1px solid var(--line);
   }
   #agents .agent:hover { background: var(--panel-2); }
   #agents .agent.active { background: var(--panel-2); border-left: 3px solid var(--accent); padding-left: 9px; }
+  #agents .agent .avatar {
+    flex: none; width: 34px; height: 34px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em;
+  }
+  #agents .agent .cols { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   #agents .agent .row1 { display: flex; align-items: center; gap: 6px; }
   #agents .agent .name { font-size: 0.85rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #agents .agent .badge {
