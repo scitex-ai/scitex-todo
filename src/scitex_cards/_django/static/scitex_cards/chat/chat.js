@@ -81,7 +81,29 @@
 
   // ---- agent list --------------------------------------------------------
 
+  // Deterministic per-agent avatar: hue from a stable name hash, initials
+  // from the name's distinctive words (the shared "scitex-" prefix carries
+  // no identity, so it is stripped before initials are taken).
+  function avatarFor(name) {
+    var hash = 0;
+    for (var i = 0; i < name.length; i++) {
+      hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+    }
+    var words = name.replace(/^scitex-/, "").split(/[-_]+/).filter(Boolean);
+    var initials = words
+      .slice(0, 2)
+      .map(function (w) {
+        return w.charAt(0).toUpperCase();
+      })
+      .join("");
+    var av = el("span", "avatar", initials || "?");
+    av.style.background = "hsl(" + (hash % 360) + ", 55%, 42%)";
+    return av;
+  }
+
   function renderAgents(agents) {
+    // The list fully rebuilds each poll; keep the operator's scroll position.
+    var scrollTop = $agents.scrollTop;
     $agents.textContent = "";
     if (!agents.length) {
       $agents.appendChild(
@@ -91,22 +113,26 @@
     }
     agents.forEach(function (a) {
       var item = el("div", "agent" + (a.name === state.peer ? " active" : ""));
+      item.appendChild(avatarFor(a.name));
+      var cols = el("div", "cols");
       var row1 = el("div", "row1");
       row1.appendChild(el("span", "name", a.name));
       if (a.unread > 0) row1.appendChild(el("span", "badge", String(a.unread)));
-      item.appendChild(row1);
+      cols.appendChild(row1);
       var preview = a.last_body
         ? shortTs(a.last_ts) + "  " + a.last_body
         : a.kind
           ? a.kind
           : "no messages yet";
-      item.appendChild(el("div", "preview", preview));
+      cols.appendChild(el("div", "preview", preview));
+      item.appendChild(cols);
       item.addEventListener("click", function () {
         openThread(a.name);
         closeDrawer();
       });
       $agents.appendChild(item);
     });
+    $agents.scrollTop = scrollTop;
   }
 
   function refreshAgents() {
