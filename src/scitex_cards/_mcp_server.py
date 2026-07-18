@@ -258,41 +258,6 @@ async def reopen_task(
     return json.dumps(result)
 
 
-@mcp.tool()
-async def may_stop(
-    agent: str | None = None,
-    tasks_path: str | None = None,
-) -> str:
-    """Ask the board whether THIS agent still has runnable work — the verb
-    behind "am I allowed to stop?".
-
-    THIS IS THE ASSET; the Stop hook is glue. Cards' job is to answer one
-    question — *does this identity have work assigned to it right now* — and
-    to say what the next action is. Deciding what to DO with that answer
-    (refuse a stop, warn, log, page someone) belongs to whoever asks, and is
-    typically a few lines of shell. Nothing here is Claude-Code-specific, and
-    that is deliberate: coupling this verb to one runtime's hook contract
-    would make our output that runtime's public API.
-
-    Returns JSON: ``{agent, runnable, items[{card_id, reason, next_action}],
-    idle_seconds}``. ``runnable`` is the answer; ``items`` is why, capped by
-    the caller rather than here.
-
-    RUNNABLE means genuinely actionable, not merely open: ``in_progress``;
-    ``blocked`` with NO named gate (a blocked card that names its blocker is
-    waiting on someone else and does not count); ``deferred`` whose
-    ``scheduled`` time has arrived; anything past its deadline; and unread
-    inbox items. A card properly blocked with a stated gate will not hold you.
-    """
-    from ._may_stop import may_stop as _may_stop
-    from ._store import _default_agent
-
-    result = await anyio.to_thread.run_sync(
-        functools.partial(_may_stop, _default_agent(agent), tasks_path)
-    )
-    return json.dumps(result)
-
-
 #: Canonical list of registered tool names — a constant so the `mcp doctor`
 #: / `mcp list-tools` CLI verbs need not introspect FastMCP's drifting
 #: internal registry. Update when a `@mcp.tool()` is added/removed.
@@ -323,10 +288,6 @@ TOOL_NAMES: tuple[str, ...] = (
     # Help-wait SoC lift — semantics lifted out of the dotfiles hook.
     "help_wait",
     "help_clear",
-    # "do I still have runnable work?" — the never-stop VERB. Requested over
-    # MCP by the operator (「今の MCP もあって欲しいんですけど」) so an agent can
-    # ask the board directly, not only through a shell hook.
-    "may_stop",
     # Standalone pull-inbox read path (1:1 `_inbox.poll_inbox`; in _mcp_skills).
     "poll_notifications",
     # Package-level health doctor (1:1 `_health.health`; in _mcp_skills). Broad
