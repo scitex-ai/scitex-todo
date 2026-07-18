@@ -18,7 +18,22 @@ jobs:
     runs-on: [self-hosted, Linux, X64, spartan-cpu]
     steps:
       - name: CLA Assistant
-        uses: contributor-assistant/github-action@v2.6.1
+        # SHA-PINNED, NOT TAG-PINNED — deliberately, and do not "tidy" this
+        # back to a version tag.
+        #
+        # This job is third-party code that runs on an UNAUTHENTICATED trigger
+        # (anyone may open a PR or comment), with repo context via
+        # pull_request_target, on the PERSISTENT self-hosted runner whose $HOME
+        # holds the fleet's ~/.claude/.credentials.json — and it is handed a
+        # personal access token. A moving tag means the code executed here can
+        # be changed upstream with no diff in this repo and no review by us.
+        # A SHA cannot be repointed.
+        #
+        # ca4a40a = v2.6.1 at the time of pinning (2026-07-18). To upgrade:
+        # read the upstream diff, then move this SHA deliberately.
+        # Reported by scitex-agent-container; card
+        # cla-workflow-untrusted-action-on-selfhosted-runner-20260718.
+        uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PERSONAL_ACCESS_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
