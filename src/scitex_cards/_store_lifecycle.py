@@ -430,6 +430,18 @@ def reassign_task(
                     ),
                 }
             )
+            # Delegation keeps responsibility (operator 2026-07-18,
+            # 「渡しました、で終わられると困る」/ constitution §2 "ownership
+            # never dangles"): the PREVIOUS owner and the card's creator stay
+            # subscribed through the handoff, so lateness on the delegate
+            # reaches the delegator. Dropping out is an explicit
+            # set_subscriber remove, never a side effect of handing off.
+            subs = list(target.get("subscribers") or [])
+            for keeper in (old_owner, target.get("created_by")):
+                if keeper and keeper != new_owner and keeper not in subs:
+                    subs.append(keeper)
+            if subs:
+                target["subscribers"] = subs
             target["last_activity"] = _utc_now_iso()
             _model._save_doc_unlocked(doc, tasks_path, tasks=tasks)
             result_task = dict(target)

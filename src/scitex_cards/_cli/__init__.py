@@ -24,6 +24,7 @@ from . import _db as _db_cli
 from . import _health as _health_cli
 from . import _help_wait as _help_wait_cli
 from . import _hub as _hub_cli
+from . import _may_stop as _may_stop_cli
 from . import _serve as _serve_cli
 from ._main import main
 
@@ -39,6 +40,8 @@ _db_cli.register(main)
 _serve_cli.register(main)
 # `hub` — provisioning + doctor for the remote rail (remote-hub PR-4).
 _hub_cli.register(main)
+# `may-stop` — the never-stop detector (exit 0 = may stop, 2 = work exists).
+_may_stop_cli.register(main)
 
 __all__ = ["main"]
 

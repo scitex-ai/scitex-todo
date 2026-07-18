@@ -15,7 +15,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "scitex-todo"
-version = "0.16.1"
+version = "0.16.2"
 description = "DEPRECATED: renamed to scitex-cards. This stub installs scitex-cards; imports and the scitex-todo CLI keep working."
 readme = "README.md"
 license = "AGPL-3.0-only"
@@ -28,6 +28,19 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 dependencies = ["scitex-cards>=0.14.0"]
+
+# THE UPGRADE SELF-HEAL (card scitex-cards-alias-destroyed-by-uninstall-order-
+# collision-20260717): old scitex-todo 0.13.x-0.15.x wheels OWN both console
+# scripts in their RECORD, so `pip install -U scitex-todo` deletes
+# bin/scitex-todo AND bin/scitex-cards during the old wheel's uninstall — and
+# pip processes dependencies FIRST, so even a same-transaction scitex-cards
+# reinstall has its freshly-written scripts destroyed by the uninstall that
+# follows it. The stub is the LAST dist processed in that transaction, so the
+# stub itself must recreate both scripts. The import target lives in the
+# scitex-cards dependency; declaring it here adds no modules to the wheel.
+[project.scripts]
+scitex-todo = "scitex_cards._cli:main"
+scitex-cards = "scitex_cards._cli:main"
 
 [project.urls]
 Homepage = "https://github.com/scitex-ai/scitex-cards"
