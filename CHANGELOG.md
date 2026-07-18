@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.16.1] - 2026-07-18 — the GUI chat stops re-reading megabytes per click
+
+### Changed
+- **`/dm/threads` 10.7 s → 6 ms warm; thread open 2.7 s → 5 ms** (measured on
+  the live GUI). Two read caches on the proven `(mtime_ns, size)` guard:
+  the validated `users:` section (previously a full parse of the multi-MB
+  store per request, for one registered row) and the `list_threads`
+  summaries (previously an unread-count rescan of every record per call).
+  Any store write rolls the key, so no reader — including the GUI unread
+  badge across a `mark_read` — can be served stale content. (#485)
+- **`_users/_store.py` split by data-flow direction** (`_store_read` /
+  `_store_write` / thin re-exporting `_store`) per the line-budget
+  protocol; every existing import keeps working. Write paths keep the
+  UNCACHED section read under the store lock. (#485)
+
 ## [0.16.0] - 2026-07-17 — the backup rail runs itself, off-site, and the decoupling is a CI invariant
 
 ### Added
