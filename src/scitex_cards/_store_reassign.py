@@ -123,6 +123,15 @@ def reassign_all(
                     "text": f"reassigned {old_owner} -> {new_owner} by {actor}",
                 }
             )
+            # Delegation keeps responsibility — mirrors reassign_task
+            # EXACTLY: the previous owner + creator stay subscribed through
+            # the handoff (operator 2026-07-18; constitution §2).
+            subs = list(task.get("subscribers") or [])
+            for keeper in (old_owner, task.get("created_by")):
+                if keeper and keeper != new_owner and keeper not in subs:
+                    subs.append(keeper)
+            if subs:
+                task["subscribers"] = subs
             task["last_activity"] = _utc_now_iso()
             tid = task.get("id")
             if tid:
