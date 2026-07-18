@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 
 import pytest
 
@@ -53,13 +54,43 @@ def _settle(deadline_s: float = 10.0) -> None:
         time.sleep(0.05)
 
 
+def _bump_mtime(store) -> None:
+    """Age the store forward by an UNAMBIGUOUS amount, standing in for a write.
+
+    NOT ``os.utime(path, None)``, which sets the stamp to *now* and merely
+    ASSUMES now is later than what the cache holds. The cache compares against
+    ``effective_mtime``, and the refresh only kicks when that value MOVES.
+
+    CONFIRMED: the flake is a missed invalidation. ``_load_global_tasks`` was
+    never called (``assert 0 == 1``), which is only reachable when the board
+    read judged the cache fresh — so ``utime(None)`` did not move
+    ``effective_mtime`` on that run.
+
+    NOT CONFIRMED — two mechanisms produce that and this test cannot tell them
+    apart, so neither is claimed here:
+      * coarse filesystem timestamps (set "now" twice inside one granule and
+        the float comes back equal). Measured 0/200 collisions on the dev
+        container's fs; CI's filesystem was never measured.
+      * ``effective_mtime`` is a ``max()`` over the global store AND the lane
+        files. Any lane file stamped later dominates the max, and bumping the
+        store to "now" then changes nothing.
+
+    Stepping the stamp explicitly past both is what makes this deterministic;
+    it does not depend on which mechanism was at fault. The flake reached
+    develop in #494 and turned two unrelated docs-only PRs red before it was
+    traced back here.
+    """
+    bumped = os.stat(store).st_mtime + 5
+    os.utime(store, (bumped, bumped))
+
+
 def test_a_write_does_not_make_the_next_read_pay_a_rebuild(store):
     # Arrange: warm the cache.
     first = services.get_board(store, allow_stale=True)
     assert len(first.tasks) == 2
 
     # Act: a writer rolls the store's mtime, then the board is read again.
-    os.utime(store, None)
+    _bump_mtime(store)
     t0 = time.time()
     served = services.get_board(store, allow_stale=True)
     elapsed = time.time() - t0
@@ -99,7 +130,7 @@ def test_a_poll_storm_starts_only_one_refresh(store, monkeypatch):
 
     # Act: ten rapid reads against a changed store (the operator's browser
     # polling while a rebuild is in flight).
-    os.utime(store, None)
+    _bump_mtime(store)
     for _ in range(10):
         services.get_board(store, allow_stale=True)
     _settle()
@@ -118,7 +149,7 @@ def test_a_failing_refresh_keeps_serving_the_previous_board(store, monkeypatch):
     monkeypatch.setattr(services, "_load_global_tasks", _boom)
 
     # Act: the store changes and the background rebuild blows up.
-    os.utime(store, None)
+    _bump_mtime(store)
     served = services.get_board(store, allow_stale=True)
     _settle()
 
@@ -150,6 +181,72 @@ def test_a_strict_caller_is_never_served_stale(store):
 
     # Assert: the new card is there — no staleness without opting in.
     assert {t["id"] for t in served.tasks} == {"a", "b", "z"}
+
+
+def test_a_write_inside_one_timestamp_granule_is_still_seen(store):
+    """READ-YOUR-OWN-WRITES survives a filesystem whose clock did not move.
+
+    THE REAL BUG, and it was a product bug, not a test bug. The board cache
+    compared ``stat().st_mtime`` — a float of SECONDS. On a filesystem with
+    1-second timestamp granularity a write and the stat that follows it report
+    the SAME mtime, so a STRICT read answered from the pre-write cache and the
+    caller silently did not see its own write. The chat POST depends on
+    exactly this guarantee: it writes a message and reads it straight back.
+
+    CI found it before a user did — test_a_strict_caller_is_never_served_stale
+    failed on py3.13 with the appended card simply missing. This test pins the
+    condition deterministically on ANY filesystem by forcing the stamp back to
+    its pre-write value, which is what a coarse-granularity fs does for free.
+    """
+    # Arrange: warm the cache and capture the exact stamp it recorded.
+    services.get_board(store)
+    before = os.stat(store)
+
+    # Act: a real write, then rewind the clock so ONLY the size betrays it.
+    with open(store, "a", encoding="utf-8") as fh:
+        fh.write("  - id: z\n    title: z\n    status: in_progress\n")
+    os.utime(store, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert os.stat(store).st_mtime_ns == before.st_mtime_ns  # the trap is armed
+    served = services.get_board(store)
+
+    # Assert: the write is visible despite an unchanged timestamp.
+    assert {t["id"] for t in served.tasks} == {"a", "b", "z"}
+
+
+def test_a_same_length_edit_inside_one_granule_is_still_seen(store):
+    """The case SIZE alone does not catch — and the reason inode is in the key.
+
+    ``st_mtime_ns`` is nanosecond-TYPED, not nanosecond-ACCURATE: on a
+    filesystem stamping whole seconds the sub-second digits are zero. So a
+    (mtime_ns, size) key still collides when an edit changes neither — a
+    priority ``1`` -> ``2``, or a status swapped for one of equal length.
+
+    Every write to this store goes through atomic ``os.replace``, which
+    allocates a new inode, so the inode moves even when clock and length do
+    not. Written as a MUTATION test: it must go RED without ``st_ino`` in the
+    key, which a write-sleep-write scenario would not (the sleep alone would
+    make it pass under the buggy key).
+    """
+    # Arrange
+    first = services.get_board(store)
+    assert {t["id"] for t in first.tasks} == {"a", "b"}
+    before = os.stat(store)
+
+    # Act: rewrite atomically with the SAME byte length (in_progress -> done__
+    # is not equal-length, so swap a title instead: "a" -> "A" keeps length).
+    text = Path(store).read_text(encoding="utf-8").replace("title: a\n", "title: A\n")
+    tmp = Path(str(store) + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, store)
+    os.utime(store, ns=(before.st_atime_ns, before.st_mtime_ns))
+
+    after = os.stat(store)
+    assert after.st_size == before.st_size  # size unchanged
+    assert after.st_mtime_ns == before.st_mtime_ns  # stamp unchanged
+    served = services.get_board(store)
+
+    # Assert: the edit is visible even though only the inode moved.
+    assert {t["title"] for t in served.tasks} == {"A", "b"}
 
 
 def test_it_can_be_switched_off(store, monkeypatch):
