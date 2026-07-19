@@ -125,7 +125,7 @@ def drain_with_canary(tmp_path):
 
 
 @pytest.fixture()
-def initialize_result(tmp_path, monkeypatch):
+def initialize_result(tmp_path, env):
     """``initialize`` completed against a server whose poll loop is running.
 
     Pre-fix this would hang: the poll loop's inline store reads blocked the loop
@@ -136,8 +136,8 @@ def initialize_result(tmp_path, monkeypatch):
     # A non-trivial inbox so the drain has real work to do each tick.
     _seed(store, agent, 50)
     # The poll loop resolves the store from the environment.
-    monkeypatch.setenv("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
-    monkeypatch.setenv("SCITEX_TODO_AGENT_ID", agent)
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
+    env.set("SCITEX_TODO_AGENT_ID", agent)
     return _initialize_under_poll_loop(agent)
 
 

@@ -45,8 +45,30 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-#: package short name (``scitex-todo`` with the ``scitex-`` prefix stripped).
-PKG_SHORT = "todo"
+#: package short name (``scitex-cards`` with the ``scitex-`` prefix stripped).
+#: It names the user-scope directory: ``~/.scitex/<PKG_SHORT>``.
+#:
+#: WAS "todo" until 2026-07-19 — the rename landed everywhere EXCEPT here, and
+#: this one stale word blocked every card write for any process without an
+#: explicit store variable. Measured before the change:
+#:
+#:     resolve_tasks_path(None) -> ~/.scitex/todo/tasks.yaml   (this default)
+#:     the live DB is stamped   -> ~/.scitex/cards/tasks.yaml
+#:     add_task(...)            -> RuntimeError, write REFUSED
+#:
+#: #509's guard was correct to refuse: writing a store whose identity disagrees
+#: with the database is exactly the fork that destroyed 2142 cards that morning.
+#: The bug was that the compiled-in DEFAULT pointed at a path the database
+#: disowns, so the guard fired on the healthy case.
+#:
+#: MIGRATION, checked rather than assumed before changing this: ~/.scitex/cards
+#: held the real store, its backups and archives (52 entries); ~/.scitex/todo
+#: held one leftover `runtime` directory and no store. So this moves the default
+#: ONTO the data rather than away from it, and it makes the default agree with
+#: the DB stamp instead of contradicting it. An installation that genuinely kept
+#: a store under ~/.scitex/todo must set $SCITEX_CARDS_TASKS_YAML_SHARED, which
+#: has always won outright over this default.
+PKG_SHORT = "cards"
 
 #: env var that overrides the resolved task-store path entirely. The name
 #: encodes that it points at the SHARED yaml store.

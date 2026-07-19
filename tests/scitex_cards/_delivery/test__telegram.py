@@ -83,15 +83,15 @@ def _form_of(http) -> dict:
 
 
 @pytest.fixture
-def no_telegram_token(monkeypatch):
+def no_telegram_token(env):
     """No override token AND no env var — the fail-loud path."""
-    monkeypatch.delenv(TOKEN_ENV, raising=False)
+    env.delete(TOKEN_ENV)
 
 
 @pytest.fixture
-def env_telegram_token(monkeypatch):
+def env_telegram_token(env):
     """A bot token supplied only through the environment."""
-    monkeypatch.setenv(TOKEN_ENV, "ENVTKN")
+    env.set(TOKEN_ENV, "ENVTKN")
     return "ENVTKN"
 
 

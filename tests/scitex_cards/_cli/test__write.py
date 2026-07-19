@@ -20,6 +20,7 @@ from click.testing import CliRunner
 
 from scitex_cards import _model, _store
 from scitex_cards._cli import main
+from scitex_cards._paths import PKG_SHORT
 
 
 def _store_path(tmp_path) -> str:
@@ -1225,7 +1226,7 @@ def test_init_shared_creates_file(tmp_path, env):
     env.set("SCITEX_DIR", str(tmp_path / "fake-home"))
     runner.invoke(main, ["init-store", "--shared"])
     # Act
-    expected = tmp_path / "fake-home" / "todo" / "tasks.yaml"
+    expected = tmp_path / "fake-home" / PKG_SHORT / "tasks.yaml"
     # Assert
     assert expected.exists()
 

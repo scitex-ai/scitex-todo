@@ -29,9 +29,9 @@ from scitex_cards._backend import (
 
 
 @pytest.fixture
-def store(tmp_path, monkeypatch):
-    monkeypatch.setenv("SCITEX_TODO_AGENT_ID", "seam-tester")
-    monkeypatch.delenv("SCITEX_CARDS_HUB_URL", raising=False)
+def store(tmp_path, env):
+    env.set("SCITEX_TODO_AGENT_ID", "seam-tester")
+    env.delete("SCITEX_CARDS_HUB_URL")
     path = tmp_path / "tasks.yaml"
     path.write_text("tasks: []\n", encoding="utf-8")
     return str(path)
@@ -74,16 +74,16 @@ def test_every_declared_verb_is_a_local_backend_callable():
     assert missing == []
 
 
-def test_resolution_is_local_when_hub_url_unset(monkeypatch):
+def test_resolution_is_local_when_hub_url_unset(env):
     # Arrange
-    monkeypatch.delenv("SCITEX_CARDS_HUB_URL", raising=False)
+    env.delete("SCITEX_CARDS_HUB_URL")
     # Act
     backend = get_backend()
     # Assert
     assert isinstance(backend, LocalBackend)
 
 
-def test_resolution_returns_the_hub_client_when_url_set(monkeypatch):
+def test_resolution_returns_the_hub_client_when_url_set(env):
     """PR-3 replaced PR-1's resolve-time refusal with the real client.
 
     The fail-loud property MOVED, not vanished: it now fires at the first
@@ -92,7 +92,7 @@ def test_resolution_returns_the_hub_client_when_url_set(monkeypatch):
     a silent local fallback stays impossible.
     """
     # Arrange
-    monkeypatch.setenv("SCITEX_CARDS_HUB_URL", "http://127.0.0.1:8765")
+    env.set("SCITEX_CARDS_HUB_URL", "http://127.0.0.1:8765")
     from scitex_cards._backend_http import HubBackend
 
     # Act
@@ -101,9 +101,9 @@ def test_resolution_returns_the_hub_client_when_url_set(monkeypatch):
     assert isinstance(backend, HubBackend)
 
 
-def test_resolved_hub_client_carries_the_configured_url(monkeypatch):
+def test_resolved_hub_client_carries_the_configured_url(env):
     # Arrange
-    monkeypatch.setenv("SCITEX_CARDS_HUB_URL", "http://127.0.0.1:8765")
+    env.set("SCITEX_CARDS_HUB_URL", "http://127.0.0.1:8765")
     # Act
     backend = get_backend()
     # Assert
