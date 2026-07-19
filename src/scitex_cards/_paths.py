@@ -97,8 +97,27 @@ def _find_git_root(start: Path) -> Path | None:
 
 
 def bundled_example() -> Path:
-    """Path to the generic example task store shipped inside the wheel."""
-    return Path(__file__).resolve().parent / "examples" / "tasks.yaml"
+    """REMOVED — no YAML task store ships inside the wheel any more.
+
+    This returned ``scitex_cards/examples/tasks.yaml`` and
+    :func:`resolve_tasks_path` used it as the LAST RESORT of the precedence
+    chain, which made a packaged fixture eligible to become the fleet's board.
+    That is not hypothetical: on 2026-07-19, with the canonical store archived
+    by the SQLite cutover, resolution walked past every real candidate and
+    settled here — and the live database's provenance stamp was rewritten to
+    name a file inside ``site-packages``.
+
+    A fallback that can silently promote demo data to production data is not a
+    convenience, it is a trap, and it is exactly the shape the operator ruled
+    out: 「YAML カードなんて examples からも捨てろ」. Kept as a raising stub so an
+    external caller gets a stated reason rather than an ImportError.
+    """
+    raise RuntimeError(
+        "there is no bundled example task store any more (removed 2026-07-19). "
+        "The store is SQLite; a YAML fixture must never be resolvable as the "
+        "board. Set $SCITEX_CARDS_DB, or bootstrap explicitly with "
+        "`scitex-cards db import --from-yaml <file>`."
+    )
 
 
 def resolve_tasks_path(explicit: str | Path | None = None) -> Path:
@@ -142,7 +161,12 @@ def resolve_tasks_path(explicit: str | Path | None = None) -> Path:
     if user.exists():
         return user
 
-    return bundled_example()
+    # NO FALLBACK. Returning the bundled example here is what let a packaged
+    # fixture be nominated as the fleet's board (see :func:`bundled_example`).
+    # An unresolvable store is a configuration error the caller must see, not a
+    # blank board to start writing into — the loader raises FileNotFoundError
+    # on this path, which is the honest answer.
+    return user
 
 
 #: Subdirectory of the store dir holding NON-git-tracked runtime state

@@ -73,7 +73,7 @@ def _check_store_canonical(store: str | Path | None) -> dict[str, Any]:
     is resolved via the precedence chain (``store is None``); an EXPLICIT store
     (tests, ``--tasks``) is taken as the intended target.
     """
-    from ._paths import ENV_TASKS, bundled_example, _user_root, resolve_tasks_path
+    from ._paths import ENV_TASKS, _user_root, resolve_tasks_path
     from ._yaml import safe_load
 
     resolved = resolve_tasks_path(store)
@@ -82,17 +82,11 @@ def _check_store_canonical(store: str | Path | None) -> dict[str, Any]:
         canonical = (
             Path(env_tasks).expanduser() if env_tasks else _user_root() / "tasks.yaml"
         )
-        if resolved == bundled_example():
-            return {
-                "ok": False,
-                "detail": f"resolved to the bundled example store {resolved}",
-                "hint": (
-                    "no personal task store found — create "
-                    f"{canonical} (add a task, or `mkdir -p {canonical.parent}` "
-                    "with a `tasks: []` YAML), or set "
-                    "SCITEX_TODO_TASKS_YAML_SHARED to your shared store"
-                ),
-            }
+        # The "resolved to the bundled example" branch was deleted with the
+        # example itself (2026-07-19). It can no longer be reached: resolution
+        # has no fallback tier any more, so an unresolvable store surfaces as a
+        # plain missing file below rather than as a packaged fixture quietly
+        # standing in for the board.
         if resolved != canonical:
             return {
                 "ok": False,
@@ -229,8 +223,7 @@ def _check_channel_capable() -> dict[str, Any]:
             "ok": False,
             "detail": f"import scitex_cards._mcp_channel failed ({exc})",
             "hint": (
-                "upgrade to scitex-todo>=0.7.32: "
-                "pip install -U 'scitex-todo[mcp]'"
+                "upgrade to scitex-todo>=0.7.32: pip install -U 'scitex-todo[mcp]'"
             ),
         }
     missing = [attr for attr in ("_serve", "_run") if not hasattr(channel, attr)]
@@ -270,7 +263,6 @@ from ._health_cards import (  # noqa: E402,F401  (re-export)
     _check_no_falsely_blocked,
     _check_terminal_state_honest,
 )
-
 
 
 # --------------------------------------------------------------------------- #
@@ -358,7 +350,9 @@ def health(
         # precisely because it looks like ordinary backlog. It happened twice and
         # went unnoticed for two days — the comments SAID they were closed; the
         # status field never took it. A conclusion in a comment is not a decision.
-        _run_check("terminal_state_honest", lambda: _check_terminal_state_honest(store)),
+        _run_check(
+            "terminal_state_honest", lambda: _check_terminal_state_honest(store)
+        ),
         _run_check("no_falsely_blocked", lambda: _check_no_falsely_blocked(store)),
     ]
     ok = all(c["ok"] for c in checks)
