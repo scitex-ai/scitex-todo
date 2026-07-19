@@ -365,3 +365,33 @@ def test_a_store_writing_to_its_own_mirror_is_not_refused(monkeypatch, tmp_path)
     assert _db_ids(db) == {"one", "two"}, (
         "a store writing to the DB stamped for that same store must mirror normally"
     )
+
+
+def test_canonical_write_to_a_foreign_db_RAISES_rather_than_clobbering(
+    monkeypatch, tmp_path
+):
+    """The second door. mirror_after_save declines; the CANONICAL path must RAISE.
+
+    Guarding only the mirror path left this one open, and the same pytest run
+    that first rebuilt the live DB from a fixture (2,136 -> 21) did it again
+    through here, harder (2,138 -> 1). Declining quietly is right when YAML
+    still holds the card and wrong when the DB is the only copy: it would
+    report success for a card that was never stored.
+    """
+    # Arrange — a DB that belongs to store A
+    from scitex_cards import _store_backend
+
+    store_a = tmp_path / "a" / "tasks.yaml"
+    store_a.parent.mkdir()
+    db = tmp_path / "mirror-of-a.db"
+    monkeypatch.setenv(ENV_DB, str(db))
+    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+    _store.add_task(store_a, id="a-only", title="A", assignee="agent:test-suite")
+    assert "a-only" in _db_ids(db), "precondition: the DB is store A's"
+
+    # Act / Assert — a canonical write addressed to store B must refuse LOUDLY
+    store_b = tmp_path / "b" / "tasks.yaml"
+    with pytest.raises(RuntimeError, match="DIFFERENT path"):
+        _store_backend.write_doc_to_db({"tasks": [{"id": "b-only"}]}, store_b)
+
+    assert _db_ids(db) == {"a-only"}, "and store A's rows are untouched"

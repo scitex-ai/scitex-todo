@@ -76,14 +76,44 @@ def write_doc_to_db(doc: dict, store_path) -> dict:
     ``store_path`` still identifies WHICH logical store is addressed (and
     therefore stamps provenance), even though nothing is written to that file
     in this mode.
+
+    OWNERSHIP IS CHECKED FIRST, and in canonical mode a mismatch RAISES rather
+    than returning quietly. The destination still comes from the ambient
+    environment (``resolve_db_path(None)``) while ``doc`` comes from the
+    caller, so the same pairing bug that :func:`_dual_write.mirror_after_save`
+    guards against exists on THIS path too — and here it is worse, because
+    there is no YAML behind the DB to recover from.
+
+    That is not a hypothetical either. Both halves were demonstrated on
+    2026-07-19: first the mirror path let a pytest fixture rebuild the live DB
+    (2,136 cards -> 21), and after that path was guarded, the CANONICAL path —
+    unguarded — let the same suite do it again, harder (2,138 -> 1). Two doors
+    into one room; guarding one taught the caller nothing about the other.
+
+    Why RAISE here when the mirror merely declines: declining is right when the
+    card is already durable in YAML, and wrong when the DB is the only copy.
+    Silently not-writing would report success for a card that was never stored.
+    Both outcomes of a mismatch — clobbering the wrong DB, or dropping the
+    card — are unacceptable, so the caller must be told.
     """
     from ._db import resolve_db_path
     from ._db_mirror import mirror_doc_incremental
+    from ._dual_write import _db_mirrors_this_store
+
+    db_path = resolve_db_path(None)
+    if not _db_mirrors_this_store(db_path, store_path):
+        raise RuntimeError(
+            f"refusing to write {store_path} into {db_path}: that database is "
+            f"the store for a DIFFERENT path, and in DB-canonical mode writing "
+            f"it would replace that store's rows with this one's. Point "
+            f"$SCITEX_CARDS_DB at this store's own database, or re-bootstrap "
+            f"deliberately with `scitex-cards db import --from-yaml`."
+        )
 
     # `mirror_doc_incremental` already raises on failure — no try/except here
     # ON PURPOSE. Adding one could only make this quieter, which is the one
     # direction this function must never move.
-    return mirror_doc_incremental(doc, resolve_db_path(None), store_path=store_path)
+    return mirror_doc_incremental(doc, db_path, store_path=store_path)
 
 
 __all__ = [
