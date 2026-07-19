@@ -354,6 +354,7 @@ def _stamp_meta(conn: sqlite3.Connection, source: str) -> None:
 def import_from_yaml(
     tasks_path: str | Path | None = None,
     db_path: str | Path | None = None,
+    as_store: str | Path | None = None,
 ) -> dict:
     """Bootstrap the shadow DB from the canonical YAML store. Idempotent.
 
@@ -363,6 +364,20 @@ def import_from_yaml(
 
         {"db_path", "yaml_path", "tasks", "comments", "edges", "roles",
          "users", "user_names", "notifications", "messages"}
+
+    ``as_store`` separates WHERE THE DATA CAME FROM from WHAT THIS DB IS.
+
+    The provenance stamp is the DB's IDENTITY — the ownership guards in
+    ``_dual_write`` / ``_store_backend`` refuse a write whose store does not
+    match it. By default the stamp names the imported file, which is right for
+    a bootstrap and WRONG for a RESTORE: recovering from
+    ``snapshots/tasks.yaml`` re-labels the live database as the snapshot's, and
+    every subsequent normal write is then correctly-but-uselessly refused.
+
+    That happened during the 2026-07-19 recovery and was patched by hand with an
+    UPDATE on ``schema_meta`` — a sharp edge that should not need a human. Pass
+    ``as_store=<the store this DB serves>`` to keep the identity while taking
+    the data from anywhere.
     """
     doc, store_path, snapshot = _load_source(tasks_path)
     threads = _load_threads(store_path)
@@ -383,7 +398,13 @@ def import_from_yaml(
         # Record WHICH yaml this mirror reflects, so a read can tell — with one
         # stat(2) and no parse — whether the store has moved on since. Without
         # this the DB looks perfectly healthy while serving a stale photograph.
-        stamp_yaml_provenance(conn, store_path, card_count, snapshot=snapshot)
+        # Stamp the DB's IDENTITY. `as_store` lets a RESTORE keep the identity
+        # of the store it serves while taking data from a snapshot/backup —
+        # without it, recovering re-labels the live DB as the snapshot's and the
+        # ownership guards then refuse every ordinary write.
+        stamp_target = Path(as_store).expanduser() if as_store else store_path
+        stamp_snapshot = snapshot if as_store is None else None
+        stamp_yaml_provenance(conn, stamp_target, card_count, snapshot=stamp_snapshot)
         conn.commit()
     except Exception:
         conn.rollback()

@@ -133,11 +133,24 @@ def db_verify_cmd(db_path: str | None, as_json: bool) -> None:
     default=None,
     help="Path to tasks.yaml (default: user store / $SCITEX_TODO_TASKS_YAML_SHARED).",
 )
+@click.option(
+    "--as-store",
+    "as_store",
+    default=None,
+    help=(
+        "Stamp the DB as the store for THIS path instead of the imported file. "
+        "Use when restoring from a backup/snapshot: the source file is where the "
+        "DATA came from, not what the DB IS."
+    ),
+)
 @_DB_OPTION
-@click.option("--json", "as_json", is_flag=True, help="Emit the import summary as JSON.")
+@click.option(
+    "--json", "as_json", is_flag=True, help="Emit the import summary as JSON."
+)
 def db_import_cmd(
     from_yaml: bool,
     tasks_path: str | None,
+    as_store: str | None,
     db_path: str | None,
     as_json: bool,
 ) -> None:
@@ -148,7 +161,9 @@ def db_import_cmd(
         )
     from .._db_bootstrap import import_from_yaml
 
-    summary = import_from_yaml(tasks_path=tasks_path, db_path=db_path)
+    summary = import_from_yaml(
+        tasks_path=tasks_path, db_path=db_path, as_store=as_store
+    )
     if as_json:
         click.echo(json.dumps(summary))
         return
@@ -189,8 +204,18 @@ def _echo_export_report(report: dict) -> None:
     ),
 )
 @_DB_OPTION
-@click.option("--out", "out_path", default=None, help="tasks.yaml output path (default: <db_dir>/export/tasks.yaml).")
-@click.option("--threads-out", "threads_out", default=None, help="threads.yaml output path (default: beside --out).")
+@click.option(
+    "--out",
+    "out_path",
+    default=None,
+    help="tasks.yaml output path (default: <db_dir>/export/tasks.yaml).",
+)
+@click.option(
+    "--threads-out",
+    "threads_out",
+    default=None,
+    help="threads.yaml output path (default: beside --out).",
+)
 @click.option("--json", "as_json", is_flag=True, help="Emit the export report as JSON.")
 def db_export_cmd(
     db_path: str | None,
@@ -246,7 +271,9 @@ def db_export_cmd(
         "success would be a lie."
     ),
 )
-@click.option("--json", "as_json", is_flag=True, help="Emit the snapshot report as JSON.")
+@click.option(
+    "--json", "as_json", is_flag=True, help="Emit the snapshot report as JSON."
+)
 def db_snapshot_cmd(
     db_path: str | None,
     snap_dir: str | None,
@@ -319,9 +346,13 @@ def db_snapshot_cmd(
             if not report["pushed"]:
                 # A failed push means the backup did NOT go off-site. That is
                 # the rail's whole job — fail LOUD so the cron tick reads red.
-                _emit = json.dumps(report) if as_json else (
-                    f"::error:: snapshot committed LOCALLY but push FAILED: "
-                    f"{report['push_detail']}"
+                _emit = (
+                    json.dumps(report)
+                    if as_json
+                    else (
+                        f"::error:: snapshot committed LOCALLY but push FAILED: "
+                        f"{report['push_detail']}"
+                    )
                 )
                 click.echo(_emit)
                 raise SystemExit(1)
@@ -347,10 +378,21 @@ def db_snapshot_cmd(
         "  scitex-cards db rehearse --json"
     ),
 )
-@click.option("--tasks", "tasks_path", default=None, help="Store to rehearse against (default: resolved store).")
-@click.option("--workdir", default=None, help="Rehearsal dir (default: fresh temp dir).")
-@click.option("--keep", is_flag=True, help="Keep the workdir even when the rehearsal passes.")
-@click.option("--json", "as_json", is_flag=True, help="Emit the verdict report as JSON.")
+@click.option(
+    "--tasks",
+    "tasks_path",
+    default=None,
+    help="Store to rehearse against (default: resolved store).",
+)
+@click.option(
+    "--workdir", default=None, help="Rehearsal dir (default: fresh temp dir)."
+)
+@click.option(
+    "--keep", is_flag=True, help="Keep the workdir even when the rehearsal passes."
+)
+@click.option(
+    "--json", "as_json", is_flag=True, help="Emit the verdict report as JSON."
+)
 def db_rehearse_cmd(tasks_path, workdir, keep, as_json):
     """Run the frozen-copy equivalence rehearsal (the R4 cutover gate)."""
     from .._db_rehearse import rehearse
