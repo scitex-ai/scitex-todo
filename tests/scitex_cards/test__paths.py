@@ -9,8 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from scitex_cards._paths import bundled_example, resolve_tasks_path
-from scitex_cards._paths import ENV_TASKS, ENV_TASKS_DEPRECATED, _find_git_root
+from scitex_cards._paths import (
+    ENV_TASKS,
+    ENV_TASKS_DEPRECATED,
+    _find_git_root,
+    bundled_example,
+    resolve_tasks_path,
+)
 
 
 @pytest.fixture
@@ -79,13 +84,31 @@ def test_env_var_path_resolves_when_no_explicit(tmp_path, clean_tasks_env):
     assert resolved == target
 
 
-def test_falls_back_to_bundled_example(clean_tasks_env, isolated_cwd):
-    # Arrange
-    expected = bundled_example()
+def test_unresolvable_store_does_NOT_fall_back_to_a_packaged_fixture(
+    clean_tasks_env, isolated_cwd
+):
+    """There is no last resort, and that absence is the safety property.
+
+    This test previously asserted the OPPOSITE — that resolution falls back to
+    the bundled example. That fallback made a packaged demo file eligible to
+    become the fleet's board: on 2026-07-19, with the canonical store archived
+    by the SQLite cutover, resolution walked past every real candidate, settled
+    on a file inside site-packages, and the live database's provenance stamp was
+    rewritten to name it.
+
+    An unresolvable store now returns the canonical path that does not exist, so
+    the loader raises FileNotFoundError on it — a stated configuration error
+    rather than a blank board to start writing into.
+    """
     # Act
     resolved = resolve_tasks_path(None)
+
     # Assert
-    assert resolved == expected
+    assert "examples" not in resolved.parts, (
+        "resolution must never land on a packaged fixture — that is how demo "
+        "data becomes production data"
+    )
+    assert resolved.name == "tasks.yaml"
 
 
 def test_deprecated_env_var_fails_loud(monkeypatch, clean_tasks_env):
@@ -118,13 +141,17 @@ def test_current_tasks_var_wins_over_stale_deprecated(
     assert resolved == target
 
 
-def test_bundled_example_file_exists_and_loads():
-    # Arrange
-    example = bundled_example()
-    # Act
-    text = example.read_text(encoding="utf-8")
-    # Assert
-    assert "tasks:" in text
+def test_bundled_example_raises_because_no_yaml_store_ships_in_the_wheel():
+    """Calling it is a stated error, not an AttributeError.
+
+    This test previously asserted the fixture existed and parsed. The fixture
+    and its fallback were removed on 2026-07-19; `bundled_example()` survives
+    only as a raising stub so an external caller gets a reason rather than an
+    import failure.
+    """
+    # Act / Assert
+    with pytest.raises(RuntimeError, match="no bundled example"):
+        bundled_example()
 
 
 # === Additional gap-fill coverage (proj-scitex-todo overnight) ==============
