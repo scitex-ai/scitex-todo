@@ -31,7 +31,7 @@ def _check(report: dict, name: str) -> dict:
 
 
 @pytest.fixture()
-def two_stores(tmp_path, monkeypatch):
+def two_stores(tmp_path, env):
     """Two real stores and a DB bootstrapped from the FIRST of them."""
     a = tmp_path / "a" / "tasks.yaml"
     a.parent.mkdir()
@@ -39,8 +39,8 @@ def two_stores(tmp_path, monkeypatch):
     b = tmp_path / "b" / "tasks.yaml"
     b.parent.mkdir()
     b.write_text(_SEED)
-    monkeypatch.setenv("SCITEX_CARDS_DB", str(tmp_path / "cards.db"))
-    monkeypatch.setenv("SCITEX_TODO_DB", str(tmp_path / "cards.db"))
+    env.set("SCITEX_CARDS_DB", str(tmp_path / "cards.db"))
+    env.set("SCITEX_TODO_DB", str(tmp_path / "cards.db"))
     import_from_yaml(tasks_path=str(a))
     return a, b
 
@@ -83,18 +83,19 @@ def test_the_hint_names_both_ways_to_resolve_it(two_stores):
     assert "SCITEX_CARDS_TASKS_YAML_SHARED" in check["hint"]
 
 
-def test_a_missing_db_is_not_an_alarm(tmp_path, monkeypatch):
+def test_a_missing_db_is_not_an_alarm(tmp_path, env):
     """Nothing to disagree with yet — a fresh install must report clean."""
     # Arrange
     store = tmp_path / "tasks.yaml"
     store.write_text(_SEED)
-    monkeypatch.setenv("SCITEX_CARDS_DB", str(tmp_path / "absent.db"))
-    monkeypatch.setenv("SCITEX_TODO_DB", str(tmp_path / "absent.db"))
+    env.set("SCITEX_CARDS_DB", str(tmp_path / "absent.db"))
+    env.set("SCITEX_TODO_DB", str(tmp_path / "absent.db"))
 
     # Act
     check = _check(health(store=str(store)), "store_identity")
 
     # Assert
     assert check["ok"] is True, check["detail"]
+
 
 # EOF

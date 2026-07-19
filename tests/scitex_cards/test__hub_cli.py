@@ -27,7 +27,7 @@ from scitex_cards._cli._hub import doctor_cmd, provision_cmd
 
 
 @pytest.fixture()
-def rig(tmp_path, monkeypatch):
+def rig(tmp_path, env):
     store = tmp_path / "tasks.yaml"
     store.write_text("tasks: []\n", encoding="utf-8")
     tokens_dir = tmp_path / "tokens"
@@ -43,10 +43,10 @@ def rig(tmp_path, monkeypatch):
     url = f"http://127.0.0.1:{port}"
     token_file = tokens_dir / "hub.token"
 
-    monkeypatch.setenv("SCITEX_CARDS_HUB_URL", url)
-    monkeypatch.setenv("SCITEX_CARDS_HUB_TOKEN_FILE", str(token_file))
-    monkeypatch.delenv("SCITEX_CARDS_HUB_TOKEN", raising=False)
-    monkeypatch.setenv("SCITEX_TODO_AGENT_ID", "remote-doctor")
+    env.set("SCITEX_CARDS_HUB_URL", url)
+    env.set("SCITEX_CARDS_HUB_TOKEN_FILE", str(token_file))
+    env.delete("SCITEX_CARDS_HUB_TOKEN")
+    env.set("SCITEX_TODO_AGENT_ID", "remote-doctor")
 
     yield {"url": url, "token": token_file.read_text().strip()}
 
@@ -136,9 +136,9 @@ def test_doctor_all_green_exits_zero(rig):
     assert result.exit_code == 0
 
 
-def test_doctor_url_unset_reports_not_ok(rig, monkeypatch):
+def test_doctor_url_unset_reports_not_ok(rig, env):
     # Arrange
-    monkeypatch.delenv("SCITEX_CARDS_HUB_URL")
+    env.delete("SCITEX_CARDS_HUB_URL")
     # Act
     result = _doctor()
     report = json.loads(result.output)
@@ -146,9 +146,9 @@ def test_doctor_url_unset_reports_not_ok(rig, monkeypatch):
     assert report["ok"] is False
 
 
-def test_doctor_url_unset_fails_with_the_export_hint(rig, monkeypatch):
+def test_doctor_url_unset_fails_with_the_export_hint(rig, env):
     # Arrange
-    monkeypatch.delenv("SCITEX_CARDS_HUB_URL")
+    env.delete("SCITEX_CARDS_HUB_URL")
     # Act
     result = _doctor()
     url_check = json.loads(result.output)["checks"][0]
@@ -156,18 +156,18 @@ def test_doctor_url_unset_fails_with_the_export_hint(rig, monkeypatch):
     assert url_check["ok"] is False and "SCITEX_CARDS_HUB_URL" in url_check["hint"]
 
 
-def test_doctor_url_unset_exits_one(rig, monkeypatch):
+def test_doctor_url_unset_exits_one(rig, env):
     # Arrange
-    monkeypatch.delenv("SCITEX_CARDS_HUB_URL")
+    env.delete("SCITEX_CARDS_HUB_URL")
     # Act
     result = _doctor()
     # Assert
     assert result.exit_code == 1
 
 
-def test_doctor_missing_token_fails_with_the_provision_hint(rig, monkeypatch):
+def test_doctor_missing_token_fails_with_the_provision_hint(rig, env):
     # Arrange
-    monkeypatch.setenv("SCITEX_CARDS_HUB_TOKEN_FILE", "/nonexistent/hub.token")
+    env.set("SCITEX_CARDS_HUB_TOKEN_FILE", "/nonexistent/hub.token")
     # Act
     result = _doctor()
     token_check = json.loads(result.output)["checks"][1]
@@ -175,18 +175,18 @@ def test_doctor_missing_token_fails_with_the_provision_hint(rig, monkeypatch):
     assert token_check["ok"] is False and "provision" in token_check["hint"]
 
 
-def test_doctor_missing_token_exits_one(rig, monkeypatch):
+def test_doctor_missing_token_exits_one(rig, env):
     # Arrange
-    monkeypatch.setenv("SCITEX_CARDS_HUB_TOKEN_FILE", "/nonexistent/hub.token")
+    env.set("SCITEX_CARDS_HUB_TOKEN_FILE", "/nonexistent/hub.token")
     # Act
     result = _doctor()
     # Assert
     assert result.exit_code == 1
 
 
-def test_doctor_unreachable_hub_fails_with_the_tunnel_hint(rig, monkeypatch):
+def test_doctor_unreachable_hub_fails_with_the_tunnel_hint(rig, env):
     # Arrange
-    monkeypatch.setenv("SCITEX_CARDS_HUB_URL", "http://127.0.0.1:1")
+    env.set("SCITEX_CARDS_HUB_URL", "http://127.0.0.1:1")
     # Act
     result = _doctor()
     report = json.loads(result.output)
@@ -195,18 +195,18 @@ def test_doctor_unreachable_hub_fails_with_the_tunnel_hint(rig, monkeypatch):
     assert health["ok"] is False and "tunnel" in health["hint"]
 
 
-def test_doctor_unreachable_hub_exits_one(rig, monkeypatch):
+def test_doctor_unreachable_hub_exits_one(rig, env):
     # Arrange
-    monkeypatch.setenv("SCITEX_CARDS_HUB_URL", "http://127.0.0.1:1")
+    env.set("SCITEX_CARDS_HUB_URL", "http://127.0.0.1:1")
     # Act
     result = _doctor()
     # Assert
     assert result.exit_code == 1
 
 
-def test_doctor_no_identity_fails_check_four(rig, monkeypatch):
+def test_doctor_no_identity_fails_check_four(rig, env):
     # Arrange
-    monkeypatch.delenv("SCITEX_TODO_AGENT_ID")
+    env.delete("SCITEX_TODO_AGENT_ID")
     # Act
     result = _doctor()
     report = json.loads(result.output)
@@ -215,9 +215,9 @@ def test_doctor_no_identity_fails_check_four(rig, monkeypatch):
     assert echo["ok"] is False and "SCITEX_TODO_AGENT_ID" in echo["hint"]
 
 
-def test_doctor_no_identity_exits_one(rig, monkeypatch):
+def test_doctor_no_identity_exits_one(rig, env):
     # Arrange
-    monkeypatch.delenv("SCITEX_TODO_AGENT_ID")
+    env.delete("SCITEX_TODO_AGENT_ID")
     # Act
     result = _doctor()
     # Assert

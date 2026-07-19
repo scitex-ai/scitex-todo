@@ -53,7 +53,7 @@ def _refusal_message(store, card_id: str) -> str:
 
 
 @pytest.fixture()
-def over_cap(tmp_path, env, monkeypatch):
+def over_cap(tmp_path, env):
     """An agent ``a`` sitting FAR over its refuse threshold (limit 1 → 2x = 2).
 
     Yields the store path. Seeded by hand-writing the YAML: the gate itself
@@ -73,7 +73,7 @@ def over_cap(tmp_path, env, monkeypatch):
     # add_task's post-write card-event dispatcher resolves the DEFAULT store,
     # not the one passed in — without this the test would read and write the
     # operator's live ~/.scitex/todo/tasks.yaml.
-    monkeypatch.setenv(ENV_TASKS, str(store))
+    env.set(ENV_TASKS, str(store))
     return store
 
 
@@ -215,14 +215,14 @@ class TestBypassIsLoudNotSilent:
         # Assert — read it back off disk; the board renders THIS.
         assert OVERRIDE_COMMENT_KIND in over_cap.read_text()
 
-    def test_card_under_the_cap_is_not_stamped(self, tmp_path, env, monkeypatch):
+    def test_card_under_the_cap_is_not_stamped(self, tmp_path, env):
         """A P1 filed by an agent with room to spare is ordinary; the stamp
         must mean "a bypass happened", not "someone typed priority 1"."""
         # Arrange
         env.set(ENV_WIP_LIMIT, "10")
         store = tmp_path / "tasks.yaml"
         store.write_text("tasks: []\n")
-        monkeypatch.setenv(ENV_TASKS, str(store))
+        env.set(ENV_TASKS, str(store))
         card = dict(INCIDENT_CARD, title="[P1] urgent but the board is calm")
         # Act
         rec = add_task(id="p1-roomy", store=store, **card)

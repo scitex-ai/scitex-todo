@@ -32,11 +32,11 @@ def _seed(src: pathlib.Path, n: int) -> None:
 
 
 @pytest.fixture()
-def rail(tmp_path, monkeypatch):
+def rail(tmp_path, env):
     """A snapshot repo with one healthy 100-card snapshot already committed."""
     db = tmp_path / "cards.db"
-    monkeypatch.setenv("SCITEX_CARDS_DB", str(db))
-    monkeypatch.setenv("SCITEX_TODO_DB", str(db))
+    env.set("SCITEX_CARDS_DB", str(db))
+    env.set("SCITEX_TODO_DB", str(db))
     src = tmp_path / "tasks.yaml"
     snaps = tmp_path / "snapshots"
     _seed(src, 100)
@@ -89,5 +89,6 @@ def test_ordinary_growth_is_never_blocked(rail):
 
     # Assert
     assert result.exit_code == 0, result.output
+
 
 # EOF

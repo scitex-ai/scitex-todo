@@ -106,14 +106,14 @@ BAD_SAME_LENGTH = GOOD_DUMP.replace("status: pending", 'status: "ending', 1)
 # Happy path
 # ---------------------------------------------------------------------------
 @pytest.fixture()
-def promoted_store(tmp_path, monkeypatch):
+def promoted_store(tmp_path, env):
     """A 3-task doc written end-to-end through the REAL save path.
 
     Yields the canonical path after ``_save_doc_unlocked`` promoted it, so
     each ``TestHappyPath`` test below pins one property of that single
     completed write instead of re-running it.
     """
-    monkeypatch.setenv("SCITEX_TODO_STORE_GIT_AUTOCOMMIT", "0")
+    env.set("SCITEX_TODO_STORE_GIT_AUTOCOMMIT", "0")
     store = tmp_path / "tasks.yaml"
     with _model._store_lock(store):
         _model._save_doc_unlocked(_valid_doc(3), store)

@@ -162,9 +162,9 @@ class TestDetectPendingBacklog:
         # Assert
         assert "(unassigned)" in out
 
-    def test_threshold_env_override(self, monkeypatch):
+    def test_threshold_env_override(self, env):
         # Arrange — a 1h threshold makes a 2h-old card stale.
-        monkeypatch.setenv(ENV_PENDING_NUDGE_HOURS, "1")
+        env.set(ENV_PENDING_NUDGE_HOURS, "1")
         t = _card("x", "deferred", hours_ago=2, agent="a")
         # Act
         out = detect_pending_backlog([t], now=NOW)

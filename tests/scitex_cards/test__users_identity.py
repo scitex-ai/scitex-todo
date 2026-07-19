@@ -273,9 +273,9 @@ def test_idempotency_with_registry():
 # --------------------------------------------------------------------------- #
 # env gate — strict defaults OFF                                              #
 # --------------------------------------------------------------------------- #
-def test_strict_defaults_off(monkeypatch):
+def test_strict_defaults_off(env):
     # Arrange
-    monkeypatch.delenv(ENV_STRICT_IDENTITY, raising=False)
+    env.delete(ENV_STRICT_IDENTITY)
     # Act
     enabled = strict_identity_enabled()
     # Assert
@@ -283,9 +283,9 @@ def test_strict_defaults_off(monkeypatch):
 
 
 @pytest.mark.parametrize("val", ["1", "true", "TRUE", "yes", "on"])
-def test_strict_env_truthy(monkeypatch, val):
+def test_strict_env_truthy(env, val):
     # Arrange
-    monkeypatch.setenv(ENV_STRICT_IDENTITY, val)
+    env.set(ENV_STRICT_IDENTITY, val)
     # Act
     enabled = strict_identity_enabled()
     # Assert
@@ -293,9 +293,9 @@ def test_strict_env_truthy(monkeypatch, val):
 
 
 @pytest.mark.parametrize("val", ["0", "false", "no", "off", "", "maybe"])
-def test_strict_env_falsy(monkeypatch, val):
+def test_strict_env_falsy(env, val):
     # Arrange
-    monkeypatch.setenv(ENV_STRICT_IDENTITY, val)
+    env.set(ENV_STRICT_IDENTITY, val)
     # Act
     enabled = strict_identity_enabled()
     # Assert
@@ -305,9 +305,9 @@ def test_strict_env_falsy(monkeypatch, val):
 # --------------------------------------------------------------------------- #
 # resolve_identity — store-aware wrapper, env-gated strict                    #
 # --------------------------------------------------------------------------- #
-def test_resolve_identity_registered_hit(tmp_path, monkeypatch):
+def test_resolve_identity_registered_hit(tmp_path, env):
     # Arrange
-    monkeypatch.delenv(ENV_STRICT_IDENTITY, raising=False)
+    env.delete(ENV_STRICT_IDENTITY)
     store = tmp_path / "tasks.yaml"
     _users.register_user(
         kind="agent",
@@ -320,10 +320,10 @@ def test_resolve_identity_registered_hit(tmp_path, monkeypatch):
     assert canonical == "scitex-dev"
 
 
-def test_resolve_identity_non_strict_by_default(tmp_path, monkeypatch):
+def test_resolve_identity_non_strict_by_default(tmp_path, env):
     """Unknown + strict OFF (the default) → input returned, no raise."""
     # Arrange
-    monkeypatch.delenv(ENV_STRICT_IDENTITY, raising=False)
+    env.delete(ENV_STRICT_IDENTITY)
     store = tmp_path / "tasks.yaml"
     # Act
     canonical = resolve_identity("unregistered-xyz", store=store)
@@ -331,9 +331,9 @@ def test_resolve_identity_non_strict_by_default(tmp_path, monkeypatch):
     assert canonical == "unregistered-xyz"
 
 
-def test_resolve_identity_strict_env_flip_raises(tmp_path, monkeypatch):
+def test_resolve_identity_strict_env_flip_raises(tmp_path, env):
     # Arrange
-    monkeypatch.setenv(ENV_STRICT_IDENTITY, "1")
+    env.set(ENV_STRICT_IDENTITY, "1")
     store = tmp_path / "tasks.yaml"
     # Act
     # Assert
@@ -341,9 +341,9 @@ def test_resolve_identity_strict_env_flip_raises(tmp_path, monkeypatch):
         resolve_identity("unregistered-xyz", store=store)
 
 
-def test_resolve_identity_alias_via_store(tmp_path, monkeypatch):
+def test_resolve_identity_alias_via_store(tmp_path, env):
     # Arrange
-    monkeypatch.delenv(ENV_STRICT_IDENTITY, raising=False)
+    env.delete(ENV_STRICT_IDENTITY)
     store = tmp_path / "tasks.yaml"
     # Act
     canonical = resolve_identity("sac", store=store)

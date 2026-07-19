@@ -19,13 +19,13 @@ _NOW = _dt.datetime(2026, 6, 30, 12, 0, 0, tzinfo=_dt.timezone.utc)
 
 
 @pytest.fixture(autouse=True)
-def _hermetic_env(monkeypatch):
+def _hermetic_env(env):
     for var in (
         "SCITEX_TODO_STALE_ACTIVE_HOURS",
         "SCITEX_TODO_AGENT_ID",
         "SCITEX_TODO_TASKS_YAML_SHARED",
     ):
-        monkeypatch.delenv(var, raising=False)
+        env.delete(var)
 
 
 def _t(*, id, owner, status, hours_ago, now=_NOW):
@@ -161,13 +161,13 @@ def _silence_stdin(monkeypatch):
     monkeypatch.setattr(_idle_guard.sys, "stdin", io.StringIO(""))
 
 
-def test_main_blocks_with_exit_2(tmp_path, monkeypatch, capsys):
+def test_main_blocks_with_exit_2(tmp_path, env, monkeypatch, capsys):
     # Arrange
     store = _store(
         tmp_path, [_t(id="c1", owner="alice", status="in_progress", hours_ago=10)]
     )
-    monkeypatch.setenv("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
-    monkeypatch.setenv("SCITEX_TODO_STALE_ACTIVE_HOURS", "2")
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
+    env.set("SCITEX_TODO_STALE_ACTIVE_HOURS", "2")
     _silence_stdin(monkeypatch)
     # Act
     rc = _idle_guard.main(["--agent", "alice"])
@@ -175,13 +175,13 @@ def test_main_blocks_with_exit_2(tmp_path, monkeypatch, capsys):
     assert rc == 2
 
 
-def test_main_names_the_stale_card_on_stderr(tmp_path, monkeypatch, capsys):
+def test_main_names_the_stale_card_on_stderr(tmp_path, env, monkeypatch, capsys):
     # Arrange
     store = _store(
         tmp_path, [_t(id="c1", owner="alice", status="in_progress", hours_ago=10)]
     )
-    monkeypatch.setenv("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
-    monkeypatch.setenv("SCITEX_TODO_STALE_ACTIVE_HOURS", "2")
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
+    env.set("SCITEX_TODO_STALE_ACTIVE_HOURS", "2")
     _silence_stdin(monkeypatch)
     # Act
     _idle_guard.main(["--agent", "alice"])
@@ -190,7 +190,7 @@ def test_main_names_the_stale_card_on_stderr(tmp_path, monkeypatch, capsys):
     assert "c1" in stderr
 
 
-def test_main_allows_with_exit_0(tmp_path, monkeypatch):
+def test_main_allows_with_exit_0(tmp_path, env, monkeypatch):
     # No in_progress card → no claimed work to abandon → allow stop. Uses only a
     # pending card so the result is independent of the wall clock (main() reads
     # the real `now`, so an in_progress fixture anchored to a fixed past time
@@ -199,7 +199,7 @@ def test_main_allows_with_exit_0(tmp_path, monkeypatch):
     store = _store(
         tmp_path, [_t(id="pend", owner="alice", status="pending", hours_ago=99)]
     )
-    monkeypatch.setenv("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     _silence_stdin(monkeypatch)
     # Act
     rc = _idle_guard.main(["--agent", "alice"])
@@ -217,10 +217,10 @@ def test_main_no_agent_allows(tmp_path, monkeypatch):
     assert rc == 0
 
 
-def test_main_failsoft_allows_on_error(monkeypatch):
+def test_main_failsoft_allows_on_error(env, monkeypatch):
     # A broken store path makes load_tasks raise; the guard must NOT trap (exit 0).
     # Arrange
-    monkeypatch.setenv("SCITEX_TODO_TASKS_YAML_SHARED", "/no/such/dir/tasks.yaml")
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", "/no/such/dir/tasks.yaml")
     _silence_stdin(monkeypatch)
     # Act
     rc = _idle_guard.main(["--agent", "alice"])

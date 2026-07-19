@@ -45,9 +45,9 @@ def store(tmp_path):
 
 
 @pytest.fixture
-def no_agent_id_env(monkeypatch):
+def no_agent_id_env(env):
     """No ``$SCITEX_TODO_AGENT_ID`` — created_by falls back to the board."""
-    monkeypatch.delenv("SCITEX_TODO_AGENT_ID", raising=False)
+    env.delete("SCITEX_TODO_AGENT_ID")
 
 
 def _post(endpoint, store_path, body):
@@ -508,7 +508,7 @@ def test_comment_toast_lists_the_queued_recipients(tmp_path):
     assert relay["queued"] == ["owner-agent"]
 
 
-def test_comment_does_not_await_a_turn_url_post(tmp_path, monkeypatch):
+def test_comment_does_not_await_a_turn_url_post(tmp_path, env):
     # A comment must NOT depend on / await a turn-URL POST. Point the owner at
     # a CLOSED port (a real refused connection) and assert the relay went over
     # the inbox rail (wire == "inbox"). That structural guarantee — not a
@@ -527,11 +527,11 @@ def test_comment_does_not_await_a_turn_url_post(tmp_path, monkeypatch):
     s.close()
 
     store_path = _store_with_agent(tmp_path)
-    monkeypatch.setenv(
+    env.set(
         "SCITEX_TODO_AGENT_TURN_URLS",
         _json.dumps({"owner-agent": f"http://127.0.0.1:{port}/v1/turn"}),
     )
-    monkeypatch.delenv("SCITEX_TODO_PUSH_DRY_RUN", raising=False)
+    env.delete("SCITEX_TODO_PUSH_DRY_RUN")
     try:
         # Act
         resp = _post(
@@ -565,7 +565,7 @@ def test_comment_notification_names_the_commented_card(tmp_path):
     assert notes[0]["card_id"] == "owned"
 
 
-def test_comment_still_saved_when_owner_unreachable(tmp_path, monkeypatch):
+def test_comment_still_saved_when_owner_unreachable(tmp_path, env):
     # The comment must always land on disk — there is no network on the write
     # path now, but assert persistence even with an unreachable turn-URL set.
     # Arrange
@@ -578,11 +578,11 @@ def test_comment_still_saved_when_owner_unreachable(tmp_path, monkeypatch):
     s.close()
 
     store_path = _store_with_agent(tmp_path)
-    monkeypatch.setenv(
+    env.set(
         "SCITEX_TODO_AGENT_TURN_URLS",
         _json.dumps({"owner-agent": f"http://127.0.0.1:{port}/v1/turn"}),
     )
-    monkeypatch.delenv("SCITEX_TODO_PUSH_DRY_RUN", raising=False)
+    env.delete("SCITEX_TODO_PUSH_DRY_RUN")
     try:
         # Act
         _post(

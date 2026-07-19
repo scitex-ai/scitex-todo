@@ -367,7 +367,7 @@ class TestWipIsNotBacklog:
         # other's job, which is the whole two-predicates-one-name bug.
         assert rep.wip_count == 2
 
-    def test_recording_an_incident_is_never_refused(self, tmp_path, env, monkeypatch):
+    def test_recording_an_incident_is_never_refused(self, tmp_path, env):
         # Arrange — agent is at 2x its WIP limit (the gate itself refuses
         # seeding past that, which is the sibling test's job to pin).
         import contextlib
@@ -382,7 +382,7 @@ class TestWipIsNotBacklog:
         # add_task's post-write card-event dispatcher resolves the DEFAULT
         # store, not the one passed in — so without this the suite reads and
         # writes the operator's live ~/.scitex/todo/tasks.yaml.
-        monkeypatch.setenv(ENV_TASKS, str(store))
+        env.set(ENV_TASKS, str(store))
         for i in range(4):
             with contextlib.suppress(TaskValidationError):
                 add_task(
@@ -406,9 +406,7 @@ class TestWipIsNotBacklog:
         # Assert
         assert rec["id"] == "incident-the-gate-is-jammed"
 
-    def test_starting_more_work_past_2x_is_still_refused(
-        self, tmp_path, env, monkeypatch
-    ):
+    def test_starting_more_work_past_2x_is_still_refused(self, tmp_path, env):
         # Arrange — the gate must not become a no-op.
         from scitex_cards._model import TaskValidationError
         from scitex_cards._paths import ENV_TASKS
@@ -417,7 +415,7 @@ class TestWipIsNotBacklog:
         env.set(ENV_WIP_LIMIT, "1")
         store = tmp_path / "tasks.yaml"
         store.write_text("tasks: []\n")
-        monkeypatch.setenv(ENV_TASKS, str(store))
+        env.set(ENV_TASKS, str(store))
         for i in range(2):
             add_task(
                 id=f"wip-{i}",

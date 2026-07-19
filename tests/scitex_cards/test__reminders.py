@@ -27,7 +27,7 @@ from scitex_cards._reminders import (
 
 
 @pytest.fixture(autouse=True)
-def _isolate_engine(monkeypatch):
+def _isolate_engine(env, monkeypatch):
     """Strip env knobs AND detach config resolution so a deployed container's
     settings (``SCITEX_TODO_REMINDER_OWNERS`` from the spec, a real
     ``~/.scitex/todo/config.yaml``) can never leak into these unit tests.
@@ -40,7 +40,7 @@ def _isolate_engine(monkeypatch):
         "SCITEX_TODO_STALE_ACTIVE_HOURS",
         "SCITEX_TODO_PENDING_NUDGE_HOURS",
     ):
-        monkeypatch.delenv(var, raising=False)
+        env.delete(var)
     # No config files contribute anything unless a test opts in.
     monkeypatch.setattr("scitex_cards._config.config_paths", lambda: [])
 
@@ -958,11 +958,11 @@ def test_the_allowlist_enqueues_only_for_the_listed_owner(tmp_path):
     assert recipients == ["alice"]
 
 
-def test_owner_allowlist_env_scopes_the_sweep(tmp_path, monkeypatch):
+def test_owner_allowlist_env_scopes_the_sweep(tmp_path, env):
     # Arrange
     from scitex_cards._reminders import ENV_REMINDER_OWNERS
 
-    monkeypatch.setenv(ENV_REMINDER_OWNERS, "alice, carol")
+    env.set(ENV_REMINDER_OWNERS, "alice, carol")
     store = tmp_path / "tasks.yaml"
     rec = _EnqueueRecorder()
     tasks = [

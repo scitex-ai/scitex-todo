@@ -42,9 +42,9 @@ def _write_recipients(tmp_path, mapping: dict) -> None:
     )
 
 
-def _sweep_minutes_for_env_value(monkeypatch, value: str) -> float:
+def _sweep_minutes_for_env_value(env, value: str) -> float:
     """Resolve the cadence with ``ENV_NUDGE_SWEEP_MINUTES`` set to ``value``."""
-    monkeypatch.setenv(ENV_NUDGE_SWEEP_MINUTES, value)
+    env.set(ENV_NUDGE_SWEEP_MINUTES, value)
     return _nudge_sweep_minutes()
 
 
@@ -156,17 +156,17 @@ class TestCadence:
         # Assert
         assert not due
 
-    def test_numeric_env_value_overrides_the_cadence(self, monkeypatch):
+    def test_numeric_env_value_overrides_the_cadence(self, env):
         # Arrange
         # Act
-        minutes = _sweep_minutes_for_env_value(monkeypatch, "45")
+        minutes = _sweep_minutes_for_env_value(env, "45")
         # Assert
         assert minutes == 45.0
 
-    def test_unparseable_env_value_falls_back_to_the_default(self, monkeypatch):
+    def test_unparseable_env_value_falls_back_to_the_default(self, env):
         # Arrange
         # Act
-        minutes = _sweep_minutes_for_env_value(monkeypatch, "not-a-number")
+        minutes = _sweep_minutes_for_env_value(env, "not-a-number")
         # Assert
         assert minutes == DEFAULT_NUDGE_SWEEP_MINUTES
 

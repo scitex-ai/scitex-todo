@@ -34,9 +34,9 @@ from scitex_cards import _server, _store
 
 
 @pytest.fixture()
-def rig(tmp_path, monkeypatch):
+def rig(tmp_path, env):
     """A serving rig: tmp store + tmp tokens + tmp audit + live server."""
-    monkeypatch.setenv("SCITEX_TODO_AGENT_ID", "rpc-tester")
+    env.set("SCITEX_TODO_AGENT_ID", "rpc-tester")
     store = tmp_path / "tasks.yaml"
     store.write_text("tasks: []\n", encoding="utf-8")
     tokens_dir = tmp_path / "tokens"
