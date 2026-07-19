@@ -139,8 +139,10 @@ def resolve_tasks_path(explicit: str | Path | None = None) -> Path:
     Returns
     -------
     pathlib.Path
-        The first existing task store in precedence order. Falls back to the
-        bundled generic example if no personal store is found.
+        The first existing task store in precedence order. There is NO bundled
+        fallback: when nothing resolves, the user path is returned so the loader
+        raises ``FileNotFoundError`` on it rather than silently nominating a
+        packaged fixture as the fleet's board.
 
     Examples
     --------
