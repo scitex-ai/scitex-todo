@@ -102,12 +102,40 @@ def _check_store_canonical(store: str | Path | None) -> dict[str, Any]:
             }
 
     if not resolved.exists():
+        # A MISSING YAML IS THE HEALTHY STATE once the database is canonical.
+        # Since #512 no rows live in YAML — that path is identity/provenance
+        # only — so its absence says nothing about the board. Reporting it as a
+        # failure was worse than noise on two counts: it failed on every healthy
+        # install, which teaches the reader to skip the whole report and miss the
+        # checks that matter; and its hint said to hand-write a `tasks: []` YAML,
+        # which is an instruction to RECREATE THE SECOND STORE. On 2026-07-19 a
+        # packaged YAML winning the resolution chain overwrote 2142 live cards.
+        # Telling an operator to conjure one back is the last thing this check
+        # should do.
+        from ._db import resolve_db_path
+
+        try:
+            db = Path(resolve_db_path(store))
+        except Exception:  # noqa: BLE001 — a diagnostic reports, never dies
+            db = None
+        if db is not None and db.exists():
+            return {
+                "ok": True,
+                "detail": (
+                    f"db-canonical: board is {db}; no YAML at {resolved} "
+                    "(expected — YAML is identity only, it holds no rows)"
+                ),
+                "hint": None,
+            }
         return {
             "ok": False,
-            "detail": f"store {resolved} does not exist",
+            "detail": f"no store: YAML {resolved} and database are both absent",
             "hint": (
-                f"create the store: `mkdir -p {resolved.parent}` and write a "
-                f"`tasks: []` YAML at {resolved} (or add a task via scitex-todo)"
+                "bootstrap the DATABASE, never a YAML file: "
+                "`scitex-cards db import --from-yaml <file>` to seed from an "
+                "export, or add a card and let the store be created. Do NOT "
+                "hand-write a tasks.yaml — a second store is how the board was "
+                "destroyed on 2026-07-19."
             ),
         }
     if not os.access(resolved, os.R_OK):
