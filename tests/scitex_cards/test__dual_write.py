@@ -418,3 +418,45 @@ def test_a_missing_canonical_db_RAISES_instead_of_reading_an_empty_store(
     # Act / Assert
     with pytest.raises(RuntimeError, match="does not exist"):
         _read_canonical_db_or_raise()
+
+
+def test_restoring_from_a_snapshot_keeps_the_stores_own_identity(monkeypatch, tmp_path):
+    """A RESTORE must not re-label the database as the backup it read.
+
+    The provenance stamp is the DB's IDENTITY — the ownership guards refuse a
+    write whose store does not match it. Stamping it with the imported FILE is
+    right for a bootstrap and wrong for a restore: recovering the live board
+    from snapshots/tasks.yaml made the DB claim to be the snapshot's, and every
+    ordinary write was then correctly-but-uselessly refused. That was patched by
+    hand with an UPDATE on schema_meta during the 2026-07-19 recovery; this pins
+    the supported way.
+    """
+    # Arrange — data lives in a snapshot; the DB serves a different (logical) store
+    import sqlite3
+
+    from scitex_cards._db_bootstrap import import_from_yaml
+
+    snap = tmp_path / "snapshots" / "tasks.yaml"
+    snap.parent.mkdir()
+    snap.write_text(
+        "tasks:\n- id: a\n  title: A\n  status: done\n"
+        "  assignee: x\n  created_by: x\n"
+    )
+    live = tmp_path / "cards" / "tasks.yaml"
+    live.parent.mkdir()
+    db = tmp_path / "cards" / "cards.db"
+    monkeypatch.setenv(ENV_DB, str(db))
+
+    # Act
+    import_from_yaml(tasks_path=str(snap), as_store=str(live))
+
+    # Assert
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        stamped = dict(conn.execute("SELECT key, value FROM schema_meta"))["yaml_path"]
+    finally:
+        conn.close()
+    assert stamped == str(live), (
+        "the DB must keep the identity of the store it SERVES, not adopt the "
+        "identity of the backup it was restored FROM"
+    )

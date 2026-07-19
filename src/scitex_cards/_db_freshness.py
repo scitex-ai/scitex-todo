@@ -102,10 +102,19 @@ def stamp_yaml_provenance(
 
     ``snapshot`` is the ``(mtime_ns, size)`` the caller captured at the correct
     moment (see the module docstring); omitted, it is taken now.
+
+    A store path with NO FILE still gets stamped, with a zeroed snapshot. That
+    is not a degraded case, it is the NORMAL one under DB-canonical mode: the
+    store is a logical identity and no YAML exists behind it. Returning early
+    here used to leave the PREVIOUS stamp in place, so a restore silently kept
+    claiming to be whatever the DB was last built from — which is exactly the
+    identity confusion the ownership guards then punish. Zeroed mtime/size are
+    harmless because the freshness comparison they feed only runs in mirror
+    mode, where the file exists by definition.
     """
     snap = snapshot if snapshot is not None else stat_snapshot(store_path)
     if snap is None:
-        return
+        snap = (0, 0)
     mtime_ns, size = snap
     rows = {
         KEY_YAML_PATH: canonical_path(store_path),
