@@ -375,7 +375,6 @@ def resolve_store(store: str | Path | None = None) -> dict:
           "explicit":         <the `store` arg you passed, or None>,
           "env_tasks":        <value of $SCITEX_TODO_TASKS_YAML_SHARED, or None>,
           "user_store":       "/abs/path/to/~/.scitex/todo/tasks.yaml",
-          "bundled_example":  "/abs/path/to/bundled/example.yaml",
           "pkg_short":        "scitex_cards",
           "exists":           bool,
         }
@@ -386,7 +385,6 @@ def resolve_store(store: str | Path | None = None) -> dict:
         ENV_TASKS,
         PKG_SHORT,
         _user_root,
-        bundled_example,
     )
 
     resolved = resolve_tasks_path(
@@ -397,7 +395,6 @@ def resolve_store(store: str | Path | None = None) -> dict:
         "explicit": str(store) if store is not None else None,
         "env_tasks": os.environ.get(ENV_TASKS),
         "user_store": str(_user_root() / "tasks.yaml"),
-        "bundled_example": str(bundled_example()),
         "pkg_short": PKG_SHORT,
         "exists": Path(resolved).exists(),
     }
