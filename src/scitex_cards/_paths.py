@@ -13,7 +13,14 @@ Resolution order (highest priority first):
     1. an explicit path argument (CLI ``--tasks`` / function arg)
     2. ``$SCITEX_TODO_TASKS_YAML_SHARED`` environment variable
     3. user scope:  ``$SCITEX_DIR/todo/tasks.yaml`` (default ``~/.scitex/todo``)
-    4. bundled generic example:  ``scitex_cards/examples/tasks.yaml``
+
+There is NO FOURTH TIER. A bundled ``scitex_cards/examples/tasks.yaml`` used to
+sit at the end of this chain, and that made a packaged demo file eligible to
+become the fleet's board — which it did on 2026-07-19, when the canonical store
+was archived by the SQLite cutover and resolution settled on a file inside
+site-packages. An unresolvable store now returns the canonical path that does
+not exist, so the loader raises ``FileNotFoundError`` on it: a stated
+configuration error rather than a blank board to start writing into.
 
 There is DELIBERATELY no project-scope (``<git-root>/.scitex/todo/tasks.yaml``)
 layer for the data store: a process run with cwd inside ANY repo (notably

@@ -58,8 +58,12 @@ raise `RenderError`.
 ### `resolve_tasks_path(explicit=None) -> Path`
 
 Returns the first existing store in precedence order (explicit →
-`$SCITEX_TODO_TASKS_YAML_SHARED` → project → user → bundled). `bundled_example()` returns
-the path to the generic example shipped in the wheel.
+`$SCITEX_TODO_TASKS_YAML_SHARED` → user). There is **no bundled fallback**: as of
+2026-07-19 no YAML store ships in the wheel, because a packaged demo file at the
+end of the chain could be — and once was — resolved as the fleet's live board. An
+unresolvable store raises `FileNotFoundError` rather than silently standing in.
+`bundled_example()` remains only as a raising stub so an external caller gets a
+stated reason instead of an `AttributeError`.
 
 ## Constants and exceptions
 

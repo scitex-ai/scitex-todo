@@ -53,6 +53,21 @@ _STORE_ENV_VARS = (
     "SCITEX_TODO_TASKS_YAML_SHARED",
 )
 
+#: Env names that select WHICH BACKEND is canonical. These are CLEARED, not
+#: pinned. Pinning the store path while inheriting the backend selector makes
+#: the suite's behaviour depend on the developer's shell: a maintainer who has
+#: exported SCITEX_CARDS_STORE_BACKEND=sqlite (as anyone working the cutover
+#: does) flips every test into DB-canonical mode against a scratch DB that was
+#: never created, and they all fail with "canonical store ... does not exist".
+#: A test that WANTS canonical mode sets this itself; the default must be the
+#: same everywhere.
+_BACKEND_ENV_VARS = (
+    "SCITEX_CARDS_STORE_BACKEND",
+    "SCITEX_TODO_STORE_BACKEND",
+    "SCITEX_CARDS_READ_BACKEND",
+    "SCITEX_TODO_READ_BACKEND",
+)
+
 
 def _pin_to_scratch() -> Path:
     """Point every store-selecting variable at a throwaway directory."""
@@ -61,6 +76,8 @@ def _pin_to_scratch() -> Path:
     os.environ["SCITEX_TODO_DB"] = str(scratch / "cards.db")
     os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"] = str(scratch / "tasks.yaml")
     os.environ["SCITEX_TODO_TASKS_YAML_SHARED"] = str(scratch / "tasks.yaml")
+    for name in _BACKEND_ENV_VARS:
+        os.environ.pop(name, None)
     return scratch
 
 
