@@ -163,10 +163,10 @@ def _cards() -> list[dict]:
 
 
 @pytest.fixture()
-def store(tmp_path, monkeypatch):
+def store(tmp_path, env):
     """A YAML store + a mirror imported from it, with the caches cleared."""
-    monkeypatch.setenv(ENV_DB, str(tmp_path / "todo.db"))
-    monkeypatch.delenv("SCITEX_TODO_SCOPE", raising=False)
+    env.set(ENV_DB, str(tmp_path / "todo.db"))
+    env.delete("SCITEX_TODO_SCOPE")
     path = tmp_path / "tasks.yaml"
     path.write_text(safe_dump({"tasks": _cards()}))
     import_from_yaml(path, tmp_path / "todo.db")
@@ -466,18 +466,18 @@ def test_overdue_excludes_recurring_and_terminal(store):
     assert [r["id"] for r in rows] == expected_ids
 
 
-def test_scope_none_honours_the_env_default(store, monkeypatch):
+def test_scope_none_honours_the_env_default(store, env):
     # Arrange
-    monkeypatch.setenv("SCITEX_TODO_SCOPE", "agent:agent-b")
+    env.set("SCITEX_TODO_SCOPE", "agent:agent-b")
     # Act
     rows = assert_identical(store)  # scope=None -> env applies
     # Assert — both backends read the same env default.
     assert {r["id"] for r in rows} == {"alpha-2"}
 
 
-def test_an_explicit_empty_scope_opts_out_of_the_env_default(store, monkeypatch):
+def test_an_explicit_empty_scope_opts_out_of_the_env_default(store, env):
     # Arrange
-    monkeypatch.setenv("SCITEX_TODO_SCOPE", "agent:agent-b")
+    env.set("SCITEX_TODO_SCOPE", "agent:agent-b")
     # Act
     rows = assert_identical(store, scope="")  # explicit opt-out
     # Assert — `scope=""` is not the same as unset, on either backend.
@@ -493,36 +493,36 @@ def test_an_explicit_empty_scope_opts_out_of_the_env_default(store, monkeypatch)
 #: single test that stopped at `enabled() is False` would never notice.
 
 
-def test_backend_is_off_by_default(store, monkeypatch):
+def test_backend_is_off_by_default(store, env):
     # Arrange
-    monkeypatch.delenv(ENV_READ_BACKEND, raising=False)
+    env.delete(ENV_READ_BACKEND)
     # Act
     on = _store_read_sqlite.enabled(store)
     # Assert — the flag must be opted INTO, never inherited.
     assert on is False
 
 
-def _store_with_missing_db(tmp_path, monkeypatch):
-    monkeypatch.setenv(ENV_READ_BACKEND, BACKEND_SQLITE)
-    monkeypatch.setenv(ENV_DB, str(tmp_path / "absent.db"))
+def _store_with_missing_db(tmp_path, env):
+    env.set(ENV_READ_BACKEND, BACKEND_SQLITE)
+    env.set(ENV_DB, str(tmp_path / "absent.db"))
     _store_read_sqlite.reset_cache()
     path = tmp_path / "tasks.yaml"
     path.write_text(safe_dump({"tasks": _cards()}))
     return path
 
 
-def test_guard_refuses_a_missing_db(tmp_path, monkeypatch):
+def test_guard_refuses_a_missing_db(tmp_path, env):
     # Arrange
-    path = _store_with_missing_db(tmp_path, monkeypatch)
+    path = _store_with_missing_db(tmp_path, env)
     # Act
     on = _store_read_sqlite.enabled(path)
     # Assert
     assert on is False
 
 
-def test_a_missing_db_still_serves_correct_cards(tmp_path, monkeypatch):
+def test_a_missing_db_still_serves_correct_cards(tmp_path, env):
     # Arrange
-    path = _store_with_missing_db(tmp_path, monkeypatch)
+    path = _store_with_missing_db(tmp_path, env)
     # Act
     rows = _store.list_tasks(path)
     # Assert — the caller falls back to YAML, not to an empty list.
@@ -544,9 +544,9 @@ def _stale_mirror(store):
     return cards
 
 
-def test_the_guard_accepts_a_fresh_mirror(store, monkeypatch):
+def test_the_guard_accepts_a_fresh_mirror(store, env):
     # Arrange
-    monkeypatch.setenv(ENV_READ_BACKEND, BACKEND_SQLITE)
+    env.set(ENV_READ_BACKEND, BACKEND_SQLITE)
     _store_read_sqlite.reset_cache()
     # Act
     on = _store_read_sqlite.enabled(store)
@@ -554,9 +554,9 @@ def test_the_guard_accepts_a_fresh_mirror(store, monkeypatch):
     assert on is True
 
 
-def test_guard_refuses_a_STALE_db(store, monkeypatch):
+def test_guard_refuses_a_STALE_db(store, env):
     # Arrange
-    monkeypatch.setenv(ENV_READ_BACKEND, BACKEND_SQLITE)
+    env.set(ENV_READ_BACKEND, BACKEND_SQLITE)
     _store_read_sqlite.reset_cache()
     _stale_mirror(store)
     # Act
@@ -565,9 +565,9 @@ def test_guard_refuses_a_STALE_db(store, monkeypatch):
     assert on is False, "a stale mirror must be REFUSED"
 
 
-def test_a_stale_db_still_serves_correct_cards(store, monkeypatch):
+def test_a_stale_db_still_serves_correct_cards(store, env):
     # Arrange
-    monkeypatch.setenv(ENV_READ_BACKEND, BACKEND_SQLITE)
+    env.set(ENV_READ_BACKEND, BACKEND_SQLITE)
     _store_read_sqlite.reset_cache()
     cards = _stale_mirror(store)
     # Act
@@ -579,7 +579,7 @@ def test_a_stale_db_still_serves_correct_cards(store, monkeypatch):
 #: A v1 DB: right schema, right indexes, `quick_check ok` — and NO payloads.
 #: Reconstructing cards from the typed columns alone would drop every field the
 #: schema does not name. Refuse, do not improvise.
-def _mirror_without_payloads(monkeypatch, tmp_path):
+def _mirror_without_payloads(env, tmp_path):
     import sqlite3
 
     conn = sqlite3.connect(str(tmp_path / "todo.db"))
@@ -588,22 +588,22 @@ def _mirror_without_payloads(monkeypatch, tmp_path):
         conn.commit()
     finally:
         conn.close()
-    monkeypatch.setenv(ENV_READ_BACKEND, BACKEND_SQLITE)
+    env.set(ENV_READ_BACKEND, BACKEND_SQLITE)
     _store_read_sqlite.reset_cache()
 
 
-def test_guard_refuses_a_db_with_no_payload_column(store, monkeypatch, tmp_path):
+def test_guard_refuses_a_db_with_no_payload_column(store, env, tmp_path):
     # Arrange
-    _mirror_without_payloads(monkeypatch, tmp_path)
+    _mirror_without_payloads(env, tmp_path)
     # Act
     on = _store_read_sqlite.enabled(store)
     # Assert
     assert on is False
 
 
-def test_a_db_with_no_payload_column_still_serves_cards(store, monkeypatch, tmp_path):
+def test_a_db_with_no_payload_column_still_serves_cards(store, env, tmp_path):
     # Arrange
-    _mirror_without_payloads(monkeypatch, tmp_path)
+    _mirror_without_payloads(env, tmp_path)
     # Act
     rows = _store.list_tasks(store)
     # Assert — refusing to improvise must not mean refusing to answer.
@@ -613,10 +613,10 @@ def test_a_db_with_no_payload_column_still_serves_cards(store, monkeypatch, tmp_
 #: The 135-second lesson: a flag whose safety depends on a code version must
 #: VERIFY THAT CODE AT RUNTIME — by SYMBOL, never by version string. Simulates
 #: an older build whose mirror writer has no payload column.
-def _code_that_cannot_write_payloads(monkeypatch):
+def _code_that_cannot_write_payloads(env, monkeypatch):
     from scitex_cards import _db_bootstrap
 
-    monkeypatch.setenv(ENV_READ_BACKEND, BACKEND_SQLITE)
+    env.set(ENV_READ_BACKEND, BACKEND_SQLITE)
     monkeypatch.setattr(
         _db_bootstrap,
         "TASK_INSERT_COLS",
@@ -625,18 +625,18 @@ def _code_that_cannot_write_payloads(monkeypatch):
     _store_read_sqlite.reset_cache()
 
 
-def test_guard_refuses_when_the_code_cannot_write_payloads(store, monkeypatch):
+def test_guard_refuses_when_the_code_cannot_write_payloads(store, env, monkeypatch):
     # Arrange
-    _code_that_cannot_write_payloads(monkeypatch)
+    _code_that_cannot_write_payloads(env, monkeypatch)
     # Act
     on = _store_read_sqlite.enabled(store)
     # Assert — the symbol, not a version string, is what is checked.
     assert on is False
 
 
-def test_an_older_build_still_serves_correct_cards(store, monkeypatch):
+def test_an_older_build_still_serves_correct_cards(store, env, monkeypatch):
     # Arrange
-    _code_that_cannot_write_payloads(monkeypatch)
+    _code_that_cannot_write_payloads(env, monkeypatch)
     # Act
     rows = _store.list_tasks(store)
     # Assert
@@ -656,9 +656,9 @@ def test_an_older_build_still_serves_correct_cards(store, monkeypatch):
 #: A backend swap must not change WHICH failures are visible. Three tests: the
 #: mirror really IS lossy (the premise), the guard refuses it, and the caller
 #: still gets the loud failure instead of a quietly short list.
-def _lossy_mirror(tmp_path, monkeypatch):
-    monkeypatch.setenv(ENV_DB, str(tmp_path / "todo.db"))
-    monkeypatch.setenv(ENV_READ_BACKEND, BACKEND_SQLITE)
+def _lossy_mirror(tmp_path, env):
+    env.set(ENV_DB, str(tmp_path / "todo.db"))
+    env.set(ENV_READ_BACKEND, BACKEND_SQLITE)
     path = tmp_path / "tasks.yaml"
     path.write_text(
         safe_dump(
@@ -685,29 +685,29 @@ def _mirror_row_count(tmp_path) -> int:
         conn.close()
 
 
-def test_a_duplicate_id_really_collapses_in_the_mirror(tmp_path, monkeypatch):
+def test_a_duplicate_id_really_collapses_in_the_mirror(tmp_path, env):
     # Arrange
-    _lossy_mirror(tmp_path, monkeypatch)
+    _lossy_mirror(tmp_path, env)
     # Act
     rows = _mirror_row_count(tmp_path)
     # Assert — 2 cards in, 1 row out: the premise the guard has to catch.
     assert rows == 1
 
 
-def test_a_lossy_mirror_is_refused(tmp_path, monkeypatch):
+def test_a_lossy_mirror_is_refused(tmp_path, env):
     # Arrange
-    path = _lossy_mirror(tmp_path, monkeypatch)
+    path = _lossy_mirror(tmp_path, env)
     # Act
     on = _store_read_sqlite.enabled(path)
     # Assert
     assert on is False, "a lossy mirror must be REFUSED"
 
 
-def test_a_lossy_mirror_still_raises_the_yaml_loud_failure(tmp_path, monkeypatch):
+def test_a_lossy_mirror_still_raises_the_yaml_loud_failure(tmp_path, env):
     # Arrange
     from scitex_cards._task import TaskValidationError
 
-    path = _lossy_mirror(tmp_path, monkeypatch)
+    path = _lossy_mirror(tmp_path, env)
     # Act
     loud = pytest.raises(TaskValidationError, match="duplicate task id")
     # Assert — a backend swap must not turn a raise into a short list.
@@ -724,37 +724,37 @@ def test_a_lossy_mirror_still_raises_the_yaml_loud_failure(tmp_path, monkeypatch
 #: failed SAFE — fell back to YAML, correct but slow — which is exactly why it
 #: would have been easy never to notice. Paths must be compared CANONICALLY,
 #: which means BOTH spellings need checking, hence two tests.
-def _relative_stamped_mirror(store, monkeypatch):
-    monkeypatch.setenv(ENV_READ_BACKEND, BACKEND_SQLITE)
-    monkeypatch.chdir(store.parent)
+def _relative_stamped_mirror(store, env):
+    env.set(ENV_READ_BACKEND, BACKEND_SQLITE)
+    env.chdir(store.parent)
     import_from_yaml(Path("tasks.yaml"), store.parent / "todo.db")  # RELATIVE stamp
     _store_read_sqlite.reset_cache()
 
 
-def test_a_relative_store_path_is_still_the_same_store(store, monkeypatch):
+def test_a_relative_store_path_is_still_the_same_store(store, env):
     # Arrange
-    _relative_stamped_mirror(store, monkeypatch)
+    _relative_stamped_mirror(store, env)
     # Act
     on = _store_read_sqlite.enabled(store)
     # Assert
     assert on is True, "absolute read of a relative stamp"
 
 
-def test_a_relative_read_of_a_relative_stamp_is_accepted(store, monkeypatch):
+def test_a_relative_read_of_a_relative_stamp_is_accepted(store, env):
     # Arrange
-    _relative_stamped_mirror(store, monkeypatch)
+    _relative_stamped_mirror(store, env)
     # Act
     on = _store_read_sqlite.enabled(Path("tasks.yaml"))
     # Assert
     assert on is True, "relative read"
 
 
-def test_refusal_is_logged_once_not_per_call(store, monkeypatch, caplog):
+def test_refusal_is_logged_once_not_per_call(store, env, caplog):
     """`list_tasks` runs on every poll of every agent. An ERROR per call is noise,
     and noise that fires constantly trains its reader to ignore the channel."""
     # Arrange
-    monkeypatch.setenv(ENV_READ_BACKEND, BACKEND_SQLITE)
-    monkeypatch.setenv(ENV_DB, str(store.parent / "absent.db"))
+    env.set(ENV_READ_BACKEND, BACKEND_SQLITE)
+    env.set(ENV_DB, str(store.parent / "absent.db"))
     _store_read_sqlite.reset_cache()
     # Act
     with caplog.at_level("ERROR", logger="scitex_cards._store_read_sqlite"):

@@ -55,10 +55,10 @@ def store(tmp_path: Path) -> Path:
 
 
 @pytest.fixture()
-def store_resolved_from_env(store: Path, monkeypatch) -> Path:
+def store_resolved_from_env(store: Path, env) -> Path:
     """The fixture store becomes what the precedence chain resolves to."""
-    monkeypatch.delenv("SCITEX_CARDS_TASKS_YAML_SHARED", raising=False)
-    monkeypatch.setenv("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
+    env.delete("SCITEX_CARDS_TASKS_YAML_SHARED")
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     return store
 
 

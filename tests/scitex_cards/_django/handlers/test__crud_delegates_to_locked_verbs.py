@@ -62,9 +62,9 @@ _STORE_TEXT = (
 
 
 @pytest.fixture
-def store(tmp_path, monkeypatch):
+def store(tmp_path, env):
     # Hermetic: no per-project lane union from the real ~/proj tree.
-    monkeypatch.setenv("SCITEX_TODO_LANE_GLOBS", "")
+    env.set("SCITEX_TODO_LANE_GLOBS", "")
     path = tmp_path / "tasks.yaml"
     path.write_text(_STORE_TEXT, encoding="utf-8")
     _reset_cache()

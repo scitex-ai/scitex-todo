@@ -34,7 +34,7 @@ from scitex_cards._backend_http import HubBackend, HubBackendError
 
 
 @pytest.fixture()
-def hub(tmp_path, monkeypatch):
+def hub(tmp_path, env):
     """A live hub + a fully-provisioned client environment."""
     store = tmp_path / "tasks.yaml"
     store.write_text("tasks: []\n", encoding="utf-8")
@@ -48,10 +48,10 @@ def hub(tmp_path, monkeypatch):
     thread.start()
     port = server.server_address[1]
 
-    monkeypatch.setenv("SCITEX_CARDS_HUB_URL", f"http://127.0.0.1:{port}")
-    monkeypatch.setenv("SCITEX_CARDS_HUB_TOKEN_FILE", str(tokens_dir / "hub.token"))
-    monkeypatch.delenv("SCITEX_CARDS_HUB_TOKEN", raising=False)
-    monkeypatch.setenv("SCITEX_TODO_AGENT_ID", "remote-agent")
+    env.set("SCITEX_CARDS_HUB_URL", f"http://127.0.0.1:{port}")
+    env.set("SCITEX_CARDS_HUB_TOKEN_FILE", str(tokens_dir / "hub.token"))
+    env.delete("SCITEX_CARDS_HUB_TOKEN")
+    env.set("SCITEX_TODO_AGENT_ID", "remote-agent")
 
     yield {"store": str(store), "port": port, "tokens_dir": tokens_dir}
 
@@ -83,9 +83,9 @@ def test_get_backend_resolves_to_the_hub_client(hub):
     assert isinstance(backend, expected)
 
 
-def test_url_set_but_token_missing_hard_errors_at_first_call(hub, monkeypatch):
+def test_url_set_but_token_missing_hard_errors_at_first_call(hub, env):
     # Arrange
-    monkeypatch.setenv("SCITEX_CARDS_HUB_TOKEN_FILE", "/nonexistent/hub.token")
+    env.set("SCITEX_CARDS_HUB_TOKEN_FILE", "/nonexistent/hub.token")
     backend = get_backend()  # resolution itself stays import-safe
     # Act
     # Assert — the raise IS the behaviour; act and assert are one statement.
@@ -93,9 +93,9 @@ def test_url_set_but_token_missing_hard_errors_at_first_call(hub, monkeypatch):
         backend.list_tasks(None)
 
 
-def test_unreachable_hub_hard_errors_with_the_tunnel_hint(hub, monkeypatch):
+def test_unreachable_hub_hard_errors_with_the_tunnel_hint(hub, env):
     # Arrange
-    monkeypatch.setenv("SCITEX_CARDS_HUB_URL", "http://127.0.0.1:1")
+    env.set("SCITEX_CARDS_HUB_URL", "http://127.0.0.1:1")
     backend = get_backend()
     # Act
     # Assert — the raise IS the behaviour; act and assert are one statement.

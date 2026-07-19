@@ -41,15 +41,15 @@ def _exec_start_line(text: str) -> str:
 
 
 @pytest.fixture
-def xdg_home(tmp_path, monkeypatch):
+def xdg_home(tmp_path, env):
     """Point ``$XDG_CONFIG_HOME`` at a real tmp dir for this test."""
     root = tmp_path / "cfg"
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(root))
+    env.set("XDG_CONFIG_HOME", str(root))
     return root
 
 
 @pytest.fixture
-def broken_console_script_env(tmp_path, monkeypatch):
+def broken_console_script_env(tmp_path, env, monkeypatch):
     """A real interpreter path with an EMPTY bin dir and an empty ``$PATH``.
 
     Nothing to find beside the interpreter, and nothing on $PATH either, so
@@ -58,8 +58,8 @@ def broken_console_script_env(tmp_path, monkeypatch):
     empty_bin = tmp_path / "empty-venv" / "bin"
     empty_bin.mkdir(parents=True)
     monkeypatch.setattr(sys, "executable", str(empty_bin / "python"))
-    monkeypatch.setenv("PATH", str(tmp_path / "nowhere"))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    env.set("PATH", str(tmp_path / "nowhere"))
+    env.set("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
     return empty_bin
 
 

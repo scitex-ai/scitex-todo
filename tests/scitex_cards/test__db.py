@@ -145,9 +145,9 @@ def imported(store):
 # --------------------------------------------------------------------------- #
 # Path resolution                                                             #
 # --------------------------------------------------------------------------- #
-def test_resolve_db_path_explicit_wins(tmp_path, monkeypatch):
+def test_resolve_db_path_explicit_wins(tmp_path, env):
     # Arrange
-    monkeypatch.setenv(_db.ENV_DB, str(tmp_path / "env.db"))
+    env.set(_db.ENV_DB, str(tmp_path / "env.db"))
 
     # Act
     got = _db.resolve_db_path(tmp_path / "explicit.db")
@@ -156,9 +156,9 @@ def test_resolve_db_path_explicit_wins(tmp_path, monkeypatch):
     assert got == (tmp_path / "explicit.db")
 
 
-def test_resolve_db_path_env_over_userpath(tmp_path, monkeypatch):
+def test_resolve_db_path_env_over_userpath(tmp_path, env):
     # Arrange
-    monkeypatch.setenv(_db.ENV_DB, str(tmp_path / "env.db"))
+    env.set(_db.ENV_DB, str(tmp_path / "env.db"))
 
     # Act
     got = _db.resolve_db_path()
@@ -167,13 +167,13 @@ def test_resolve_db_path_env_over_userpath(tmp_path, monkeypatch):
     assert got == (tmp_path / "env.db")
 
 
-def _resolve_with_delegated_user_path(tmp_path, monkeypatch):
+def _resolve_with_delegated_user_path(tmp_path, env, monkeypatch):
     """Neutralise both env tiers and record how `local_state.user_path` is called.
 
     Returns ``(resolved, calls, sentinel)``.
     """
-    monkeypatch.delenv(_db.ENV_DB, raising=False)
-    monkeypatch.delenv(_db.ENV_DB_DEPRECATED, raising=False)
+    env.delete(_db.ENV_DB)
+    env.delete(_db.ENV_DB_DEPRECATED)
     from scitex_config._ecosystem import local_state
 
     calls = []
@@ -187,63 +187,67 @@ def _resolve_with_delegated_user_path(tmp_path, monkeypatch):
     return _db.resolve_db_path(), calls, sentinel
 
 
-def test_resolve_db_path_returns_the_delegated_user_path(tmp_path, monkeypatch):
+def test_resolve_db_path_returns_the_delegated_user_path(tmp_path, env, monkeypatch):
     """Final tier DELEGATES to local_state.user_path — no re-rolled precedence."""
     # Arrange
     # Act
-    got, _calls, sentinel = _resolve_with_delegated_user_path(tmp_path, monkeypatch)
+    got, _calls, sentinel = _resolve_with_delegated_user_path(
+        tmp_path, env, monkeypatch
+    )
 
     # Assert
     assert got == sentinel
 
 
-def test_resolve_db_path_delegates_with_the_cards_package_key(tmp_path, monkeypatch):
+def test_resolve_db_path_delegates_with_the_cards_package_key(
+    tmp_path, env, monkeypatch
+):
     """The delegation passes the package short-name and the db filename."""
     # Arrange
     # Act
-    _got, calls, _sentinel = _resolve_with_delegated_user_path(tmp_path, monkeypatch)
+    _got, calls, _sentinel = _resolve_with_delegated_user_path(
+        tmp_path, env, monkeypatch
+    )
 
     # Assert
     assert calls == [("cards", ("cards.db",))]
 
 
-def _resolve_from_legacy_env_only(tmp_path, monkeypatch, caplog):
+def _resolve_from_legacy_env_only(tmp_path, env, caplog):
     """Set ONLY the pre-rename env name and resolve, capturing warnings."""
-    monkeypatch.delenv(_db.ENV_DB, raising=False)
-    monkeypatch.setenv(_db.ENV_DB_DEPRECATED, str(tmp_path / "legacy.db"))
+    env.delete(_db.ENV_DB)
+    env.set(_db.ENV_DB_DEPRECATED, str(tmp_path / "legacy.db"))
     with caplog.at_level("WARNING", logger="scitex_cards._db"):
         return _db.resolve_db_path()
 
 
-def test_resolve_db_path_still_honours_the_legacy_env_name(
-    tmp_path, monkeypatch, caplog
-):
+def test_resolve_db_path_still_honours_the_legacy_env_name(tmp_path, env, caplog):
     """SCITEX_TODO_DB (pre-rename) still resolves when it is the only export."""
     # Arrange
     # Act
-    got = _resolve_from_legacy_env_only(tmp_path, monkeypatch, caplog)
+    got = _resolve_from_legacy_env_only(tmp_path, env, caplog)
 
     # Assert
     assert got == (tmp_path / "legacy.db")
 
 
 def test_resolve_db_path_warns_that_the_legacy_env_name_is_deprecated(
-    tmp_path, monkeypatch, caplog
+    tmp_path, env, caplog
 ):
     """...and it resolves LOUDLY, so the export gets migrated."""
     # Arrange
     # Act
-    _resolve_from_legacy_env_only(tmp_path, monkeypatch, caplog)
+    _resolve_from_legacy_env_only(tmp_path, env, caplog)
 
     # Assert
     assert any("deprecated" in r.message for r in caplog.records)
 
 
-def test_resolve_db_path_new_env_wins_over_legacy(tmp_path, monkeypatch):
+def test_resolve_db_path_new_env_wins_over_legacy(tmp_path, env):
     """When both names are set, SCITEX_CARDS_DB wins."""
     # Arrange
-    monkeypatch.setenv(_db.ENV_DB, str(tmp_path / "new.db"))
-    monkeypatch.setenv(_db.ENV_DB_DEPRECATED, str(tmp_path / "legacy.db"))
+    env.set(_db.ENV_DB, str(tmp_path / "new.db"))
+    env.set(_db.ENV_DB_DEPRECATED, str(tmp_path / "legacy.db"))
 
     # Act
     got = _db.resolve_db_path()

@@ -30,7 +30,7 @@ from scitex_cards._django import services
 
 
 @pytest.fixture()
-def store(tmp_path, monkeypatch):
+def store(tmp_path, env):
     path = tmp_path / "tasks.yaml"
     path.write_text(
         "tasks:\n"
@@ -41,7 +41,7 @@ def store(tmp_path, monkeypatch):
     services._board_cache.clear()
     services._refreshing.clear()
     # No per-project lanes in the fixture — keep the unit about the cache.
-    monkeypatch.setenv("SCITEX_TODO_LANE_GLOBS", "")
+    env.set("SCITEX_TODO_LANE_GLOBS", "")
     yield str(path)
     services._board_cache.clear()
     services._refreshing.clear()
@@ -323,10 +323,10 @@ def test_the_first_strict_board_read_sees_both_seeded_cards(store):
     assert {t["id"] for t in first.tasks} == {"a", "b"}
 
 
-def test_stale_while_revalidate_can_be_switched_off(store, monkeypatch):
+def test_stale_while_revalidate_can_be_switched_off(store, env):
     # Arrange
     services.get_board(store, allow_stale=True)
-    monkeypatch.setenv("SCITEX_CARDS_BOARD_SWR", "0")
+    env.set("SCITEX_CARDS_BOARD_SWR", "0")
     # Act — with SWR off, a changed store rebuilds synchronously.
     _append_card(store, "d")
     served = services.get_board(store, allow_stale=True)

@@ -232,9 +232,9 @@ class TestDetectStaleActive:
         # Assert
         assert out["a"][0].id == "x"
 
-    def test_default_threshold_via_env(self, monkeypatch):
+    def test_default_threshold_via_env(self, env):
         # Arrange
-        monkeypatch.setenv(ENV_STALE_ACTIVE_HOURS, "1")
+        env.set(ENV_STALE_ACTIVE_HOURS, "1")
         t = _card("x", "in_progress", hours_ago=1.5, agent="a")
         # Act
         out = detect_stale_active([t], now=NOW)

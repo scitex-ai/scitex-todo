@@ -65,8 +65,8 @@ def _eps(sink: _Capturing) -> list[_FakeEP]:
 
 
 @pytest.fixture()
-def store(tmp_path, monkeypatch):
-    monkeypatch.setenv("SCITEX_TODO_AGENT_ID", "rank-tester")
+def store(tmp_path, env):
+    env.set("SCITEX_TODO_AGENT_ID", "rank-tester")
     path = tmp_path / "tasks.yaml"
     path.write_text("tasks: []\n", encoding="utf-8")
     return str(path)

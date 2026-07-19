@@ -125,13 +125,13 @@ def test_unresolvable_store_returns_the_canonical_store_filename(
     assert resolved.name == canonical_name
 
 
-def test_deprecated_env_var_fails_loud(monkeypatch, clean_tasks_env):
+def test_deprecated_env_var_fails_loud(env, clean_tasks_env):
     """The renamed-away $SCITEX_TODO_TASKS must never be silently honoured when
     the current var is absent: with ONLY the old name set, resolution fails LOUD
     pointing at the new name so a stale export can't quietly pin the wrong
     store."""
     # Arrange: only the deprecated old name is set.
-    monkeypatch.setenv(ENV_TASKS_DEPRECATED, "/some/legacy/tasks.yaml")
+    env.set(ENV_TASKS_DEPRECATED, "/some/legacy/tasks.yaml")
     # Act
     ctx = pytest.raises(RuntimeError, match=ENV_TASKS)
     # Assert — the raise points at the CURRENT name, not the stale one.
@@ -139,9 +139,7 @@ def test_deprecated_env_var_fails_loud(monkeypatch, clean_tasks_env):
         resolve_tasks_path(None)
 
 
-def test_current_tasks_var_wins_over_stale_deprecated(
-    monkeypatch, tmp_path, clean_tasks_env
-):
+def test_current_tasks_var_wins_over_stale_deprecated(env, tmp_path, clean_tasks_env):
     """The CURRENT $SCITEX_TODO_TASKS_YAML_SHARED wins: when it is set, a stale
     leftover $SCITEX_TODO_TASKS is IGNORED (warn, no raise) so a correctly
     configured store is not disabled by a leftover old-name export."""
@@ -149,8 +147,8 @@ def test_current_tasks_var_wins_over_stale_deprecated(
     # also exported.
     target = tmp_path / "current.yaml"
     target.write_text("tasks: []\n", encoding="utf-8")
-    monkeypatch.setenv(ENV_TASKS, str(target))
-    monkeypatch.setenv(ENV_TASKS_DEPRECATED, "/some/legacy/tasks.yaml")
+    env.set(ENV_TASKS, str(target))
+    env.set(ENV_TASKS_DEPRECATED, "/some/legacy/tasks.yaml")
     # Act
     resolved = resolve_tasks_path(None)
     # Assert: the current var wins, no raise.
