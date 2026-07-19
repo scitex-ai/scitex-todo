@@ -18,8 +18,36 @@ the root group via :func:`register`, mirroring the sibling ``migration`` /
 from __future__ import annotations
 
 import json
+import re
 
 import click
+
+#: A snapshot holding less than this FRACTION of the previous one's cards is
+#: treated as a catastrophe rather than churn, and refused. Cards are deleted
+#: routinely; HALF of them vanishing between two hourly fires is not deletion,
+#: it is damage. Deliberately generous — the goal is to catch a wipe, not to
+#: police normal cleanup, and `--allow-shrink` covers the real bulk-delete case.
+_SHRINK_REFUSAL_RATIO = 0.5
+
+#: The rail's own commit subject, e.g. ``snapshot: 2138 tasks``. Parsed back to
+#: recover the previous count, so the check needs no state of its own — the
+#: history IS the record.
+_SNAPSHOT_SUBJECT_RE = re.compile(r"snapshot:\s*(\d+)\s+tasks")
+
+
+def _previous_snapshot_count(git) -> int | None:
+    """Cards recorded by the most recent snapshot commit, or ``None``.
+
+    ``None`` means "no basis to compare" — a fresh repo, an unreadable log, or
+    a subject line that does not parse. Every one of those is a reason to allow
+    the snapshot, not to block it: a backup rail must never refuse because its
+    own bookkeeping is unfamiliar.
+    """
+    log = git("log", "-1", "--format=%s")
+    if log.returncode != 0:
+        return None
+    match = _SNAPSHOT_SUBJECT_RE.search(log.stdout or "")
+    return int(match.group(1)) if match else None
 
 
 def register(main: click.Group) -> None:
@@ -272,6 +300,16 @@ def db_export_cmd(
     ),
 )
 @click.option(
+    "--allow-shrink",
+    is_flag=True,
+    help=(
+        "Snapshot even if the card count collapsed vs the previous snapshot. "
+        "Needed for a genuine bulk delete or a deliberately fresh store; "
+        "WITHOUT it a large drop is refused, because a backup that silently "
+        "records a wipe buys confidence in a destroyed board."
+    ),
+)
+@click.option(
     "--json", "as_json", is_flag=True, help="Emit the snapshot report as JSON."
 )
 def db_snapshot_cmd(
@@ -279,6 +317,7 @@ def db_snapshot_cmd(
     snap_dir: str | None,
     refresh: bool,
     push: bool,
+    allow_shrink: bool,
     as_json: bool,
 ) -> None:
     """Export to the snapshot dir and commit the export in its own git repo."""
@@ -323,6 +362,36 @@ def db_snapshot_cmd(
         _git("init", "-q")
         _git("config", "user.name", "scitex-cards")
         _git("config", "user.email", "cards@scitex.ai")
+    # A BACKUP MUST NOT RECORD A CATASTROPHE WITHOUT SAYING SO.
+    #
+    # On 2026-07-19 the live DB was destroyed (2,138 cards -> 53) and the rail
+    # did exactly what it was told: it snapshotted the wreck and committed
+    # "snapshot: 53 tasks" as HEAD, one commit after "snapshot: 2138 tasks",
+    # silently. The rail was WORKING — that is the point. A backup that
+    # faithfully records a wipe with no alarm stops being a safety net and
+    # becomes a propagation mechanism: anyone restoring from HEAD afterwards
+    # gets the destroyed board, and retention eventually ages out the good one.
+    #
+    # Git history saved the recovery that day. History is not a plan.
+    previous = _previous_snapshot_count(_git)
+    now = int(report.get("tasks") or 0)
+    if (
+        not allow_shrink
+        and previous is not None
+        and previous > 0
+        and now < previous * _SHRINK_REFUSAL_RATIO
+    ):
+        raise click.ClickException(
+            f"REFUSING to snapshot: the card count collapsed from {previous} to "
+            f"{now} ({now * 100 // previous}% of the previous snapshot). A backup "
+            f"that records a wipe without comment is worse than no backup — it "
+            f"buys confidence in a destroyed board.\n"
+            f"If the store really did shrink this much (a bulk delete, a fresh "
+            f"store), re-run with --allow-shrink. If it did NOT, the live store "
+            f"is damaged: recover it BEFORE snapshotting, or this commit becomes "
+            f"the newest 'good' state."
+        )
+
     _git("add", "-A")
     committed = _git("commit", "-q", "-m", f"snapshot: {report['tasks']} tasks")
     # exit 1 with nothing staged = no changes since the last snapshot — a
