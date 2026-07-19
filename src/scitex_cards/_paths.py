@@ -13,7 +13,14 @@ Resolution order (highest priority first):
     1. an explicit path argument (CLI ``--tasks`` / function arg)
     2. ``$SCITEX_TODO_TASKS_YAML_SHARED`` environment variable
     3. user scope:  ``$SCITEX_DIR/todo/tasks.yaml`` (default ``~/.scitex/todo``)
-    4. bundled generic example:  ``scitex_cards/examples/tasks.yaml``
+
+There is NO FOURTH TIER. A bundled ``scitex_cards/examples/tasks.yaml`` used to
+sit at the end of this chain, and that made a packaged demo file eligible to
+become the fleet's board — which it did on 2026-07-19, when the canonical store
+was archived by the SQLite cutover and resolution settled on a file inside
+site-packages. An unresolvable store now returns the canonical path that does
+not exist, so the loader raises ``FileNotFoundError`` on it: a stated
+configuration error rather than a blank board to start writing into.
 
 There is DELIBERATELY no project-scope (``<git-root>/.scitex/todo/tasks.yaml``)
 layer for the data store: a process run with cwd inside ANY repo (notably
@@ -38,8 +45,30 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-#: package short name (``scitex-todo`` with the ``scitex-`` prefix stripped).
-PKG_SHORT = "todo"
+#: package short name (``scitex-cards`` with the ``scitex-`` prefix stripped).
+#: It names the user-scope directory: ``~/.scitex/<PKG_SHORT>``.
+#:
+#: WAS "todo" until 2026-07-19 — the rename landed everywhere EXCEPT here, and
+#: this one stale word blocked every card write for any process without an
+#: explicit store variable. Measured before the change:
+#:
+#:     resolve_tasks_path(None) -> ~/.scitex/todo/tasks.yaml   (this default)
+#:     the live DB is stamped   -> ~/.scitex/cards/tasks.yaml
+#:     add_task(...)            -> RuntimeError, write REFUSED
+#:
+#: #509's guard was correct to refuse: writing a store whose identity disagrees
+#: with the database is exactly the fork that destroyed 2142 cards that morning.
+#: The bug was that the compiled-in DEFAULT pointed at a path the database
+#: disowns, so the guard fired on the healthy case.
+#:
+#: MIGRATION, checked rather than assumed before changing this: ~/.scitex/cards
+#: held the real store, its backups and archives (52 entries); ~/.scitex/todo
+#: held one leftover `runtime` directory and no store. So this moves the default
+#: ONTO the data rather than away from it, and it makes the default agree with
+#: the DB stamp instead of contradicting it. An installation that genuinely kept
+#: a store under ~/.scitex/todo must set $SCITEX_CARDS_TASKS_YAML_SHARED, which
+#: has always won outright over this default.
+PKG_SHORT = "cards"
 
 #: env var that overrides the resolved task-store path entirely. The name
 #: encodes that it points at the SHARED yaml store.
@@ -132,8 +161,10 @@ def resolve_tasks_path(explicit: str | Path | None = None) -> Path:
     Returns
     -------
     pathlib.Path
-        The first existing task store in precedence order. Falls back to the
-        bundled generic example if no personal store is found.
+        The first existing task store in precedence order. There is NO bundled
+        fallback: when nothing resolves, the user path is returned so the loader
+        raises ``FileNotFoundError`` on it rather than silently nominating a
+        packaged fixture as the fleet's board.
 
     Examples
     --------

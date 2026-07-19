@@ -102,12 +102,40 @@ def _check_store_canonical(store: str | Path | None) -> dict[str, Any]:
             }
 
     if not resolved.exists():
+        # A MISSING YAML IS THE HEALTHY STATE once the database is canonical.
+        # Since #512 no rows live in YAML — that path is identity/provenance
+        # only — so its absence says nothing about the board. Reporting it as a
+        # failure was worse than noise on two counts: it failed on every healthy
+        # install, which teaches the reader to skip the whole report and miss the
+        # checks that matter; and its hint said to hand-write a `tasks: []` YAML,
+        # which is an instruction to RECREATE THE SECOND STORE. On 2026-07-19 a
+        # packaged YAML winning the resolution chain overwrote 2142 live cards.
+        # Telling an operator to conjure one back is the last thing this check
+        # should do.
+        from ._db import resolve_db_path
+
+        try:
+            db = Path(resolve_db_path(store))
+        except Exception:  # noqa: BLE001 — a diagnostic reports, never dies
+            db = None
+        if db is not None and db.exists():
+            return {
+                "ok": True,
+                "detail": (
+                    f"db-canonical: board is {db}; no YAML at {resolved} "
+                    "(expected — YAML is identity only, it holds no rows)"
+                ),
+                "hint": None,
+            }
         return {
             "ok": False,
-            "detail": f"store {resolved} does not exist",
+            "detail": f"no store: YAML {resolved} and database are both absent",
             "hint": (
-                f"create the store: `mkdir -p {resolved.parent}` and write a "
-                f"`tasks: []` YAML at {resolved} (or add a task via scitex-todo)"
+                "bootstrap the DATABASE, never a YAML file: "
+                "`scitex-cards db import --from-yaml <file>` to seed from an "
+                "export, or add a card and let the store be created. Do NOT "
+                "hand-write a tasks.yaml — a second store is how the board was "
+                "destroyed on 2026-07-19."
             ),
         }
     if not os.access(resolved, os.R_OK):
@@ -141,6 +169,82 @@ def _check_store_canonical(store: str | Path | None) -> dict[str, Any]:
         "ok": True,
         "detail": f"canonical store {resolved} (exists, readable, writable, parses)",
         "hint": None,
+    }
+
+
+def _check_store_identity_agrees(store: str | Path | None) -> dict[str, Any]:
+    """Does the RESOLVED store match the identity the DB is stamped with?
+
+    The store identity lives in two places — the launcher's env (which decides
+    what ``resolve_tasks_path`` returns) and the DB's own provenance stamp — and
+    nothing keeps them in step. When they disagree, the ownership guard in
+    ``_dual_write`` / ``_store_backend`` refuses EVERY write. Correctly: writing
+    one store's rows into another store's database is how the board gets
+    destroyed. But the symptom is a total write outage with no monitor.
+
+    That is not hypothetical. On 2026-07-19 the MCP server resolved
+    ``~/.scitex/cards/tasks.yaml`` (deleted during the cutover, ``exists:
+    false``) while the DB was stamped ``~/.scitex/todo/tasks.yaml``. Every write
+    through the surface OTHER agents use was refused, and it went unnoticed
+    because the maintainer's own writes went through the Python API with an
+    explicit path. Nothing in ``health`` covered it.
+
+    So this check exists to answer the question the outage actually poses —
+    "can this process write at all?" — rather than the narrower one
+    ``store_canonical`` answers ("does a parseable file exist there?").
+    """
+    import sqlite3
+
+    from ._db import resolve_db_path
+    from ._db_freshness import KEY_YAML_PATH, read_provenance
+    from ._paths import resolve_tasks_path
+
+    resolved = os.path.realpath(str(resolve_tasks_path(store)))
+    db_path = Path(resolve_db_path(None))
+    if not db_path.exists():
+        return {
+            "ok": True,
+            "detail": f"no DB at {db_path} yet — nothing to disagree with",
+            "hint": None,
+        }
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            stamped = read_provenance(conn).get(KEY_YAML_PATH)
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        return {
+            "ok": False,
+            "detail": f"could not read the provenance stamp from {db_path} ({exc})",
+            "hint": f"check that {db_path} is readable and not corrupt",
+        }
+    if not stamped:
+        return {
+            "ok": True,
+            "detail": f"{db_path} carries no store stamp yet (fresh DB)",
+            "hint": None,
+        }
+    if os.path.realpath(stamped) == resolved:
+        return {
+            "ok": True,
+            "detail": f"store and DB agree: both are {resolved}",
+            "hint": None,
+        }
+    return {
+        "ok": False,
+        "detail": (
+            f"STORE IDENTITY MISMATCH — this process resolves {resolved} but "
+            f"{db_path} is stamped for {stamped}. EVERY WRITE IS BEING REFUSED "
+            f"by the ownership guard (correctly: writing one store into "
+            f"another's database is how a board gets destroyed)."
+        ),
+        "hint": (
+            f"decide which is right and make them agree. If {resolved} is the "
+            f"intended store, re-stamp with `scitex-cards db import --from-yaml "
+            f"--as-store {resolved}`. If the DB's {stamped} is right, fix the "
+            f"launcher env (SCITEX_CARDS_TASKS_YAML_SHARED) to name it."
+        ),
     }
 
 
@@ -325,6 +429,12 @@ def health(
     soft_agent = _soft_agent_id(agent_id)
     checks = [
         _run_check("store_canonical", lambda: _check_store_canonical(store)),
+        # Can this process WRITE at all? store_canonical answers the narrower
+        # "does a parseable file exist there", and on 2026-07-19 it reported ok
+        # while every MCP write was being refused for a store/DB identity
+        # mismatch. A check whose name implies coverage it does not have is how
+        # that outage stayed invisible.
+        _run_check("store_identity", lambda: _check_store_identity_agrees(store)),
         _run_check("agent_id", lambda: _check_agent_id(agent_id)),
         _run_check("notifyd_alive", lambda: _check_notifyd_alive(store)),
         _run_check(
