@@ -4,12 +4,23 @@
 project-type:
   - pip
 
-# Pre-approved rule skips (lead a2a `fb413fb038da49d1b18262b237385c33`,
-# 2026-06-12, PR #110 fix-forward). Each entry is a scitex-dev audit rule
-# code we accept as drift while a focused cleanup PR is queued. The
-# schema (`audit.skip`) is read by
-# scitex_dev/_cli/audit/_config/_loader.py::load_config.
 audit:
+  # PS-103 root-whitelist. `stub/` is not junk and not scratch: it holds the
+  # `scitex-todo` DEPRECATION STUB, a SEPARATE distribution published to PyPI
+  # from the same tag as this package (see tests/test_stub_version_sync.py,
+  # which pins the two versions together). The rule offers three remedies —
+  # move into ./src/<pkg>/ (wrong: it is its own wheel, not part of ours),
+  # move into ./.dev/ (wrong: it ships), or whitelist here. Whitelisting is
+  # the correct one, and it is reviewed rather than blanket-suppressed.
+  root-whitelist:
+    dirs:
+      - stub
+
+  # Pre-approved rule skips (lead a2a `fb413fb038da49d1b18262b237385c33`,
+  # 2026-06-12, PR #110 fix-forward). Each entry is a scitex-dev audit rule
+  # code we accept as drift while a focused cleanup PR is queued. The
+  # schema (`audit.skip`) is read by
+  # scitex_dev/_cli/audit/_config/_loader.py::load_config.
   skip:
     # PS-204 — `orphan-test-file`. Six tests in tests/scitex_todo/ are
     # tied to non-Python surfaces (board_v3.html template signatures,
