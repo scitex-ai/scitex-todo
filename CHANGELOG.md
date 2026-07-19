@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.17.1] - 2026-07-19
+
+### Fixed
+
+- **The shadow DB mirrors ONE store — both write doors guarded** (#509).
+  `mirror_after_save` and `write_doc_to_db` each resolved their destination
+  from the ambient environment while taking the document from the caller, so a
+  write to ANY store rebuilt the one globally-resolved database. A pytest
+  fixture twice replaced the live board this way (2,136 cards -> 21; then
+  2,138 -> 1 through the second, unguarded door). Ownership is now checked
+  against the DB's own provenance stamp; the mirror declines, the canonical
+  path raises.
+- **A failed canonical READ no longer becomes a write of nothing** (#510).
+  `export_doc(None)[0] or {}` promoted any failed read into an authoritative
+  empty board, which read-modify-write then wrote over everything (2,138 cards
+  -> 3, from one `comment_task`). A missing database now raises, and the
+  export is cross-checked against `SELECT COUNT(*)` because the exporter
+  answers a nonexistent DB with a well-formed empty document.
+- **Malformed `SCITEX_CARDS_*` values are refused, not mirrored** (#508).
+  An unexpanded `${...}` placeholder overwrote a working `SCITEX_TODO_*`
+  value, corrupting card authorship and silently relocating the store.
+- Concurrency test's subprocess bound raised 30s -> 300s: it is a deadlock
+  detector, not a latency assertion, and was failing on loaded CI runners.
+
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
