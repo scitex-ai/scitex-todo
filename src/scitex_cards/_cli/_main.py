@@ -64,7 +64,18 @@ _COMMAND_CATEGORIES = (
         "Service",
         ("board", "gui", "hub", "mcp", "notifyd", "serve", "watch", "watch-ci"),
     ),
-    ("Diagnostics", ("blocked", "may-stop", "print-stats", "health", "resolve-store")),
+    (
+        "Diagnostics",
+        (
+            "blocked",
+            "may-stop",
+            "stop-hook",
+            "install-stop-hook",
+            "print-stats",
+            "health",
+            "resolve-store",
+        ),
+    ),
     ("Introspection", ("list-python-apis", "skills")),
     ("Shell", ("install-shell-completion", "print-shell-completion")),
 )

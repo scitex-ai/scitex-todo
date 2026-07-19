@@ -48,6 +48,7 @@ from ._model import (
 from ._store_verify import _verify_dumped_tmp
 from ._yaml import safe_dump, safe_load
 
+
 @contextlib.contextmanager
 def _store_lock(path: Path):
     """Hold an exclusive `fcntl.flock` on a sibling `.<name>.lock` file.
@@ -156,7 +157,6 @@ def store_generation(path: str | Path) -> str:
     p = Path(path).expanduser()
     if not p.exists():
         return "absent"
-    import hashlib
 
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
@@ -244,6 +244,16 @@ def _save_doc_unlocked(
         tasks = []
         doc["tasks"] = tasks
     _validate_tasks(tasks, source="<save_tasks>")  # hook-bypass: line-limit
+
+    # DB-CANONICAL: SQLite IS the store, so return BEFORE the YAML write below
+    # — nothing downstream runs, including the dual-write mirror and the git
+    # auto-commit. `write_doc_to_db` RAISES on failure (there is no YAML behind
+    # it); see `_store_backend` for why that inverts the usual posture.
+    from ._store_backend import db_is_canonical, write_doc_to_db
+
+    if db_is_canonical():
+        write_doc_to_db(doc, path)
+        return
 
     # FAST WRITE (was: ruamel round-trip). The old path loaded the whole
     # 2.3 MB / ~695-card store with ruamel round-trip mode, merged the new
@@ -381,8 +391,6 @@ def _git_autocommit_store(path: Path) -> None:
         "",
     ):
         return
-
-    import subprocess
 
     store_dir = path.parent
     git_dir = store_dir / ".git"

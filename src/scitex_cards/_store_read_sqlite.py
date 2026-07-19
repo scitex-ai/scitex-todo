@@ -231,6 +231,30 @@ def enabled(store_path: str | Path, db_path: str | Path | None = None) -> bool:
     loop pays two ``stat`` calls, not a table scan. Every fact the verdict rests on
     is in the key, so the cache cannot outlive its own justification.
     """
+    # DB-CANONICAL short-circuit. When SQLite IS the store, the YAML-freshness
+    # half of this gate is not merely unnecessary — it is INCOHERENT. Freshness
+    # asks "has the canonical YAML moved since we mirrored it", and in this mode
+    # there is no canonical YAML: it is archived and never written. Left in
+    # place the check would either pass vacuously (a frozen file always matches
+    # its own stamp) or fail permanently once the file is gone — a verdict about
+    # a question nobody asked, which is precisely the class of instrument error
+    # this file's own docstring warns about.
+    #
+    # The CODE-CAPABILITY check above is still required and deliberately kept:
+    # a process that cannot write the card_json payload would serve cards with
+    # their unknown fields stripped, and that is just as wrong when the DB is
+    # canonical as when it is a mirror.
+    try:
+        from ._store_backend import db_is_canonical
+    except Exception:  # noqa: BLE001 — undecidable means "not canonical"
+        db_is_canonical = lambda: False  # noqa: E731
+
+    if db_is_canonical():
+        incapable = _code_can_mirror_payload()
+        if incapable:
+            return _refuse(incapable)[0]
+        return True
+
     if not _flag_on():
         return False
 

@@ -28,10 +28,11 @@ import fcntl
 import os
 from pathlib import Path
 
-from ._yaml import safe_dump, safe_load  # hook-bypass: line-limit
 from ._store_verify import _verify_dumped_tmp  # hook-bypass: line-limit
 from ._task import VALID_STATUSES, TaskValidationError  # noqa: F401
 from ._validate import _validate_tasks  # noqa: F401
+from ._yaml import safe_dump, safe_load  # hook-bypass: line-limit
+
 
 def load_tasks(path: str | Path) -> list[dict]:
     """Load and validate the task list from a YAML store.
@@ -102,6 +103,43 @@ def load_doc(path: str | Path, *, validate: bool = False) -> dict:
         Only when ``validate=True`` and the ``tasks`` payload is invalid.
     """
     path = Path(path).expanduser()
+
+    # DB-CANONICAL: read the doc FROM SQLITE, not from a file that no longer
+    # exists. This is not an optimisation — it is what makes the mode safe.
+    #
+    # WITHOUT IT, EVERY WRITE ERASES THE BOARD, and the mechanism is worth
+    # spelling out because it is silent and total. The CRUD verbs are
+    # read-modify-write: they call this function, mutate `doc["tasks"]`, and
+    # hand the whole doc to the writer. If this still read the (absent) YAML it
+    # would return `{}`, so the "modify" step would build a document holding
+    # ONLY the new card, and `mirror_doc_incremental` — which diffs the doc
+    # against the DB and deletes what is missing — would remove every other
+    # card. Measured on a scratch store during the cutover: writing a second
+    # card left exactly one row. On the live board that is 2065 cards down to 1,
+    # with no error raised anywhere.
+    try:
+        from ._store_backend import db_is_canonical
+    except Exception:  # noqa: BLE001 — undecidable means "not canonical"
+        db_is_canonical = None
+    if db_is_canonical is not None and db_is_canonical():
+        from ._db_export import export_doc
+
+        # `or {}` here was the same total-loss hazard as in `_store`: whatever
+        # this returns feeds a read-modify-write, so an empty dict is not "no
+        # cards" but "write nothing over everything". Delegated to the one
+        # fail-loud reader so both callers share a single policy — the sibling
+        # expression being fixed and this one not is exactly how it survived.
+        from ._store import _read_canonical_db_or_raise
+
+        data = _read_canonical_db_or_raise()
+        if validate:
+            _validate_tasks(
+                data.get("tasks"),
+                source=f"<sqlite:{path}>",
+                strict=False,
+            )
+        return data
+
     if not path.exists():
         raise FileNotFoundError(f"task store not found: {path}")
 
@@ -117,8 +155,6 @@ def load_doc(path: str | Path, *, validate: bool = False) -> dict:
     return data
 
 
-
-
 # ---------------------------------------------------------------------------
 # Re-exports. `_model` was 1,235 lines — 2.4x the 512 cap — and therefore could
 # not be edited AT ALL, which blocked a P0 fix for a blank board. It is now a
@@ -128,16 +164,6 @@ def load_doc(path: str | Path, *, validate: bool = False) -> dict:
 # `from scitex_cards._model import ...`; every name below is the SAME object it
 # always was, defined next door. Same contract as the `_store_write` split (#391).
 # ---------------------------------------------------------------------------
-from ._task import (  # noqa: E402,F401
-    ABOLISHED_STATUSES,
-    StaleStoreError,
-    Task,
-    TaskValidationError,
-    VALID_BLOCKERS,
-    VALID_KINDS,
-    VALID_STATUSES,
-    _BLOCKER_ALIASES,
-)
 from ._deadlines import (  # noqa: E402,F401
     Repeater,
     _add_period,
@@ -150,8 +176,15 @@ from ._deadlines import (  # noqa: E402,F401
     is_overdue,
     next_deadline_for_task,
 )
+from ._task import (  # noqa: E402,F401
+    _BLOCKER_ALIASES,
+    ABOLISHED_STATUSES,
+    VALID_BLOCKERS,
+    VALID_KINDS,
+    StaleStoreError,
+    Task,
+)
 from ._validate import (  # noqa: E402,F401
-    _validate_tasks,
     _warn_tolerated,
 )
 

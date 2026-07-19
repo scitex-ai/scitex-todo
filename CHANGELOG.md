@@ -1,8 +1,93 @@
 # Changelog
 
+## [0.17.1] - 2026-07-19
+
+### Fixed
+
+- **The shadow DB mirrors ONE store — both write doors guarded** (#509).
+  `mirror_after_save` and `write_doc_to_db` each resolved their destination
+  from the ambient environment while taking the document from the caller, so a
+  write to ANY store rebuilt the one globally-resolved database. A pytest
+  fixture twice replaced the live board this way (2,136 cards -> 21; then
+  2,138 -> 1 through the second, unguarded door). Ownership is now checked
+  against the DB's own provenance stamp; the mirror declines, the canonical
+  path raises.
+- **A failed canonical READ no longer becomes a write of nothing** (#510).
+  `export_doc(None)[0] or {}` promoted any failed read into an authoritative
+  empty board, which read-modify-write then wrote over everything (2,138 cards
+  -> 3, from one `comment_task`). A missing database now raises, and the
+  export is cross-checked against `SELECT COUNT(*)` because the exporter
+  answers a nonexistent DB with a well-formed empty document.
+- **Malformed `SCITEX_CARDS_*` values are refused, not mirrored** (#508).
+  An unexpanded `${...}` placeholder overwrote a working `SCITEX_TODO_*`
+  value, corrupting card authorship and silently relocating the store.
+- Concurrency test's subprocess bound raised 30s -> 300s: it is a deadlock
+  detector, not a latency assertion, and was failing on loaded CI runners.
+
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
+
+## [0.17.0] - 2026-07-18 — an agent with work on the board cannot stop
+
+### Added
+- **`scitex-cards stop-hook` — the Claude Code Stop hook, emitted directly.**
+  While an agent's board holds runnable work, that agent is EXECUTING;
+  idle-with-work-pending is not a state the system passes through and
+  repairs, it is a state the design makes unreachable. Prints
+  `{"decision": "block", "reason": …}` to refuse a stop, feeding `reason`
+  back as the agent's NEXT INSTRUCTION — a refusal that does not say what
+  to do next just leaves the agent stopped-but-refused, which is still
+  idle. Prints `{}` to allow.
+
+  Three properties that are contract, not detail:
+  - **Exit code is ALWAYS 0.** The decision lives in the JSON, never in
+    `rc`. Anything gating on the exit status reads every verdict as fine.
+  - **FAIL-OPEN by construction.** Unreadable store, unresolvable agent
+    id, malformed card → allow the stop, with the reason on stderr. An
+    agent wedged by *our* bug is worse than one that stopped early: the
+    first is invisible and self-inflicted, the second is caught by the
+    failure-net sweep. So this REDUCES silent stops; it does not make
+    them impossible.
+  - **The reason is capped** at 5 named items with a COUNTED `+N more`
+    remainder. An instruction listing forty cards is not an instruction,
+    and a silently truncated one is a lie about the board.
+
+  Cards owns both ends of the format — what work exists AND what a useful
+  next instruction reads like — so the runtime's remaining job is
+  registration in `.claude/settings.json` and nothing else. An earlier
+  design had the runtime parsing `may-stop`'s stdout, which made our
+  output a public API it depended on. (#498)
+
+  **It refuses for as long as the work is there.** There is no
+  second-attempt exemption and no "we already asked" escape: while
+  runnable cards remain, the stop is refused. The escape hatch is the
+  behaviour we want anyway — RECONCILE the card. Close it, or mark it
+  blocked with a NAMED gate, and `may_stop` stops counting it, so an
+  honestly-reconciled board lets you stop while an untouched one does
+  not. Runaway is bounded by the runtime's own consecutive-block floor,
+  so the hook does not need to duplicate that.
+
+### Fixed
+- **The board could miss a write entirely — read-your-own-writes was
+  silently broken.** The cache compared `stat().st_mtime`, a float of
+  SECONDS; on a filesystem with 1-second timestamp granularity a write
+  and the stat following it report the same value, so a STRICT read
+  answered from the pre-write cache. The chat POST depends on this
+  guarantee — it writes a message and reads it straight back. It only
+  misfires when the machine is FAST enough to do both inside one granule,
+  which is why it surfaced as a "flaky test" rather than a bug report.
+
+  Invalidation now keys on `(mtime_ns, size, inode)` per source.
+  `(mtime_ns, size)` alone is NOT enough: `st_mtime_ns` is
+  nanosecond-TYPED, not nanosecond-ACCURATE, so a same-length edit (a
+  priority `1` → `2`) still collides; the inode moves on every atomic
+  `os.replace`. `BoardState.mtime` is unchanged and still reported — it
+  is part of the `/rev` contract the frontend polls.
+
+  The general rule, worth stating precisely because the loose version
+  breaks working code: **never use `st_mtime` as an EQUALITY key.**
+  Sorting by it and doing age arithmetic with it are unaffected. (#499)
 
 ## [0.16.2] - 2026-07-18 — upgrading no longer deletes your CLI
 

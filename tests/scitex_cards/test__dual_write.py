@@ -292,3 +292,129 @@ def test_the_refusal_is_logged_ONCE_not_once_per_write(monkeypatch, caplog):
             assert _dual_write.enabled() is False
 
     assert caplog.text.count("REFUSING TO DUAL-WRITE") == 1
+
+
+# --------------------------------------------------------------------------- #
+# The mirror belongs to ONE store (2026-07-19 incident)                        #
+# --------------------------------------------------------------------------- #
+#
+# The package's own concurrency test copies os.environ into writer subprocesses,
+# so they inherited SCITEX_CARDS_DUAL_WRITE=1, wrote to a pytest tmp store, and
+# rebuilt the LIVE fleet DB from a 21-card fixture — replacing 2,136 real cards.
+# The three tests below pin the rule that makes that unrepresentable, and the two
+# controls guard the opposite error of refusing legitimate mirrors.
+
+
+def test_a_write_to_a_foreign_store_does_not_clobber_another_stores_mirror(
+    monkeypatch, tmp_path
+):
+    """The incident, in miniature: store B must not overwrite store A's mirror."""
+    # Arrange — a DB that is store A's mirror, holding A's card
+    store_a = tmp_path / "a" / "tasks.yaml"
+    store_a.parent.mkdir()
+    db = tmp_path / "mirror-of-a.db"
+    monkeypatch.setenv(ENV_DB, str(db))
+    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+    _store.add_task(store_a, id="a-only", title="A", assignee="agent:test-suite")
+    assert "a-only" in _db_ids(db), "precondition: the DB mirrors store A"
+
+    # Act — a DIFFERENT store writes while the same DB is resolved from env
+    store_b = tmp_path / "b" / "tasks.yaml"
+    store_b.parent.mkdir()
+    _store.add_task(store_b, id="b-only", title="B", assignee="agent:test-suite")
+
+    # Assert — A's mirror is untouched; B never entered it
+    assert _db_ids(db) == {"a-only"}, (
+        "a write to store B must not reach the DB that mirrors store A — "
+        "mirroring is a REPLACE, so this is how a fixture destroys a live board"
+    )
+
+
+def test_an_unstamped_db_is_adoptable_so_a_fresh_mirror_still_bootstraps(
+    monkeypatch, tmp_path
+):
+    """Control: refusing must not break the FIRST write to a brand-new mirror."""
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    db = tmp_path / "fresh.db"
+    monkeypatch.setenv(ENV_DB, str(db))
+    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+
+    # Act
+    _store.add_task(store, id="first", title="first", assignee="agent:test-suite")
+
+    # Assert
+    assert "first" in _db_ids(db), (
+        "an unstamped DB has no store to protect, so the first write claims it"
+    )
+
+
+def test_a_store_writing_to_its_own_mirror_is_not_refused(monkeypatch, tmp_path):
+    """Control: the normal case — repeated writes to one's own mirror keep working."""
+    # Arrange
+    store = tmp_path / "tasks.yaml"
+    db = tmp_path / "own.db"
+    monkeypatch.setenv(ENV_DB, str(db))
+    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+    _store.add_task(store, id="one", title="one", assignee="agent:test-suite")
+
+    # Act
+    _store.add_task(store, id="two", title="two", assignee="agent:test-suite")
+
+    # Assert
+    assert _db_ids(db) == {"one", "two"}, (
+        "a store writing to the DB stamped for that same store must mirror normally"
+    )
+
+
+def test_canonical_write_to_a_foreign_db_RAISES_rather_than_clobbering(
+    monkeypatch, tmp_path
+):
+    """The second door. mirror_after_save declines; the CANONICAL path must RAISE.
+
+    Guarding only the mirror path left this one open, and the same pytest run
+    that first rebuilt the live DB from a fixture (2,136 -> 21) did it again
+    through here, harder (2,138 -> 1). Declining quietly is right when YAML
+    still holds the card and wrong when the DB is the only copy: it would
+    report success for a card that was never stored.
+    """
+    # Arrange — a DB that belongs to store A
+    from scitex_cards import _store_backend
+
+    store_a = tmp_path / "a" / "tasks.yaml"
+    store_a.parent.mkdir()
+    db = tmp_path / "mirror-of-a.db"
+    monkeypatch.setenv(ENV_DB, str(db))
+    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+    _store.add_task(store_a, id="a-only", title="A", assignee="agent:test-suite")
+    assert "a-only" in _db_ids(db), "precondition: the DB is store A's"
+
+    # Act / Assert — a canonical write addressed to store B must refuse LOUDLY
+    store_b = tmp_path / "b" / "tasks.yaml"
+    with pytest.raises(RuntimeError, match="DIFFERENT path"):
+        _store_backend.write_doc_to_db({"tasks": [{"id": "b-only"}]}, store_b)
+
+    assert _db_ids(db) == {"a-only"}, "and store A's rows are untouched"
+
+
+def test_a_missing_canonical_db_RAISES_instead_of_reading_an_empty_store(
+    monkeypatch, tmp_path
+):
+    """A failed READ must never become a write of nothing.
+
+    In canonical mode the value returned here is written back as the WHOLE
+    store, so `export_doc` answering a missing database with a well-formed
+    {"tasks": []} is not "no cards" but "delete every card". That is not
+    theoretical: one comment_task call took the live board from 2,138 cards to
+    3 this way. Type-checking the result cannot catch it — the empty document
+    is indistinguishable from a real empty board — so the check asks the file
+    system instead.
+    """
+    # Arrange — point at a database that does not exist
+    from scitex_cards._store import _read_canonical_db_or_raise
+
+    monkeypatch.setenv(ENV_DB, str(tmp_path / "not-here.db"))
+
+    # Act / Assert
+    with pytest.raises(RuntimeError, match="does not exist"):
+        _read_canonical_db_or_raise()
