@@ -14,6 +14,7 @@ point is the case where metadata and code disagree.
 
 from __future__ import annotations
 
+import importlib
 import sys
 import textwrap
 
@@ -46,6 +47,26 @@ def _make_source_tree(root, pkg: str, version: str) -> None:
     (src / "__init__.py").write_text("MARKER = True\n", encoding="utf-8")
 
 
+def _install_metadata(site, dist: str, version: str):
+    """A REAL ``.dist-info`` — the directory ``importlib.metadata`` actually reads.
+
+    The version skew these tests turn on is produced ON DISK, not stubbed:
+    ``site`` is a genuine ``sys.path`` entry, so ``importlib.metadata.version``
+    resolves this METADATA through its normal backend with no substitution
+    anywhere. That is the same thing pip leaves behind, and it is what lets a
+    fossil be built without faking the very lookup under test.
+    """
+    dist_info = site / f"{dist}-{version}.dist-info"
+    dist_info.mkdir(parents=True)
+    (dist_info / "METADATA").write_text(
+        f"Metadata-Version: 2.1\nName: {dist}\nVersion: {version}\n",
+        encoding="utf-8",
+    )
+    # The path entry may already be on sys.path; make the new dist discoverable.
+    importlib.invalidate_caches()
+    return dist_info
+
+
 @pytest.fixture
 def fake_pkg(tmp_path, monkeypatch):
     """An importable package living in a source tree (the editable shape)."""
@@ -68,8 +89,8 @@ def wheel_pkg_with_two_distinfos(tmp_path, monkeypatch):
     pkg = site / "wheelpkg"
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").write_text("NEW_SYMBOL = True\n", encoding="utf-8")
-    (site / "wheelpkg-0.9.0.dist-info").mkdir()
-    (site / "wheelpkg-0.7.50.dist-info").mkdir()  # the orphaned fossil
+    _install_metadata(site, "wheelpkg", "0.9.0")
+    _install_metadata(site, "wheelpkg", "0.7.50")  # the orphaned fossil
     monkeypatch.syspath_prepend(str(site))
     yield site
     sys.modules.pop("wheelpkg", None)
@@ -79,25 +100,26 @@ def wheel_pkg_with_two_distinfos(tmp_path, monkeypatch):
 # probe fixtures — one per install shape under test
 # --------------------------------------------------------------------------
 @pytest.fixture
-def fossilised_probe(fake_pkg, monkeypatch):
+def fossilised_probe(fake_pkg):
     """Metadata says 1.0.0; the code on disk is 2.0.0."""
-    monkeypatch.setattr("scitex_cards._install_probe._md.version", lambda dist: "1.0.0")
+    _install_metadata(fake_pkg / "src", "fakepkg", "1.0.0")
     return probe_install("fakepkg")
 
 
 @pytest.fixture
-def agreeing_probe(fake_pkg, monkeypatch):
+def agreeing_probe(fake_pkg):
     """Metadata and source agree at 2.0.0 — the healthy shape."""
-    monkeypatch.setattr("scitex_cards._install_probe._md.version", lambda dist: "2.0.0")
+    _install_metadata(fake_pkg / "src", "fakepkg", "2.0.0")
     return probe_install("fakepkg")
 
 
 @pytest.fixture
-def orphaned_probe(monkeypatch):
+def orphaned_probe(tmp_path, monkeypatch):
     """Metadata present, code absent — every version check "passes" on nothing."""
-    monkeypatch.setattr(
-        "scitex_cards._install_probe._md.version", lambda dist: "0.7.26"
-    )
+    site = tmp_path / "site-packages"
+    site.mkdir()
+    _install_metadata(site, "ghostpkg", "0.7.26")
+    monkeypatch.syspath_prepend(str(site))
     return probe_install("ghostpkg")
 
 
@@ -109,7 +131,19 @@ def absent_probe():
 
 @pytest.fixture
 def exploding_metadata_probe(fake_pkg, monkeypatch):
-    """The metadata backend raises; the probe must still return a verdict."""
+    """The metadata backend raises; the probe must still return a verdict.
+
+    THE ONE STUB LEFT IN THIS FILE, and deliberately. Every other fixture here
+    builds its skew on disk (see ``_install_metadata``), but this one needs the
+    backend to RAISE with a message the assertion can identify. A real backend
+    failure is producible — corrupt the METADATA bytes and ``version()`` raises
+    UnicodeDecodeError — but its text is fixed by CPython (``'utf-8' codec can't
+    decode byte 0xff…``), so adopting it would mean rewriting
+    ``assert "exploded" in probe_error`` into an assertion about a CPython error
+    string. That trades a test of OUR contract (the backend's message reaches
+    ``probe_error``) for a test of CPython's wording. The stub is the honest
+    expression of the intent; see the PA-306 exemption note.
+    """
 
     def boom(dist):
         raise RuntimeError("metadata backend exploded")
@@ -119,9 +153,9 @@ def exploding_metadata_probe(fake_pkg, monkeypatch):
 
 
 @pytest.fixture
-def unknowable_code_version_probe(fake_pkg, monkeypatch):
+def unknowable_code_version_probe(fake_pkg):
     """The source drops its version claim → the code's real version is unknowable."""
-    monkeypatch.setattr("scitex_cards._install_probe._md.version", lambda dist: "1.0.0")
+    _install_metadata(fake_pkg / "src", "fakepkg", "1.0.0")
     (fake_pkg / "pyproject.toml").write_text(
         '[project]\nname = "fakepkg"\n', encoding="utf-8"
     )
@@ -129,18 +163,18 @@ def unknowable_code_version_probe(fake_pkg, monkeypatch):
 
 
 @pytest.fixture
-def health_check_result(fake_pkg, monkeypatch):
+def health_check_result(fake_pkg):
     """The doctor adapter's result for a LYING install."""
-    monkeypatch.setattr("scitex_cards._install_probe._md.version", lambda dist: "1.0.0")
+    _install_metadata(fake_pkg / "src", "fakepkg", "1.0.0")
     return check_install_honest("fakepkg")
 
 
 @pytest.fixture
-def post_upgrade_probe(fake_pkg, monkeypatch):
+def post_upgrade_probe(fake_pkg):
     """The DISK grows a symbol AFTER the module is already imported."""
     import fakepkg  # noqa: F401  - force it into sys.modules ("the running process")
 
-    monkeypatch.setattr("scitex_cards._install_probe._md.version", lambda dist: "2.0.0")
+    _install_metadata(fake_pkg / "src", "fakepkg", "2.0.0")
     # The exact shape of "someone pip-upgraded under a running server".
     (fake_pkg / "src" / "fakepkg" / "__init__.py").write_text(
         "MARKER = True\nPOST_UPGRADE_SYMBOL = True\n", encoding="utf-8"
@@ -151,11 +185,14 @@ def post_upgrade_probe(fake_pkg, monkeypatch):
 
 
 @pytest.fixture
-def ambiguous_probe(wheel_pkg_with_two_distinfos, monkeypatch):
-    """Two dist-infos, and metadata picks the FOSSIL — exactly as it did live."""
-    monkeypatch.setattr(
-        "scitex_cards._install_probe._md.version", lambda dist: "0.7.50"
-    )
+def ambiguous_probe(wheel_pkg_with_two_distinfos):
+    """Two dist-infos, and metadata picks ONE of them — the live coin toss.
+
+    Nothing decides the winner here: both .dist-info dirs are real, so
+    ``importlib.metadata`` resolves whichever it finds first, exactly as it did
+    on the live box. Which one wins is not asserted — that it CANNOT be trusted
+    is.
+    """
     return probe_install("wheelpkg")
 
 
@@ -166,9 +203,8 @@ def solo_distinfo_probe(tmp_path, monkeypatch):
     pkg = site / "solopkg"
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").write_text("X = 1\n", encoding="utf-8")
-    (site / "solopkg-1.0.0.dist-info").mkdir()
+    _install_metadata(site, "solopkg", "1.0.0")
     monkeypatch.syspath_prepend(str(site))
-    monkeypatch.setattr("scitex_cards._install_probe._md.version", lambda dist: "1.0.0")
     yield probe_install("solopkg")
     sys.modules.pop("solopkg", None)
 
@@ -447,16 +483,14 @@ def test_unverifiable_detail_says_cannot_be_confirmed(unknowable_code_version_pr
 # --------------------------------------------------------------------------
 
 
-def test_features_probe_the_code_directly_bypassing_versions_entirely(
-    fake_pkg, monkeypatch
-):
+def test_features_probe_the_code_directly_bypassing_versions_entirely(fake_pkg):
     """The strongest check: does the symbol I expect actually exist?
 
     This answers "is the code I think I deployed really here?" without trusting
     any version string — the only check a fossil cannot defeat.
     """
     # Arrange
-    monkeypatch.setattr("scitex_cards._install_probe._md.version", lambda dist: "2.0.0")
+    _install_metadata(fake_pkg / "src", "fakepkg", "2.0.0")
     # Act
     p = probe_install(
         "fakepkg",
@@ -649,7 +683,7 @@ def test_two_distinfos_hint_names_the_repair(ambiguous_probe):
 
 
 def test_the_symbol_probe_still_tells_the_truth_when_the_version_cannot(
-    wheel_pkg_with_two_distinfos, monkeypatch
+    wheel_pkg_with_two_distinfos,
 ):
     """The content check is what saved the content checker.
 
@@ -658,11 +692,9 @@ def test_the_symbol_probe_still_tells_the_truth_when_the_version_cannot(
     probing over version reading, demonstrated against the probe's own bug.
     """
     # Arrange
-    monkeypatch.setattr(
-        "scitex_cards._install_probe._md.version", lambda dist: "0.7.50"
-    )
+    features = {"new": "wheelpkg:NEW_SYMBOL"}
     # Act
-    p = probe_install("wheelpkg", features={"new": "wheelpkg:NEW_SYMBOL"})
+    p = probe_install("wheelpkg", features=features)
     # Assert — the CODE is new, whatever the version claims.
     assert p.features["new"] is True
 
