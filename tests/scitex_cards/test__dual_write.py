@@ -21,6 +21,7 @@ import pytest
 
 from scitex_cards import _dual_write, _store
 from scitex_cards._db import ENV_DB, resolve_db_path
+from scitex_cards._paths import ENV_TASKS
 
 
 @pytest.fixture(autouse=True)
@@ -531,6 +532,47 @@ def test_a_refused_canonical_write_leaves_the_foreign_rows_untouched(
     # Assert — store A's rows are untouched. (Had the write been honoured
     # instead of refused, `b-only` would be here and this would fail.)
     assert _db_ids(db) == {"a-only"}
+
+
+#: WHY THE NEXT TWO EXIST, and why they are a PAIR. On 2026-07-19 the WRITE
+#: door refused foreign stores correctly all day while the READ door happily
+#: returned them. That asymmetry is how a packaged fixture came to be read AS
+#: THE BOARD for hours: nothing objected until someone tried to write, by which
+#: point the wrong rows were already being treated as authoritative.
+#: `_read_canonical_db_or_raise` is a read-MODIFY-write helper, so what the
+#: write door would refuse has to fail at the read door too.
+#: They are split because one alone is not evidence. A refusal test alone
+#: passes for a guard wired to refuse EVERYTHING — which is the same
+#: always-red uselessness as an always-green gate, and this codebase has
+#: shipped that shape more than once. The healthy-read test is what proves the
+#: guard discriminates rather than merely fires.
+def test_reading_a_foreign_stamped_db_RAISES_rather_than_returning_its_rows(
+    monkeypatch, tmp_path
+):
+    # Arrange — a DB that belongs to store A, but resolve store B.
+    from scitex_cards._store import _read_canonical_db_or_raise
+
+    _mirror_of_store_a(monkeypatch, tmp_path)
+    monkeypatch.setenv(ENV_TASKS, str(tmp_path / "b" / "tasks.yaml"))
+
+    # Act
+    # Assert
+    with pytest.raises(RuntimeError, match="REFUSING TO READ"):
+        _read_canonical_db_or_raise()
+
+
+def test_reading_the_db_that_owns_this_store_returns_its_cards(monkeypatch, tmp_path):
+    # Arrange — the same DB, resolved as the store it actually belongs to.
+    from scitex_cards._store import _read_canonical_db_or_raise
+
+    _mirror_of_store_a(monkeypatch, tmp_path)
+    monkeypatch.setenv(ENV_TASKS, str(tmp_path / "a" / "tasks.yaml"))
+
+    # Act
+    doc = _read_canonical_db_or_raise()
+
+    # Assert — the guard lets the OWNING store through.
+    assert [t["id"] for t in doc["tasks"]] == ["a-only"]
 
 
 def test_a_missing_canonical_db_RAISES_instead_of_reading_an_empty_store(
