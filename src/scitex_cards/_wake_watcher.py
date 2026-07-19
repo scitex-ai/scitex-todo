@@ -115,12 +115,12 @@ def _default_lock_path() -> Path:
     """Runtime-dir lockfile for the single-instance guard.
 
     Prefers ``$XDG_RUNTIME_DIR`` (tmpfs, per-user, cleared on logout) and
-    falls back to ``~/.scitex/todo/`` when it is unset.
+    falls back to ``~/.scitex/cards/`` when it is unset.
     """
     runtime = os.environ.get("XDG_RUNTIME_DIR")
     if runtime:
-        return Path(runtime) / "scitex-todo-wake-watcher.lock"
-    return Path("~/.scitex/todo/wake-watcher.lock").expanduser()
+        return Path(runtime) / "scitex-cards-wake-watcher.lock"
+    return Path("~/.scitex/cards/wake-watcher.lock").expanduser()
 
 
 def acquire_single_instance_lock(
@@ -443,9 +443,7 @@ def run_watcher_once(
     if post and wakes:
         # Static agents come from the SAME parse above — the file stays
         # the SSoT for both task data + agent registry, at one parse/tick.
-        static_agents = [
-            a for a in (data.get("agents") or []) if isinstance(a, dict)
-        ]
+        static_agents = [a for a in (data.get("agents") or []) if isinstance(a, dict)]
         for w in wakes:
             port = resolve_agent_port(w.agent, static_agents=static_agents)
             if port is None:
@@ -495,9 +493,7 @@ def run_watcher_forever(
     state = WatcherState()
     try:
         while True:
-            run_watcher_once(
-                path, state, min_wake_interval_s=min_wake_interval_s
-            )
+            run_watcher_once(path, state, min_wake_interval_s=min_wake_interval_s)
             time.sleep(interval_s)
     finally:
         try:

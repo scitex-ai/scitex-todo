@@ -20,11 +20,13 @@ from .._paths import resolve_tasks_path
 from ._compat import spec_command_kwargs, spec_group_kwargs
 
 _STORE_RESOLUTION = (
-    "Task store resolution (first existing wins): an explicit --tasks path,",
-    "then $SCITEX_TODO_TASKS_YAML_SHARED, then the project store",
-    "<git-root>/.scitex/todo/tasks.yaml, then the user store",
-    "~/.scitex/todo/tasks.yaml (relocatable via $SCITEX_DIR), then the",
-    "bundled generic example. See the README 'Where your task data lives'.",
+    "Canonical store: a SQLite DB at $SCITEX_CARDS_DB (default",
+    "~/.scitex/cards/cards.db) when $SCITEX_CARDS_STORE_BACKEND=sqlite.",
+    "YAML path resolution (first existing wins): an explicit --tasks path,",
+    "then $SCITEX_CARDS_TASKS_YAML_SHARED, then the user store",
+    "~/.scitex/cards/tasks.yaml (relocatable via $SCITEX_DIR). There is NO",
+    "bundled-example fallback — an unresolvable store raises. Run",
+    "`scitex-cards resolve-store` to see what you actually resolved to.",
 )
 
 # Doctrine §4a (10a_command-categories.md): fixed, ordered category headers.
@@ -123,7 +125,7 @@ def _emit_help_recursive(ctx, as_json):
     invoke_without_command=True,
     context_settings={"help_option_names": ["-h", "--help"]},
     **spec_group_kwargs(
-        summary="Canonical YAML task store + adapters for the agent fleet.",
+        summary="Shared task store (SQLite canonical) + adapters for the agent fleet.",
         config_resolution=_STORE_RESOLUTION,
         version_of="scitex-cards",
         command_categories=_COMMAND_CATEGORIES,
