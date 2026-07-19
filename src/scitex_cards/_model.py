@@ -124,10 +124,17 @@ def load_doc(path: str | Path, *, validate: bool = False) -> dict:
     if db_is_canonical is not None and db_is_canonical():
         from ._db_export import export_doc
 
-        data = export_doc(None)[0] or {}
+        # `or {}` here was the same total-loss hazard as in `_store`: whatever
+        # this returns feeds a read-modify-write, so an empty dict is not "no
+        # cards" but "write nothing over everything". Delegated to the one
+        # fail-loud reader so both callers share a single policy — the sibling
+        # expression being fixed and this one not is exactly how it survived.
+        from ._store import _read_canonical_db_or_raise
+
+        data = _read_canonical_db_or_raise()
         if validate:
             _validate_tasks(
-                data.get("tasks") if isinstance(data, dict) else None,
+                data.get("tasks"),
                 source=f"<sqlite:{path}>",
                 strict=False,
             )

@@ -395,3 +395,26 @@ def test_canonical_write_to_a_foreign_db_RAISES_rather_than_clobbering(
         _store_backend.write_doc_to_db({"tasks": [{"id": "b-only"}]}, store_b)
 
     assert _db_ids(db) == {"a-only"}, "and store A's rows are untouched"
+
+
+def test_a_missing_canonical_db_RAISES_instead_of_reading_an_empty_store(
+    monkeypatch, tmp_path
+):
+    """A failed READ must never become a write of nothing.
+
+    In canonical mode the value returned here is written back as the WHOLE
+    store, so `export_doc` answering a missing database with a well-formed
+    {"tasks": []} is not "no cards" but "delete every card". That is not
+    theoretical: one comment_task call took the live board from 2,138 cards to
+    3 this way. Type-checking the result cannot catch it — the empty document
+    is indistinguishable from a real empty board — so the check asks the file
+    system instead.
+    """
+    # Arrange — point at a database that does not exist
+    from scitex_cards._store import _read_canonical_db_or_raise
+
+    monkeypatch.setenv(ENV_DB, str(tmp_path / "not-here.db"))
+
+    # Act / Assert
+    with pytest.raises(RuntimeError, match="does not exist"):
+        _read_canonical_db_or_raise()

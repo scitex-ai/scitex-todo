@@ -196,6 +196,93 @@ def _resolve_creator_or_raise(arg: str | None) -> str:
     return resolved
 
 
+def _read_canonical_db_or_raise() -> dict:
+    """Read the whole store from SQLite for a read-modify-write. FAILS LOUD.
+
+    THE BUG THIS REPLACES turned a READ error into TOTAL DATA LOSS, three times
+    on 2026-07-19. The old line was::
+
+        doc = export_doc(None)[0] or {}
+
+    Read-modify-write means whatever this returns is what gets WRITTEN BACK as
+    the canonical store. So ``or {}`` does not mean "no cards found" — it means
+    "delete every card", and it says so to nobody. Any reason the export came
+    back empty (a stamp naming another store, an unreadable DB, a resolution
+    that landed on the wrong path) is silently promoted from a failed read into
+    an authoritative empty board. Measured: 2,138 cards -> 3, from one
+    ``comment_task`` call.
+
+    #507's own commit message predicted this exact shape ("2065 cards down to
+    1") for ``load_doc`` and guarded that one. The identical hazard sat in the
+    sibling expression and was not — which is the same lesson as the two write
+    doors: fixing one instance of a pattern is not fixing the pattern.
+
+    A store with genuinely zero cards is legitimate ONLY when the DB has no
+    tasks table content to begin with; that case returns an empty doc honestly.
+    Every other emptiness is a failed read and raises, because refusing to
+    write is always recoverable and writing nothing over everything is not.
+    """
+    import sqlite3
+
+    from ._db import resolve_db_path
+    from ._db_export import export_doc
+
+    db_path = Path(resolve_db_path(None))
+
+    # A MISSING DB IS NOT AN EMPTY STORE. `export_doc` answers a nonexistent
+    # file with a perfectly well-formed ``{"tasks": []}``, which is why merely
+    # type-checking the result does not help — that value is indistinguishable
+    # from a real empty board and is exactly what got written back over 2,138
+    # cards. Ask the file system, not the exporter.
+    if not db_path.exists():
+        raise RuntimeError(
+            f"canonical store {db_path} does not exist. REFUSING to continue: "
+            f"the exporter answers a missing database with an empty document, "
+            f"and this value is written back as the WHOLE store — every card "
+            f"replaced by nothing. Point $SCITEX_CARDS_DB at the real database, "
+            f"or bootstrap one with `scitex-cards db import --from-yaml`."
+        )
+
+    doc = export_doc(None)[0]
+    if not isinstance(doc, dict) or not isinstance(doc.get("tasks"), list):
+        raise RuntimeError(
+            f"canonical read of {db_path} returned no usable document "
+            f"(got {type(doc).__name__}). REFUSING to continue: this value "
+            f"would be written back as the whole store."
+        )
+
+    # CROSS-CHECK the export against the table itself. These can only disagree
+    # when the read half failed in a way it did not report — a stamp naming a
+    # different store, a partial read, a schema the exporter could not walk.
+    # An export that silently under-reports is the total-loss case, because the
+    # difference is deleted on write-back. Zero-vs-zero agrees and is allowed
+    # through: a genuinely empty database is a legitimate store.
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            in_table = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        raise RuntimeError(
+            f"cannot read {db_path} to verify the canonical read ({exc}). "
+            f"REFUSING to continue rather than writing an unverified document "
+            f"back over the store."
+        ) from exc
+
+    exported = len(doc["tasks"])
+    if exported != in_table:
+        raise RuntimeError(
+            f"canonical read of {db_path} is INCOMPLETE: the exporter returned "
+            f"{exported} cards but the tasks table holds {in_table}. REFUSING "
+            f"to continue — this document is written back as the whole store, "
+            f"so the {in_table - exported} missing cards would be DELETED. "
+            f"Verify with `scitex-cards db verify`; re-bootstrap with "
+            f"`scitex-cards db import --from-yaml`."
+        )
+    return doc
+
+
 def _utc_now_iso() -> str:
     """ISO-8601 UTC timestamp with second resolution and the ``Z`` suffix.
 
@@ -255,11 +342,8 @@ def _read_write_doc(path: str | Path, *, missing_ok: bool = False) -> tuple[dict
     if db_is_canonical is not None and db_is_canonical():
         from ._db_export import export_doc
 
-        doc = export_doc(None)[0] or {}
-        tasks = doc.get("tasks")
-        if not isinstance(tasks, list):
-            tasks = []
-            doc["tasks"] = tasks
+        doc = _read_canonical_db_or_raise()
+        tasks = doc["tasks"]
         return doc, tasks
 
     if missing_ok and not p.exists():
