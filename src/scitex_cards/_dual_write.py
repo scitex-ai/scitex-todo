@@ -187,6 +187,76 @@ def reset_failures() -> None:
     _failures.clear()
 
 
+def _db_mirrors_this_store(db_path: str | Path, store_path: str | Path) -> bool:
+    """Is the DB at ``db_path`` the mirror of ``store_path`` — or of some OTHER store?
+
+    THE INVARIANT, implied everywhere and enforced nowhere: a shadow DB mirrors
+    exactly ONE store. Writing store A into the DB that mirrors store B does not
+    merge them, it REPLACES B's contents with A's.
+
+    It went unenforced because :func:`mirror_after_save` resolved the
+    destination with a bare ``resolve_db_path()`` — no argument — so the DB came
+    from the AMBIENT ENVIRONMENT while the source came from the CALLER. Nothing
+    checked that the two referred to the same pairing.
+
+    Not theoretical. On 2026-07-19 this package's own concurrency test — which
+    copies ``os.environ`` into two writer subprocesses, so they inherit
+    ``SCITEX_CARDS_DUAL_WRITE=1`` — wrote to a pytest ``tmp_path`` store and
+    rebuilt the LIVE FLEET DATABASE from its 21-card fixture, replacing 2,136
+    real cards. It was recoverable only because the YAML was still canonical and
+    the DB merely a mirror; under the DB-canonical mode merged that same
+    morning, running the test suite would have destroyed the board outright.
+
+    Same shape as the env-compat incident hours earlier: a global default
+    silently overriding an explicit local intent. Same fix: refuse, keep the
+    good state, say so.
+
+    WHY THE DB'S OWN STAMP AND NOT "is this the canonical store" — the naive
+    guard (refuse anything that is not the canonical store) also refuses the
+    package's own legitimate tests, which deliberately pair a tmp store with a
+    tmp DB and are correct to mirror. The honest question is not "is this store
+    special" but "do these two belong together", and the DB already answers it:
+    :func:`_db_freshness.stamp_yaml_provenance` records which YAML it reflects.
+
+    An UNSTAMPED DB is adoptable (a fresh/bootstrapping mirror, incl. every test
+    fixture) — the first write claims it. A DB stamped for a DIFFERENT store is
+    refused. Compared by ``realpath`` because ``~/.scitex`` is a symlink here, so
+    ``/home/agent/...`` and ``/home/ywatanabe/...`` are the same file.
+    """
+    import sqlite3
+
+    from ._db_freshness import KEY_YAML_PATH, read_provenance
+
+    if not Path(db_path).exists():
+        return True  # nothing to clobber yet
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            stamped = read_provenance(conn).get(KEY_YAML_PATH)
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001 — unreadable stamp ⇒ let the mirror try
+        return True
+    if not stamped:
+        return True  # unstamped ⇒ adoptable
+    try:
+        if os.path.realpath(stamped) == os.path.realpath(str(store_path)):
+            return True
+    except OSError:
+        return False
+    logger.error(
+        "!! REFUSING TO MIRROR: %s is the shadow DB of %s, but this write is to "
+        "%s. Mirroring would REPLACE that store's rows with this one's. If you "
+        "meant to repoint the mirror, re-bootstrap it explicitly "
+        "(`scitex-cards db import --from-yaml`); if this is a test or scratch "
+        "store, point $SCITEX_CARDS_DB at a scratch DB.",
+        db_path,
+        stamped,
+        store_path,
+    )
+    return False
+
+
 def mirror_after_save(doc: dict, store_path: str | Path) -> bool:
     """Mirror ``doc`` into the shadow DB. NEVER raises. Returns True on success.
 
@@ -210,6 +280,13 @@ def mirror_after_save(doc: dict, store_path: str | Path) -> bool:
         from ._db import resolve_db_path
         from ._db_mirror import mirror_doc_incremental
 
+        # The destination comes from the ambient environment while the source
+        # comes from the caller; they are only safe together when the DB is
+        # THIS store's mirror. Checked before we write, never after.
+        db_path = resolve_db_path()
+        if not _db_mirrors_this_store(db_path, store_path):
+            return False
+
         # INCREMENTAL: touch only the cards that actually changed.
         #
         # This used to call `_db_bootstrap.mirror_doc`, which DELETEs and
@@ -226,7 +303,7 @@ def mirror_after_save(doc: dict, store_path: str | Path) -> bool:
         # We are called AFTER the canonical write and still under the store lock,
         # so the file on disk is exactly the doc in hand — the one moment at which
         # that stamp is truthful. The S2 read guard refuses an unstamped DB.
-        mirror_doc_incremental(doc, resolve_db_path(), store_path=store_path)
+        mirror_doc_incremental(doc, db_path, store_path=store_path)
         return True
     except Exception as exc:  # noqa: BLE001 - a mirror must never break the write
         msg = f"{type(exc).__name__}: {exc}"
