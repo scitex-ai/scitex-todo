@@ -19,12 +19,28 @@ from __future__ import annotations
 
 import click
 
-from ._compat import spec_command_kwargs, spec_group_kwargs
+from ._compat import deprecated_alias, spec_command_kwargs, spec_group_kwargs
 
 
 def register(main: click.Group) -> None:
     """Attach the ``migration`` noun group to the root group."""
     main.add_command(migration_group)
+    # `migrate` -> `migration` IS A MIGRATION, NOT A RENAME. The old name is a
+    # PUBLISHED contract: scripts, hooks and other agents invoke it, and none of
+    # them see a Python-level rename — they get `Error: No such command` at the
+    # shell, at whatever hour they next run. The constitution says so directly:
+    # "A published contract (CLI verb, entry-point group, on-disk key) is a
+    # MIGRATION, not a rename — alias first, then remove."
+    #
+    # Dropping it also broke tests/scitex_cards/_migration/test__migrate.py on
+    # all three Python legs: `migrate plan --json` exited 2 with EMPTY stdout,
+    # so `json.loads("")` raised JSONDecodeError. That failure is the first
+    # CALLER noticing, not the only one that would have.
+    #
+    # Same warn-phase mechanism the sibling verbs already use — see
+    # `_stale.py:219` (stale-list -> list-stale) and `_emit.py:229`
+    # (resolve-card -> find-card).
+    deprecated_alias(main, "migrate", target="migration", remove_in="0.19")
 
 
 @click.group(

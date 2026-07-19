@@ -15,8 +15,8 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from scitex_cards._cli import main
 from scitex_cards import _migration as _mig
+from scitex_cards._cli import main
 
 
 def _write_lane(lane: Path, body: str) -> None:
@@ -56,8 +56,12 @@ class TestClassify:
         lane = tmp_path / "tasks.yaml"
         _write_lane(lane, "tasks: []\n")
         _mk_dir_card(lane, "a")
-        row = {"id": "a", "title": "A", "status": "pending",
-               "note": "This is a long body that lives in yaml today."}
+        row = {
+            "id": "a",
+            "title": "A",
+            "status": "pending",
+            "note": "This is a long body that lives in yaml today.",
+        }
         # Act
         plan = _mig.classify_row(row, lane)
         # Assert
@@ -81,8 +85,12 @@ class TestClassify:
         _write_lane(lane, "tasks: []\n")
         _mk_dir_card(lane, "a")
         long_text = "y" * (_mig.MAX_COMMENT_CHARS + 1)
-        row = {"id": "a", "title": "A", "status": "pending",
-               "comments": [{"ts": "x", "author": "z", "text": long_text}]}
+        row = {
+            "id": "a",
+            "title": "A",
+            "status": "pending",
+            "comments": [{"ts": "x", "author": "z", "text": long_text}],
+        }
         # Act
         plan = _mig.classify_row(row, lane)
         # Assert
@@ -113,14 +121,17 @@ class TestClassify:
         _write_lane(lane, "tasks: []\n")
         long_title = "Z" * (_mig.MAX_TITLE_CHARS + 1)
         row = {
-            "id": "multi", "title": long_title, "status": "pending",
+            "id": "multi",
+            "title": long_title,
+            "status": "pending",
             "note": "body content",
         }
         # Act
         plan = _mig.classify_row(row, lane)
         # Assert
-        assert {"NEEDS_DIR", "NEEDS_NOTE_MIGRATE", "NEEDS_TITLE_TRIM"} \
-            .issubset(set(plan.classifications))
+        assert {"NEEDS_DIR", "NEEDS_NOTE_MIGRATE", "NEEDS_TITLE_TRIM"}.issubset(
+            set(plan.classifications)
+        )
 
 
 # === scan_lane / scan_all_lanes ============================================
@@ -144,8 +155,11 @@ class TestScanLane:
         # Act
         plan = _mig.scan_lane(lane)
         # Assert
-        assert (plan.total, plan.canonical_count,
-                plan.needs_migration_count) == (2, 1, 1)
+        assert (plan.total, plan.canonical_count, plan.needs_migration_count) == (
+            2,
+            1,
+            1,
+        )
 
     def test_malformed_lane_returns_empty_plan(self, tmp_path, caplog):
         # Arrange — bad YAML.
@@ -167,12 +181,14 @@ class TestScanAllLanes:
         # Arrange — two tmp lanes.
         lane_a = tmp_path / "a" / "tasks.yaml"
         _write_lane(
-            lane_a, "tasks:\n  - {id: ax, title: AX, status: pending}\n",
+            lane_a,
+            "tasks:\n  - {id: ax, title: AX, status: pending}\n",
         )
         _mk_dir_card(lane_a, "ax")
         lane_b = tmp_path / "b" / "tasks.yaml"
         _write_lane(
-            lane_b, "tasks:\n  - {id: bx, title: BX, status: pending}\n",
+            lane_b,
+            "tasks:\n  - {id: bx, title: BX, status: pending}\n",
         )
         _mk_dir_card(lane_b, "bx")
         # Act
@@ -193,16 +209,14 @@ class TestRenderMarkdown:
         lane = tmp_path / "tasks.yaml"
         _write_lane(
             lane,
-            "tasks:\n"
-            "  - {id: ok, title: OK, status: pending}\n",
+            "tasks:\n  - {id: ok, title: OK, status: pending}\n",
         )
         _mk_dir_card(lane, "ok")
         fleet = _mig.scan_all_lanes([lane])
         # Act
         md = _mig.render_markdown(fleet)
         # Assert
-        assert "Directory-card migration plan" in md and \
-               "Total rows: **1**" in md
+        assert "Directory-card migration plan" in md and "Total rows: **1**" in md
 
 
 # === CLI verb ==============================================================
@@ -219,10 +233,25 @@ class TestCliPlan:
         # Act
         result = CliRunner().invoke(main, ["migration", "plan", "--json"])
         # Assert — JSON-decodable + has the expected top-level keys.
-        payload = json.loads(result.output)
+        #
+        # `result.stdout`, NOT `result.output`. In Click >= 8.2 `.output` is the
+        # COMBINED stream, so anything correctly written to stderr lands in it.
+        # Once `migration` gained its `dev migration` deprecation notice — which
+        # rightly goes to stderr — parsing `.output` began failing with
+        # "Expecting value: line 1 column 1", making a correct warning look like
+        # broken JSON.
+        #
+        # Asserting on `.output` here would ALSO have made this test complicit
+        # in the real defect it should catch: a `--json` surface is only
+        # machine-readable if diagnostics stay off stdout. Reading `.stdout` is
+        # what actually tests that contract.
+        payload = json.loads(result.stdout)
         assert {
-            "lane_count", "total_rows", "canonical_rows",
-            "needs_migration_rows", "lanes",
+            "lane_count",
+            "total_rows",
+            "canonical_rows",
+            "needs_migration_rows",
+            "lanes",
         } <= set(payload.keys())
 
     def test_cli_plan_markdown_includes_summary(self, env, tmp_path):
