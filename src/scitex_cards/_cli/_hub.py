@@ -29,23 +29,122 @@ import urllib.request
 
 import click
 
+from ._compat import deprecated_path_alias, spec_command_kwargs, spec_group_kwargs
+
+#: Version that removes the Phase-W ``serve`` alias (doctrine §5).
+_REMOVE_IN = "0.20.0"
+
 
 def register(main: click.Group) -> None:
-    """Attach the ``hub`` noun to the root group."""
+    """Attach the ``hub`` noun to the root group (+ the ``serve`` alias)."""
     main.add_command(hub_group)
+    deprecated_path_alias(main, "serve", path=("hub", "start"), remove_in=_REMOVE_IN)
 
 
-@click.group("hub", help="Hub-rail provisioning + diagnosis (remote store rail).")
+@click.group(
+    "hub",
+    **spec_group_kwargs(
+        summary="Hub-rail provisioning, startup + diagnosis (remote store rail).",
+        description=(
+            "`hub start` runs the RPC service, `hub provision <host>` lands a "
+            "per-host token on a remote, and `hub doctor` diagnoses the "
+            "remote side of the rail.",
+        ),
+        command_categories=(("Core", ("start", "provision", "doctor")),),
+    ),
+)
 def hub_group() -> None:
-    pass
+    """The ``hub`` noun group."""
+
+
+@hub_group.command(
+    "start",
+    **spec_command_kwargs(
+        summary="Run the hub RPC service (loopback-only, bearer-authenticated).",
+        description=(
+            "POST /v1/rpc/<verb> over the backend verb surface. The store is "
+            "PINNED at boot (requests can never retarget it); X-Scitex-Agent "
+            "is required on every request; one JSONL audit line per request "
+            "lands in ~/.scitex/cards/logs/hub_access.jsonl. GET /v1/health "
+            "is the one public route. There is deliberately no bind-address "
+            "flag — remote hosts reach the API through hub-initiated ssh "
+            "reverse tunnels.",
+        ),
+        examples=(
+            ("{prog} hub start --port 8765", "Serve on the loopback port."),
+            ("{prog} hub start --rotate-token", "Mint a fresh token and exit."),
+        ),
+    ),
+)
+@click.option("--port", default=8765, show_default=True, type=int)
+@click.option(
+    "--store",
+    default=None,
+    help="Task store path (default: the standard resolution chain).",
+)
+@click.option(
+    "--rotate-token",
+    is_flag=True,
+    help="Mint a fresh hub.token (revoking the old) and exit.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Report what WOULD be started (or rotated) and exit 0 without doing it.",
+)
+@click.option(
+    "-y",
+    "--yes",
+    is_flag=True,
+    help="Skip confirmation (no-op today — this verb never prompts).",
+)
+def hub_start_cmd(
+    port: int, store: str | None, rotate_token: bool, dry_run: bool, yes: bool
+) -> None:
+    """Run the hub RPC service (or rotate its token and exit)."""
+    from scitex_cards import _server
+
+    _ = yes  # accepted for §2 compliance; this verb never prompts
+
+    if dry_run:
+        click.echo(
+            "# dry-run: would rotate hub.token and exit"
+            if rotate_token
+            else f"# dry-run: would serve the hub RPC surface on "
+            f"http://127.0.0.1:{port} (store={store or 'resolved-default'})"
+        )
+        return
+
+    if rotate_token:
+        path = _server.mint_token(_server.default_tokens_dir(), "hub")
+        click.echo(f"rotated: {path} (0600; old value no longer authenticates)")
+        return
+
+    server = _server.make_server(store=store, port=port)
+    click.echo(
+        f"scitex-cards hub start on http://127.0.0.1:{port} "
+        f"(store={store or 'resolved-default'}, "
+        f"tokens={server.tokens_dir}, audit={server.audit_path})"
+    )
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        click.echo("hub start: interrupted, shutting down")
+    finally:
+        server.server_close()
 
 
 @hub_group.command(
     "provision",
-    help=(
-        "HUB-side: mint a per-host bearer token and scp it to the remote's "
-        "~/.scitex/cards/hub.token (0600 both ends) over the existing ssh "
-        "alias.\n\nExample:\n  scitex-cards hub provision spartan"
+    **spec_command_kwargs(
+        summary="HUB-side: mint a per-host bearer token and land it on the remote.",
+        description=(
+            "Mints tokens/<host>.token (0600) and scps it to the remote's "
+            "~/.scitex/cards/hub.token over the operator's existing ssh "
+            "alias. Fails loud on a nonzero scp — a token that did not land "
+            "is a rail that does not exist.",
+        ),
+        examples=(("{prog} hub provision spartan", "Provision one remote host."),),
     ),
 )
 @click.argument("host")
@@ -210,11 +309,18 @@ def _doctor_checks(url: str | None, agent: str | None) -> list[dict]:
 
 @hub_group.command(
     "doctor",
-    help=(
-        "REMOTE-side: diagnose the hub rail — URL set, token readable, "
-        "/v1/health reachable, authenticated identity echo intact. Exit 0 "
-        "only when all four pass; every failure carries its fix.\n\n"
-        "Examples:\n  scitex-cards hub doctor\n  scitex-cards hub doctor --json"
+    **spec_command_kwargs(
+        summary="REMOTE-side: diagnose the hub rail (four checks).",
+        description=(
+            "Checks that the hub URL is set, the token is readable, "
+            "/v1/health is reachable, and the authenticated identity echo "
+            "survives the transport intact. Exit 0 only when all four pass; "
+            "every failure carries its fix.",
+        ),
+        examples=(
+            ("{prog} hub doctor", "Human-readable diagnosis."),
+            ("{prog} hub doctor --json", "Raw report."),
+        ),
     ),
 )
 @click.option("--json", "as_json", is_flag=True, help="Raw JSON report.")

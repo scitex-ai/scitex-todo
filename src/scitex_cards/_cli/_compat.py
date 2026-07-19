@@ -68,6 +68,7 @@ except ImportError:
 __all__ = [
     "HAS_SPEC_HELP",
     "deprecated_alias",
+    "deprecated_path_alias",
     "spec_command_kwargs",
     "spec_group_kwargs",
 ]
@@ -127,8 +128,7 @@ def _fallback_deprecated_alias(
     def _forward(ctx: click.Context) -> None:
         _warn_once(
             old_name,
-            f"'{old_name}' is deprecated — use '{display}' "
-            f"(removed in {version})",
+            f"'{old_name}' is deprecated — use '{display}' (removed in {version})",
         )
         target_cmd = group.get_command(ctx, target)
         if target_cmd is None:  # wiring bug — fail loud (exit 2)
@@ -138,9 +138,7 @@ def _fallback_deprecated_alias(
             )
         # Re-parse the raw argv through the target so its own
         # options/arguments apply.
-        sub_ctx = target_cmd.make_context(
-            display, list(ctx.args), parent=ctx.parent
-        )
+        sub_ctx = target_cmd.make_context(display, list(ctx.args), parent=ctx.parent)
         with sub_ctx:
             target_cmd.invoke(sub_ctx)
 
@@ -164,6 +162,74 @@ def _fallback_deprecated_alias(
     }
     group.add_command(cmd, old_name)
     return cmd
+
+
+def deprecated_path_alias(
+    group: click.Group,
+    old_name: str,
+    *,
+    path: tuple[str, ...],
+    remove_in: str,
+    extra_args: tuple[str, ...] = (),
+    phase: str = "warn",
+) -> click.Command:
+    """Phase-W alias forwarding to a NESTED command path, optionally + flags.
+
+    :func:`deprecated_alias` resolves its target with a single
+    ``group.get_command`` call, so it can only forward to a SIBLING leaf. A
+    noun-verb restructure moves leaves DOWN the tree (``runnable`` ->
+    ``cards list --runnable``, ``skills`` -> ``dev skills``), which needs both
+    a multi-token path and — for the flag-per-view case — an injected argument.
+
+    The §5 contract is otherwise identical to ``deprecated_alias``: hidden
+    command, once-per-shell stderr warning naming the removal version, and
+    ``_deprecated_alias`` metadata the static auditor verifies (its
+    ``target`` resolves as a space-separated path from the root).
+    """
+    if phase != "warn":
+        raise ValueError(
+            f"deprecated_path_alias implements only phase='warn' (got {phase!r})"
+        )
+    target_path = " ".join(path)
+    display = " ".join([*path, *extra_args])
+    version = f"v{str(remove_in).lstrip('vV')}"
+
+    @click.pass_context
+    def _forward(ctx: click.Context) -> None:
+        _warn_once(
+            old_name,
+            f"'{old_name}' is deprecated — use '{display}' (removed in {version})",
+        )
+        cmd: click.BaseCommand | None = group
+        for token in path:
+            cmd = cmd.get_command(ctx, token) if isinstance(cmd, click.Group) else None
+            if cmd is None:  # wiring bug — fail loud (exit 2)
+                ctx.fail(
+                    f"deprecated alias misconfigured: target command "
+                    f"{target_path!r} is not registered"
+                )
+        sub_ctx = cmd.make_context(
+            path[-1], [*extra_args, *ctx.args], parent=ctx.parent
+        )
+        with sub_ctx:
+            cmd.invoke(sub_ctx)
+
+    cmd_obj = click.Command(
+        old_name,
+        callback=_forward,
+        params=[],
+        hidden=True,
+        short_help=f"(deprecated) Use '{display}'.",
+        help=f"(deprecated) Forwards to '{display}'. Removed in {version}.",
+        context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+    )
+    cmd_obj._deprecated_alias = {
+        "target": target_path,
+        "remove_in": remove_in,
+        "phase": phase,
+    }
+    group.add_command(cmd_obj, old_name)
+    return cmd_obj
 
 
 def deprecated_alias(
@@ -221,8 +287,7 @@ def _render_fallback_help(
     if examples:
         lines = ["\b", "Examples:"]
         lines.extend(
-            f"  $ {cmd.replace('{prog}', prog)}"
-            + (f"  {note}" if note else "")
+            f"  $ {cmd.replace('{prog}', prog)}" + (f"  {note}" if note else "")
             for cmd, note in examples
         )
         blocks.append("\n".join(lines))

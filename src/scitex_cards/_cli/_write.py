@@ -86,7 +86,8 @@ class _BlockerOrClearParamType(click.ParamType):
             return s
         self.fail(
             f"{s!r} is not one of {VALID_BLOCKERS}, '', or 'none'",
-            param, ctx,
+            param,
+            ctx,
         )
 
     def get_metavar(self, param, ctx=None):
@@ -153,7 +154,7 @@ def _emit(payload, *, as_json: bool, human: str) -> None:
         examples=(
             (
                 "{prog} add my-task 'Implement my-task' "
-                "--agent \"$SCITEX_TODO_AGENT_ID\" --project scitex-todo",
+                '--agent "$SCITEX_TODO_AGENT_ID" --project scitex-todo',
                 "",
             ),
         ),
@@ -169,12 +170,19 @@ def _emit(payload, *, as_json: bool, human: str) -> None:
     help="Initial status (closed enum — see VALID_STATUSES).",
 )
 # Operator-co-designed surface (TG 9667).
-@click.option("--task", default=None, help="The BIG board-card text (distinct from --title).")
-@click.option("--project", default=None, help="Project / repo basename (e.g. 'scitex-todo').")
-@click.option("--host", default=None, help="Where the work happens (hostname).")
-@click.option("--agent", default=None, help="Owning agent (forward-compat alias for --assignee).")
 @click.option(
-    "--group", default=None,
+    "--task", default=None, help="The BIG board-card text (distinct from --title)."
+)
+@click.option(
+    "--project", default=None, help="Project / repo basename (e.g. 'scitex-todo')."
+)
+@click.option("--host", default=None, help="Where the work happens (hostname).")
+@click.option(
+    "--agent", default=None, help="Owning agent (forward-compat alias for --assignee)."
+)
+@click.option(
+    "--group",
+    default=None,
     help=(
         "TRACK-1 dispatch cluster (lead a2a `74db4f2d`). Free-form "
         "non-empty string. The parallelism dispatcher queries "
@@ -183,8 +191,15 @@ def _emit(payload, *, as_json: bool, human: str) -> None:
         "(viewer aggregation)."
     ),
 )
-@click.option("--goal", default=None, help="WHY (parent-goal text); 🎯 line on the card.")
-@click.option("--last-activity", "last_activity", default=None, help="ISO-8601 UTC; drives recency color.")
+@click.option(
+    "--goal", default=None, help="WHY (parent-goal text); 🎯 line on the card."
+)
+@click.option(
+    "--last-activity",
+    "last_activity",
+    default=None,
+    help="ISO-8601 UTC; drives recency color.",
+)
 @click.option(
     "--blocker",
     type=_BLOCKER_CHOICE,
@@ -200,18 +215,35 @@ def _emit(payload, *, as_json: bool, human: str) -> None:
     help="Closed enum (absent ⇒ 'task').",
 )
 # Compute-kind metadata (ADR-0002).
-@click.option("--job-id", "job_id", default=None, help="kind=compute: scheduler job id.")
+@click.option(
+    "--job-id", "job_id", default=None, help="kind=compute: scheduler job id."
+)
 @click.option("--command", default=None, help="kind=compute: command line.")
-@click.option("--started-at", "started_at", default=None, help="kind=compute: start ISO-8601 UTC.")
-@click.option("--finished-at", "finished_at", default=None, help="kind=compute: finish ISO-8601 UTC.")
+@click.option(
+    "--started-at", "started_at", default=None, help="kind=compute: start ISO-8601 UTC."
+)
+@click.option(
+    "--finished-at",
+    "finished_at",
+    default=None,
+    help="kind=compute: finish ISO-8601 UTC.",
+)
 # Legacy fields (preserved — assignee stays primary today per ADR-0008 D2).
 @click.option("--scope", default=None, help="Audience label (free-form string).")
 @click.option(
-    "--assignee", default=None, help="Who should act on this (PRIMARY linking field today)."
+    "--assignee",
+    default=None,
+    help="Who should act on this (PRIMARY linking field today).",
 )
-@click.option("--priority", type=int, default=None, help="Integer priority (lower = earlier).")
-@click.option("--parent", default=None, help="Parent task id (nests this task under it).")
-@click.option("--note", default=None, help="Markdown note shown in the board detail drawer.")
+@click.option(
+    "--priority", type=int, default=None, help="Integer priority (lower = earlier)."
+)
+@click.option(
+    "--parent", default=None, help="Parent task id (nests this task under it)."
+)
+@click.option(
+    "--note", default=None, help="Markdown note shown in the board detail drawer."
+)
 @click.option(
     "--depends-on",
     "depends_on",
@@ -226,7 +258,9 @@ def _emit(payload, *, as_json: bool, human: str) -> None:
 )
 @click.option("--repo", default=None, help="Repo association (free-form string).")
 @click.option(
-    "--created-by", "created_by", default=None,  # hook-bypass: line-limit
+    "--created-by",
+    "created_by",
+    default=None,  # hook-bypass: line-limit
     help="Creating USER (agent/human). Absent => $SCITEX_TODO_AGENT_ID -> $USER.",
 )
 @click.option("--json", "as_json", is_flag=True, help="Emit the inserted task as JSON.")
@@ -347,9 +381,7 @@ def add_cmd(
             "for success and `close --reason` for non-success). Idempotent: "
             "re-doneing a `done` task keeps the original stamp."
         ),
-        examples=(
-            ("{prog} done my-task --by \"$SCITEX_TODO_AGENT_ID\"", ""),
-        ),
+        examples=(('{prog} done my-task --by "$SCITEX_TODO_AGENT_ID"', ""),),
     ),
 )
 @click.argument("task_id")
@@ -386,9 +418,7 @@ def done_cmd(task_id, by, as_json, tasks_path) -> None:
             "Numeric progress report over the resolved store, optionally "
             "restricted to one scope/assignee before counting."
         ),
-        examples=(
-            ("{prog} summary --json", "Structured counts."),
-        ),
+        examples=(("{prog} summary --json", "Structured counts."),),
     ),
 )
 @click.option("--scope", default=None, help="Filter to this scope before counting.")
@@ -429,7 +459,9 @@ def register(main: click.Group) -> None:
 
     main.add_command(add_cmd, name="add")
     main.add_command(done_cmd, name="done")
-    main.add_command(summary_cmd, name="summary")
+    # `summary` is a NOUN, not a verb: it became `cards list --summary`
+    # (doctrine §1). `_cli/_cards.py` invokes `summary_cmd` for that mode and
+    # owns its Phase-W alias, so it is deliberately not mounted here.
     _update.register(main)
     _comment.register(main)
     _close.register(main)

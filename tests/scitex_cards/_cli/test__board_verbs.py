@@ -40,8 +40,8 @@ from click.testing import CliRunner
 
 from scitex_cards._cli import main
 from scitex_cards._cli._board import (
-    _board_pidfile,
     _board_pid_alive,
+    _board_pidfile,
     _board_read_pid,
     _board_write_pid,
     board_group,
@@ -181,10 +181,15 @@ class TestStartRefusesWhenAlreadyRunning:
 
 
 class TestBareBoardHardError:
-    """Bare ``scitex-todo board`` (no verb) is no longer back-compat — it
+    """Bare ``scitex-cards board`` (no verb) is not back-compat — it
     HARD-ERRORS with a redirect message + exit 2 so existing call sites
     get an immediate, actionable signal (operator directive TG 13316:
-    noun-verb CLI convention, no bare-noun forwarding)."""
+    noun-verb CLI convention, no bare-noun forwarding).
+
+    Since the doctrine-§12 migration, `board` is a hidden Phase-W alias of
+    the canonical `gui` group, so the redirect a bare invocation prints is
+    `gui`'s. That is the point: pointing a stranded caller at `board start`
+    would be pointing them at the deprecated spelling."""
 
     def test_bare_board_exits_with_code_2(self):
         # Arrange
@@ -200,8 +205,15 @@ class TestBareBoardHardError:
         # Act — CliRunner mixes stderr into result.output by default;
         # we check the redirect message landed in the combined stream.
         result = runner.invoke(main, ["board"])
-        # Assert — the redirect message names the canonical replacement.
-        assert "scitex-todo board start" in result.output
+        # Assert — the redirect names the CANONICAL replacement verbs.
+        assert "gui serve" in result.output
+
+    # NOTE: there is deliberately no test asserting the "deprecated" warning
+    # here. That warning is emitted ONCE PER SHELL SESSION (a PPID-keyed
+    # marker file, doctrine §5a), so whether a given invocation prints it
+    # depends on what ran before it — asserting on it would make this test
+    # order-dependent. The alias's warn behaviour is covered where it is
+    # deterministic: tests/scitex_cards/_cli/test__verb_renames.py.
 
     def test_bare_board_does_not_invoke_start(self, pidfile_path):
         # Arrange — set up a state that `board start` would normally

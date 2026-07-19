@@ -27,6 +27,8 @@ import click
 
 from ._board import (
     _board_run_server,
+    board_restart_cmd,
+    board_start_cmd,
     board_status_cmd,
     board_stop_cmd,
 )
@@ -52,11 +54,15 @@ def register(main: click.Group) -> None:
         description=(
             "The ecosystem-standard GUI verb group, shared with figrecipe / "
             "scitex-writer / scitex-scholar so one startup script can bring "
-            "every SciTeX GUI up the same way. A thin front over the `board` "
-            "lifecycle — `board` remains the canonical noun and is not "
-            "deprecated."
+            "every SciTeX GUI up the same way. `gui` is now the canonical "
+            "noun for this surface: the old `board` group is a hidden "
+            "Phase-W alias of it (doctrine §12), and every verb it had — "
+            "including `start` and `restart` — is mounted here."
         ),
-        command_categories=(("Core", ("open", "serve", "status", "stop")),),
+        command_categories=(
+            ("Core", ("open", "serve", "status", "stop")),
+            ("Lifecycle", ("start", "restart")),
+        ),
     ),
 )
 @click.pass_context
@@ -109,9 +115,7 @@ def gui_group(ctx: click.Context) -> None:
     is_flag=True,
     help="Print the planned launch without starting the server.",
 )
-def gui_serve_cmd(
-    port: int, host: str, tasks_path: str | None, dry_run: bool
-) -> None:
+def gui_serve_cmd(port: int, host: str, tasks_path: str | None, dry_run: bool) -> None:
     """Foreground-blocking serve, no browser.
 
     Example:
@@ -152,9 +156,7 @@ def gui_serve_cmd(
 @click.option("--port", type=int, default=DEFAULT_PORT, show_default=True)
 @click.option("--host", default=DEFAULT_HOST, show_default=True)
 @click.option("--tasks", "tasks_path", default=None, help="Path to tasks.yaml.")
-def gui_open_cmd(
-    surface: str, port: int, host: str, tasks_path: str | None
-) -> None:
+def gui_open_cmd(surface: str, port: int, host: str, tasks_path: str | None) -> None:
     """Serve + open a browser. Reuses a running board if there is one.
 
     Example:
@@ -191,6 +193,12 @@ def gui_open_cmd(
 # aliasing story.
 gui_group.add_command(board_status_cmd, "status")
 gui_group.add_command(board_stop_cmd, "stop")
+# `start` / `restart` are mounted here too so `gui` covers EVERY verb the
+# `board` group had. That completeness is what lets `board` become a hidden
+# Phase-W alias (doctrine §12 / 19_gui-commands.md 'Migration') without
+# stranding a caller: `board restart` has to keep resolving to something.
+gui_group.add_command(board_start_cmd, "start")
+gui_group.add_command(board_restart_cmd, "restart")
 
 
 # EOF

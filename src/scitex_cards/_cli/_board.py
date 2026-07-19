@@ -22,8 +22,6 @@ from __future__ import annotations
 
 import click
 
-from ._compat import spec_command_kwargs, spec_group_kwargs
-
 # Process/pidfile helpers live in the sibling ``_board_proc`` module
 # (extracted to keep this file under the 512-line cap). Re-imported here
 # so existing call sites + tests keep importing them from ``_board``.
@@ -38,10 +36,27 @@ from scitex_cards._cli._board_proc import (
     _board_write_pid,
 )
 
+from ._compat import spec_command_kwargs, spec_group_kwargs
+
+#: Version that removes the Phase-W ``board`` alias (doctrine §5).
+_REMOVE_IN = "0.20.0"
+
 
 def register(main: click.Group) -> None:
-    """Attach the ``board`` noun group to the root group."""
-    main.add_command(board_group)
+    """Register ``board`` as a hidden Phase-W alias of the ``gui`` group.
+
+    Doctrine §12 (19_gui-commands.md 'Migration'): `gui {open,serve,status,
+    stop}` is the ecosystem-canonical GUI group, and a package's legacy
+    gui-adjacent noun — `board` here — walks the §5 ladder into it rather
+    than living alongside it as a second name for the same server.
+
+    Every verb this group had is mounted on `gui` (see `_cli/_gui.py`), so
+    `board start` / `stop` / `restart` / `status` all still resolve, with one
+    stderr warning per shell session. `_gui.register` MUST run before this.
+    """
+    from ._compat import deprecated_path_alias
+
+    deprecated_path_alias(main, "board", path=("gui",), remove_in=_REMOVE_IN)
 
 
 def _board_run_server(
@@ -110,9 +125,7 @@ def _board_run_server(
             "`restart` / `status` work reliably from any terminal. "
             "`board start --help` documents the web extra it requires."
         ),
-        command_categories=(
-            ("Core", ("start", "stop", "restart", "status")),
-        ),
+        command_categories=(("Core", ("start", "stop", "restart", "status")),),
     ),
 )
 @click.pass_context
@@ -271,9 +284,7 @@ def board_start_cmd(
     help="Skip the interactive confirmation (no-op today; `stop` is "
     "non-interactive). Accepted per SciTeX §2 audit on mutating verbs.",
 )
-def board_stop_cmd(
-    port: int, timeout: float, dry_run: bool, assume_yes: bool
-) -> None:
+def board_stop_cmd(port: int, timeout: float, dry_run: bool, assume_yes: bool) -> None:
     """SIGTERM the board: pidfile if valid, else the port-found board.
 
     When the pidfile pid is dead/missing but a verified board is serving
@@ -410,9 +421,7 @@ def board_restart_cmd(
     # `stop` is a no-op if nothing's running — that's fine. Pass --port so
     # the stop step can fall back to a port-found board when the pidfile
     # is stale (the stale-pidfile incident this hardening targets).
-    ctx.invoke(
-        board_stop_cmd, port=port, timeout=5.0, dry_run=False, assume_yes=True
-    )
+    ctx.invoke(board_stop_cmd, port=port, timeout=5.0, dry_run=False, assume_yes=True)
     ctx.invoke(
         board_start_cmd,
         tasks_path=tasks_path,

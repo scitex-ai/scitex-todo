@@ -18,23 +18,34 @@ import json
 
 import click
 
+from ._compat import deprecated_alias, spec_command_kwargs
+
+#: Version that removes the Phase-W ``deliver`` alias (doctrine §5).
+_REMOVE_IN = "0.20.0"
+
 
 def register(main: click.Group) -> None:
-    """Attach the ``deliver`` verb to the root group."""
-    main.add_command(deliver_cmd)
+    """Attach ``deliver-notifications`` (+ the Phase-W ``deliver`` alias)."""
+    main.add_command(deliver_notifications_cmd)
+    deprecated_alias(
+        main, "deliver", target="deliver-notifications", remove_in=_REMOVE_IN
+    )
 
 
 @click.command(
-    "deliver",
-    help=(
-        "Run ONE notification-delivery pass (cron/loop-runnable).\n\n"
-        "Reads each configured recipient's pending notifications "
-        "(read-only — never touches their `seen` cursor) and hands them "
-        "to the channels in recipients.yaml, recording outcomes in the "
-        "delivery ledger so nothing is double-sent.\n\n"
-        "Example:\n"
-        "  scitex-todo deliver\n"
-        "  scitex-todo deliver --tasks ./.scitex/todo/tasks.yaml --json"
+    "deliver-notifications",
+    **spec_command_kwargs(
+        summary="Run ONE notification-delivery pass (cron/loop-runnable).",
+        description=(
+            "Reads each configured recipient's pending notifications "
+            "(read-only — never touches their `seen` cursor) and hands them "
+            "to the channels in recipients.yaml, recording outcomes in the "
+            "delivery ledger so nothing is double-sent.",
+        ),
+        examples=(
+            ("{prog} deliver-notifications", "One pass over the resolved store."),
+            ("{prog} deliver-notifications --json", "Machine-readable summary."),
+        ),
     ),
 )
 @click.option(
@@ -50,7 +61,7 @@ def register(main: click.Group) -> None:
     is_flag=True,
     help="Emit the delivery summary as JSON (machine-readable).",
 )
-def deliver_cmd(tasks_path: str | None, as_json: bool) -> None:
+def deliver_notifications_cmd(tasks_path: str | None, as_json: bool) -> None:
     """Run one delivery pass and print the summary."""
     from .._delivery import deliver_pending
 

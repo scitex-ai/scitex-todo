@@ -26,6 +26,8 @@ import logging
 
 import click
 
+from ._compat import spec_command_kwargs, spec_group_kwargs
+
 
 def register(main: click.Group) -> None:
     """Attach the ``notifyd`` group to the root group."""
@@ -35,20 +37,16 @@ def register(main: click.Group) -> None:
 @click.group(
     "notifyd",
     invoke_without_command=True,
-    help=(
-        "Run the always-on notification-delivery daemon (foreground).\n\n"
-        "Bare `scitex-todo notifyd` runs the loop in the foreground — what "
-        "the systemd unit's ExecStart calls. It ticks the delivery pass every "
-        "--interval seconds, holding a single-instance lock so two daemons "
-        "never run at once, until SIGTERM/SIGINT.\n\n"
-        "Verbs:\n"
-        "  install-unit      Write the systemd user-unit template (operator-gated)\n"
-        "  collapse-digests  Collapse each recipient's unseen digest backlog\n\n"
-        "Examples:\n"
-        "  scitex-todo notifyd --interval 120\n"
-        "  scitex-todo notifyd --once          # single pass then exit\n"
-        "  scitex-todo notifyd install-unit\n"
-        "  scitex-todo notifyd collapse-digests"
+    **spec_group_kwargs(
+        summary="The always-on notification-delivery daemon.",
+        description=(
+            "Bare `notifyd` runs the loop in the foreground — what the "
+            "systemd unit's ExecStart calls. It ticks the delivery pass "
+            "every --interval seconds, holding a single-instance lock so two "
+            "daemons never run at once, until SIGTERM/SIGINT. `--once` is a "
+            "single pass then exit.",
+        ),
+        command_categories=(("Core", ("install-unit", "collapse-digests")),),
     ),
 )
 @click.option(
@@ -121,10 +119,10 @@ def notifyd_group(
         )
         return
 
+    import os as _os
+
     from .._delivery._daemon import DaemonAlreadyRunning, pidfile_path, run_notifyd
     from .._inbox import _resolved_store
-
-    import os as _os
 
     click.echo(
         f"# scitex-todo notifyd starting: pid={_os.getpid()} "
@@ -149,14 +147,18 @@ def notifyd_group(
 
 @notifyd_group.command(
     "install-unit",
-    help=(
-        "Write the systemd user-unit template to ~/.config/systemd/user/ and "
-        "print the exact `systemctl --user` enable commands for the operator "
-        "to run. OPERATOR-GATED: this NEVER runs systemctl / enables / starts "
-        "the service.\n\n"
-        "Example:\n"
-        "  scitex-todo notifyd install-unit\n"
-        "  scitex-todo notifyd install-unit --force   # overwrite existing"
+    **spec_command_kwargs(
+        summary="Write the systemd user-unit template (operator-gated).",
+        description=(
+            "Writes the unit to ~/.config/systemd/user/ and prints the exact "
+            "`systemctl --user` enable commands for the operator to run. "
+            "OPERATOR-GATED: this NEVER runs systemctl / enables / starts "
+            "the service.",
+        ),
+        examples=(
+            ("{prog} notifyd install-unit", "Write the unit."),
+            ("{prog} notifyd install-unit --force", "Overwrite an existing one."),
+        ),
     ),
 )
 @click.option(
@@ -164,9 +166,31 @@ def notifyd_group(
     is_flag=True,
     help="Overwrite an existing unit file (default: leave it untouched).",
 )
-def install_unit_cmd(force: bool) -> None:
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Print where the unit WOULD be written and exit 0 without writing.",
+)
+@click.option(
+    "-y",
+    "--yes",
+    is_flag=True,
+    help="Skip confirmation (no-op today — this verb never prompts).",
+)
+def install_unit_cmd(force: bool, dry_run: bool, yes: bool) -> None:
     """Write the unit file (operator-gated) and print the enable commands."""
     from .._delivery._systemd import ExecStartUnresolved, install_unit
+
+    _ = yes  # accepted for §2 compliance; this verb never prompts
+    if dry_run:
+        from .._delivery._systemd import unit_path
+
+        click.echo(
+            f"# dry-run: would write the systemd user unit to {unit_path()} "
+            f"({'overwriting' if force else 'leaving'} any existing file); "
+            "systemctl is never run either way"
+        )
+        return
 
     try:
         result = install_unit(force=force)
@@ -189,15 +213,19 @@ def install_unit_cmd(force: bool) -> None:
 
 @notifyd_group.command(
     "collapse-digests",
-    help=(
-        "One-time maintenance: collapse each recipient's UNSEEN digest backlog "
-        "to the single newest digest (mark the older stale ones seen; delete "
-        "nothing). Clears a fleet-wide digest replay-storm in one safe locked "
-        "pass. The durable fix (supersede-on-enqueue) already prevents new "
-        "backlog; this cleans up what accumulated before it landed.\n\n"
-        "Example:\n"
-        "  scitex-todo notifyd collapse-digests\n"
-        "  scitex-todo notifyd collapse-digests --json"
+    **spec_command_kwargs(
+        summary="Collapse each recipient's UNSEEN digest backlog to the newest.",
+        description=(
+            "One-time maintenance: marks the older stale digests seen and "
+            "deletes nothing, clearing a fleet-wide digest replay-storm in "
+            "one safe locked pass. The durable fix (supersede-on-enqueue) "
+            "already prevents new backlog; this cleans up what accumulated "
+            "before it landed.",
+        ),
+        examples=(
+            ("{prog} notifyd collapse-digests", "Collapse the backlog."),
+            ("{prog} notifyd collapse-digests --json", "Machine-readable summary."),
+        ),
     ),
 )
 @click.option(
