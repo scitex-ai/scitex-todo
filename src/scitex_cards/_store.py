@@ -243,6 +243,27 @@ def _read_canonical_db_or_raise() -> dict:
             f"or bootstrap one with `scitex-cards db import --from-yaml`."
         )
 
+    # OWNERSHIP IS CHECKED HERE TOO, NOT ONLY ON WRITE. This is a read-MODIFY-
+    # write helper, so what the write door would refuse must fail at the read
+    # door: same verdict, several steps earlier. It was the missing half on
+    # 2026-07-19 — the write guard refused correctly all day while reads against
+    # a foreign-stamped DB kept succeeding, so the disagreement only surfaced
+    # once someone tried to write, long after a packaged fixture had been read
+    # AS the board. Reusing the write door's own predicate keeps one definition
+    # of "owns"; an UNSTAMPED DB is adoptable there and stays adoptable here.
+    from ._dual_write import _db_mirrors_this_store
+    from ._paths import resolve_tasks_path
+
+    if not _db_mirrors_this_store(db_path, resolve_tasks_path(None)):
+        raise RuntimeError(
+            f"REFUSING TO READ {db_path} as the store: that database is "
+            f"stamped for a DIFFERENT store than this process resolved. "
+            f"Reading it would treat another board's rows as yours, and the "
+            f"write-back would then replace that board. Run `scitex-cards "
+            f"health` to see both paths, then point $SCITEX_CARDS_DB at this "
+            f"store's own database."
+        )
+
     doc = export_doc(None)[0]
     if not isinstance(doc, dict) or not isinstance(doc.get("tasks"), list):
         raise RuntimeError(
