@@ -14,22 +14,101 @@ environment:
   works today, and child processes inherit the mirrored pair;
 - the un-cutover fleet exporting only OLD names keeps working, with ONE
   deprecation warning per process (operator-requested, 2026-07-16);
-- when BOTH names are set to different values, the NEW name wins, loudly.
+- when BOTH names are set to different values, the NEW name wins, loudly —
+  EXCEPT in the two cases below, where the new value is not trustworthy.
 
 The read sites migrate to the new names in the store-engine stage; this
 mirror then inverts and finally dies together with the ``scitex_todo`` shim.
+
+WHY THIS MODULE NOW REFUSES SOME OVERRIDES (incident 2026-07-19)
+---------------------------------------------------------------
+"The new name wins" is the right policy for a DELIBERATE migration. It was
+implemented as an UNCONDITIONAL overwrite, and that is a different thing: it
+means a malformed new-prefix value silently defeats a working old-prefix one.
+Measured on the live fleet, from the MCP server's own ``/proc/<pid>/environ``:
+
+    SCITEX_TODO_TASKS_YAML_SHARED  = ~/.scitex/todo/tasks.yaml    (2117 cards)
+    SCITEX_CARDS_TASKS_YAML_SHARED = ~/.scitex/cards/tasks.yaml   (5 cards)
+    SCITEX_TODO_AGENT_ID           = scitex-cards
+    SCITEX_CARDS_AGENT_ID          = ${SCITEX_CARDS_AGENT_ID}     <- literal
+
+Both overrides applied. The store silently FORKED: agents wrote into an empty
+store while the fleet's history sat untouched in the other one, and every card
+written carried ``created_by: ${SCITEX_CARDS_AGENT_ID}``. A hard SQLite cutover
+seeded from "the resolved store" would have built the database from 5 cards and
+destroyed 2117 — the fork was the only thing between a correct-sounding
+instruction and total loss.
+
+The upstream defect (a spec template that did not expand) is not ours. Turning
+somebody else's config bug into silent data loss IS ours. Hence two refusals:
+
+1. An UNEXPANDED value is not a value. ``${FOO}`` reaching a process means an
+   expansion failed; treating it as data propagates the failure into the store.
+2. A rename must not silently RELOCATE a mutable data store. If the two names
+   disagree and the OLD path exists with content, that is a fork, not a
+   migration.
+
+Both refuse LOUDLY and keep the old value. Refusing is safe (the pre-rename
+configuration keeps working); accepting is not (it strands writes).
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import re
+from pathlib import Path
 from typing import MutableMapping
 
 logger = logging.getLogger(__name__)
 
 NEW_PREFIX = "SCITEX_CARDS_"
 OLD_PREFIX = "SCITEX_TODO_"
+
+#: A value that is *entirely* an unexpanded shell/template placeholder —
+#: ``${FOO}``, ``$FOO``, ``{{ foo }}``. Anchored on purpose: a legitimate path
+#: may CONTAIN a ``$`` (rare, but legal in POSIX filenames), and only a value
+#: that is nothing but a placeholder is unambiguously a failed expansion.
+_UNEXPANDED = re.compile(
+    r"^\s*(\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*|\{\{[^}]*\}\})\s*$"
+)
+
+#: Suffixes of vars that name a MUTABLE DATA STORE. Relocating one of these
+#: does not change behaviour — it changes which data you are looking at, and a
+#: wrong answer here is indistinguishable from an empty board.
+_DATA_STORE_SUFFIXES = ("TASKS_YAML_SHARED", "TASKS_DB", "DB_PATH")
+
+
+def _is_unexpanded(value: str) -> bool:
+    """True when ``value`` is nothing but an unexpanded placeholder."""
+    return bool(_UNEXPANDED.match(value))
+
+
+def _names_a_data_store(suffix: str) -> bool:
+    return suffix.endswith(_DATA_STORE_SUFFIXES)
+
+
+def _would_relocate_populated_store(
+    suffix: str, old_value: str, new_value: str
+) -> bool:
+    """True when honouring ``new_value`` would move us off a POPULATED store.
+
+    Deliberately conservative: we only refuse when the OLD path exists and is
+    non-empty. A first-time setup (old path absent) is a real migration and is
+    allowed through — refusing there would break every fresh install.
+    """
+    if not _names_a_data_store(suffix):
+        return False
+    try:
+        old_path = Path(old_value)
+        if not old_path.is_file() or old_path.stat().st_size == 0:
+            return False
+        return Path(new_value) != old_path
+    except OSError:
+        # Unreadable/odd path: not evidence of a populated store, so do not
+        # refuse on it. NEVER let this helper raise — it runs at import time,
+        # and an exception here would make `import scitex_cards` fail outright.
+        return False
 
 
 def mirror_env(environ: MutableMapping[str, str] = os.environ) -> None:
@@ -38,24 +117,67 @@ def mirror_env(environ: MutableMapping[str, str] = os.environ) -> None:
     Also emits one aggregate deprecation warning when old-prefix names are
     in use without a new-prefix twin — the signal the operator asked for to
     find un-migrated exports during the transition window.
+
+    Two classes of new-prefix value are REFUSED rather than mirrored; see the
+    module docstring for the incident that added them. A refusal keeps the old
+    value, logs at ERROR, and never raises: this runs at import time, so a
+    raise here would make ``import scitex_cards`` fail for every consumer.
     """
     for new in [k for k in environ if k.startswith(NEW_PREFIX)]:
-        old = OLD_PREFIX + new[len(NEW_PREFIX) :]
-        if environ.get(old) not in (None, environ[new]):
+        suffix = new[len(NEW_PREFIX) :]
+        old = OLD_PREFIX + suffix
+        new_value = environ[new]
+        old_value = environ.get(old)
+
+        # REFUSAL 1 — an unexpanded placeholder is a failed expansion, not a
+        # value. Mirroring it writes the literal `${...}` into whatever the var
+        # feeds; for AGENT_ID that lands in every card's `created_by`.
+        if _is_unexpanded(new_value):
+            logger.error(
+                "%s=%r is an UNEXPANDED placeholder, not a value — refusing to "
+                "mirror it onto %s (keeping %r). Fix the spec/template that "
+                "should have expanded it; this process continues on the old name.",
+                new,
+                new_value,
+                old,
+                old_value,
+            )
+            continue
+
+        # REFUSAL 2 — a rename must not silently relocate a populated data
+        # store. Honouring this would fork the store: new writes land in one
+        # file while the existing history sits in another, with nothing to
+        # reconcile them.
+        if old_value is not None and _would_relocate_populated_store(
+            suffix, old_value, new_value
+        ):
+            logger.error(
+                "%s=%r would relocate a POPULATED data store away from %s=%r — "
+                "refusing. This is a fork, not a migration: writes would land in "
+                "the new file while the existing records stay in the old one. "
+                "Migrate the data first, then unset %s.",
+                new,
+                new_value,
+                old,
+                old_value,
+                old,
+            )
+            continue
+
+        if old_value not in (None, new_value):
             logger.warning(
                 "%s=%r overrides %s=%r (the SCITEX_CARDS_* name wins)",
                 new,
-                environ[new],
+                new_value,
                 old,
-                environ[old],
+                old_value,
             )
-        environ[old] = environ[new]
+        environ[old] = new_value
 
     old_only = sorted(
         k
         for k in environ
-        if k.startswith(OLD_PREFIX)
-        and NEW_PREFIX + k[len(OLD_PREFIX) :] not in environ
+        if k.startswith(OLD_PREFIX) and NEW_PREFIX + k[len(OLD_PREFIX) :] not in environ
     )
     if old_only:
         logger.warning(
