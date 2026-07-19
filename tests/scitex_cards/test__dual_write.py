@@ -24,13 +24,13 @@ from scitex_cards._db import ENV_DB, resolve_db_path
 
 
 @pytest.fixture(autouse=True)
-def _clean(monkeypatch, tmp_path):
+def _clean(env, tmp_path):
     """Each test gets its own store + DB, and a clean failure counter.
 
     The env var is ``SCITEX_TODO_DB`` (``_db.ENV_DB``) — checked, not assumed.
     """
     _dual_write.reset_failures()
-    monkeypatch.setenv(ENV_DB, str(tmp_path / "todo.db"))
+    env.set(ENV_DB, str(tmp_path / "todo.db"))
     yield
     _dual_write.reset_failures()
 
@@ -57,10 +57,10 @@ def _break_the_mirror(monkeypatch) -> None:
 # --------------------------------------------------------------------------
 
 
-def test_mirror_is_off_by_default(monkeypatch, tmp_path):
+def test_mirror_is_off_by_default(env, tmp_path):
     """The write path of the fleet's critical store does not get a flag day."""
     # Arrange
-    monkeypatch.delenv(_dual_write.ENV_DUAL_WRITE, raising=False)
+    env.delete(_dual_write.ENV_DUAL_WRITE)
 
     # Act
     on = _dual_write.enabled()
@@ -69,9 +69,9 @@ def test_mirror_is_off_by_default(monkeypatch, tmp_path):
     assert on is False
 
 
-def test_a_card_write_with_the_mirror_off_touches_no_db(monkeypatch, tmp_path):
+def test_a_card_write_with_the_mirror_off_touches_no_db(env, tmp_path):
     # Arrange
-    monkeypatch.delenv(_dual_write.ENV_DUAL_WRITE, raising=False)
+    env.delete(_dual_write.ENV_DUAL_WRITE)
     store = tmp_path / "tasks.yaml"
 
     # Act
@@ -86,9 +86,9 @@ def test_a_card_write_with_the_mirror_off_touches_no_db(monkeypatch, tmp_path):
 # --------------------------------------------------------------------------
 
 
-def test_mirror_writes_the_card_into_sqlite(monkeypatch, tmp_path):
+def test_mirror_writes_the_card_into_sqlite(env, tmp_path):
     # Arrange
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+    env.set(_dual_write.ENV_DUAL_WRITE, "1")
     store = tmp_path / "tasks.yaml"
 
     # Act
@@ -98,10 +98,10 @@ def test_mirror_writes_the_card_into_sqlite(monkeypatch, tmp_path):
     assert _db_ids(resolve_db_path()) == {"a"}
 
 
-def test_mirror_tracks_a_delete(monkeypatch, tmp_path):
+def test_mirror_tracks_a_delete(env, tmp_path):
     """A rebuild-mirror must DROP rows that left the YAML, not just add new ones."""
     # Arrange
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+    env.set(_dual_write.ENV_DUAL_WRITE, "1")
     store = tmp_path / "tasks.yaml"
     _store.add_task(store, id="a", title="A", assignee="tester")
     _store.add_task(store, id="b", title="B", assignee="tester")
@@ -113,9 +113,9 @@ def test_mirror_tracks_a_delete(monkeypatch, tmp_path):
     assert _db_ids(resolve_db_path()) == {"b"}
 
 
-def test_mirror_leaves_no_failures_on_the_happy_path(monkeypatch, tmp_path):
+def test_mirror_leaves_no_failures_on_the_happy_path(env, tmp_path):
     # Arrange
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+    env.set(_dual_write.ENV_DUAL_WRITE, "1")
     store = tmp_path / "tasks.yaml"
 
     # Act
@@ -136,10 +136,10 @@ def test_mirror_leaves_no_failures_on_the_happy_path(monkeypatch, tmp_path):
 # --------------------------------------------------------------------------
 
 
-def test_a_mirror_failure_does_not_fail_the_card_write(monkeypatch, tmp_path):
+def test_a_mirror_failure_does_not_fail_the_card_write(monkeypatch, tmp_path, env):
     """The card MUST still be written. The user's data is not the mirror's hostage."""
     # Arrange
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+    env.set(_dual_write.ENV_DUAL_WRITE, "1")
     store = tmp_path / "tasks.yaml"
     _break_the_mirror(monkeypatch)
 
@@ -150,9 +150,9 @@ def test_a_mirror_failure_does_not_fail_the_card_write(monkeypatch, tmp_path):
     assert [t["id"] for t in _store.list_tasks(store)] == ["a"]
 
 
-def test_a_mirror_failure_is_counted_not_swallowed(monkeypatch, tmp_path):
+def test_a_mirror_failure_is_counted_not_swallowed(monkeypatch, tmp_path, env):
     # Arrange
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+    env.set(_dual_write.ENV_DUAL_WRITE, "1")
     store = tmp_path / "tasks.yaml"
     _break_the_mirror(monkeypatch)
 
@@ -163,10 +163,10 @@ def test_a_mirror_failure_is_counted_not_swallowed(monkeypatch, tmp_path):
     assert _dual_write.failure_count() == 1
 
 
-def test_a_mirror_failure_is_logged_loud(monkeypatch, tmp_path, caplog):
+def test_a_mirror_failure_is_logged_loud(monkeypatch, tmp_path, caplog, env):
     """Silence is the failure mode this whole codebase spent two days digging out of."""
     # Arrange
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+    env.set(_dual_write.ENV_DUAL_WRITE, "1")
     store = tmp_path / "tasks.yaml"
     _break_the_mirror(monkeypatch)
 
@@ -181,42 +181,42 @@ def test_a_mirror_failure_is_logged_loud(monkeypatch, tmp_path, caplog):
 # A single failure means the DB no longer matches the YAML. There is no partial
 # credit for a store that is only mostly right — and a health check that shrugs at
 # divergence is how S2 ends up cutting over to a store that is confidently wrong.
-def _health_after_one_recorded_failure(monkeypatch):
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+def _health_after_one_recorded_failure(env):
+    env.set(_dual_write.ENV_DUAL_WRITE, "1")
     _dual_write._failures.append("sqlite3.OperationalError: disk I/O error")
     return _dual_write.check_mirror_healthy()
 
 
-def test_health_reports_a_diverged_mirror_as_not_ok(monkeypatch):
+def test_health_reports_a_diverged_mirror_as_not_ok(env):
     # Arrange
     # Act
-    res = _health_after_one_recorded_failure(monkeypatch)
+    res = _health_after_one_recorded_failure(env)
 
     # Assert
     assert res["ok"] is False
 
 
-def test_health_names_the_divergence_in_its_detail(monkeypatch):
+def test_health_names_the_divergence_in_its_detail(env):
     # Arrange
     # Act
-    res = _health_after_one_recorded_failure(monkeypatch)
+    res = _health_after_one_recorded_failure(env)
 
     # Assert
     assert "DIVERGED" in res["detail"]
 
 
-def test_health_hints_the_actual_repair_command(monkeypatch):
+def test_health_hints_the_actual_repair_command(env):
     # Arrange
     # Act
-    res = _health_after_one_recorded_failure(monkeypatch)
+    res = _health_after_one_recorded_failure(env)
 
     # Assert — names the actual repair, not a vague "check the logs".
     assert "db import" in (res["hint"] or "")
 
 
-def test_health_is_ok_when_the_mirror_is_off(monkeypatch):
+def test_health_is_ok_when_the_mirror_is_off(env):
     # Arrange
-    monkeypatch.delenv(_dual_write.ENV_DUAL_WRITE, raising=False)
+    env.delete(_dual_write.ENV_DUAL_WRITE)
 
     # Act
     res = _dual_write.check_mirror_healthy()
@@ -230,7 +230,7 @@ def test_health_is_ok_when_the_mirror_is_off(monkeypatch):
 # --------------------------------------------------------------------------
 
 
-def test_the_mirror_does_not_touch_the_messages_table(monkeypatch, tmp_path):
+def test_the_mirror_does_not_touch_the_messages_table(env, tmp_path):
     """DM threads MUST survive a card write.
 
     My first design rebuilt EVERY table from the doc — including `messages`, which
@@ -242,7 +242,7 @@ def test_the_mirror_does_not_touch_the_messages_table(monkeypatch, tmp_path):
     A table must be owned by exactly the file that produces it.
     """
     # Arrange — a card write builds the DB, then a DM lands in `messages`.
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+    env.set(_dual_write.ENV_DUAL_WRITE, "1")
     store = tmp_path / "tasks.yaml"
     _store.add_task(store, id="a", title="A", assignee="tester")
     db = resolve_db_path()
@@ -284,16 +284,18 @@ def test_the_mirror_does_not_touch_the_messages_table(monkeypatch, tmp_path):
 # The precondition was real, agreed, and written down — in a MESSAGE BETWEEN TWO AGENTS.
 # A precondition that lives only in a message is not a precondition; it is a hope. It
 # lives in the code now, and these tests are what keep it there.
-def _flag_on_without_an_incremental_mirror(monkeypatch) -> None:
+def _flag_on_without_an_incremental_mirror(monkeypatch, env) -> None:
     """Env var ON, but the code cannot honour it."""
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+    env.set(_dual_write.ENV_DUAL_WRITE, "1")
     monkeypatch.setattr(_dual_write, "_has_incremental_mirror", lambda: False)
     monkeypatch.setattr(_dual_write, "_refusal_logged", False)
 
 
-def test_flag_is_REFUSED_when_the_code_has_no_incremental_mirror(monkeypatch, caplog):
+def test_flag_is_REFUSED_when_the_code_has_no_incremental_mirror(
+    monkeypatch, caplog, env
+):
     # Arrange
-    _flag_on_without_an_incremental_mirror(monkeypatch)
+    _flag_on_without_an_incremental_mirror(monkeypatch, env)
 
     # Act
     with caplog.at_level("ERROR"):
@@ -306,10 +308,10 @@ def test_flag_is_REFUSED_when_the_code_has_no_incremental_mirror(monkeypatch, ca
     )
 
 
-def test_the_refusal_names_itself_in_the_log(monkeypatch, caplog):
+def test_the_refusal_names_itself_in_the_log(monkeypatch, caplog, env):
     """It must not fail in silence: a refusal nobody sees is a 35x slowdown nobody debugs."""
     # Arrange
-    _flag_on_without_an_incremental_mirror(monkeypatch)
+    _flag_on_without_an_incremental_mirror(monkeypatch, env)
 
     # Act
     with caplog.at_level("ERROR"):
@@ -319,9 +321,9 @@ def test_the_refusal_names_itself_in_the_log(monkeypatch, caplog):
     assert "REFUSING TO DUAL-WRITE" in caplog.text
 
 
-def test_the_refusal_log_hints_how_to_recover_the_mirror(monkeypatch, caplog):
+def test_the_refusal_log_hints_how_to_recover_the_mirror(monkeypatch, caplog, env):
     # Arrange
-    _flag_on_without_an_incremental_mirror(monkeypatch)
+    _flag_on_without_an_incremental_mirror(monkeypatch, env)
 
     # Act
     with caplog.at_level("ERROR"):
@@ -331,10 +333,12 @@ def test_the_refusal_log_hints_how_to_recover_the_mirror(monkeypatch, caplog):
     assert "db import" in caplog.text, "the hint must say how to recover the mirror"
 
 
-def test_flag_is_HONOURED_when_the_code_does_have_the_incremental_mirror(monkeypatch):
+def test_flag_is_HONOURED_when_the_code_does_have_the_incremental_mirror(
+    monkeypatch, env
+):
     """The guard must not be a blanket off-switch — real code must still dual-write."""
     # Arrange
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+    env.set(_dual_write.ENV_DUAL_WRITE, "1")
     monkeypatch.setattr(_dual_write, "_has_incremental_mirror", lambda: True)
 
     # Act
@@ -371,14 +375,14 @@ def test_the_guard_asks_for_a_SYMBOL_not_a_version_string():
     assert callable(symbol)
 
 
-def test_the_refusal_is_logged_ONCE_not_once_per_write(monkeypatch, caplog):
+def test_the_refusal_is_logged_ONCE_not_once_per_write(monkeypatch, caplog, env):
     """A 135 s bug deserves a loud message. The same message on every write is noise.
 
     An alert that fires constantly on something the reader cannot act on teaches them to
     ignore the channel — which is how the next real failure goes unread.
     """
     # Arrange
-    _flag_on_without_an_incremental_mirror(monkeypatch)
+    _flag_on_without_an_incremental_mirror(monkeypatch, env)
 
     # Act
     with caplog.at_level("ERROR"):
@@ -389,10 +393,10 @@ def test_the_refusal_is_logged_ONCE_not_once_per_write(monkeypatch, caplog):
     assert caplog.text.count("REFUSING TO DUAL-WRITE") == 1
 
 
-def test_every_repeated_call_still_refuses_the_flag(monkeypatch, caplog):
+def test_every_repeated_call_still_refuses_the_flag(monkeypatch, caplog, env):
     """Logging once must not mean RELENTING once — every call still refuses."""
     # Arrange
-    _flag_on_without_an_incremental_mirror(monkeypatch)
+    _flag_on_without_an_incremental_mirror(monkeypatch, env)
 
     # Act
     with caplog.at_level("ERROR"):
@@ -413,32 +417,32 @@ def test_every_repeated_call_still_refuses_the_flag(monkeypatch, caplog):
 # controls guard the opposite error of refusing legitimate mirrors.
 
 
-def _mirror_of_store_a(monkeypatch, tmp_path):
+def _mirror_of_store_a(env, tmp_path):
     """Build a DB that is store A's mirror, holding A's single card."""
     store_a = tmp_path / "a" / "tasks.yaml"
     store_a.parent.mkdir()
     db = tmp_path / "mirror-of-a.db"
-    monkeypatch.setenv(ENV_DB, str(db))
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+    env.set(ENV_DB, str(db))
+    env.set(_dual_write.ENV_DUAL_WRITE, "1")
     _store.add_task(store_a, id="a-only", title="A", assignee="agent:test-suite")
     return db
 
 
-def test_the_mirror_of_store_a_really_holds_store_as_card(monkeypatch, tmp_path):
+def test_the_mirror_of_store_a_really_holds_store_as_card(env, tmp_path):
     # Arrange
     # Act
-    db = _mirror_of_store_a(monkeypatch, tmp_path)
+    db = _mirror_of_store_a(env, tmp_path)
 
     # Assert — the precondition every foreign-write test below rests on.
     assert "a-only" in _db_ids(db), "precondition: the DB mirrors store A"
 
 
 def test_a_write_to_a_foreign_store_does_not_clobber_another_stores_mirror(
-    monkeypatch, tmp_path
+    env, tmp_path
 ):
     """The incident, in miniature: store B must not overwrite store A's mirror."""
     # Arrange — a DB that is store A's mirror, holding A's card.
-    db = _mirror_of_store_a(monkeypatch, tmp_path)
+    db = _mirror_of_store_a(env, tmp_path)
 
     # Act — a DIFFERENT store writes while the same DB is resolved from env.
     store_b = tmp_path / "b" / "tasks.yaml"
@@ -452,15 +456,13 @@ def test_a_write_to_a_foreign_store_does_not_clobber_another_stores_mirror(
     )
 
 
-def test_an_unstamped_db_is_adoptable_so_a_fresh_mirror_still_bootstraps(
-    monkeypatch, tmp_path
-):
+def test_an_unstamped_db_is_adoptable_so_a_fresh_mirror_still_bootstraps(env, tmp_path):
     """Control: refusing must not break the FIRST write to a brand-new mirror."""
     # Arrange
     store = tmp_path / "tasks.yaml"
     db = tmp_path / "fresh.db"
-    monkeypatch.setenv(ENV_DB, str(db))
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+    env.set(ENV_DB, str(db))
+    env.set(_dual_write.ENV_DUAL_WRITE, "1")
 
     # Act
     _store.add_task(store, id="first", title="first", assignee="agent:test-suite")
@@ -471,13 +473,13 @@ def test_an_unstamped_db_is_adoptable_so_a_fresh_mirror_still_bootstraps(
     )
 
 
-def test_a_store_writing_to_its_own_mirror_is_not_refused(monkeypatch, tmp_path):
+def test_a_store_writing_to_its_own_mirror_is_not_refused(env, tmp_path):
     """Control: the normal case — repeated writes to one's own mirror keep working."""
     # Arrange
     store = tmp_path / "tasks.yaml"
     db = tmp_path / "own.db"
-    monkeypatch.setenv(ENV_DB, str(db))
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+    env.set(ENV_DB, str(db))
+    env.set(_dual_write.ENV_DUAL_WRITE, "1")
     _store.add_task(store, id="one", title="one", assignee="agent:test-suite")
 
     # Act
@@ -496,13 +498,11 @@ def test_a_store_writing_to_its_own_mirror_is_not_refused(monkeypatch, tmp_path)
 # harder (2,138 -> 1). Declining quietly is right when YAML still holds the card and
 # wrong when the DB is the only copy: it would report success for a card that was
 # never stored.
-def test_canonical_write_to_a_foreign_db_RAISES_rather_than_clobbering(
-    monkeypatch, tmp_path
-):
+def test_canonical_write_to_a_foreign_db_RAISES_rather_than_clobbering(env, tmp_path):
     # Arrange — a DB that belongs to store A.
     from scitex_cards import _store_backend
 
-    db = _mirror_of_store_a(monkeypatch, tmp_path)
+    db = _mirror_of_store_a(env, tmp_path)
     store_b = tmp_path / "b" / "tasks.yaml"
 
     # Act
@@ -511,13 +511,11 @@ def test_canonical_write_to_a_foreign_db_RAISES_rather_than_clobbering(
         _store_backend.write_doc_to_db({"tasks": [{"id": "b-only"}]}, store_b)
 
 
-def test_a_refused_canonical_write_leaves_the_foreign_rows_untouched(
-    monkeypatch, tmp_path
-):
+def test_a_refused_canonical_write_leaves_the_foreign_rows_untouched(env, tmp_path):
     # Arrange — a DB that belongs to store A.
     from scitex_cards import _store_backend
 
-    db = _mirror_of_store_a(monkeypatch, tmp_path)
+    db = _mirror_of_store_a(env, tmp_path)
     store_b = tmp_path / "b" / "tasks.yaml"
 
     # Act — the refused write. (Captured, not `pytest.raises`: the refusal
@@ -533,9 +531,7 @@ def test_a_refused_canonical_write_leaves_the_foreign_rows_untouched(
     assert _db_ids(db) == {"a-only"}
 
 
-def test_a_missing_canonical_db_RAISES_instead_of_reading_an_empty_store(
-    monkeypatch, tmp_path
-):
+def test_a_missing_canonical_db_RAISES_instead_of_reading_an_empty_store(env, tmp_path):
     """A failed READ must never become a write of nothing.
 
     In canonical mode the value returned here is written back as the WHOLE
@@ -549,7 +545,7 @@ def test_a_missing_canonical_db_RAISES_instead_of_reading_an_empty_store(
     # Arrange — point at a database that does not exist.
     from scitex_cards._store import _read_canonical_db_or_raise
 
-    monkeypatch.setenv(ENV_DB, str(tmp_path / "not-here.db"))
+    env.set(ENV_DB, str(tmp_path / "not-here.db"))
 
     # Act
     # Assert
@@ -557,7 +553,7 @@ def test_a_missing_canonical_db_RAISES_instead_of_reading_an_empty_store(
         _read_canonical_db_or_raise()
 
 
-def test_restoring_from_a_snapshot_keeps_the_stores_own_identity(monkeypatch, tmp_path):
+def test_restoring_from_a_snapshot_keeps_the_stores_own_identity(env, tmp_path):
     """A RESTORE must not re-label the database as the backup it read.
 
     The provenance stamp is the DB's IDENTITY — the ownership guards refuse a
@@ -581,7 +577,7 @@ def test_restoring_from_a_snapshot_keeps_the_stores_own_identity(monkeypatch, tm
     live = tmp_path / "cards" / "tasks.yaml"
     live.parent.mkdir()
     db = tmp_path / "cards" / "cards.db"
-    monkeypatch.setenv(ENV_DB, str(db))
+    env.set(ENV_DB, str(db))
 
     # Act
     import_from_yaml(tasks_path=str(snap), as_store=str(live))
