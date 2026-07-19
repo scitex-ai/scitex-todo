@@ -12,6 +12,7 @@ import pytest
 from scitex_cards._paths import (
     ENV_TASKS,
     ENV_TASKS_DEPRECATED,
+    PKG_SHORT,
     _find_git_root,
     bundled_example,
     resolve_tasks_path,
@@ -214,13 +215,20 @@ def resolution_with_a_project_shadow_store(tmp_path, clean_tasks_env, env):
     project = tmp_path / "repo"
     project.mkdir()
     (project / ".git").mkdir()
-    proj_store_dir = project / ".scitex" / "todo"
+    # The directory name comes from PKG_SHORT rather than a literal. This test
+    # is about PRECEDENCE — user scope beats an in-repo shadow — and hardcoding
+    # the name made it fail on the 2026-07-19 rename for a reason unrelated to
+    # what it checks. The name itself is pinned once, explicitly, by
+    # test_pkg_short_names_the_cards_directory below; asserting it here too
+    # would spread one fact across two files again, which is the exact defect
+    # that day was spent unwinding.
+    proj_store_dir = project / ".scitex" / PKG_SHORT
     proj_store_dir.mkdir(parents=True)
     proj_store = proj_store_dir / "tasks.yaml"
     proj_store.write_text("tasks: []\n", encoding="utf-8")
     # The canonical user-scope store the resolver MUST prefer.
     user_root = tmp_path / "user-scitex"
-    user_dir = user_root / "todo"
+    user_dir = user_root / PKG_SHORT
     user_dir.mkdir(parents=True)
     user_store = user_dir / "tasks.yaml"
     user_store.write_text("tasks: []\n", encoding="utf-8")
@@ -231,6 +239,24 @@ def resolution_with_a_project_shadow_store(tmp_path, clean_tasks_env, env):
         "user_store": user_store,
         "proj_store": proj_store,
     }
+
+
+def test_pkg_short_names_the_cards_directory():
+    """PKG_SHORT is "cards" — the ONE place the store directory is named.
+
+    This is the whole point of the constant, and it is asserted here alone so a
+    rename fails in exactly one obvious spot instead of scattering across every
+    fixture that builds a path.
+
+    It earns a dedicated test because the value being stale was not cosmetic. It
+    stayed "todo" through the 2026-07-16 rename, so the compiled-in default
+    resolved ~/.scitex/todo/tasks.yaml while the live database was stamped
+    ~/.scitex/cards/tasks.yaml. The store-ownership guard then correctly refused
+    EVERY write from any process without an explicit store variable: agents
+    booted, read fine, and could not write a single card.
+    """
+    # Arrange / Act / Assert — a constant needs no arrangement.
+    assert PKG_SHORT == "cards"
 
 
 def test_user_scope_wins_over_project_store(resolution_with_a_project_shadow_store):
@@ -259,7 +285,10 @@ def test_user_scope_used_when_no_project_store(tmp_path, clean_tasks_env, env):
     work = tmp_path / "work"
     work.mkdir()
     user_root = tmp_path / "user-scitex"
-    user_dir = user_root / "todo"
+    # Derived from PKG_SHORT, not a literal — this test is about PRECEDENCE,
+    # and the directory NAME is pinned once by test_pkg_short_names_the_cards_
+    # directory. See the note on the shadow-store fixture above.
+    user_dir = user_root / PKG_SHORT
     user_dir.mkdir(parents=True)
     user_store = user_dir / "tasks.yaml"
     user_store.write_text("tasks: []\n", encoding="utf-8")
