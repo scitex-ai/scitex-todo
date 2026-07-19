@@ -23,10 +23,28 @@ def _version_of(pyproject: Path) -> str:
     return m.group(1)
 
 
-def test_stub_version_equals_main_version():
+#: The stub's pyproject — the single artefact every test below reads.
+STUB_PYPROJECT = REPO / "stub" / "scitex-todo" / "pyproject.toml"
+
+#: WHY the console-script tests below are split but share this rationale:
+#: the stub MUST recreate BOTH CLIs because it installs LAST in an upgrade.
+#: Old scitex-todo wheels (0.13.x-0.15.x) own bin/scitex-todo AND
+#: bin/scitex-cards in their RECORD, so upgrading deletes BOTH — and pip
+#: processes dependencies first, so scitex-cards' own reinstall cannot save
+#: them. The stub is the final dist processed in that transaction; its script
+#: declarations are what puts the binaries back (card
+#: scitex-cards-alias-destroyed-by-uninstall-order-collision-20260717,
+#: venv-matrix verified 2026-07-18). Dropping EITHER line silently revives the
+#: fleet-wide CLI kill, which is why each line gets its own test: when one
+#: regresses, the failure names which binary died.
+
+
+def test_stub_version_equals_main_package_version():
     # Arrange
-    main_v = _version_of(REPO / "pyproject.toml")
-    stub_v = _version_of(REPO / "stub" / "scitex-todo" / "pyproject.toml")
+    main_pyproject = REPO / "pyproject.toml"
+    # Act
+    main_v = _version_of(main_pyproject)
+    stub_v = _version_of(STUB_PYPROJECT)
     # Assert
     assert stub_v == main_v, (
         f"stub/scitex-todo is {stub_v} but the main package is {main_v} — "
@@ -34,27 +52,28 @@ def test_stub_version_equals_main_version():
     )
 
 
-def test_stub_depends_on_scitex_cards():
+def test_stub_declares_dependency_on_scitex_cards():
     # Arrange
-    text = (REPO / "stub" / "scitex-todo" / "pyproject.toml").read_text()
+    pattern = r'dependencies = \["scitex-cards>='
+    # Act
+    text = STUB_PYPROJECT.read_text()
     # Assert — the whole point of the stub.
-    assert re.search(r'dependencies = \["scitex-cards>=', text)
+    assert re.search(pattern, text)
 
 
-def test_stub_declares_both_console_scripts():
-    """The stub MUST recreate both CLIs — it installs LAST in an upgrade.
-
-    Old scitex-todo wheels (0.13.x-0.15.x) own bin/scitex-todo AND
-    bin/scitex-cards in their RECORD, so upgrading deletes BOTH — and pip
-    processes dependencies first, so scitex-cards' own reinstall cannot save
-    them. The stub is the final dist processed in that transaction; its
-    script declarations are what puts the binaries back (card
-    scitex-cards-alias-destroyed-by-uninstall-order-collision-20260717,
-    venv-matrix verified 2026-07-18). Dropping either line silently revives
-    the fleet-wide CLI kill.
-    """
+def test_stub_declares_the_scitex_todo_console_script():
     # Arrange
-    text = (REPO / "stub" / "scitex-todo" / "pyproject.toml").read_text()
-    # Assert — both scripts, both pointing at the real CLI.
-    assert re.search(r'^scitex-todo = "scitex_cards\._cli:main"$', text, re.MULTILINE)
-    assert re.search(r'^scitex-cards = "scitex_cards\._cli:main"$', text, re.MULTILINE)
+    pattern = r'^scitex-todo = "scitex_cards\._cli:main"$'
+    # Act
+    text = STUB_PYPROJECT.read_text()
+    # Assert
+    assert re.search(pattern, text, re.MULTILINE)
+
+
+def test_stub_declares_the_scitex_cards_console_script():
+    # Arrange
+    pattern = r'^scitex-cards = "scitex_cards\._cli:main"$'
+    # Act
+    text = STUB_PYPROJECT.read_text()
+    # Assert
+    assert re.search(pattern, text, re.MULTILINE)
