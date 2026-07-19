@@ -43,17 +43,17 @@ case "$tool_name" in
 esac
 
 cat >&2 <<EOF
-[scitex-todo redirect] you called ${tool_name}. Project doctrine
-(operator op-12038): fleet tasks live in scitex-todo's shared
-YAML store, NOT Claude's per-session list.
+[scitex-cards redirect] you called ${tool_name}. Project doctrine
+(operator op-12038): fleet tasks live in scitex-cards' shared
+store, NOT Claude's per-session list.
 
 Use instead:
-  scitex-todo add <id> --title "..." --assignee <you>
-  scitex-todo update <id> --status in_progress
-  scitex-todo list-tasks --assignee <you> --status pending
+  scitex-cards add <id> --title "..." --assignee <you>
+  scitex-cards update <id> --status in_progress
+  scitex-cards list-tasks --assignee <you> --status pending
 
-Or use the scitex-todo MCP server (already in .mcp.json on every
-container — see skill \`scitex-todo-usage\`).
+Or use the scitex-cards MCP server (already in .mcp.json on every
+container — see skill \`scitex-cards-usage\`).
 
 Opt-out (rare): CC_ALLOW_CLAUDE_TASKLIST=1
 EOF
