@@ -92,7 +92,6 @@ from ._paths import resolve_tasks_path  # noqa: F401  (re-export)
 # `_cli/_stale.py`: `from .._store import load_tasks`. "Unused in this file" is not
 # "unused". I pruned them once; the full suite caught it immediately. Do not prune
 # them again — remove the re-export only together with its importers.
-
 # The READ / QUERY surface now lives in `_store_list` — `list_tasks` /
 # `summarize_tasks` / `_match` and the resolvers they need. RE-EXPORTED HERE so
 # every existing caller keeps working untouched: `_store.list_tasks(...)`,
@@ -215,9 +214,7 @@ def _utc_now_iso() -> str:
 # --------------------------------------------------------------------------- #
 # Read-modify-write helper                                                     #
 # --------------------------------------------------------------------------- #
-def _read_write_doc(
-    path: str | Path, *, missing_ok: bool = False
-) -> tuple[dict, list]:
+def _read_write_doc(path: str | Path, *, missing_ok: bool = False) -> tuple[dict, list]:
     """Load the FULL store doc ONCE for a locked read-modify-write cycle.
 
     Returns ``(doc, tasks)`` where ``tasks is doc["tasks"]`` (always a list).
@@ -234,6 +231,37 @@ def _read_write_doc(
       an absent store yields an empty doc instead of raising.
     """
     p = Path(path)
+
+    # DB-CANONICAL: source the doc from SQLite. THIS MUST COME BEFORE the
+    # `missing_ok and not exists` branch below, and that ordering is the
+    # difference between a working cutover and an erased board.
+    #
+    # In canonical mode the YAML is archived and never written, so
+    # `p.exists()` is False FOREVER. Falling into that branch returns an EMPTY
+    # doc, the caller appends its one new card, and `_save_doc_unlocked` hands
+    # a one-card document to `mirror_doc_incremental` — which diffs against the
+    # DB and DELETES every card not present. Measured on a scratch store during
+    # this cutover: five sequential writes left exactly ONE row each time. On
+    # the live board that is 2065 cards down to 1, silently, with no error
+    # raised anywhere in the stack.
+    #
+    # Found by round-tripping real writes rather than by reading the diff. The
+    # write path looked correct in isolation; only exercising read-modify-write
+    # end to end showed the loss.
+    try:
+        from ._store_backend import db_is_canonical
+    except Exception:  # noqa: BLE001 — undecidable means "not canonical"
+        db_is_canonical = None
+    if db_is_canonical is not None and db_is_canonical():
+        from ._db_export import export_doc
+
+        doc = export_doc(None)[0] or {}
+        tasks = doc.get("tasks")
+        if not isinstance(tasks, list):
+            tasks = []
+            doc["tasks"] = tasks
+        return doc, tasks
+
     if missing_ok and not p.exists():
         return {"tasks": []}, []
     doc = load_doc(p, validate=True)  # raises FileNotFoundError if absent
@@ -275,7 +303,6 @@ def resolve_store(store: str | Path | None = None) -> dict:
         PKG_SHORT,
         _user_root,
         bundled_example,
-        resolve_tasks_path,
     )
 
     resolved = resolve_tasks_path(
@@ -338,20 +365,20 @@ from ._store_lifecycle import (  # noqa: E402,F401  (re-export)
     resolve_task,
     restore_task,
 )
-from ._store_reassign import reassign_all  # noqa: E402,F401  (re-export)
 from ._store_mutate import (  # noqa: E402,F401  (re-export)
     _stamp_deferred_at,
     _wip_statuses,
     add_task,
     update_task,
 )
-from ._store_rescore import rescore_task  # noqa: E402,F401  (re-export)
+from ._store_reassign import reassign_all  # noqa: E402,F401  (re-export)
 from ._store_relations import (  # noqa: E402,F401  (re-export)
     _set_list_member,
     set_collaborator,
     set_edge,
     set_subscriber,
 )
+from ._store_rescore import rescore_task  # noqa: E402,F401  (re-export)
 
 __all__ = [
     "ENV_AGENT",
