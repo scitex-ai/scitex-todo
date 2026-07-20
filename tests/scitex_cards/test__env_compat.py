@@ -27,16 +27,16 @@ import pytest
 
 from scitex_cards._env_compat import mirror_env
 
-CANONICAL = "SCITEX_TODO_TASKS_YAML_SHARED"
-RENAMED = "SCITEX_CARDS_TASKS_YAML_SHARED"
+CANONICAL = "SCITEX_TODO_DB"
+RENAMED = "SCITEX_CARDS_DB"
 
 
 @pytest.fixture
 def populated_store(tmp_path):
     """A store file that EXISTS and is non-empty — the thing worth protecting."""
-    p = tmp_path / "todo" / "tasks.yaml"
+    p = tmp_path / "todo" / "cards.db"
     p.parent.mkdir(parents=True)
-    p.write_text("tasks:\n  - id: real-work\n    title: not to be abandoned\n")
+    p.write_text("SQLite format 3\x00 (not really, just non-empty)\n")
     return p
 
 
@@ -129,7 +129,7 @@ def test_relocating_a_populated_store_is_refused(populated_store, tmp_path):
     # Arrange
     env = {
         CANONICAL: str(populated_store),
-        RENAMED: str(tmp_path / "cards" / "tasks.yaml"),
+        RENAMED: str(tmp_path / "cards" / "cards.db"),
     }
 
     # Act
@@ -141,7 +141,7 @@ def test_relocating_a_populated_store_is_refused(populated_store, tmp_path):
 
 def _mirror_a_refused_relocation(populated_store, tmp_path, caplog):
     """Mirror an env whose new store path would fork away from a populated one."""
-    other = tmp_path / "cards" / "tasks.yaml"
+    other = tmp_path / "cards" / "cards.db"
     env = {CANONICAL: str(populated_store), RENAMED: str(other)}
     with caplog.at_level(logging.ERROR):
         mirror_env(env)
@@ -176,8 +176,8 @@ def test_a_fresh_install_may_still_adopt_the_new_store_path(tmp_path):
     new deployment could ever adopt the new variable name.
     """
     # Arrange
-    new = tmp_path / "cards" / "tasks.yaml"
-    env = {CANONICAL: str(tmp_path / "todo" / "tasks.yaml"), RENAMED: str(new)}
+    new = tmp_path / "cards" / "cards.db"
+    env = {CANONICAL: str(tmp_path / "todo" / "cards.db"), RENAMED: str(new)}
 
     # Act
     mirror_env(env)
@@ -189,10 +189,10 @@ def test_a_fresh_install_may_still_adopt_the_new_store_path(tmp_path):
 def test_an_empty_old_store_is_not_treated_as_populated(tmp_path):
     """A zero-byte file holds no records, so moving off it strands nothing."""
     # Arrange
-    old = tmp_path / "todo" / "tasks.yaml"
+    old = tmp_path / "todo" / "cards.db"
     old.parent.mkdir(parents=True)
     old.write_text("")
-    new = tmp_path / "cards" / "tasks.yaml"
+    new = tmp_path / "cards" / "cards.db"
     env = {CANONICAL: str(old), RENAMED: str(new)}
 
     # Act
@@ -293,7 +293,7 @@ def test_mirror_env_is_idempotent(populated_store, tmp_path):
     # Arrange
     env = {
         CANONICAL: str(populated_store),
-        RENAMED: str(tmp_path / "cards" / "tasks.yaml"),
+        RENAMED: str(tmp_path / "cards" / "cards.db"),
     }
     mirror_env(env)
     first = dict(env)

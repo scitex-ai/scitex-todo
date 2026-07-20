@@ -64,153 +64,146 @@ _DRAIN_HINT = (
 # --------------------------------------------------------------------------- #
 # Individual checks — each returns {ok, detail, hint}; may raise (wrapped).    #
 # --------------------------------------------------------------------------- #
-def _check_store_canonical(store: str | Path | None) -> dict[str, Any]:
-    """Resolve the task store and verify it is the canonical, healthy store.
-
-    ok when the store resolves to the canonical user/shared path (no
-    project/cwd shadow), exists, is readable + writable, and parses as YAML
-    with a top-level ``tasks`` key. Shadow detection only fires when the store
-    is resolved via the precedence chain (``store is None``); an EXPLICIT store
-    (tests, ``--tasks``) is taken as the intended target.
-    """
-    from ._paths import ENV_TASKS, _user_root, resolve_tasks_path
-    from ._yaml import safe_load
-
-    resolved = resolve_tasks_path(store)
-    if store is None:
-        env_tasks = os.environ.get(ENV_TASKS)
-        canonical = (
-            Path(env_tasks).expanduser() if env_tasks else _user_root() / "tasks.yaml"
-        )
-        # The "resolved to the bundled example" branch was deleted with the
-        # example itself (2026-07-19). It can no longer be reached: resolution
-        # has no fallback tier any more, so an unresolvable store surfaces as a
-        # plain missing file below rather than as a packaged fixture quietly
-        # standing in for the board.
-        if resolved != canonical:
-            return {
-                "ok": False,
-                "detail": (
-                    f"a project/cwd store {resolved} shadows the canonical "
-                    f"store {canonical}"
-                ),
-                "hint": (
-                    f"the project store {resolved} shadows the canonical "
-                    f"{canonical} — set SCITEX_TODO_TASKS_YAML_SHARED={canonical}, "
-                    "or run from a directory without a project .scitex/todo"
-                ),
-            }
-
-    if not resolved.exists():
-        # A MISSING YAML IS THE HEALTHY STATE once the database is canonical.
-        # Since #512 no rows live in YAML — that path is identity/provenance
-        # only — so its absence says nothing about the board. Reporting it as a
-        # failure was worse than noise on two counts: it failed on every healthy
-        # install, which teaches the reader to skip the whole report and miss the
-        # checks that matter; and its hint said to hand-write a `tasks: []` YAML,
-        # which is an instruction to RECREATE THE SECOND STORE. On 2026-07-19 a
-        # packaged YAML winning the resolution chain overwrote 2142 live cards.
-        # Telling an operator to conjure one back is the last thing this check
-        # should do.
-        from ._db import resolve_db_path
-
-        try:
-            db = Path(resolve_db_path(store))
-        except Exception:  # noqa: BLE001 — a diagnostic reports, never dies
-            db = None
-        if db is not None and db.exists():
-            return {
-                "ok": True,
-                "detail": (
-                    f"db-canonical: board is {db}; no YAML at {resolved} "
-                    "(expected — YAML is identity only, it holds no rows)"
-                ),
-                "hint": None,
-            }
-        return {
-            "ok": False,
-            "detail": f"no store: YAML {resolved} and database are both absent",
-            "hint": (
-                "bootstrap the DATABASE, never a YAML file: "
-                "`scitex-cards db import --from-yaml <file>` to seed from an "
-                "export, or add a card and let the store be created. Do NOT "
-                "hand-write a tasks.yaml — a second store is how the board was "
-                "destroyed on 2026-07-19."
-            ),
-        }
-    if not os.access(resolved, os.R_OK):
-        return {
-            "ok": False,
-            "detail": f"store {resolved} is not readable",
-            "hint": f"fix permissions so {resolved} is readable (e.g. chmod u+r)",
-        }
-    if not os.access(resolved, os.W_OK):
-        return {
-            "ok": False,
-            "detail": f"store {resolved} is not writable",
-            "hint": f"fix permissions so {resolved} is writable (e.g. chmod u+w)",
-        }
+def _is_sqlite_db(path: Path) -> bool:
+    """True when ``path`` begins with the SQLite file magic header."""
     try:
-        with resolved.open(encoding="utf-8") as handle:
-            data = safe_load(handle) or {}
-    except Exception as exc:  # noqa: BLE001 — a parse fail is a reportable state
+        with path.open("rb") as handle:
+            return handle.read(16) == b"SQLite format 3\x00"
+    except OSError:
+        return False
+
+
+def _verify_db_store(path: Path) -> dict[str, Any]:
+    """Confirm the canonical database opens and carries a ``tasks`` table."""
+    import sqlite3
+
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            n = int(conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0])
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
         return {
             "ok": False,
-            "detail": f"store {resolved} did not parse as YAML ({exc})",
-            "hint": f"fix the YAML syntax in {resolved} ({type(exc).__name__}: {exc})",
-        }
-    if not isinstance(data, dict) or "tasks" not in data:
-        return {
-            "ok": False,
-            "detail": f"store {resolved} has no top-level 'tasks' key",
-            "hint": f"add a top-level `tasks:` list to {resolved}",
+            "detail": f"canonical database {path} did not open/read ({exc})",
+            "hint": (
+                f"rebuild the database: `scitex-cards db import` (or "
+                f"`scitex-cards init-store` for an empty one). {type(exc).__name__}: {exc}"
+            ),
         }
     return {
         "ok": True,
-        "detail": f"canonical store {resolved} (exists, readable, writable, parses)",
+        "detail": f"canonical store {path} (SQLite, {n} cards, readable, writable)",
         "hint": None,
     }
 
 
+def _check_store_canonical(store: str | Path | None) -> dict[str, Any]:
+    """Resolve the task store and verify it is the canonical, healthy store.
+
+    The canonical store is the SQLite database ($SCITEX_CARDS_DB). ok when it
+    exists, opens, and carries a ``tasks`` table. An EXPLICIT file store (tests,
+    ``--tasks <file>``) is taken as the intended target and checked as a
+    serialized document with a top-level ``tasks`` key.
+    """
+    from ._db import resolve_db_path
+    from ._paths import resolve_tasks_path
+
+    db = Path(resolve_db_path(store))
+
+    # The canonical store IS the database — verify it directly.
+    if db.exists() and _is_sqlite_db(db):
+        return _verify_db_store(db)
+
+    # No database. An EXPLICIT file store (tests / `--tasks <file>`) is checked
+    # as a serialized document; otherwise the store is genuinely absent.
+    resolved = resolve_tasks_path(store)
+    if store is not None and resolved.exists():
+        if _is_sqlite_db(resolved):
+            return _verify_db_store(resolved)
+        if not os.access(resolved, os.R_OK):
+            return {
+                "ok": False,
+                "detail": f"store {resolved} is not readable",
+                "hint": f"fix permissions so {resolved} is readable (e.g. chmod u+r)",
+            }
+        if not os.access(resolved, os.W_OK):
+            return {
+                "ok": False,
+                "detail": f"store {resolved} is not writable",
+                "hint": f"fix permissions so {resolved} is writable (e.g. chmod u+w)",
+            }
+        from ._yaml import safe_load
+
+        try:
+            with resolved.open(encoding="utf-8") as handle:
+                data = safe_load(handle) or {}
+        except Exception as exc:  # noqa: BLE001 — a parse fail is a reportable state
+            return {
+                "ok": False,
+                "detail": f"store {resolved} did not parse ({exc})",
+                "hint": f"fix the document syntax in {resolved} ({type(exc).__name__}: {exc})",
+            }
+        if not isinstance(data, dict) or "tasks" not in data:
+            return {
+                "ok": False,
+                "detail": f"store {resolved} has no top-level 'tasks' key",
+                "hint": f"add a top-level `tasks:` list to {resolved}",
+            }
+        return {
+            "ok": True,
+            "detail": f"file store {resolved} (exists, readable, writable, parses)",
+            "hint": None,
+        }
+
+    return {
+        "ok": False,
+        "detail": f"no store: the database {db} is absent",
+        "hint": (
+            "bootstrap the DATABASE: `scitex-cards init-store` (empty) or "
+            "`scitex-cards db import` (seed from an export). Do NOT hand-write a "
+            "YAML store — a second store is how the board was destroyed on "
+            "2026-07-19."
+        ),
+    }
+
+
 def _check_store_identity_agrees(store: str | Path | None) -> dict[str, Any]:
-    """Does the RESOLVED store match the identity the DB is stamped with?
+    """Does the RESOLVED store match the identity the database is stamped with?
 
-    The store identity lives in two places — the launcher's env (which decides
-    what ``resolve_tasks_path`` returns) and the DB's own provenance stamp — and
-    nothing keeps them in step. When they disagree, the ownership guard in
-    ``_dual_write`` / ``_store_backend`` refuses EVERY write. Correctly: writing
-    one store's rows into another store's database is how the board gets
-    destroyed. But the symptom is a total write outage with no monitor.
+    The database records WHICH STORE it is the database of (its provenance
+    stamp). When the store this process resolves disagrees with that stamp, the
+    ownership guard in ``_dual_write`` / ``_store_backend`` refuses EVERY write —
+    correctly, since writing one store's rows into another store's database is
+    how a board gets destroyed. But the symptom is a total write outage with no
+    monitor, so this check surfaces it.
 
-    That is not hypothetical. On 2026-07-19 the MCP server resolved
-    ``~/.scitex/cards/tasks.yaml`` (deleted during the cutover, ``exists:
-    false``) while the DB was stamped ``~/.scitex/todo/tasks.yaml``. Every write
-    through the surface OTHER agents use was refused, and it went unnoticed
-    because the maintainer's own writes went through the Python API with an
-    explicit path. Nothing in ``health`` covered it.
-
-    So this check exists to answer the question the outage actually poses —
-    "can this process write at all?" — rather than the narrower one
-    ``store_canonical`` answers ("does a parseable file exist there?").
+    On 2026-07-19 the MCP server resolved one store while the database was
+    stamped for another; every write through the surface OTHER agents use was
+    refused, and it went unnoticed because the maintainer's own writes used an
+    explicit path. So this check answers "can this process write at all?" rather
+    than the narrower "does a parseable store exist there?" that
+    ``store_canonical`` answers.
     """
     import sqlite3
 
     from ._db import resolve_db_path
-    from ._db_freshness import KEY_YAML_PATH, read_provenance
-    from ._paths import resolve_tasks_path
+    from ._db_freshness import stamped_store_path
+    from ._dual_write import _same_file
 
-    resolved = os.path.realpath(str(resolve_tasks_path(store)))
+    resolved = str(resolve_db_path(store))
     db_path = Path(resolve_db_path(None))
     if not db_path.exists():
         return {
             "ok": True,
-            "detail": f"no DB at {db_path} yet — nothing to disagree with",
+            "detail": f"no database at {db_path} yet — nothing to disagree with",
             "hint": None,
         }
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         try:
-            stamped = read_provenance(conn).get(KEY_YAML_PATH)
+            stamped = stamped_store_path(conn)
         finally:
             conn.close()
     except sqlite3.Error as exc:
@@ -222,13 +215,13 @@ def _check_store_identity_agrees(store: str | Path | None) -> dict[str, Any]:
     if not stamped:
         return {
             "ok": True,
-            "detail": f"{db_path} carries no store stamp yet (fresh DB)",
+            "detail": f"{db_path} carries no store stamp yet (fresh database)",
             "hint": None,
         }
-    if os.path.realpath(stamped) == resolved:
+    if _same_file(stamped, resolved):
         return {
             "ok": True,
-            "detail": f"store and DB agree: both are {resolved}",
+            "detail": f"store and database agree: both are {resolved}",
             "hint": None,
         }
     return {
@@ -241,9 +234,9 @@ def _check_store_identity_agrees(store: str | Path | None) -> dict[str, Any]:
         ),
         "hint": (
             f"decide which is right and make them agree. If {resolved} is the "
-            f"intended store, re-stamp with `scitex-cards db import --from-yaml "
-            f"--as-store {resolved}`. If the DB's {stamped} is right, fix the "
-            f"launcher env (SCITEX_CARDS_TASKS_YAML_SHARED) to name it."
+            f"intended store, re-stamp the database against it (`scitex-cards db "
+            f"import`). If the database's {stamped} is right, point "
+            f"$SCITEX_CARDS_DB at that database."
         ),
     }
 

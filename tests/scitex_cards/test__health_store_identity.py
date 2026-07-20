@@ -41,7 +41,7 @@ def _seed_and_stamp(db_path, store_path) -> None:
     from conftest import seed_db_from_doc
 
     from scitex_cards._db import connect
-    from scitex_cards._db_freshness import stamp_yaml_provenance
+    from scitex_cards._db_freshness import stamp_store_provenance
     from scitex_cards._yaml import safe_load
 
     doc = safe_load(_SEED) or {}
@@ -49,7 +49,7 @@ def _seed_and_stamp(db_path, store_path) -> None:
     conn = connect(str(db_path))
     try:
         conn.execute("BEGIN IMMEDIATE")
-        stamp_yaml_provenance(conn, store_path, len(doc.get("tasks", [])))
+        stamp_store_provenance(conn, store_path)
         conn.commit()
     finally:
         conn.close()
@@ -105,8 +105,8 @@ def test_the_hint_names_both_ways_to_resolve_it(two_stores):
     check = _check(health(store=str(store_b)), "store_identity")
 
     # Assert
-    assert "--as-store" in check["hint"]
-    assert "SCITEX_CARDS_TASKS_YAML_SHARED" in check["hint"]
+    assert "db import" in check["hint"]
+    assert "SCITEX_CARDS_DB" in check["hint"]
 
 
 def test_a_missing_db_is_not_an_alarm(tmp_path, env):
