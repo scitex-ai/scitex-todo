@@ -24,13 +24,8 @@ import json
 
 import click
 
-from ._compat import spec_command_kwargs
-
 from .._paths import resolve_tasks_path
-from . import _write as _write_mod  # for the shared _TASKS_OPTION constant
-
-
-_TASKS_OPTION = _write_mod._TASKS_OPTION
+from ._compat import spec_command_kwargs
 
 
 # --------------------------------------------------------------------------- #
@@ -89,10 +84,7 @@ def list_tasks_filtered(
     click.echo(f"# {resolved}  ({len(rows)} tasks)")
     for task in rows:
         sc = task.get("scope") or "-"
-        click.echo(
-            f"{task['id']:<24} {task['status']:<12} "
-            f"{sc:<28} {task['title']}"
-        )
+        click.echo(f"{task['id']:<24} {task['status']:<12} {sc:<28} {task['title']}")
 
 
 def list_blocking_operator(tasks_path: str | None, as_json: bool) -> None:
@@ -137,7 +129,9 @@ def list_blocking_operator(tasks_path: str | None, as_json: bool) -> None:
             if note:
                 click.echo(f"      ↳ {note.splitlines()[0]}")
             else:
-                click.echo("      ↳ (no context noted — ask the owner to add why + options)")
+                click.echo(
+                    "      ↳ (no context noted — ask the owner to add why + options)"
+                )
     click.echo(
         "\nClear a block from the board, or via the CLI update/resolve verbs "
         "once you've decided."
@@ -152,22 +146,19 @@ def list_blocking_operator(tasks_path: str | None, as_json: bool) -> None:
     **spec_command_kwargs(
         summary="Show which store would be used and the precedence chain.",
         description=(
-            "Prints the resolved tasks.yaml path plus every candidate "
-            "in the precedence chain (explicit --tasks, "
-            "$SCITEX_TODO_TASKS, project store, user store, bundled "
-            "example) — the debugging tool for 'why is my task not "
-            "showing up.'",
+            "Prints the resolved store path plus every candidate in the "
+            "precedence chain — the debugging tool for 'why is my task "
+            "not showing up.'",
         ),
         examples=(("{prog} resolve-store", "Show the resolved store."),),
     ),
 )
 @click.option("--json", "as_json", is_flag=True)
-@_TASKS_OPTION
-def resolve_store_cmd(as_json, tasks_path) -> None:
+def resolve_store_cmd(as_json) -> None:
     """Resolve the store path and print the chain so agents can verify."""
     from .. import _store
 
-    info = _store.resolve_store(tasks_path)
+    info = _store.resolve_store(None)
     if as_json:
         click.echo(json.dumps(info))
         return
