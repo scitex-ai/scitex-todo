@@ -97,24 +97,39 @@ def stamped_store_path(conn: sqlite3.Connection) -> str | None:
 def check_fresh(
     conn: sqlite3.Connection, store_path: str | Path
 ) -> tuple[bool, str | None]:
-    """Is this database THE database of ``store_path``? ``(ok, reason_if_not)``.
+    """Is this database USABLE as the database of ``store_path``? ``(ok, reason)``.
 
-    Identity only — one ``schema_meta`` lookup, no store parse. Every failure
-    mode returns a reason a human can act on.
+    Identity only — one ``schema_meta`` lookup, no store parse.
+
+    An UNSTAMPED database — no :data:`KEY_STORE_PATH` row — is USABLE, not
+    refused. This is load-bearing and MUST match
+    :func:`scitex_cards._dual_write._db_mirrors_this_store`'s adoptable branch:
+    EVERY database created before this key (including the live ``cards.db``
+    re-stamped under the pre-cutover ``yaml_path`` key) carries no
+    ``store_path``. If this guard refused them while the write guard adopts them,
+    a legacy database would brick the SQLite read path on deploy — read-only
+    board, the exact outage this rename must not re-introduce. Under DB-canonical
+    there is no separate document to be stale against, so "unstamped" means
+    "not yet claimed", not "wrong"; the first write claims it by stamping
+    :data:`KEY_STORE_PATH`. No pre-cutover key is READ here — the code stays
+    yaml-free; forward migration happens on write.
+
+    A database stamped for a GENUINELY DIFFERENT store is still refused. The
+    comparison is by :func:`_same_file` (inode), so the ``/home/agent`` vs
+    ``/home/ywatanabe`` bind-mount alias reads as one store — consistent with
+    the write guard.
     """
     stamped = stamped_store_path(conn)
     if stamped is None:
-        return False, (
-            "the database carries NO store-identity stamp — it predates this key "
-            "or was written by code that cannot stamp it. It may belong to any "
-            "store, or none. Rebuild it: `scitex-cards db import`."
-        )
-    resolved = canonical_path(store_path)
-    if stamped != resolved:
+        return True, None
+    from ._dual_write import _same_file
+
+    if not _same_file(stamped, store_path):
         return False, (
             f"this database belongs to a DIFFERENT store ({stamped!r}) than the "
-            f"one being read ({resolved!r}). Point $SCITEX_CARDS_DB at this "
-            "store's own database, or rebuild it: `scitex-cards db import`."
+            f"one being read ({canonical_path(store_path)!r}). Point "
+            "$SCITEX_CARDS_DB at this store's own database, or rebuild it: "
+            "`scitex-cards db import`."
         )
     return True, None
 

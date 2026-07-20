@@ -128,4 +128,81 @@ def test_a_store_that_does_not_exist_yet_falls_back_to_path_comparison(
     assert not _db_mirrors_this_store(db, tmp_path / "someone-else.yaml")
 
 
+def test_a_legacy_yaml_path_only_db_passes_both_guards_and_self_migrates(
+    tmp_path, monkeypatch
+):
+    """A database stamped ONLY under the pre-cutover key must not brick on deploy.
+
+    EVERY existing database — including the live ``cards.db`` re-stamped to end
+    the 2026-07-20 outage — carries the OLD ``yaml_path`` ``schema_meta`` key and
+    NO ``store_path``. The two ownership guards MUST AGREE it is usable, or
+    ``check_fresh`` refuses it while ``_db_mirrors_this_store`` adopts it — and
+    the SQLite read path, with no YAML to fall back to, goes read-only again.
+    The first write then self-migrates it to ``store_path`` (no deploy step, no
+    pre-cutover key read in the code).
+    """
+    from conftest import seed_db_from_doc
+
+    from scitex_cards import _store_backend
+    from scitex_cards._db import connect
+    from scitex_cards._db_freshness import (
+        KEY_STORE_PATH,
+        check_fresh,
+        stamped_store_path,
+    )
+
+    # Arrange — seed a DB, then force the EXACT legacy shape: ONLY `yaml_path`,
+    # never `store_path` (delete it if the seeder wrote one).
+    db = tmp_path / "cards.db"
+    monkeypatch.setenv(ENV_DB, str(db))
+    doc = {
+        "tasks": [
+            {
+                "id": "t",
+                "title": "T",
+                "status": "deferred",
+                "assignee": "agent:test-suite",
+            }
+        ]
+    }
+    seed_db_from_doc(doc, str(db))
+    conn = connect(str(db))
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM schema_meta WHERE key = ?", (KEY_STORE_PATH,))
+        conn.execute(
+            "INSERT INTO schema_meta(key, value) VALUES('yaml_path', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (str(db),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Assert — precondition + BOTH guards agree the legacy DB is usable.
+    conn = connect(str(db))
+    try:
+        assert stamped_store_path(conn) is None, "precondition: no store_path yet"
+        ok, reason = check_fresh(conn, db)
+        assert ok, f"check_fresh must not refuse a legacy yaml_path-only DB: {reason}"
+    finally:
+        conn.close()
+    assert _db_mirrors_this_store(db, db), (
+        "the write guard must adopt a legacy yaml_path-only DB"
+    )
+
+    # Act — a write self-migrates it forward to the new key.
+    _store_backend.write_doc_to_db(doc, db)
+
+    # Assert — it now carries store_path (claimed), and both guards still pass.
+    conn = connect(str(db))
+    try:
+        assert stamped_store_path(conn) is not None, "the write must stamp store_path"
+        ok, _ = check_fresh(conn, db)
+        assert ok
+    finally:
+        conn.close()
+    assert _db_mirrors_this_store(db, db)
+
+
 # EOF
