@@ -196,10 +196,10 @@ Lead-driven coordination (broadcast-rollout shape): the lead a2a's every agent w
 
 ## 8. Gotchas
 
-1. **Store resolution.** Default precedence: `--tasks` flag → `$SCITEX_TODO_TASKS_YAML_SHARED` → project `<git-root>/.scitex/todo/tasks.yaml` → user `~/.scitex/todo/tasks.yaml` → bundled example. Check with `scitex-todo resolve-store`. Many agents bind only the user store; the project store can shadow it silently.
-2. **Container store divergence.** Open audit report at `src/scitex_cards/docs/audit/2026-06-13-container-store-divergence.md` (PR #143). If your container sees a partial board, read that first.
+1. **Store resolution.** The store identity is `$SCITEX_CARDS_DB` (the SQLite database path). Check with `scitex-todo resolve-store`. Many agents bind only the user database; a project-scoped database can shadow it silently.
+2. **Container store divergence (historical).** Older containers could bind from a different host snapshot than the operator's canonical store before the SQLite migration; that failure class no longer applies now that `$SCITEX_CARDS_DB` is the single store identity.
 3. **`done` vs `update --status done`.** `done` is shorthand without PR-pointer recording. Prefer `update` when there's a PR.
-4. **PR pointer field.** It's `pr_url` (string), not `pr-url` (the CLI flag). The YAML key is `pr_url`.
+4. **PR pointer field.** It's `pr_url` (string), not `pr-url` (the CLI flag).
 5. **Close uses `deferred` today.** If/when `VALID_STATUSES` grows a dedicated `closed` value, `close` will switch over — the verb shape stays the same.
 
 ---
