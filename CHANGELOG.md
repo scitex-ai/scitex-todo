@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.17.4] - 2026-07-21
+
+The YAML-to-SQLite cutover release. SQLite is the store; YAML is gone from the
+task path.
+
+### Changed
+
+- **`$SCITEX_CARDS_DB` is the sole store identity** (#540). The store is no
+  longer identified by a resolved `tasks.yaml` path, ending the class of
+  read-only / data-loss recurrences in which a YAML-path resolver re-stamped
+  the database to a foreign store and locked writers out.
+- **YAML sidecars migrated to JSON** (#541). The inbox, threads, notify,
+  recipients, and delivery-ledger sidecars now persist as JSON via one-time
+  migrate-and-drop; `db export` emits JSON. Functional YAML is eliminated from
+  the task path. A documented residual (the high-risk users-registry heartbeat
+  path, line-cap-blocked modules, and genuinely external formats such as
+  agent-container `spec.yaml` and skill frontmatter) is deferred to 0.17.5.
+
 ## [0.17.3] - 2026-07-20
 
 The store-safety release. Five fixes, each closing a path by which the fleet's
