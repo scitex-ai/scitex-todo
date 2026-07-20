@@ -15,14 +15,15 @@ rejected the save::
 work, and it failed at SAVE time, aborting the whole bulk batch having
 applied nothing.
 
-Real round-trips against a `tmp_path` YAML store — no mocks of the thing
-under test (Req STX-NM).
+Real round-trips against the canonical SQLite store — no mocks of the thing
+under test (Req STX-NM). The store is SQLite-only now: the CRUD verbs read
+and write the canonical DB (the conftest bootstraps a fresh empty one per
+test), so every helper below seeds/reads THAT store rather than a YAML file.
 """
 
 from __future__ import annotations
 
 import pytest
-import yaml
 from click.testing import CliRunner
 
 from scitex_cards import _model, _store
@@ -91,18 +92,16 @@ def test_clearing_a_blocker_still_applies_the_sibling_status():
     assert _reload("triage-1")["status"] == "in_progress"
 
 
-def test_blocker_empty_string_never_reaches_disk_as_a_value(tmp_path):
+def test_blocker_empty_string_never_reaches_the_store_as_a_value():
     # Arrange
-    store = tmp_path / "tasks.yaml"
     _blocked_card(task_id="triage-raw")
 
     # Act
     _store.update_task(task_id="triage-raw", status="deferred", blocker="")
 
-    # Assert — read the RAW YAML: no `blocker: ''` key survived the write.
-    raw = yaml.safe_load(store.read_text())
-    card = next(t for t in raw["tasks"] if t["id"] == "triage-raw")
-    assert "blocker" not in card
+    # Assert — re-read the PERSISTED card: no `blocker` value survived the
+    # write (SQLite store; the old raw-YAML read is the same rule in DB terms).
+    assert "blocker" not in _reload("triage-raw")
 
 
 def test_blocker_whitespace_only_is_also_a_clear():
@@ -145,81 +144,75 @@ def _refusal_message(fn) -> str:
     return ""
 
 
-def test_an_invalid_blocker_refusal_names_the_offending_value(tmp_path):
+def test_an_invalid_blocker_refusal_names_the_offending_value():
     # Arrange
-    store = tmp_path / "tasks.yaml"
-    _blocked_card(store, task_id="triage-bad")
+    _blocked_card(task_id="triage-bad")
 
     # Act
     message = _refusal_message(
-        lambda: _store.update_task(store, "triage-bad", blocker="banana")
+        lambda: _store.update_task(task_id="triage-bad", blocker="banana")
     )
 
     # Assert
     assert "banana" in message
 
 
-def test_an_invalid_blocker_refusal_leaves_the_store_untouched(tmp_path):
+def test_an_invalid_blocker_refusal_leaves_the_store_untouched():
     # Arrange
-    store = tmp_path / "tasks.yaml"
-    _blocked_card(store, task_id="triage-bad")
+    _blocked_card(task_id="triage-bad")
 
     # Act
-    _refusal_message(lambda: _store.update_task(store, "triage-bad", blocker="banana"))
+    _refusal_message(lambda: _store.update_task(task_id="triage-bad", blocker="banana"))
 
     # Assert — the rejected write did not half-apply. (Had it been accepted,
     # the blocker would read "banana" here.)
-    assert _reload(store, "triage-bad")["blocker"] == "operator-decision"
+    assert _reload("triage-bad")["blocker"] == "operator-decision"
 
 
 # --------------------------------------------------------------------------- #
 # The done-while-blocked guard still fires (regression: do NOT weaken)        #
 # --------------------------------------------------------------------------- #
-def test_done_while_blocker_still_set_is_still_refused(tmp_path):
+def test_done_while_blocker_still_set_is_still_refused():
     # Arrange — a blocked card with a real blocker.
-    store = tmp_path / "tasks.yaml"
-    _blocked_card(store, task_id="triage-done")
+    _blocked_card(task_id="triage-done")
 
     # Act
     # Assert — flipping to done WITHOUT clearing the blocker is incoherent
     # (done-but-blocked) and must still be rejected.
     with pytest.raises(_model.TaskValidationError):
-        _store.update_task(store, "triage-done", status="done")
+        _store.update_task(task_id="triage-done", status="done")
 
 
-def test_the_done_while_blocked_refusal_names_the_blocker(tmp_path):
+def test_the_done_while_blocked_refusal_names_the_blocker():
     # Arrange — a blocked card with a real blocker.
-    store = tmp_path / "tasks.yaml"
-    _blocked_card(store, task_id="triage-done")
+    _blocked_card(task_id="triage-done")
 
     # Act
     message = _refusal_message(
-        lambda: _store.update_task(store, "triage-done", status="done")
+        lambda: _store.update_task(task_id="triage-done", status="done")
     )
 
     # Assert
     assert "blocker" in message
 
 
-def test_done_with_the_gate_cleared_in_the_same_call_applies_the_status(tmp_path):
+def test_done_with_the_gate_cleared_in_the_same_call_applies_the_status():
     # Arrange — a blocked card with a real blocker.
-    store = tmp_path / "tasks.yaml"
-    _blocked_card(store, task_id="triage-done")
+    _blocked_card(task_id="triage-done")
 
     # Act — the coherent form: clear the gate in the SAME call.
-    merged = _store.update_task(store, "triage-done", status="done", blocker="")
+    merged = _store.update_task(task_id="triage-done", status="done", blocker="")
 
     # Assert
     assert merged["status"] == "done"
 
 
-def test_done_with_the_gate_cleared_in_the_same_call_drops_the_blocker(tmp_path):
+def test_done_with_the_gate_cleared_in_the_same_call_drops_the_blocker():
     # Arrange — a blocked card with a real blocker.
-    store = tmp_path / "tasks.yaml"
-    _blocked_card(store, task_id="triage-done")
+    _blocked_card(task_id="triage-done")
 
     # Act — the coherent form: clear the gate in the SAME call.
-    merged = _store.update_task(store, "triage-done", status="done", blocker="")
+    merged = _store.update_task(task_id="triage-done", status="done", blocker="")
 
     # Assert
     assert "blocker" not in merged
@@ -228,90 +221,83 @@ def test_done_with_the_gate_cleared_in_the_same_call_drops_the_blocker(tmp_path)
 # --------------------------------------------------------------------------- #
 # status is NOT clearable — a card must carry a decision                      #
 # --------------------------------------------------------------------------- #
-def test_status_cannot_be_cleared_and_says_why(tmp_path):
+def test_status_cannot_be_cleared_and_says_why():
     # Arrange
-    store = tmp_path / "tasks.yaml"
-    _blocked_card(store, task_id="triage-status")
+    _blocked_card(task_id="triage-status")
 
     # Act
     # Assert — refused LOUDLY, not silently ignored.
     with pytest.raises(_model.TaskValidationError):
-        _store.update_task(store, "triage-status", status="")
+        _store.update_task(task_id="triage-status", status="")
 
 
-def test_the_status_clear_refusal_says_it_cannot_clear(tmp_path):
+def test_the_status_clear_refusal_says_it_cannot_clear():
     # Arrange
-    store = tmp_path / "tasks.yaml"
-    _blocked_card(store, task_id="triage-status")
+    _blocked_card(task_id="triage-status")
 
     # Act
     message = _refusal_message(
-        lambda: _store.update_task(store, "triage-status", status="")
+        lambda: _store.update_task(task_id="triage-status", status="")
     )
 
     # Assert — the message names the reason.
     assert "cannot clear" in message
 
 
-def test_the_status_clear_refusal_offers_the_valid_set(tmp_path):
+def test_the_status_clear_refusal_offers_the_valid_set():
     # Arrange
-    store = tmp_path / "tasks.yaml"
-    _blocked_card(store, task_id="triage-status")
+    _blocked_card(task_id="triage-status")
 
     # Act
     message = _refusal_message(
-        lambda: _store.update_task(store, "triage-status", status="")
+        lambda: _store.update_task(task_id="triage-status", status="")
     )
 
     # Assert — the caller is told what to pick from instead.
     assert "in_progress" in message and "deferred" in message
 
 
-def test_a_refused_status_clear_leaves_the_cards_status_intact(tmp_path):
+def test_a_refused_status_clear_leaves_the_cards_status_intact():
     # Arrange
-    store = tmp_path / "tasks.yaml"
-    _blocked_card(store, task_id="triage-status")
+    _blocked_card(task_id="triage-status")
 
     # Act
-    _refusal_message(lambda: _store.update_task(store, "triage-status", status=""))
+    _refusal_message(lambda: _store.update_task(task_id="triage-status", status=""))
 
     # Assert — the card is untouched; its status survives the refusal.
-    assert _reload(store, "triage-status")["status"] == "blocked"
+    assert _reload("triage-status")["status"] == "blocked"
 
 
-def test_status_clear_is_refused_before_the_store_is_touched(tmp_path):
+def test_status_clear_is_refused_before_the_store_is_touched():
     # Arrange — the refusal must happen BEFORE the lock/write, so a doomed
     # mutation never partially applies alongside its sibling fields.
-    store = tmp_path / "tasks.yaml"
-    _blocked_card(store, task_id="triage-early")
+    _blocked_card(task_id="triage-early")
 
     # Act
     # Assert
     with pytest.raises(_model.TaskValidationError):
-        _store.update_task(store, "triage-early", status="", note="new note")
+        _store.update_task(task_id="triage-early", status="", note="new note")
 
 
-def test_a_refused_status_clear_does_not_land_its_sibling_field(tmp_path):
+def test_a_refused_status_clear_does_not_land_its_sibling_field():
     # Arrange — the refusal must happen BEFORE the lock/write.
-    store = tmp_path / "tasks.yaml"
-    _blocked_card(store, task_id="triage-early")
+    _blocked_card(task_id="triage-early")
 
     # Act
     _refusal_message(
-        lambda: _store.update_task(store, "triage-early", status="", note="new note")
+        lambda: _store.update_task(task_id="triage-early", status="", note="new note")
     )
 
     # Assert — the sibling field did NOT land.
-    assert "note" not in _reload(store, "triage-early")
+    assert "note" not in _reload("triage-early")
 
 
 # --------------------------------------------------------------------------- #
 # kind: "" CLEARS (absent kind == the "task" default)                         #
 # --------------------------------------------------------------------------- #
-def _misfiled_kind_card(store, task_id: str) -> None:
+def _misfiled_kind_card(task_id: str) -> None:
     """A card mis-filed as kind=status."""
     _store.add_task(
-        store,
         id=task_id,
         title="Mis-filed card",
         status="in_progress",
@@ -320,40 +306,36 @@ def _misfiled_kind_card(store, task_id: str) -> None:
     )
 
 
-def test_kind_empty_string_deletes_the_key_from_the_merged_card(tmp_path):
+def test_kind_empty_string_deletes_the_key_from_the_merged_card():
     # Arrange — a card mis-filed as kind=status.
-    store = tmp_path / "tasks.yaml"
-    _misfiled_kind_card(store, "kind-1")
+    _misfiled_kind_card("kind-1")
 
     # Act — put it back to the default (absent kind == "task").
-    merged = _store.update_task(store, "kind-1", kind="")
+    merged = _store.update_task(task_id="kind-1", kind="")
 
     # Assert
     assert "kind" not in merged
 
 
-def test_kind_empty_string_deletes_the_key_from_the_persisted_card(tmp_path):
+def test_kind_empty_string_deletes_the_key_from_the_persisted_card():
     # Arrange — a card mis-filed as kind=status.
-    store = tmp_path / "tasks.yaml"
-    _misfiled_kind_card(store, "kind-1")
+    _misfiled_kind_card("kind-1")
 
     # Act — put it back to the default (absent kind == "task").
-    _store.update_task(store, "kind-1", kind="")
+    _store.update_task(task_id="kind-1", kind="")
 
     # Assert
-    assert "kind" not in _reload(store, "kind-1")
+    assert "kind" not in _reload("kind-1")
 
 
 # --------------------------------------------------------------------------- #
 # add_task (the sibling write path) honours the same ONE rule                 #
 # --------------------------------------------------------------------------- #
-def test_add_task_empty_enum_is_not_written(tmp_path):
+def test_add_task_empty_enum_is_not_written():
     # Arrange — "" on insert = "no value", never a literal "".
-    store = tmp_path / "tasks.yaml"
 
     # Act
     inserted = _store.add_task(
-        store,
         id="add-1",
         title="Fresh card",
         status="deferred",
@@ -366,15 +348,13 @@ def test_add_task_empty_enum_is_not_written(tmp_path):
     assert "blocker" not in inserted and "kind" not in inserted
 
 
-def test_add_task_refuses_a_status_less_card(tmp_path):
+def test_add_task_refuses_a_status_less_card():
     # Arrange
-    store = tmp_path / "tasks.yaml"
 
     # Act
     # Assert — a card cannot be BORN status-less either.
     with pytest.raises(_model.TaskValidationError):
         _store.add_task(
-            store,
             id="add-2",
             title="Statusless",
             status="",
@@ -385,90 +365,84 @@ def test_add_task_refuses_a_status_less_card(tmp_path):
 # --------------------------------------------------------------------------- #
 # The batch case that broke live                                              #
 # --------------------------------------------------------------------------- #
-def _run_the_bulk_triage_batch(store) -> None:
+def _run_the_bulk_triage_batch() -> None:
     """The shape of the live 4-card triage script: a run of updates where ONE
     clears a blocker. That one used to raise at save time and abort the whole
     batch, applying NOTHING. The clear sits in the MIDDLE of the batch.
     """
     for n in range(4):
-        _blocked_card(store, task_id=f"bulk-{n}")
-    _store.update_task(store, "bulk-0", status="in_progress", blocker="")
-    _store.update_task(store, "bulk-1", status="deferred", blocker="")
-    _store.update_task(store, "bulk-2", blocker="agent-wait")
-    _store.update_task(store, "bulk-3", status="done", blocker="")
+        _blocked_card(task_id=f"bulk-{n}")
+    _store.update_task(task_id="bulk-0", status="in_progress", blocker="")
+    _store.update_task(task_id="bulk-1", status="deferred", blocker="")
+    _store.update_task(task_id="bulk-2", blocker="agent-wait")
+    _store.update_task(task_id="bulk-3", status="done", blocker="")
 
 
-def test_bulk_triage_clears_the_first_cards_blocker(tmp_path):
+def test_bulk_triage_clears_the_first_cards_blocker():
     # Arrange
-    store = tmp_path / "tasks.yaml"
 
     # Act
-    _run_the_bulk_triage_batch(store)
+    _run_the_bulk_triage_batch()
 
     # Assert
-    assert "blocker" not in _reload(store, "bulk-0")
+    assert "blocker" not in _reload("bulk-0")
 
 
-def test_bulk_triage_applies_the_first_cards_status(tmp_path):
+def test_bulk_triage_applies_the_first_cards_status():
     # Arrange
-    store = tmp_path / "tasks.yaml"
 
     # Act
-    _run_the_bulk_triage_batch(store)
+    _run_the_bulk_triage_batch()
 
     # Assert
-    assert _reload(store, "bulk-0")["status"] == "in_progress"
+    assert _reload("bulk-0")["status"] == "in_progress"
 
 
-def test_bulk_triage_clears_the_second_cards_blocker(tmp_path):
+def test_bulk_triage_clears_the_second_cards_blocker():
     # Arrange
-    store = tmp_path / "tasks.yaml"
 
     # Act
-    _run_the_bulk_triage_batch(store)
+    _run_the_bulk_triage_batch()
 
     # Assert
-    assert "blocker" not in _reload(store, "bulk-1")
+    assert "blocker" not in _reload("bulk-1")
 
 
-def test_bulk_triage_still_applies_a_real_blocker_value(tmp_path):
+def test_bulk_triage_still_applies_a_real_blocker_value():
     # Arrange
-    store = tmp_path / "tasks.yaml"
 
     # Act
-    _run_the_bulk_triage_batch(store)
+    _run_the_bulk_triage_batch()
 
     # Assert — a clear in the batch must not disturb a sibling's real value.
-    assert _reload(store, "bulk-2")["blocker"] == "agent-wait"
+    assert _reload("bulk-2")["blocker"] == "agent-wait"
 
 
-def test_bulk_triage_applies_the_last_cards_status(tmp_path):
+def test_bulk_triage_applies_the_last_cards_status():
     # Arrange
-    store = tmp_path / "tasks.yaml"
 
     # Act
-    _run_the_bulk_triage_batch(store)
+    _run_the_bulk_triage_batch()
 
     # Assert — the batch did not abort part-way.
-    assert _reload(store, "bulk-3")["status"] == "done"
+    assert _reload("bulk-3")["status"] == "done"
 
 
-def test_bulk_triage_clears_the_last_cards_blocker(tmp_path):
+def test_bulk_triage_clears_the_last_cards_blocker():
     # Arrange
-    store = tmp_path / "tasks.yaml"
 
     # Act
-    _run_the_bulk_triage_batch(store)
+    _run_the_bulk_triage_batch()
 
     # Assert
-    assert "blocker" not in _reload(store, "bulk-3")
+    assert "blocker" not in _reload("bulk-3")
 
 
 # --------------------------------------------------------------------------- #
 # End-to-end at the CLI surface (the contract is documented THERE too)        #
 # --------------------------------------------------------------------------- #
-def _cli_clear_blocker(store):
-    _blocked_card(store, task_id="cli-1")
+def _cli_clear_blocker():
+    _blocked_card(task_id="cli-1")
     return CliRunner().invoke(
         main,
         [
@@ -478,64 +452,58 @@ def _cli_clear_blocker(store):
             "in_progress",
             "--blocker",
             "",
-            "--tasks",
-            str(store),
         ],
     )
 
 
-def test_cli_update_with_an_empty_blocker_exits_clean(tmp_path):
+def test_cli_update_with_an_empty_blocker_exits_clean():
     # Arrange
-    store = tmp_path / "tasks.yaml"
 
     # Act
-    result = _cli_clear_blocker(store)
+    result = _cli_clear_blocker()
 
     # Assert
     assert result.exit_code == 0, result.output
 
 
-def test_cli_update_blocker_empty_string_clears(tmp_path):
+def test_cli_update_blocker_empty_string_clears():
     # Arrange
-    store = tmp_path / "tasks.yaml"
 
     # Act
-    _cli_clear_blocker(store)
+    _cli_clear_blocker()
 
     # Assert
-    assert "blocker" not in _reload(store, "cli-1")
+    assert "blocker" not in _reload("cli-1")
 
 
-def _cli_clear_kind(store):
+def _cli_clear_kind():
     # Previously the strict Choice rejected '' at parse time, so there was no
     # CLI form for this at all.
-    _misfiled_kind_card(store, "cli-2")
+    _misfiled_kind_card("cli-2")
     return CliRunner().invoke(
         main,
-        ["update", "cli-2", "--kind", "", "--tasks", str(store)],
+        ["update", "cli-2", "--kind", ""],
     )
 
 
-def test_cli_update_with_an_empty_kind_exits_clean(tmp_path):
+def test_cli_update_with_an_empty_kind_exits_clean():
     # Arrange
-    store = tmp_path / "tasks.yaml"
 
     # Act
-    result = _cli_clear_kind(store)
+    result = _cli_clear_kind()
 
     # Assert
     assert result.exit_code == 0, result.output
 
 
-def test_cli_update_kind_empty_string_clears(tmp_path):
+def test_cli_update_kind_empty_string_clears():
     # Arrange
-    store = tmp_path / "tasks.yaml"
 
     # Act
-    _cli_clear_kind(store)
+    _cli_clear_kind()
 
     # Assert
-    assert "kind" not in _reload(store, "cli-2")
+    assert "kind" not in _reload("cli-2")
 
 
 # EOF
