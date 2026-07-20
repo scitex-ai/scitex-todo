@@ -66,9 +66,11 @@ binding rule:
 Real corruption episode: on 2026-06-13 the (then file-based) shared
 store was found **truncated mid-string**. The board render broke, the
 throughput script broke, AND every agent's read/write through
-scitex-todo broke until the lead repaired it by hand. The store has
-since moved to SQLite, which removes that specific failure class, but
-the underlying rule is unchanged: a hand-edit (direct SQL, a text
+scitex-todo broke until the lead repaired it by hand. PR-#166's
+post-dump round-trip-validate layer made the WRITER side safer going
+forward — but only for writes through scitex-todo's API. The store
+has since moved to SQLite, which removes that specific failure class,
+but the underlying rule is unchanged: a hand-edit (direct SQL, a text
 editor on the file, GUI save on a raw export) bypasses every safety
 net the package provides.
 
