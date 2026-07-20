@@ -1,35 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Board service -- resolve + load the task store with a small mtime cache.
+"""Board service -- resolve + load the ONE canonical task store, with a cache.
 
 Mirrors figrecipe's ``services.get_or_create_editor`` shape but read-only: the
 board never mutates the store in this MVP, so the "board" is just the validated
-task list plus its resolved path and mtime. The cache avoids re-reading the
-YAML on every poll while still picking up external edits (cache is keyed by
-path and invalidated when the file's mtime changes).
+task list plus its resolved path and a content signature. The cache avoids
+re-loading the store on every poll while still picking up external edits.
 
-Per-project lane UNION (operator-validated requirement, lead a2a
-`1ceec0ef` + `40c0a42d`, 2026-06-13)
--------------------------------------
-Skill 30 describes a two-tier model: a global user-scope store
-PLUS hand-curated per-project lanes (``~/proj/<repo>/.scitex/todo/
-tasks.yaml``). Pre-this-change the loader resolved to ONE store at a
-time, so the operator's nv-lessons (and 31 other neurovista cards
-that live in ``~/proj/neurovista/.scitex/todo/tasks.yaml``) were
-INVISIBLE on the board.
+Single canonical store (SQLite cutover)
+---------------------------------------
+SQLite is the only store. :func:`scitex_cards._model.load_tasks` reads the ONE
+canonical DB (``resolve_db_path(None)``) and ignores the path argument, so the
+board no longer globs per-project YAML lanes and unions them — every "source"
+would read the same DB. The board therefore loads exactly one store.
 
-The board's task set is now the UNION of:
-  - the global store (resolved by :func:`resolve_tasks_path`), AND
-  - every per-project lane discovered by globbing
-    :data:`SCITEX_TODO_LANE_GLOBS` (default
-    ``~/proj/*/.scitex/todo/tasks.yaml``).
-
-Collision policy: **project-lane wins** on duplicate ids. Rationale:
-human hand-curation beats agent auto-write. Each collision is logged
-(``logger.warning``) so silent overrides are visible.
-
-Resilience: a malformed per-project lane is SKIPPED + LOGGED — the
-board still renders the rest. Per-lane crash-loud, never whole-view.
+Cache invalidation keys on the DB's logical CONTENT version
+(:func:`scitex_cards._store_write.store_generation`), not the store-identity
+file's stat: a DB write never touches that file, so an mtime/inode key would
+never invalidate and the board would serve a pre-write snapshot (reorder
+priorities, refresh, still see the old order). ``store_generation`` is
+read-stable (it hashes the logical document, not the ``.db`` bytes that WAL
+rewrites on a plain read), so it changes on any card/user change and only then.
+See :class:`BoardState`.
 """
 
 import glob
@@ -59,10 +51,9 @@ DEFAULT_LANE_GLOBS = "~/proj/*/.scitex/todo/tasks.yaml"
 class BoardState:
     """A resolved, validated task store snapshot.
 
-    The ``tasks`` list is the UNION of the global store + every
-    discovered per-project lane. ``store_path`` is the global store
-    path (the resolution anchor); ``mtime`` is the MAX mtime across
-    every source so the cache invalidates whenever ANY lane writes.
+    ``tasks`` is the ONE canonical store's task list. ``store_path`` is the
+    resolved store-identity path (the resolution anchor + provenance label);
+    ``mtime`` is that file's mtime.
 
     ``mtime`` is REPORTED, not trusted: it is part of the ``/rev`` wire
     contract the frontend polls, and it stays a float for that reason.
@@ -72,38 +63,35 @@ class BoardState:
     tasks: list
     store_path: Path
     mtime: float
-    #: CACHE IDENTITY — per source ``(mtime_ns, size, inode)``; global first,
-    #: then the lanes in a stable order.
+    #: CACHE IDENTITY — ``(store_generation, stat_sig)``:
     #:
-    #: WHY NOT ``mtime``: it is a float of SECONDS, and a filesystem whose
-    #: timestamps are 1-second granular (CI's is — a write and the stat that
-    #: follows it returned the SAME value) reports an unchanged mtime across a
-    #: real write. Keying the cache on that means the board can answer a STRICT
-    #: read with a pre-write board: read-your-own-writes silently broken, which
-    #: is exactly what the chat POST depends on. Caught by
-    #: test_a_strict_caller_is_never_served_stale on py3.13.
-    #:
-    #: THE RULE, stated precisely, because the loose version breaks working
-    #: code: never use ``st_mtime`` as an EQUALITY key. Sorting by it and doing
-    #: age arithmetic with it are unaffected — a tie or a sub-second error
-    #: changes nothing there. Equality is where granularity becomes
-    #: correctness. (Sharpened by scitex-agent-container, who found the same
-    #: defect in their credential watcher.)
-    #:
-    #: Size and inode are BOTH needed; see ``_stat_sig`` for why size alone
-    #: leaves a same-length edit invisible.
+    #:  * ``store_generation`` is the DB's read-stable logical-content hash
+    #:    (:func:`scitex_cards._store_write.store_generation`). It changes on
+    #:    ANY card/user change and only then, so a DB write self-invalidates
+    #:    the board even though it never touches the identity FILE. This is the
+    #:    load-bearing component: keying on the file's stat alone left the board
+    #:    serving a pre-write snapshot after every DB write (the staleness this
+    #:    replaces). It is read-stable — it hashes the logical document, NOT the
+    #:    ``.db`` bytes WAL rewrites on a plain read — so a read never falsely
+    #:    invalidates.
+    #:  * ``stat_sig`` is the identity file's ``(mtime_ns, size, inode)``
+    #:    (:func:`_stat_sig`). Retained as a second signal so a test/harness
+    #:    that moves the identity file's stat still invalidates, matching the
+    #:    old YAML-mtime self-invalidation. Never used as a lone ``st_mtime``
+    #:    equality key (a 1-second-granular fs reports an unchanged mtime across
+    #:    a real write); size + inode close the same-length-edit hole.
     #:
     #: Defaulted so existing constructions keep working; a board built without
     #: a sig simply never matches a cache probe, which fails CLOSED (rebuild)
     #: rather than serving something stale.
     sig: tuple = ()
     # P10 (lead a2a 2026-06-12) — user-defined project clusters loaded
-    # from the same YAML store. Empty list when the store has no
-    # ``groups:`` key (back-compat). See :mod:`scitex_cards._groups`.
+    # from the same store. Empty list when the store has no ``groups:`` key
+    # (back-compat). See :mod:`scitex_cards._groups`.
     groups: list = None  # type: ignore[assignment]
-    #: Paths of every per-project lane successfully unioned. Empty when
-    #: no lanes were discovered or all were skipped. Useful for the FE
-    #: footer ("loaded N lanes") + the test harness.
+    #: Retired: the board reads ONE canonical store, so no per-project lanes
+    #: are unioned. Kept (always empty) for the BoardState wire shape callers
+    #: still read.
     lane_paths: List[Path] = field(default_factory=list)
 
 
@@ -168,28 +156,6 @@ def _stat_sig(path: Path) -> tuple:
         return (0, 0, 0)
 
 
-def _load_lane_safe(path: Path):
-    """Load one per-project lane; return ``(tasks, mtime)`` on success,
-    ``(None, None)`` on failure (logged at WARNING — never raise).
-
-    Per-lane crash-loud, never whole-view: a single malformed YAML in
-    one repo must not blank the operator's board.
-    """
-    from scitex_cards._model import load_tasks
-
-    try:
-        tasks = load_tasks(path)
-        mtime = path.stat().st_mtime
-        return tasks, mtime
-    except Exception as exc:  # noqa: BLE001 — intentional broad catch
-        logger.warning(
-            "[scitex-todo] skipping malformed per-project lane %s: %s",
-            path,
-            exc,
-        )
-        return None, None
-
-
 #: Board keys whose background refresh is already in flight. Guards against a
 #: refresh storm: the operator's browser polls every few seconds, and without
 #: this every poll during a slow rebuild would spawn another rebuild.
@@ -211,14 +177,14 @@ def _swr_enabled() -> bool:
     }
 
 
-def _kick_board_refresh(
-    key, resolved, lane_tasks_by_path, effective_mtime, effective_sig=()
-) -> None:
+def _kick_board_refresh(key, resolved, effective_mtime, effective_sig) -> None:
     """Rebuild this board off the request path, once at a time.
 
     Fail-soft by construction: if the rebuild raises, the cache keeps the
     older board and the next request tries again — a background refresh must
-    never be able to blank the operator's board.
+    never be able to blank the operator's board. ``effective_sig`` is the sig
+    the foreground read already computed, stamped on the fresh board verbatim
+    so the NEXT read hits instead of re-kicking.
     """
     with _refresh_guard:
         if key in _refreshing:
@@ -229,17 +195,16 @@ def _kick_board_refresh(
         from scitex_cards._groups import load_groups
 
         try:
-            global_tasks = _load_global_tasks(resolved) if resolved.exists() else []
-            unioned = _union_tasks(global_tasks, lane_tasks_by_path)
-            task_ids = {t["id"] for t in unioned if isinstance(t, dict) and t.get("id")}
+            tasks = _load_global_tasks(resolved) if resolved.exists() else []
+            task_ids = {t["id"] for t in tasks if isinstance(t, dict) and t.get("id")}
             groups = load_groups(resolved, task_ids=task_ids)
             fresh = BoardState(
-                tasks=unioned,
+                tasks=tasks,
                 store_path=resolved,
                 mtime=effective_mtime,
                 sig=effective_sig,
                 groups=groups,
-                lane_paths=list(lane_tasks_by_path),
+                lane_paths=[],
             )
             _board_cache[key] = (fresh, time.time())
         except Exception:  # noqa: BLE001 — never break the served board
@@ -291,41 +256,6 @@ def _load_global_tasks(path: Path) -> list:
     return load_tasks(path)
 
 
-def _union_tasks(global_tasks: list, lane_tasks_by_path: Dict[Path, list]) -> list:
-    """Union global + per-project lanes; project-lane wins on id collision.
-
-    Returns a fresh list, leftmost-first by id so the FE's deterministic
-    ordering doesn't shuffle on every load. Logs every collision so
-    silent overrides are visible.
-    """
-    seen: Dict[str, dict] = {}
-    seen_origin: Dict[str, str] = {}
-    # Seed with global first.
-    for t in global_tasks:
-        tid = t.get("id") if isinstance(t, dict) else None
-        if not tid:
-            continue
-        seen[tid] = t
-        seen_origin[tid] = "global"
-    # Lane order is sorted (see _discover_lanes), so the iteration is
-    # deterministic. Project lane wins on collision; LOG the override.
-    for lane_path, lane_tasks in lane_tasks_by_path.items():
-        for t in lane_tasks:
-            tid = t.get("id") if isinstance(t, dict) else None
-            if not tid:
-                continue
-            if tid in seen:
-                logger.warning(
-                    "[scitex-todo] id %r collision — %s overrides %s",
-                    tid,
-                    lane_path,
-                    seen_origin[tid],
-                )
-            seen[tid] = t
-            seen_origin[tid] = str(lane_path)
-    return list(seen.values())
-
-
 def get_board(
     tasks_path: Optional[str] = None, *, allow_stale: bool = False
 ) -> BoardState:
@@ -340,64 +270,46 @@ def get_board(
     in, because a self-refreshing view one cycle behind is invisible while a
     31-second wait is not.
 
-    Returns a :class:`BoardState` whose ``tasks`` field is the UNION of
-    the global store and every per-project lane discovered by
-    :func:`_discover_lanes`. Collision policy: project-lane wins (logged).
-    ``mtime`` is MAX across every source so the cache invalidates
-    whenever ANY source's YAML rolls forward.
+    Reads the ONE canonical store (SQLite): ``load_tasks`` ignores the resolved
+    path and reads ``resolve_db_path(None)``. Cache invalidation keys on
+    ``sig`` = ``(store_generation(resolved), _stat_sig(resolved))`` — the DB's
+    read-stable content hash so a DB write self-invalidates, plus the identity
+    file's stat so a harness moving that file also invalidates. See
+    :class:`BoardState`.
 
     Parameters
     ----------
     tasks_path : str or None
-        Optional explicit store path. When ``None``, the standard
-        project -> user -> bundled resolution chain is used. The explicit
-        path becomes the GLOBAL source; lanes are still discovered + unioned.
+        Optional explicit store-identity path. When ``None``, the standard
+        resolution chain is used. Names which logical store is addressed;
+        the card DATA always comes from the one canonical DB.
 
     Returns
     -------
     BoardState
-        The validated, unioned task list + the global-store anchor +
-        the per-source MAX mtime + the lane paths actually consumed.
+        The validated task list + the resolved store anchor + its content sig.
     """
     from scitex_cards._groups import load_groups
-    from scitex_cards._model import load_tasks
     from scitex_cards._paths import resolve_tasks_path
+    from scitex_cards._store_write import store_generation
 
     _cleanup_expired()
 
     resolved = resolve_tasks_path(tasks_path)
-    global_mtime = resolved.stat().st_mtime if resolved.exists() else 0.0
+    # REPORTED value only (the /rev wire contract); never the cache key.
+    effective_mtime = resolved.stat().st_mtime if resolved.exists() else 0.0
 
-    # Discover + load every per-project lane. Build a stable lane-mtime
-    # dict so the cache key reflects the WHOLE source set.
-    discovered = _discover_lanes()
-    lane_tasks_by_path: Dict[Path, list] = {}
-    lane_mtimes: List[float] = []
-    successful_lanes: List[Path] = []
-    for lane_path in discovered:
-        tasks, mt = _load_lane_safe(lane_path)
-        if tasks is None:
-            continue
-        lane_tasks_by_path[lane_path] = tasks
-        lane_mtimes.append(mt)
-        successful_lanes.append(lane_path)
-
-    # Effective mtime = MAX(global, *lanes). REPORTED value only — it feeds
-    # the /rev wire contract the frontend polls. Invalidation uses `sig`.
-    effective_mtime = max([global_mtime] + lane_mtimes) if lane_mtimes else global_mtime
-
-    # CACHE IDENTITY: per-source (mtime_ns, size), global first then lanes in
-    # a stable order. Unlike the max() above this changes when ANY source
-    # changes in EITHER direction — a lane shrinking, or a write landing
-    # inside the same 1-second timestamp granule, both move it. See
-    # BoardState.sig for the failure this replaces.
+    # CACHE IDENTITY: the DB's logical-content version (the load-bearing signal
+    # — a DB write self-invalidates even though it never touches the identity
+    # file) paired with the identity file's stat (so a harness moving that file
+    # still invalidates, matching the old self-invalidation). Both read-stable:
+    # store_generation hashes the logical doc (not the .db bytes WAL rewrites),
+    # and a plain read never writes the identity file. See BoardState.sig.
     effective_sig = (
-        (_stat_sig(resolved) if resolved.exists() else (0, 0)),
-        tuple(sorted(_stat_sig(p) for p in successful_lanes)),
+        store_generation(resolved),
+        _stat_sig(resolved) if resolved.exists() else (0, 0, 0),
     )
 
-    # Cache key is the GLOBAL path; the lane set is implicit (any lane
-    # change moves effective_sig, which the cache check sees).
     key = str(resolved)
     cached = _board_cache.get(key)
     if cached is not None:
@@ -406,48 +318,40 @@ def get_board(
             _board_cache[key] = (board, time.time())
             return board
         # STALE-WHILE-REVALIDATE. The store changed, so this cached board is
-        # a few seconds behind — but rebuilding it costs a full parse of the
-        # multi-MB store (measured 4.6s, and the whole board request 31s cold
-        # on the live store), and the fleet writes every few seconds, so a
-        # blocking rebuild means the operator pays that on nearly every view.
+        # a few seconds behind — but rebuilding it costs a full store read, and
+        # the fleet writes every few seconds, so a blocking rebuild means the
+        # operator pays that on nearly every view.
         #
         # A BOARD IS A LIVE VIEW, NOT A DECISION READ: it self-refreshes every
         # few seconds and shows a LIVE badge, so serving data that is one
-        # refresh-cycle old is invisible, while a 31-second wait is not. The
+        # refresh-cycle old is invisible, while a multi-second wait is not. The
         # refresh runs behind this response and the NEXT poll picks it up.
         #
         # Deliberately NOT applied to agent reads (list_tasks and friends go
         # through the store API, never here) — an agent deciding what to work
         # on must not act on a stale slice. This is the human-view path only.
         if allow_stale and _swr_enabled():
-            _kick_board_refresh(
-                key, resolved, lane_tasks_by_path, effective_mtime, effective_sig
-            )
+            _kick_board_refresh(key, resolved, effective_mtime, effective_sig)
             return board
 
-    global_tasks = _load_global_tasks(resolved) if resolved.exists() else []
-    unioned = _union_tasks(global_tasks, lane_tasks_by_path)
+    tasks = _load_global_tasks(resolved) if resolved.exists() else []
 
-    # P10: load + validate groups against the GLOBAL store only.
-    # Per-project lanes don't currently carry groups; future PR can
-    # union ``groups:`` similarly if the operator requests it.
-    task_ids = {t["id"] for t in unioned if isinstance(t, dict) and t.get("id")}
+    task_ids = {t["id"] for t in tasks if isinstance(t, dict) and t.get("id")}
     groups = load_groups(resolved, task_ids=task_ids)
 
     board = BoardState(
-        tasks=unioned,
+        tasks=tasks,
         store_path=resolved,
         mtime=effective_mtime,
         sig=effective_sig,
         groups=groups,
-        lane_paths=successful_lanes,
+        lane_paths=[],
     )
     _board_cache[key] = (board, time.time())
     logger.info(
-        "[scitex-todo] Loaded board from %s + %d lane(s) (%d total tasks, %d groups)",
+        "[scitex-todo] Loaded board from %s (%d tasks, %d groups)",
         resolved,
-        len(successful_lanes),
-        len(unioned),
+        len(tasks),
         len(groups),
     )
     return board
