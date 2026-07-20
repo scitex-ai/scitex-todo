@@ -29,21 +29,25 @@ What it does each sweep
 4. ESCALATE: a HIGH-PRIORITY card still stale after
    :data:`DEFAULT_ESCALATE_AFTER` digests to its owner also enqueues a
    rising-urgency notice to the OPERATOR, once per card, until the card
-   leaves the stale set (PER CARD, not a digest).
+   leaves the stale set. Escalation stays PER CARD (the operator needs the
+   specific stuck card, not a digest).
 5. LIVENESS ESCALATE (to the CREATOR): when a stale card's owner is NOT
-   ALIVE (:func:`scitex_cards._users.is_alive`) the card escalates to its
-   ``created_by`` instead — NOT gated on digest count or priority, latched
-   once per streak under ``creator_escalated``, falling back to the
-   operator when the creator is absent or IS the dead owner itself.
+   ALIVE (:func:`scitex_cards._users.is_alive` off the registry ``last_seen``)
+   the assignee will never act, so the card escalates to its ``created_by``.
+   Distinct from (4): NOT gated on the digest count or priority (a dead owner
+   won't recover by waiting), latched once per streak under
+   ``creator_escalated``, falling back to the operator when the creator is
+   absent or IS the dead owner itself.
 
 Design
 ------
-* The reminder STATE lives in its own ``reminders.json`` sidecar under the
-  store's ``runtime/`` dir — card payloads are never mutated (detectors
-  stay pure). Two sections: ``owners: {owner_name: {count, last_at}}``
-  (per-owner digest cadence) and ``cards: {card_id: {escalated,
-  creator_escalated}}`` (per-card escalation latches), each pruned when
-  no longer relevant (so a future stall re-escalates on either latch).
+* The reminder STATE lives in a sidecar ``reminders.yaml`` next to
+  ``tasks.yaml`` — card payloads are never mutated (detectors stay pure).
+  Two sections: ``owners: {owner_name: {count, last_at}}`` (the per-owner
+  digest cadence) and ``cards: {card_id: {escalated, creator_escalated}}``
+  (the per-card escalation latches). Owner entries are pruned when the owner
+  has no stale cards; card entries are pruned when the card leaves the stale
+  set (so a future stall re-escalates on either latch).
 * Recipient keying matches the producer/dispatch convention
   (:func:`scitex_cards._notify._resolver._resolve_name_to_id`).
 * Pure-ish + injectable: ``enqueue``, ``resolve_key``, ``resolve_user`` and
@@ -65,7 +69,6 @@ from ._reminder_bodies import (
     _digest_body,
     _escalation_body,
 )
-from ._reminder_cadence import resolve_owner_interval
 from ._reminder_enqueue import (
     _digest_fingerprint,
     _floor_minutes,
@@ -74,6 +77,7 @@ from ._reminder_enqueue import (
     _safe_resolve,
 )
 from ._reminder_liveness import _card_creator, _owner_liveness
+from ._reminder_cadence import resolve_owner_interval
 from ._stale_active import detect_pending_backlog, detect_stale_active
 from ._throughput import _now_utc, _parse_iso
 
@@ -220,9 +224,7 @@ def load_reminder_state(store: str | Path | None = None) -> dict[str, dict]:
     }
 
 
-def save_reminder_state(
-    state: dict[str, dict], store: str | Path | None = None
-) -> None:
+def save_reminder_state(state: dict[str, dict], store: str | Path | None = None) -> None:
     """Atomically persist the reminder sidecar (temp + ``os.replace``)."""
     import yaml
 
@@ -297,20 +299,12 @@ def sweep_reminders(
 
     cur = now or _now_utc()
     cfg = reminders_config()
-    esc_after = (
-        escalate_after
-        if escalate_after is not None
-        else _env_int(
-            ENV_ESCALATE_AFTER, _cfg_int(cfg, "escalate_after", DEFAULT_ESCALATE_AFTER)
-        )
+    esc_after = escalate_after if escalate_after is not None else _env_int(
+        ENV_ESCALATE_AFTER, _cfg_int(cfg, "escalate_after", DEFAULT_ESCALATE_AFTER)
     )
-    esc_prio = (
-        escalate_priority
-        if escalate_priority is not None
-        else _env_int(
-            ENV_ESCALATE_PRIORITY,
-            _cfg_int(cfg, "escalate_priority", DEFAULT_ESCALATE_PRIORITY),
-        )
+    esc_prio = escalate_priority if escalate_priority is not None else _env_int(
+        ENV_ESCALATE_PRIORITY,
+        _cfg_int(cfg, "escalate_priority", DEFAULT_ESCALATE_PRIORITY),
     )
     operator_name = operator or os.environ.get(ENV_OPERATOR, DEFAULT_OPERATOR)
 
@@ -328,12 +322,8 @@ def sweep_reminders(
         def resolve_user(name: str) -> Any:  # type: ignore[misc]
             return _resolve_user_real(name, store=store)
 
-    ttl = (
-        liveness_ttl
-        if liveness_ttl is not None
-        else _env_int(
-            ENV_LIVENESS_TTL, _cfg_int(cfg, "liveness_ttl", DEFAULT_LIVENESS_TTL)
-        )
+    ttl = liveness_ttl if liveness_ttl is not None else _env_int(
+        ENV_LIVENESS_TTL, _cfg_int(cfg, "liveness_ttl", DEFAULT_LIVENESS_TTL)
     )
 
     # Index cards by id for priority/title lookup during escalation.
@@ -374,9 +364,8 @@ def sweep_reminders(
             continue  # nobody to nag; the gap is surfaced by the stats sweep
         # Skip PARKED cards (blocked WITH a blocker = waiting on someone else,
         # owner can't act → noise). Nag only ACTIONABLE staleness.
-        cards = [
-            sc for sc in buckets[owner] if sc.id and not _is_parked(by_id.get(sc.id))
-        ]
+        cards = [sc for sc in buckets[owner]
+                 if sc.id and not _is_parked(by_id.get(sc.id))]
         if not cards:
             continue
         stale_owners.add(owner)
@@ -388,9 +377,7 @@ def sweep_reminders(
         # `_due` early-continue) and NOT gated on count/priority — a dead owner
         # won't recover by waiting; the per-card `creator_escalated` latch keeps
         # it a nudge. A non-registered (free-form) owner has no liveness signal.
-        owner_user, liveness = _owner_liveness(
-            resolve_user, owner, now=cur, ttl_seconds=ttl
-        )
+        owner_user, liveness = _owner_liveness(resolve_user, owner, now=cur, ttl_seconds=ttl)
         if owner_user is not None and liveness.get("status") != "alive":
             for sc in cards:
                 centry = card_state.get(sc.id) or {}
@@ -401,13 +388,7 @@ def sweep_reminders(
                 creator_key = _safe_resolve(resolve_key, creator)
                 cbody = _creator_escalation_body(sc, owner, liveness.get("age_seconds"))
                 if _safe_enqueue(
-                    enqueue,
-                    creator_key,
-                    EVENT_CREATOR_ESCALATION,
-                    sc.id,
-                    cbody,
-                    cur,
-                    store,
+                    enqueue, creator_key, EVENT_CREATOR_ESCALATION, sc.id, cbody, cur, store
                 ):
                     centry["creator_escalated"] = True
                     creator_escalated.append(sc.id)
@@ -464,13 +445,7 @@ def sweep_reminders(
             # replay-storm of stale digests. Per-card escalations below stay
             # distinct (supersede=False).
             if _safe_enqueue(
-                enqueue,
-                owner_key,
-                EVENT_DIGEST,
-                DIGEST_CARD_ID,
-                body,
-                cur,
-                store,
+                enqueue, owner_key, EVENT_DIGEST, DIGEST_CARD_ID, body, cur, store,
                 supersede=True,
             ):
                 entry["fingerprint"] = fingerprint
