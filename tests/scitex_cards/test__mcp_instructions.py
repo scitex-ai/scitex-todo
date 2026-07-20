@@ -67,11 +67,20 @@ def _server_instructions_under(env_agent_id: str | None) -> str:
     the session. This is the honest end-to-end check, and it needs no mocks.
     """
     env = dict(os.environ)
-    if env_agent_id is None:
-        env.pop("SCITEX_TODO_AGENT_ID", None)
-        env.pop("SCITEX_TODO_AGENT", None)  # deprecated name: fails loud if set
-    else:
-        env["SCITEX_TODO_AGENT_ID"] = env_agent_id
+    # The identity now resolves from the post-rename $SCITEX_CARDS_AGENT_ID,
+    # which `_env_compat` mirrors onto $SCITEX_TODO_AGENT_ID at import (new
+    # name wins). An ambient SCITEX_CARDS_AGENT_ID would therefore clobber
+    # whatever we set on the old name, so normalise BOTH prefixes (and both
+    # deprecated twins) to a known state before driving the one we want.
+    for var in (
+        "SCITEX_CARDS_AGENT_ID",
+        "SCITEX_TODO_AGENT_ID",
+        "SCITEX_CARDS_AGENT",  # deprecated twin: fails loud if set
+        "SCITEX_TODO_AGENT",
+    ):
+        env.pop(var, None)
+    if env_agent_id is not None:
+        env["SCITEX_CARDS_AGENT_ID"] = env_agent_id
     proc = subprocess.run(
         [
             sys.executable,

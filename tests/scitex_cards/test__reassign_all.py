@@ -19,6 +19,7 @@ injection seam (a real fake handler) — no mocks, no monkeypatch
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -77,7 +78,7 @@ def _by_id(store, tid: str) -> dict:
 @pytest.fixture()
 def bulk_move_of_three_cards(tmp_path: Path):
     """Three cards owned by proj-old, all moved to proj-new in one call."""
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     card_ids = ("c-1", "c-2", "c-3")
     for cid in card_ids:
         add_task(store=store, id=cid, title=cid, agent="proj-old")
@@ -171,7 +172,7 @@ def test_bulk_result_names_the_acting_operator(bulk_move_of_three_cards):
 
 def test_each_moved_card_gets_audit_comment(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     for cid in ("c-1", "c-2"):
         add_task(store=store, id=cid, title=cid, agent="proj-old")
     # Act
@@ -196,7 +197,7 @@ def test_each_moved_card_gets_audit_comment(tmp_path: Path):
 @pytest.fixture()
 def bulk_move_capturing_events(tmp_path: Path):
     """Four cards moved in one call, with every emitted event captured."""
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     for cid in ("c-1", "c-2", "c-3", "c-4"):
         add_task(store=store, id=cid, title=cid, agent="proj-old")
     sink = _Capturing()
@@ -230,7 +231,7 @@ def test_emits_no_per_card_reassigned_events(bulk_move_capturing_events):
 @pytest.fixture()
 def batch_event_payload(tmp_path: Path):
     """The one `reassigned_batch` event emitted for a three-card move."""
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     for cid in ("c-1", "c-2", "c-3"):
         add_task(store=store, id=cid, title=cid, agent="proj-old")
     sink = _Capturing()
@@ -295,7 +296,7 @@ def test_batch_event_lists_every_moved_card_id(batch_event_payload):
 @pytest.fixture()
 def bulk_move_matching_nobody(tmp_path: Path):
     """Nobody is owned by `ghost`, so the move should touch nothing."""
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(store=store, id="c-1", title="x", agent="proj-keep")
     sink = _Capturing()
     result = reassign_all(
@@ -356,7 +357,7 @@ def test_no_matches_leaves_the_other_card_untouched(bulk_move_matching_nobody):
 @pytest.fixture()
 def repeated_bulk_move(tmp_path: Path):
     """Run the same move twice; capture only what the SECOND run did."""
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(store=store, id="c-1", title="x", agent="proj-old")
     reassign_all(store, "proj-old", "proj-new")
     sink = _Capturing()
@@ -404,7 +405,7 @@ def test_second_call_emits_no_event(repeated_bulk_move):
 @pytest.fixture()
 def bulk_move_with_a_bystander(tmp_path: Path):
     """A mix of owners: two proj-old cards move, one proj-other must not."""
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(store=store, id="c-1", title="x", agent="proj-old")
     add_task(store=store, id="c-2", title="y", agent="proj-other")
     add_task(store=store, id="c-3", title="z", agent="proj-old")
@@ -460,11 +461,15 @@ def test_bystander_card_is_not_rescoped(bulk_move_with_a_bystander):
 @pytest.fixture()
 def bulk_move_of_legacy_assignee_card(tmp_path: Path):
     """A card owned only via the legacy `assignee` field (no agent)."""
-    store = tmp_path / "tasks.yaml"
-    store.write_text(
-        "tasks:\n"
-        "  - id: c-1\n    title: x\n    status: pending\n    assignee: proj-old\n"
-    )
+    from conftest import seed_db_from_doc
+
+    doc = {
+        "tasks": [
+            {"id": "c-1", "title": "x", "status": "pending", "assignee": "proj-old"}
+        ]
+    }
+    seed_db_from_doc(doc, os.environ["SCITEX_CARDS_DB"])
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     result = reassign_all(store, "proj-old", "proj-new", by="operator")
     return {"result": result, "card": _by_id(store, "c-1")}
 
@@ -505,7 +510,7 @@ def test_legacy_assignee_card_gets_the_new_assignee(
 
 def test_same_owner_raises_value_error(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(store=store, id="c-1", title="x", agent="proj-old")
     # Act
     ctx = pytest.raises(ValueError)
@@ -520,7 +525,7 @@ def test_same_owner_raises_value_error(tmp_path: Path):
 #: cohort into the empty string, orphaning every card it touched.
 def test_missing_old_owner_raises_value_error(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     # Act
     ctx = pytest.raises(ValueError)
     # Assert
@@ -530,7 +535,7 @@ def test_missing_old_owner_raises_value_error(tmp_path: Path):
 
 def test_missing_new_owner_raises_value_error(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     # Act
     ctx = pytest.raises(ValueError)
     # Assert
@@ -551,7 +556,7 @@ def test_missing_new_owner_raises_value_error(tmp_path: Path):
 @pytest.fixture()
 def bulk_move_of_a_populated_card(tmp_path: Path):
     """A card with title, status, priority, and an existing comment, moved."""
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(
         store=store,
         id="c-1",
@@ -624,7 +629,7 @@ def test_moved_card_gains_exactly_one_audit_comment(bulk_move_of_a_populated_car
 @pytest.fixture()
 def bulk_move_with_an_exploding_handler(tmp_path: Path):
     """Move two cards while the entry-point handler raises."""
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     for cid in ("c-1", "c-2"):
         add_task(store=store, id=cid, title=cid, agent="proj-old")
 

@@ -10,6 +10,7 @@ documented ``merge_state_fn=`` seam (NOT a network mock). AAA pattern.
 
 from __future__ import annotations
 
+import os
 import textwrap
 
 import pytest
@@ -135,35 +136,49 @@ def test_decide_skip_unknown_is_fail_soft():
 
 
 def _store(tmp_path):
-    """Write a small fixture store and return its path."""
-    path = tmp_path / "tasks.yaml"
-    path.write_text(
-        textwrap.dedent(
-            """\
-            tasks:
-              - id: merged-open-card
-                title: work that merged
-                status: in_progress
-                pr_url: https://github.com/o/r/pull/1
-              - id: open-pr-card
-                title: still in review
-                status: blocked
-                pr_url: https://github.com/o/r/pull/2
-              - id: already-done-card
-                title: done long ago
-                status: done
-                pr_url: https://github.com/o/r/pull/3
-              - id: no-pr-card
-                title: no linked pr
-                status: in_progress
-              - id: unknown-pr-card
-                title: state unknowable
-                status: pending
-                pr_url: https://github.com/o/r/pull/5
-            """
+    """Seed the canonical DB from a small fixture doc; return the STORE path.
+
+    The store is SQLite now: ``reconcile_merged_prs`` / ``load_tasks`` read and
+    write the canonical DB and ignore the path (it survives only as the store
+    identity). The fixture is still authored as readable YAML text; parse it,
+    seed the DB, and return the pinned STORE identity path (NOT the DB path —
+    a write stamped with any other path fails the next read).
+    """
+    from conftest import seed_db_from_doc
+
+    from scitex_cards._yaml import safe_load
+
+    doc = (
+        safe_load(
+            textwrap.dedent(
+                """\
+                tasks:
+                  - id: merged-open-card
+                    title: work that merged
+                    status: in_progress
+                    pr_url: https://github.com/o/r/pull/1
+                  - id: open-pr-card
+                    title: still in review
+                    status: blocked
+                    pr_url: https://github.com/o/r/pull/2
+                  - id: already-done-card
+                    title: done long ago
+                    status: done
+                    pr_url: https://github.com/o/r/pull/3
+                  - id: no-pr-card
+                    title: no linked pr
+                    status: in_progress
+                  - id: unknown-pr-card
+                    title: state unknowable
+                    status: pending
+                    pr_url: https://github.com/o/r/pull/5
+                """
+            )
         )
+        or {}
     )
-    return path
+    seed_db_from_doc(doc, os.environ["SCITEX_CARDS_DB"])
+    return os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
 
 
 def _fake_seam(mapping):

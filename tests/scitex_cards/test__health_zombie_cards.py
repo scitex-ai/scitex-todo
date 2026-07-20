@@ -22,6 +22,7 @@ An invariant nobody runs is not an invariant — so it is a health check.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -45,8 +46,15 @@ from scitex_cards._health import (
 
 
 @pytest.fixture()
-def store(tmp_path: Path) -> Path:
-    path = tmp_path / "tasks.yaml"
+def store() -> str:
+    # SQLite is the store now: the conftest pins + bootstraps the canonical DB
+    # and both store-identity env vars at a per-test scratch dir. Seed the two
+    # cards through the real write path, then hand back the PINNED store path
+    # (the store IDENTITY == resolve_tasks_path(None)) so read-after-write
+    # round-trips. Passing a test's own tmp_path/tasks.yaml would stamp the DB
+    # for a different store and the next read would refuse it (THE STORE-PATH
+    # RULE).
+    path = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _store.add_task(
         path, id="live", title="ordinary open work", status="deferred", agent="a"
     )
@@ -55,14 +63,14 @@ def store(tmp_path: Path) -> Path:
 
 
 @pytest.fixture()
-def store_resolved_from_env(store: Path, env) -> Path:
+def store_resolved_from_env(store: str, env) -> str:
     """The fixture store becomes what the precedence chain resolves to."""
     env.delete("SCITEX_CARDS_TASKS_YAML_SHARED")
     env.set("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
     return store
 
 
-def _zombify(path: Path, task_id: str, status: str) -> None:
+def _zombify(path: str, task_id: str, status: str) -> None:
     """Stamp closed_at but leave the card in an OPEN status — the exact bug."""
     _store.update_task(path, task_id, status=status)
     doc = _store.load_tasks(path)

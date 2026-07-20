@@ -13,6 +13,7 @@ requires an owner, but exercised for update_task).
 from __future__ import annotations
 
 import datetime as _dt
+import os
 
 from scitex_cards import _store, _users
 
@@ -64,7 +65,7 @@ def _add_owned_by(store, name):
 #: that the block exists at all, its classification, its ``last_seen`` stamp,
 #: and the integer ``age_seconds`` a caller can render.
 def _alive_liveness(tmp_path):
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _register_seen(store, "fresh-agent", seconds_ago=60)  # 1 min ago
     return _add_owned_by(store, "fresh-agent")
 
@@ -72,7 +73,7 @@ def _alive_liveness(tmp_path):
 #: Likewise for the three UNKNOWN assertions: an assignee that was never
 #: registered resolves to no user at all, so there is nothing to classify.
 def _unregistered_liveness(tmp_path):
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     return _add_owned_by(store, "ghost-agent")
 
 
@@ -117,7 +118,7 @@ def test_add_task_alive_assignee_carries_integer_age(tmp_path):
 
 def test_add_task_stale_assignee(tmp_path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _register_seen(store, "old-agent", seconds_ago=3600)  # 1 hour ago
     # Act
     result = _add_owned_by(store, "old-agent")
@@ -154,7 +155,7 @@ def test_add_task_unregistered_assignee_has_no_age(tmp_path):
 
 def test_add_task_unknown_assignee_never_seen(tmp_path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _users.register_user(kind="agent", names=["idle-agent"], store=store)
     # Act
     result = _add_owned_by(store, "idle-agent")
@@ -166,7 +167,7 @@ def test_add_task_unknown_assignee_never_seen(tmp_path):
 # reassign_task / update_task attach assignee_liveness for the new owner      #
 # --------------------------------------------------------------------------- #
 def _reassigned_to_fresh_owner(tmp_path):
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _register_seen(store, "new-owner", seconds_ago=30)
     _add_owned_by(store, "orig")
     return _store.reassign_task(store, "t1", "new-owner", by="agent:test-suite")
@@ -192,7 +193,7 @@ def test_reassign_task_reports_new_owner_liveness(tmp_path):
 
 def test_update_task_setting_assignee_reports_liveness(tmp_path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _register_seen(store, "u-owner", seconds_ago=30)
     _add_owned_by(store, "orig")
     # Act
@@ -203,7 +204,7 @@ def test_update_task_setting_assignee_reports_liveness(tmp_path):
 
 def test_update_task_without_assignee_change_has_no_liveness(tmp_path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _add_owned_by(store, "orig")
     # Act
     merged = _store.update_task(store, "t1", note="just a note")

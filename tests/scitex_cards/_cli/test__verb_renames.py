@@ -25,11 +25,12 @@ tmp HOME / XDG_RUNTIME_DIR).
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from click.testing import CliRunner
 
 from scitex_cards._cli import main
-from scitex_cards._store import add_task
 
 _OLD_TO_NEW = {
     "stale-list": "list-stale",
@@ -46,20 +47,28 @@ def runner():
 
 @pytest.fixture
 def store():
-    """Seed two small cards into the harness store — never the live one."""
-    add_task(
-        id="design",
-        title="Design the thing",
-        status="deferred",
-        assignee="agent:test",
-        repo="owner/repo",
-    )
-    add_task(
-        id="build",
-        title="Build the thing",
-        status="deferred",
-        assignee="agent:test",
-    )
+    """Seed two small cards into the harness store — never the live one.
+
+    Seed RAW cards (no ``created_at`` / ``last_activity``) straight into the
+    canonical DB, exactly as the old raw-YAML fixture did. The ``list-stale``
+    criteria flag a deferred card with no timestamps, so the seed MUST leave
+    the stamps unset; ``add_task`` would auto-stamp both (ADR-0008 D11) and
+    defeat that premise, so seed via the doc instead.
+    """
+    from conftest import seed_db_from_doc
+
+    doc = {
+        "tasks": [
+            {
+                "id": "design",
+                "title": "Design the thing",
+                "status": "deferred",
+                "repo": "owner/repo",
+            },
+            {"id": "build", "title": "Build the thing", "status": "deferred"},
+        ]
+    }
+    seed_db_from_doc(doc, os.environ["SCITEX_CARDS_DB"])
 
 
 @pytest.fixture

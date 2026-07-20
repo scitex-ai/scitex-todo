@@ -19,6 +19,7 @@ CliRunner + a real store under tmp_path. No mocks.
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 from click.testing import CliRunner
@@ -28,7 +29,11 @@ from scitex_cards._cli import main
 
 
 def _store_path(tmp_path) -> str:
-    return str(tmp_path / "tasks.yaml")
+    # Store is SQLite; load/save read+write the canonical DB and IGNORE the
+    # path except as the provenance stamp. Return the PINNED STORE identity
+    # (== resolve_tasks_path(None)) so a read-after-write round-trips instead
+    # of tripping the stamp-mismatch guard. NOT the tmp_path file.
+    return os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
 
 
 def _add(runner, ident, title, *extra):
@@ -135,8 +140,7 @@ def test_add_deferred_real_blocker_exits_nonzero(tmp_path):
     # Arrange
     runner = CliRunner()
     # Act
-    result = _add(runner, "y", "Y", "--status", "deferred", "--blocker", "compute"
-    )
+    result = _add(runner, "y", "Y", "--status", "deferred", "--blocker", "compute")
     # Assert
     assert result.exit_code != 0
 
@@ -146,8 +150,7 @@ def test_add_deferred_real_blocker_names_the_field(tmp_path):
     # Arrange
     runner = CliRunner()
     # Act
-    result = _add(runner, "y", "Y", "--status", "deferred", "--blocker", "compute"
-    )
+    result = _add(runner, "y", "Y", "--status", "deferred", "--blocker", "compute")
     # Assert
     assert "blocker" in result.output.lower()
 
@@ -199,7 +202,7 @@ def test_add_defaults_to_deferred(tmp_path):
 # --------------------------------------------------------------------------- #
 def test_save_tasks_drops_none_blocker_from_the_reloaded_row(tmp_path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     tasks = [{"id": "x", "title": "X", "status": "pending", "blocker": "none"}]
     # Act — must NOT raise; the field is dropped in place.
     _model.save_tasks(tasks, store)
@@ -210,7 +213,7 @@ def test_save_tasks_drops_none_blocker_from_the_reloaded_row(tmp_path):
 
 def test_save_tasks_normalizes_none_blocker_in_place(tmp_path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     tasks = [{"id": "x", "title": "X", "status": "pending", "blocker": "none"}]
     # Act — the caller's own dict is normalized, not just the persisted copy.
     _model.save_tasks(tasks, store)
@@ -220,7 +223,7 @@ def test_save_tasks_normalizes_none_blocker_in_place(tmp_path):
 
 def test_save_tasks_real_blocker_on_pending_still_raises(tmp_path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     tasks = [{"id": "x", "title": "X", "status": "pending", "blocker": "compute"}]
     # Act
     # Assert
@@ -231,7 +234,7 @@ def test_save_tasks_real_blocker_on_pending_still_raises(tmp_path):
 def test_save_tasks_none_blocker_on_blocked_is_preserved(tmp_path):
     """On a BLOCKED row, `none` is a legitimate sentinel and is kept."""
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     tasks = [{"id": "x", "title": "X", "status": "blocked", "blocker": "none"}]
     # Act
     _model.save_tasks(tasks, store)
