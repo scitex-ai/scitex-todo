@@ -6,7 +6,7 @@ Backs the board's mobile-first ``/chat`` view (operator side of the
 scitex-dev DM convention v1; card
 ``fleet-agent-direct-message-board-pane-20260707``). Distinct from
 ``handlers/chat.py`` — that is the per-CARD comment thread; this is the
-per-AGENT direct-message thread stored in the ``threads.yaml`` sidecar
+per-AGENT direct-message thread stored in the ``threads.json`` sidecar
 (:mod:`scitex_cards._threads`).
 
 Endpoints::
@@ -95,8 +95,13 @@ def dm_threads_view(request: HttpRequest) -> HttpResponse:
         peer = b if a == OPERATOR_NAME else a
         row = rows.setdefault(
             peer,
-            {"name": peer, "kind": None, "unread": 0,
-             "last_ts": None, "last_body": None},
+            {
+                "name": peer,
+                "kind": None,
+                "unread": 0,
+                "last_ts": None,
+                "last_body": None,
+            },
         )
         row["unread"] = summary["unread"].get(OPERATOR_NAME, 0)
         last = summary["last"]
@@ -140,9 +145,7 @@ def dm_thread_view(request: HttpRequest, peer: str) -> HttpResponse:
         return JsonResponse({"error": f"invalid JSON body: {exc}"}, status=400)
     body = payload.get("body") if isinstance(payload, dict) else None
     if not isinstance(body, str) or not body.strip():
-        return JsonResponse(
-            {"error": "dm send requires non-empty 'body'"}, status=400
-        )
+        return JsonResponse({"error": "dm send requires non-empty 'body'"}, status=400)
     record = _threads.append_message(OPERATOR_NAME, peer, body, store=store)
     return JsonResponse({"message": record}, json_dumps_params={"default": str})
 

@@ -5,8 +5,8 @@
 The channel poll loop (:func:`scitex_cards._mcp_channel._poll_loop`) used to call
 :func:`scitex_cards._mcp_channel.drain_once` every ``_DEFAULT_INTERVAL`` (5s)
 UNCONDITIONALLY. Each drain calls ``recipient_keys`` + ``_inbox.poll_inbox``,
-both of which ``safe_load`` the ENTIRE shared store (the inbox lives in an
-``inboxes:`` section of the SAME ~9 MB / ~930-card ``tasks.yaml`` as the cards).
+both of which parse the ENTIRE shared sidecar (the inbox lives in an
+``inboxes:`` section of the SAME ~9 MB / ~930-card legacy sidecar as the cards).
 A ~9 MB parse every 5s per agent × ~7 channel servers on a host = ~350% sustained
 CPU — the read/poll analogue of the wake-watcher every-tick reload spiral that
 PR #344 (`_wake_watcher.py`, 0.7.45) cured on the WRITE side.

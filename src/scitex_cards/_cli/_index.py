@@ -143,7 +143,7 @@ def index_info_cmd(as_json: bool) -> None:
         f"#   rows: {payload['rows']}\n"
         f"#   schema version: {payload['index_version']}\n"
         f"#   last index at: {payload['last_index_at']}\n"
-        f"#   yaml mtime: {payload['yaml_mtime']}\n"
+        f"#   store mtime: {payload['store_mtime']}\n"
         f"#   lane count: {payload['lane_count']}"
     )
 

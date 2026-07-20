@@ -4,7 +4,7 @@
 
 Phase 1 of the store SQLite migration (incident card
 ``store-sqlite-migration-o1-writes-future-20260701``). The per-recipient
-notification inbox moves off the monolithic ``tasks.yaml`` (whose 5 s
+notification inbox moves off the monolithic legacy sidecar (whose 5 s
 digest-poll re-parsed all ~1000 cards) onto a small SQLite DB at
 ``<store_dir>/runtime/todo.db``.
 

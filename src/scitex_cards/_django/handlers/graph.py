@@ -191,7 +191,7 @@ def _build_graph(board) -> dict:
         # what + blocked on me" without leaving the board (ADR-0008 design,
         # ticket `proj-scitex-todo-fleet-liveness`, operator TG 9576 acute
         # pain: 返事が来ない＝私にとって死んだのと同じ). FIRST SLICE — derived
-        # from already-loaded tasks.yaml; the sidecar daemon + cross-host
+        # from the already-loaded board tasks; the sidecar daemon + cross-host
         # roll-up land in follow-up PRs (no schema change today).
         "fleet": _build_fleet(board.tasks),
         # P10 (lead a2a 2026-06-12) — user-defined project clusters from
