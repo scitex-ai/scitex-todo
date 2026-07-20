@@ -12,7 +12,7 @@ lines by tangling two unrelated responsibilities:
 The separation is not cosmetic. Every store incident of the past two weeks lived
 in THIS code and nowhere else:
 
-* the ~20 s ruamel round-trip write (O(whole-store) on every single card change);
+* the ~20 s whole-document round-trip write, O(whole-store) on every card change;
 * the 2026-06-13 mid-string corruption, recovered by hand — now prevented by the
   tmp + fsync + ``os.replace`` dance and the post-dump reparse check below;
 * the 2026-06-08 autoassign-parallel-run data loss (no atomic replace);
@@ -52,11 +52,11 @@ def _store_lock(path: Path):
     """Hold an exclusive `fcntl.flock` on a sibling `.<name>.lock` file.
 
     Phase 1 prerequisite for the cross-host sync substrate (Req 2): two
-    concurrent writers — say a CLI verb and the board's `/priority` POST
-    handler — must serialize so the YAML payload they write is atomic at
-    the task-list granularity. We hold the lock on a separate `.lock`
-    sentinel file rather than on the store itself so we don't fight the
-    ruamel YAML reader/writer that re-opens the path.
+    concurrent writers — say a CLI verb and the GUI's `/priority` POST
+    handler — must serialize so the payload they write is atomic at the
+    task-list granularity. We hold the lock on a separate `.lock` sentinel
+    file rather than on the store itself so we don't fight a reader/writer
+    that re-opens the path.
 
     The lock file is created if missing, never removed (next caller reuses
     it). Empty mode is fine — only the lockf state matters.
@@ -95,12 +95,10 @@ def save_tasks(
     *,
     expected_generation: str | None = None,
 ) -> None:
-    """Validate then write a task list back to a YAML store, preserving comments.
+    """Validate then write a task list back to the store.
 
     Re-runs the same validation gate as :func:`load_tasks` *before* touching
-    disk, so a malformed mutation can never corrupt the store. Uses
-    ``ruamel.yaml`` round-trip mode so hand-written comments and key layout in
-    the existing store survive the rewrite.
+    the store, so a malformed mutation can never corrupt it.
 
     Parameters
     ----------
@@ -193,13 +191,12 @@ def _save_tasks_unlocked(tasks: list[dict], path: Path) -> None:
     """Validate-and-write a task list WITHOUT acquiring the store lock.
 
     Thin back-compat wrapper over :func:`_save_doc_unlocked`. Callers that
-    only hold a mutated ``tasks`` list (not the full parsed doc) land here;
-    it does the ONE ``safe_load`` needed to recover the non-``tasks`` top-
-    level sections (the ``users:`` registry etc.), splices in ``tasks``, and
-    delegates the actual crash-safe write. Callers on the hot read-modify-
-    write path should instead reuse the doc they already parsed via
-    :func:`load_doc` and call :func:`_save_doc_unlocked` directly — that
-    avoids this extra re-read entirely.
+    only hold a mutated ``tasks`` list (not the full doc) land here; it does
+    the ONE extra read needed to recover the non-``tasks`` top-level sections
+    (the ``users:`` registry etc.), splices in ``tasks``, and delegates the
+    actual write. Callers on the hot read-modify-write path should instead
+    reuse the doc they already hold via :func:`load_doc` and call
+    :func:`_save_doc_unlocked` directly — that avoids the extra read.
 
     Used by callers (the `_store.add_task`/`update_task`/`complete_task`
     Python API) that hold `_store_lock` for their whole read-modify-write
@@ -226,12 +223,12 @@ def _save_doc_unlocked(
     """Validate-and-write an ALREADY-PARSED full doc WITHOUT the store lock.
 
     The doc-based write primitive. The read-modify-write callers in
-    ``_store`` parse the store ONCE under the lock (via :func:`load_doc`),
+    ``_store`` read the store ONCE under the lock (via :func:`load_doc`),
     mutate ``doc["tasks"]`` in place, then hand the whole doc here — so the
     non-``tasks`` sections (``users:`` etc.) captured by that same locked
-    read survive the rewrite WITHOUT a redundant second ``safe_load``. When
-    ``tasks`` is passed it replaces ``doc["tasks"]`` (the CRUD verbs may
-    rebind the list, e.g. ``keep = [...]`` in delete).
+    read survive the rewrite without a redundant second read. When ``tasks``
+    is passed it replaces ``doc["tasks"]`` (the CRUD verbs may rebind the
+    list, e.g. ``keep = [...]`` in delete).
 
     Direct callers must already hold `_store_lock(path)`.
     """
@@ -364,9 +361,8 @@ def _git_autocommit_store(path: Path) -> None:
     )
 
 
-# `_merge_tasks_into_seq` removed: it existed only to preserve ruamel
-# per-node comments during the round-trip write. The write path now uses a
-# fast safe dump (no comment preservation), so the merge helper is dead.
+# `_merge_tasks_into_seq` removed: it existed only to preserve per-node
+# comments during a whole-document round-trip write. That write path is gone.
 # (hook-bypass: line-limit — _model.py split still queued.)
 
 

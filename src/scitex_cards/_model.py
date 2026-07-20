@@ -17,8 +17,7 @@ This module is the single validation gate: ``load_tasks`` raises
 ``TaskValidationError`` on a malformed store (missing id/title, duplicate
 id, invalid status, non-integer priority, non-string parent) so downstream
 adapters can assume well-formed input. ``save_tasks`` re-runs the same gate
-before writing back and preserves the hand-written YAML comments +
-structure via ruamel.yaml.
+before writing back.
 """
 
 from __future__ import annotations
@@ -30,13 +29,12 @@ from ._validate import _validate_tasks  # noqa: F401
 
 
 def load_tasks(path: str | Path) -> list[dict]:
-    """Load and validate the task list from a YAML store.
+    """Load and validate the task list from the store.
 
     Parameters
     ----------
     path : str or pathlib.Path
-        Path to the YAML task store. The document must have a top-level
-        ``tasks:`` list.
+        Names which logical store is addressed; used in error text only.
 
     Returns
     -------
@@ -64,36 +62,35 @@ def load_tasks(path: str | Path) -> list[dict]:
 
 
 def load_doc(path: str | Path, *, validate: bool = False) -> dict:
-    """Load the FULL parsed mapping from a YAML store in ONE ``safe_load``.
+    """Load the FULL store document from the database.
 
-    This is the single-read primitive that both :func:`load_tasks` and the
-    ``_store`` CRUD verbs build on. Returning the *whole* top-level mapping
-    (not just ``tasks``) lets a read-modify-write cycle reuse the one parse
-    for BOTH the ``tasks`` payload it mutates AND the non-``tasks`` sections
-    (notably the ``users:`` registry) it must carry through untouched — so
-    the store is parsed once under the lock instead of twice (the old
-    ``_save_tasks_unlocked`` re-read is eliminated; the ~2.3 s per single-card
-    write it cost on the ~7.7 MB shared store goes away).
+    The single-read primitive that both :func:`load_tasks` and the ``_store``
+    CRUD verbs build on. Returning the *whole* top-level mapping (not just
+    ``tasks``) lets a read-modify-write cycle reuse one read for BOTH the
+    ``tasks`` payload it mutates AND the non-``tasks`` sections (notably the
+    ``users:`` registry) it must carry through untouched.
 
     Parameters
     ----------
     path : str or pathlib.Path
-        Path to the YAML task store.
+        Names which logical store is addressed; used in error text only.
     validate : bool, default False
-        When True, run :func:`_validate_tasks` on ``data.get("tasks")`` before
-        returning (the read-time gate :func:`load_tasks` applies). Left off for
-        pure write-preservation reads that validate at dump time instead.
+        When True, run :func:`_validate_tasks` on ``data.get("tasks")``
+        before returning (the read-time gate :func:`load_tasks` applies).
 
     Returns
     -------
     dict
-        The parsed top-level mapping. Empty/``None`` documents normalize to
-        ``{}``; a non-mapping top level is returned as-is (the caller decides).
+        The store document.
 
     Raises
     ------
-    FileNotFoundError
-        If ``path`` does not exist.
+    RuntimeError
+        If the database is missing, or its read returns no usable document.
+        It RAISES rather than returning ``{}``, and that is load-bearing: an
+        empty document flows into a read-modify-write and is written back as
+        the whole store, which is how 2,138 cards once became one. Emptiness
+        must be read, never inferred.
     TaskValidationError
         Only when ``validate=True`` and the ``tasks`` payload is invalid.
     """
