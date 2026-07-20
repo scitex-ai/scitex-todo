@@ -2,24 +2,22 @@
 # -*- coding: utf-8 -*-
 """Per-user delivery config + the delivery POLICY gate.
 
-Reads ``<store_dir>/recipients.yaml`` (a sibling of the task store), which
+Reads ``<store_dir>/recipients.json`` (a sibling of the task store), which
 maps each user to the channels they should be delivered on::
 
-    users:
-      u_3f9a1c0b7e42:
-        channels:
-          - kind: log
-          - kind: telegram
-            address: "123456789"
-      dave:
-        channels:
-          - kind: log
+    {"users": {
+       "u_3f9a1c0b7e42": {"channels": [
+         {"kind": "log"},
+         {"kind": "telegram", "address": "123456789"}]},
+       "dave": {"channels": [{"kind": "log"}]}}}
 
 ``address`` is OPTIONAL (the ``log`` channel needs none). A missing file
 yields an empty recipient set (no crash) — delivery simply has nothing to
-do. Resolution follows the same store precedence the rest of the package
-uses (explicit arg > ``$SCITEX_TODO_*`` env > project ``.scitex/todo`` >
-user ``~/.scitex/todo``) via :func:`scitex_cards._inbox._resolved_store`.
+do. A pre-JSON ``recipients.yaml`` is read as a FALLBACK when no
+``recipients.json`` exists, so an operator's existing config keeps working
+until they convert it (no auto-write, so hand-edits to the YAML are never
+silently ignored). Resolution follows the same store precedence via
+:func:`scitex_cards._inbox._resolved_store`.
 
 Policy lives HERE, never inside a channel: :func:`should_deliver_now` is the
 SEAM where quiet-hours / consent / rate-limit will hang off. Slice 1 returns
@@ -33,10 +31,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .._inbox import _resolved_store
-from .._yaml import safe_load
 
 #: Recipients config filename, a sibling of the task store.
-RECIPIENTS_FILENAME = "recipients.yaml"
+RECIPIENTS_FILENAME = "recipients.json"
+
+#: Pre-JSON recipients filename, read as a fallback so an operator's existing
+#: config keeps working until they convert it (see :func:`load_recipients`).
+_LEGACY_RECIPIENTS_FILENAME = "recipients.yaml"
 
 
 @dataclass(frozen=True)
@@ -56,8 +57,43 @@ class Recipient:
 
 
 def recipients_path(store: str | Path | None = None) -> Path:
-    """Resolve ``<store_dir>/recipients.yaml`` for the resolved store."""
+    """Resolve ``<store_dir>/recipients.json`` for the resolved store."""
     return _resolved_store(store).parent / RECIPIENTS_FILENAME
+
+
+def _load_recipients_doc(store: str | Path | None) -> dict:
+    """Load the raw recipients mapping: JSON, falling back to a legacy YAML.
+
+    Reads ``recipients.json``. When it is absent but a pre-JSON
+    ``recipients.yaml`` sibling exists, that is read instead (no write, so a
+    hand-edited YAML config is never silently overridden). Absent/unreadable/
+    malformed → ``{}``.
+    """
+    import json
+
+    path = recipients_path(store)
+    if path.exists():
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            return {}
+        try:
+            data = json.loads(text) if text.strip() else {}
+        except json.JSONDecodeError:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    legacy = path.with_name(_LEGACY_RECIPIENTS_FILENAME)
+    if not legacy.exists():
+        return {}
+    from .._yaml import safe_load
+
+    try:
+        with legacy.open(encoding="utf-8") as handle:
+            data = safe_load(handle) or {}
+    except OSError:
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _parse_channels(raw: object) -> list[ChannelConfig]:
@@ -88,17 +124,13 @@ def _parse_channels(raw: object) -> list[ChannelConfig]:
 def load_recipients(store: str | Path | None = None) -> list[Recipient]:
     """Return every configured recipient (missing file → ``[]``).
 
-    Reads ``recipients.yaml`` via the fast safe loader. A missing file, an
-    absent/non-mapping ``users:`` key, or a user with no usable channels all
-    degrade gracefully — a user with zero channels is dropped (nothing to
-    deliver), never an error. Deterministic order: users are returned
-    sorted by id so a delivery run is reproducible.
+    Reads ``recipients.json`` (with a legacy ``recipients.yaml`` fallback). A
+    missing file, an absent/non-mapping ``users:`` key, or a user with no usable
+    channels all degrade gracefully — a user with zero channels is dropped
+    (nothing to deliver), never an error. Deterministic order: users are
+    returned sorted by id so a delivery run is reproducible.
     """
-    path = recipients_path(store)
-    if not path.exists():
-        return []
-    with path.open(encoding="utf-8") as handle:
-        data = safe_load(handle) or {}
+    data = _load_recipients_doc(store)
     users = data.get("users") if isinstance(data, dict) else None
     if not isinstance(users, dict):
         return []
@@ -107,7 +139,9 @@ def load_recipients(store: str | Path | None = None) -> list[Recipient]:
         if not isinstance(user_id, str) or not user_id:
             continue
         cfg = users[user_id]
-        channels = _parse_channels(cfg.get("channels") if isinstance(cfg, dict) else None)
+        channels = _parse_channels(
+            cfg.get("channels") if isinstance(cfg, dict) else None
+        )
         if not channels:
             continue
         out.append(Recipient(user=user_id, channels=channels))
