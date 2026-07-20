@@ -64,8 +64,8 @@ def _store_lock(path: Path):
     Parameters
     ----------
     path : Path
-        The store path (e.g. ``~/.scitex/todo/tasks.yaml``). The lock
-        sentinel sits next to it as ``.tasks.yaml.lock``.
+        The store path (e.g. a legacy sidecar file). The lock sentinel
+        sits next to it as ``.<name>.lock``.
 
     Yields
     ------
@@ -116,9 +116,9 @@ def save_tasks(
 
     Examples
     --------
-    >>> tasks = load_tasks("tasks.yaml")          # doctest: +SKIP
+    >>> tasks = load_tasks("cards.db")             # doctest: +SKIP
     >>> tasks[0]["priority"] = 1                    # doctest: +SKIP
-    >>> save_tasks(tasks, "tasks.yaml")            # doctest: +SKIP
+    >>> save_tasks(tasks, "cards.db")               # doctest: +SKIP
     """
     path = Path(path).expanduser()
     # The lock covers only THIS write. It cannot cover the caller's earlier
@@ -153,9 +153,10 @@ def store_generation(path: str | Path) -> str:
     # Read-STABLE content hash of the canonical store. The token is the LOGICAL
     # content (load_doc's output), NOT the DB file's bytes and NOT the `path`
     # argument's file. Two traps this avoids:
-    #   - the store-identity path (.../tasks.yaml) is never a real file under
-    #     SQLite, so hashing it always returned "absent" and silently disabled
-    #     the optimistic-concurrency guard (a stale write was never refused);
+    #   - the store-identity path (the legacy sidecar name) is never a real
+    #     file under SQLite, so hashing it always returned "absent" and
+    #     silently disabled the optimistic-concurrency guard (a stale write
+    #     was never refused);
     #   - SQLite in WAL mode rewrites cards.db on a plain READ (it creates
     #     -wal/-shm), so hashing the DB FILE returned a new token after an
     #     un-contended read and falsely refused a fresh guarded write.
@@ -188,7 +189,7 @@ def edit_tasks(path: str | Path):
 
     Examples
     --------
-    >>> with edit_tasks("tasks.yaml") as tasks:     # doctest: +SKIP
+    >>> with edit_tasks("cards.db") as tasks:        # doctest: +SKIP
     ...     for t in tasks:
     ...         if t.get("status") == "pending":
     ...             t["status"] = "deferred"
