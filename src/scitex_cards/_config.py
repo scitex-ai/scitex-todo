@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Layered ``config.yaml`` for scitex-todo knobs (nudge cadence, …).
+"""Layered ``config.json`` for scitex-cards knobs (nudge cadence, …).
 
 The board is fleet infra, so its behaviour must be a KNOB the operator can
 turn — not a constant baked into the code. Config lives in the same SciTeX
 local-state convention as the task store (:mod:`scitex_cards._paths`), in a
-``config.yaml`` resolved across two scopes and LAYERED:
+``config.json`` resolved across two scopes and LAYERED:
 
-    1. user scope:     ``$SCITEX_DIR/todo/config.yaml`` (default ``~/.scitex/todo``)
-    2. project scope:  ``<git-root>/.scitex/todo/config.yaml``
+    1. user scope:     ``$SCITEX_DIR/cards/config.json`` (default ``~/.scitex/cards``)
+    2. project scope:  ``<git-root>/.scitex/cards/config.json``
+
+A pre-JSON ``config.yaml`` sibling is read as a FALLBACK when no ``config.json``
+exists at that scope (no auto-write, so a hand-edited YAML config keeps working
+until the operator converts it).
 
 The user file is the BASE; the project file OVERRIDES it key-by-key (a repo
 can tighten/loosen a knob without touching the user default). A missing /
@@ -39,8 +43,12 @@ from ._paths import PKG_SHORT, _find_git_root, _user_root
 
 logger = logging.getLogger(__name__)
 
-#: Config file name (sibling of ``tasks.yaml`` in each scope).
-CONFIG_NAME = "config.yaml"
+#: Config file name (in each scope's ``.scitex/cards`` dir).
+CONFIG_NAME = "config.json"
+
+#: Pre-JSON config filename, read as a fallback so a hand-edited YAML config
+#: keeps working until the operator converts it (see :func:`_read_one`).
+_LEGACY_CONFIG_NAME = "config.yaml"
 
 #: The ``reminders:`` knobs.
 REMINDERS_SECTION = "reminders"
@@ -67,22 +75,30 @@ def config_paths() -> list[Path]:
 
 
 def _read_one(path: Path) -> dict:
-    """Read one config file → mapping; missing/malformed → ``{}`` (fail-soft)."""
-    import yaml
+    """Read one config file → mapping; missing/malformed → ``{}`` (fail-soft).
 
-    from ._yaml import safe_load
+    Reads a JSON config. When the JSON file is absent, a sibling legacy
+    ``config.yaml`` at the same scope is read as a fallback (no auto-write).
+    """
+    import json
 
+    target = path if path.exists() else path.with_name(_LEGACY_CONFIG_NAME)
     try:
-        text = path.read_text(encoding="utf-8")
+        text = target.read_text(encoding="utf-8")
     except FileNotFoundError:
         return {}
     except OSError as exc:  # noqa: BLE001 — unreadable config must not break a sweep
-        logger.warning("config: cannot read %s: %s", path, exc)
+        logger.warning("config: cannot read %s: %s", target, exc)
         return {}
     try:
-        data = safe_load(text) or {}
-    except yaml.YAMLError as exc:
-        logger.warning("config: malformed %s: %s", path, exc)
+        if target.suffix == ".json":
+            data = json.loads(text) if text.strip() else {}
+        else:
+            from ._yaml import safe_load
+
+            data = safe_load(text) or {}
+    except Exception as exc:  # noqa: BLE001 — malformed config must not break a sweep
+        logger.warning("config: malformed %s: %s", target, exc)
         return {}
     return data if isinstance(data, dict) else {}
 
@@ -98,10 +114,7 @@ def load_config() -> dict:
     for path in config_paths():
         data = _read_one(path)
         for key, value in data.items():
-            if (
-                isinstance(value, dict)
-                and isinstance(merged.get(key), dict)
-            ):
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
                 merged[key] = {**merged[key], **value}
             else:
                 merged[key] = value

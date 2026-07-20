@@ -126,4 +126,45 @@ def test_bool_is_not_a_valid_interval_number(tmp_path, monkeypatch):
     assert interval == _config.DEFAULT_INTERVAL_MINUTES
 
 
+# === JSON format + legacy YAML fallback ====================================
+
+
+def test_a_json_config_is_read(tmp_path, monkeypatch):
+    # Arrange
+    import json
+
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(
+        json.dumps({"reminders": {"interval_minutes": 7}}), encoding="utf-8"
+    )
+    _paths(monkeypatch, cfg_path)
+    # Act / Assert
+    assert _config.reminders_config() == {"interval_minutes": 7}
+
+
+def test_json_config_wins_over_a_sibling_legacy_yaml(tmp_path, monkeypatch):
+    # Arrange — both files present at the same scope; JSON must win.
+    import json
+
+    (tmp_path / "config.yaml").write_text(
+        "reminders:\n  interval_minutes: 99\n", encoding="utf-8"
+    )
+    (tmp_path / "config.json").write_text(
+        json.dumps({"reminders": {"interval_minutes": 7}}), encoding="utf-8"
+    )
+    _paths(monkeypatch, tmp_path / "config.json")
+    # Act / Assert
+    assert _config.reminders_config() == {"interval_minutes": 7}
+
+
+def test_a_legacy_yaml_config_is_read_when_no_json(tmp_path, monkeypatch):
+    # Arrange — only the pre-JSON YAML exists; it is the fallback.
+    (tmp_path / "config.yaml").write_text(
+        "reminders:\n  interval_minutes: 3\n", encoding="utf-8"
+    )
+    _paths(monkeypatch, tmp_path / "config.json")  # json absent → yaml fallback
+    # Act / Assert
+    assert _config.reminders_config() == {"interval_minutes": 3}
+
+
 # EOF
