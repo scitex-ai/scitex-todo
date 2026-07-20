@@ -629,21 +629,22 @@ def test_summary_returns_deferred_count(tmp_path):
 
 
 def test_where_returns_resolved_path(tmp_path):
-    # Arrange
+    # Arrange — the store identity is the database path ($SCITEX_CARDS_DB).
     from scitex_cards._mcp_server import resolve_store
 
-    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
+    store = os.environ["SCITEX_CARDS_DB"]
     # Act
     info = json.loads(asyncio.run(_call_tool(resolve_store)))
     # Assert
     assert info["resolved"] == store
 
 
-def test_where_returns_exists_false_when_absent(tmp_path):
-    # Arrange
+def test_where_returns_exists_false_when_absent(tmp_path, env):
+    # Arrange — point the store identity at a database that does not exist.
     from scitex_cards._mcp_server import resolve_store
 
-    store = str(tmp_path / "tasks.yaml")
+    env.set("SCITEX_CARDS_DB", str(tmp_path / "absent.db"))
+    env.set("SCITEX_TODO_DB", str(tmp_path / "absent.db"))
     # Act
     info = json.loads(asyncio.run(_call_tool(resolve_store)))
     # Assert

@@ -57,7 +57,7 @@ from ._db_bootstrap import (
     _insert_users,
     _rebuild_from_doc,
 )
-from ._db_freshness import stamp_yaml_provenance
+from ._db_freshness import stamp_store_provenance
 
 #: Per-card content hashes, so a write can tell what actually changed.
 HASH_TABLE = "mirror_hashes"
@@ -179,17 +179,15 @@ def mirror_doc_incremental(
 
     try:
         tasks = doc.get("tasks") if isinstance(doc, dict) else None
-        raw_count = len(tasks) if isinstance(tasks, list) else 0
         cards = [c for c in (tasks or []) if isinstance(c, dict) and c.get("id")]
 
         def _stamp() -> None:
-            # The doc's RAW card count — not len(cards). Cards with no id are
-            # dropped just above, and duplicate ids collapse in _insert_tasks; both
-            # are LOSSY. Stamping the raw count is what lets the read guard notice
-            # (db_rows != stamped) and refuse, instead of a SQLite read quietly
-            # returning fewer cards than the YAML has.
+            # Record WHICH STORE this database is the database of, in the same
+            # transaction as the rows. The identity is the store's resolved path
+            # (post-cutover, the database's own $SCITEX_CARDS_DB path); the
+            # ownership guard compares it before every write.
             if store_path is not None:
-                stamp_yaml_provenance(conn, store_path, raw_count)
+                stamp_store_provenance(conn, store_path)
 
         prior = _existing_hashes(conn)
 

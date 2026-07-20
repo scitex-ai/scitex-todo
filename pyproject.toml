@@ -151,12 +151,8 @@ artifacts = [
     "src/scitex_cards/_django/manifest.json",
     "src/scitex_cards/_django/templates/**/*",
     "src/scitex_cards/_django/static/**/*",
-    # Agent-facing skills + bundled example store — read at runtime by
-    # `scitex-todo skills get/install` and `bundled_example()`.
+    # Agent-facing skills — read at runtime by `scitex-cards skills get/install`.
     "src/scitex_cards/_skills/**/*",
-    # Pre-built Sphinx HTML served in-wheel by scitex-cloud (PS-121);
-    # refreshed by the docs workflow on main/develop pushes.
-    "src/scitex_cards/_sphinx_html/**/*",
 ]
 
 [tool.pytest.ini_options]

@@ -41,7 +41,7 @@ def _stamped_db(tmp_path, monkeypatch, store):
     from conftest import seed_db_from_doc
 
     from scitex_cards._db import connect
-    from scitex_cards._db_freshness import stamp_yaml_provenance
+    from scitex_cards._db_freshness import stamp_store_provenance
     from scitex_cards._yaml import safe_load
 
     db = tmp_path / "cards.db"
@@ -51,7 +51,7 @@ def _stamped_db(tmp_path, monkeypatch, store):
     conn = connect(str(db))
     try:
         conn.execute("BEGIN IMMEDIATE")
-        stamp_yaml_provenance(conn, store, len(doc.get("tasks", [])))
+        stamp_store_provenance(conn, store)
         conn.commit()
     finally:
         conn.close()

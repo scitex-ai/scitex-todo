@@ -165,9 +165,8 @@ def resolve_store_cmd(as_json) -> None:
     click.echo(f"resolved:        {info['resolved']}")
     click.echo(f"exists:          {info['exists']}")
     click.echo(f"explicit:        {info['explicit']}")
-    click.echo(f"$SCITEX_TODO_TASKS_YAML_SHARED: {info['env_tasks']}")
+    click.echo(f"$SCITEX_CARDS_DB:  {info['db_env']}")
     click.echo(f"user store:      {info['user_store']}")
-    click.echo(f"bundled example: {info['bundled_example']}")
 
 
 # --------------------------------------------------------------------------- #

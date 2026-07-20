@@ -1016,26 +1016,26 @@ def test_where_exits_zero(tmp_path, env):
 
 
 def test_where_resolved_path(tmp_path, env):
-    # Arrange
+    # Arrange — the store identity is the database path ($SCITEX_CARDS_DB).
     runner = CliRunner()
-    store = _store_path(tmp_path)
-    Path(store).write_text("tasks: []\n", encoding="utf-8")
-    env.set("SCITEX_TODO_TASKS_YAML_SHARED", store)
-    env.set("SCITEX_CARDS_TASKS_YAML_SHARED", store)
+    db = str(tmp_path / "cards.db")
+    Path(db).write_text("", encoding="utf-8")
+    env.set("SCITEX_CARDS_DB", db)
+    env.set("SCITEX_TODO_DB", db)
     result = runner.invoke(main, ["resolve-store", "--json"])
     # Act
     info = json.loads(result.output.strip())
     # Assert
-    assert info["resolved"] == store
+    assert info["resolved"] == db
 
 
 def test_where_exists_true(tmp_path, env):
     # Arrange
     runner = CliRunner()
-    store = _store_path(tmp_path)
-    Path(store).write_text("tasks: []\n", encoding="utf-8")
-    env.set("SCITEX_TODO_TASKS_YAML_SHARED", store)
-    env.set("SCITEX_CARDS_TASKS_YAML_SHARED", store)
+    db = str(tmp_path / "cards.db")
+    Path(db).write_text("", encoding="utf-8")
+    env.set("SCITEX_CARDS_DB", db)
+    env.set("SCITEX_TODO_DB", db)
     result = runner.invoke(main, ["resolve-store", "--json"])
     # Act
     info = json.loads(result.output.strip())

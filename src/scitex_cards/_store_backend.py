@@ -76,19 +76,26 @@ def write_doc_to_db(doc: dict, store_path, *, deleted_ids=None) -> dict:
     from ._dual_write import _db_mirrors_this_store
 
     db_path = resolve_db_path(None)
-    if not _db_mirrors_this_store(db_path, store_path):
+    # The store identity IS the database path ($SCITEX_CARDS_DB). The caller's
+    # ``store_path`` names the logical store for messages and sidecar dirs, but
+    # it is NOT a second identity axis: reads (``_read_canonical_db_or_raise``)
+    # and writes both key on ``db_path``, so a fresh database is adopted on
+    # first write and every subsequent access agrees with the stamp. Keying the
+    # guard on ``store_path`` here is what let a write stamp the database with a
+    # different path than reads compared against — two axes that could disagree,
+    # the exact failure class the cutover removed.
+    if not _db_mirrors_this_store(db_path, db_path):
         raise RuntimeError(
-            f"refusing to write {store_path} into {db_path}: that database is "
-            f"the store for a DIFFERENT path, and writing it would replace "
-            f"that store's rows with this one's. Point $SCITEX_CARDS_DB at "
-            f"this store's own database."
+            f"refusing to write {db_path}: it is stamped for a DIFFERENT "
+            f"database, and writing it would replace that store's rows with "
+            f"this one's. Point $SCITEX_CARDS_DB at this store's own database."
         )
 
     # `mirror_doc_incremental` already raises on failure — no try/except here
     # ON PURPOSE. Adding one could only make this quieter, which is the one
     # direction this function must never move.
     return mirror_doc_incremental(
-        doc, db_path, store_path=store_path, deleted_ids=deleted_ids
+        doc, db_path, store_path=db_path, deleted_ids=deleted_ids
     )
 
 

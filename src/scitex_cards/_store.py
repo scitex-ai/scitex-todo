@@ -252,9 +252,8 @@ def _read_canonical_db_or_raise() -> dict:
     # AS the board. Reusing the write door's own predicate keeps one definition
     # of "owns"; an UNSTAMPED DB is adoptable there and stays adoptable here.
     from ._dual_write import _db_mirrors_this_store
-    from ._paths import resolve_tasks_path
 
-    if not _db_mirrors_this_store(db_path, resolve_tasks_path(None)):
+    if not _db_mirrors_this_store(db_path, db_path):
         raise RuntimeError(
             f"REFUSING TO READ {db_path} as the store: that database is "
             f"stamped for a DIFFERENT store than this process resolved. "
@@ -366,30 +365,28 @@ def resolve_store(store: str | Path | None = None) -> dict:
     Output shape::
 
         {
-          "resolved":         "/abs/path/to/tasks.yaml",
+          "resolved":         "/abs/path/to/cards.db",
           "explicit":         <the `store` arg you passed, or None>,
-          "env_tasks":        <value of $SCITEX_TODO_TASKS_YAML_SHARED, or None>,
-          "user_store":       "/abs/path/to/~/.scitex/todo/tasks.yaml",
-          "pkg_short":        "scitex_cards",
+          "db_env":           <value of $SCITEX_CARDS_DB, or None>,
+          "user_store":       "/abs/path/to/~/.scitex/cards/cards.db",
+          "pkg_short":        "cards",
           "exists":           bool,
         }
     """
     import os
 
-    from ._paths import (
-        ENV_TASKS,
-        PKG_SHORT,
-        _user_root,
-    )
+    from ._db import DEFAULT_DB_FILENAME, ENV_DB, resolve_db_path
+    from ._paths import PKG_SHORT, _user_root
 
-    resolved = resolve_tasks_path(
+    # The resolved store is the DATABASE — the sole store identity.
+    resolved = resolve_db_path(
         store if isinstance(store, (str, type(None))) else str(store)
     )
     return {
         "resolved": str(resolved),
         "explicit": str(store) if store is not None else None,
-        "env_tasks": os.environ.get(ENV_TASKS),
-        "user_store": str(_user_root() / "tasks.yaml"),
+        "db_env": os.environ.get(ENV_DB),
+        "user_store": str(_user_root() / DEFAULT_DB_FILENAME),
         "pkg_short": PKG_SHORT,
         "exists": Path(resolved).exists(),
     }
