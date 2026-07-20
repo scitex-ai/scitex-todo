@@ -25,20 +25,27 @@ from __future__ import annotations
 import click
 
 from .. import _store
+from ._compat import spec_command_kwargs
 from ._write import _TASKS_OPTION, _emit
 
 
 @click.command(
     "reassign",
-    help=(
-        "Atomically change a card's owner (C5 reassign primitive).\n\n"
-        "Sets agent = assignee = NEW_OWNER and scope = 'agent:<NEW_OWNER>'\n"
-        "in one locked write, appends an audit comment, and emits a\n"
-        "canonical `reassigned` card-event (the notification path; delivery\n"
-        "is a separate concern). Idempotent: reassigning to the SAME current\n"
-        "owner is a no-op (no write, no event).\n\n"
-        "Example:\n"
-        "  scitex-todo reassign my-task <new-owner-agent-id> --by operator"
+    **spec_command_kwargs(
+        summary="Atomically change a card's owner (C5 reassign primitive).",
+        description=(
+            "Sets agent = assignee = NEW_OWNER and scope = 'agent:<NEW_OWNER>' "
+            "in one locked write, appends an audit comment, and emits a "
+            "canonical `reassigned` card-event (the notification path; "
+            "delivery is a separate concern). Idempotent: reassigning to the "
+            "SAME current owner is a no-op (no write, no event).",
+        ),
+        examples=(
+            (
+                "{prog} reassign my-task <new-owner-agent-id> --by operator",
+                "Hand a card to another agent.",
+            ),
+        ),
     ),
 )
 @click.argument("task_id")
@@ -48,7 +55,9 @@ from ._write import _TASKS_OPTION, _emit
     default=None,
     help="Override the actor (default: $SCITEX_TODO_AGENT_ID, then $USER).",
 )
-@click.option("--json", "as_json", is_flag=True, help="Emit the result payload as JSON.")
+@click.option(
+    "--json", "as_json", is_flag=True, help="Emit the result payload as JSON."
+)
 @click.option(
     "--dry-run",
     is_flag=True,

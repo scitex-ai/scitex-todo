@@ -20,14 +20,12 @@ focused module without a disruptive refactor of an unrelated oversized file.
 
 from __future__ import annotations
 
+from . import _cards as _cards_cli
 from . import _db as _db_cli
+from . import _dev as _dev_cli
 from . import _health as _health_cli
 from . import _help_wait as _help_wait_cli
 from . import _hub as _hub_cli
-from . import _install_stop_hook as _install_stop_hook_cli
-from . import _may_stop as _may_stop_cli
-from . import _serve as _serve_cli
-from . import _stop_hook as _stop_hook_cli
 from ._main import main
 
 _help_wait_cli.register(main)
@@ -38,21 +36,17 @@ _health_cli.register(main)
 # `db` — the shadow-SQLite operability noun group (SQLite migration S0,
 # RFC #348). Wired here (like health / help-wait) to keep _main.py untouched.
 _db_cli.register(main)
-# `serve` — the hub RPC surface (remote-hub PR-2). Same thin-root wiring.
-_serve_cli.register(main)
-# `hub` — provisioning + doctor for the remote rail (remote-hub PR-4).
+# `hub` — provisioning + doctor for the remote rail (remote-hub PR-4), plus
+# `hub start` (the RPC service; the old top-level `serve` leaf, which was a
+# noun wearing a verb's job — doctrine §1/§1e).
 _hub_cli.register(main)
-# `may-stop` — the never-stop detector (exit 0 = may stop, 2 = work exists).
-_may_stop_cli.register(main)
-#  — the Claude Code Stop hook itself (cards owns both ends of the
-# contract; the runtime only registers it). See _stop_hook for why.
-_stop_hook_cli.register(main)
-# `install-stop-hook` — writes the four lines of settings.json that make the
-# hook above actually run. Registration was the last MANUAL step between a
-# merged mechanism and a live one, and a manual step is one that silently
-# does not happen: the operator asked whether an agent with cards left could
-# still stop, and it could, because nothing had wired it anywhere.
-_install_stop_hook_cli.register(main)
+# `cards <verb>` — the card QUERY surface. `cards list` subsumes the old
+# `runnable` / `blocked` / `next` / `summary` top-level leaves, none of which
+# were verbs; each is now a mode flag, with a hidden Phase-W alias.
+_cards_cli.register(main)
+# `dev <verb>` — the doctrine-§11 maintainer subgroup. Registered LAST: it
+# re-parents commands the sibling modules have already mounted on `main`.
+_dev_cli.register(main)
 
 __all__ = ["main"]
 

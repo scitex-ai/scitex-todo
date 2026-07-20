@@ -9,32 +9,32 @@
 # catalog + Moby POS, then classifies each CLI sub-command token. A
 # token labelled "unknown" by §1d would emit a violation pointing here.
 
-intransitive_verbs:
-  # `scitex-todo next` — prints the next runnable task for an agent.
-  # Lead a2a `fb413fb038da49d1b18262b237385c33` (2026-06-12, PR #110
-  # fix-forward): "next" is a temporal adverb in English and the
-  # default Moby POS classifier rejects it as a verb. We whitelist it
-  # because `scitex-todo next` matches the established `git next` /
-  # `task next` pattern operators already expect — rename would be
-  # worse UX.
-  - next
+nouns:
+  # Domain nouns Moby does not carry. Both are group tokens, and a group
+  # token MUST be a noun (§1) — these are the resources, not actions.
+  - inbox    # `scitex-cards inbox <verb>` — the per-recipient notification inbox
+  - notifyd  # `scitex-cards notifyd <verb>` — the delivery daemon (a daemon name)
 
-  # ── scitex-todo CLI leaf-verbs the Moby POS classifier rejects ──────────
+intransitive_verbs:
+  # ── scitex-cards CLI leaf-verbs the Moby POS classifier rejects ─────────
   # Each is an intransitive verb / verb-phrase in THIS CLI's context (an
-  # agent ACTS): "watch CI", "comment on a card", "close a task", "list the
-  # runnable/blocked tasks". Whitelisted via the §1/§1d escape hatch the
-  # auditor itself points to, rather than renamed, because these subcommands
-  # are established + operator-facing and a rename would be worse UX.
-  # (`summary`/`manifest` are the most noun-like — flagged for the operator
-  # in the PR as optional future renames; whitelisted for now to green CI.)
-  - runnable   # `scitex-todo runnable` — list dispatchable tasks
-  - blocked    # `scitex-todo blocked`  — list non-dispatchable tasks + reason
-  - ci-watch   # `scitex-todo ci-watch` — poll GitHub CI (decoupled poller)
-  - comment    # `scitex-todo comment`  — append a comment to a card
-  - close      # `scitex-todo close`    — close / resolve a task
-  - watch      # `scitex-todo watch`    — follow board changes live
-  - summary    # `scitex-todo summary`  — print a task-state summary
-  - manifest   # `scitex-todo skills manifest` — emit the skills manifest
+  # agent ACTS): "watch CI", "comment on a card", "close a task".
+  # Whitelisted via the §1/§1d escape hatch the auditor itself points to,
+  # rather than renamed, because these subcommands are established +
+  # operator-facing and a rename would be worse UX.
+  #
+  # REMOVED 2026-07-19 (cli/noun-verb-restructure): `next`, `runnable`,
+  # `blocked` and `summary` used to be whitelisted here. They are NOT verbs
+  # — `runnable`/`blocked` are adjectives, `next` a determiner, `summary` a
+  # noun — and whitelisting them papered over the defect instead of fixing
+  # it. They are now MODE FLAGS on `cards list`, which IS a verb, and the
+  # old names survive only as hidden Phase-W aliases. A dictionary entry
+  # that exists to make a wrong name pass is a lie told to the linter.
+  - ci-watch   # `scitex-cards ci-watch` — poll GitHub CI (decoupled poller)
+  - comment    # `scitex-cards comment`  — append a comment to a card
+  - close      # `scitex-cards close`    — close / resolve a task
+  - watch      # `scitex-cards watch`    — follow board changes live
+  - manifest   # `scitex-cards dev skills manifest` — emit the skills manifest
 
 # §1f verb-synonym opt-outs. Every entry needs an inline `# why` — see
 # doctrine 07_audit-cli.md / 06_noun-verb-catalog.md.

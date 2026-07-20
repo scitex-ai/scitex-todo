@@ -343,7 +343,9 @@ complete_task(None, "my-card")
 scitex-cards render-graph -o tasks.png       # dependency PNG
 scitex-cards list-tasks --json               # resolved tasks, machine-readable
 scitex-cards list-tasks --assignee X --status in_progress
-scitex-cards runnable --mine                 # what this agent can pick up now
+scitex-cards cards list --runnable --mine    # what this agent can pick up now
+scitex-cards cards list --blocked            # what is stuck, and why
+scitex-cards cards list --next --mine        # the single next pick
 scitex-cards resolve-store                   # which store am I actually reading?
 scitex-cards install-shell-completion        # bash/zsh/fish tab-completion
 ```

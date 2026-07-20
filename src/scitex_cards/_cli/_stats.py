@@ -22,8 +22,6 @@ import json
 
 import click
 
-from ._compat import spec_command_kwargs
-
 from .._model import load_tasks
 from .._paths import resolve_tasks_path
 from .._throughput import (
@@ -31,7 +29,7 @@ from .._throughput import (
     aggregate,
     build_notify_body,
 )
-
+from ._compat import spec_command_kwargs
 
 # --------------------------------------------------------------------------- #
 # stats                                                                       #
@@ -48,7 +46,7 @@ def _format_text(rows: list[GroupStats]) -> str:
         body.append(
             f"{r.name[:30]:30}  {r.open_count:5d}  {r.stale_count:5d}  "
             f"{r.completed:5d}  {r.created:7d}  {r.delta:+6d}  "
-            f"{r.ratio*100:5.1f}%  {r.velocity_per_day:8.2f}"
+            f"{r.ratio * 100:5.1f}%  {r.velocity_per_day:8.2f}"
         )
     return "\n".join([header] + body)
 
@@ -112,13 +110,16 @@ def _rollup(path, by, since, fmt):
 # — renaming is a breaking change requiring the 3-phase deprecation
 # ladder (doctrine 11_deprecation.md: Warn+forward -> Error -> Removed),
 # out of scope for the mechanical §4b CliHelp migration this pass made.
-# TODO(Phase-W): introduce `show-stats` as the canonical name, register
-# `print-stats` as a hidden warn-forward alias via
-# scitex_dev._ecosystem.click_compat.deprecated_alias() once that
-# helper ships, then retire `print-stats` in a later minor per the
-# ladder. 2026-07-10 CLI-standardization audit pass.
+#: Version that removes the Phase-W ``print-stats`` alias (doctrine §5).
+_REMOVE_IN = "0.20.0"
+
+
+# DONE (was TODO(Phase-W), 2026-07-10): `show-stats` is now the canonical
+# name and `print-stats` is a hidden warn-forward alias — `print` is a §1f
+# non-canonical synonym for `show`. Retire the alias in the version named by
+# `_REMOVE_IN` below, per the §5 ladder.
 @click.command(
-    name="print-stats",
+    name="show-stats",
     **spec_command_kwargs(
         summary="Print throughput stats (per-agent / project / host).",
         description=(
@@ -130,10 +131,16 @@ def _rollup(path, by, since, fmt):
             "self-correct hourly.",
         ),
         examples=(
-            ("{prog} print-stats --by agent --since 2026-06-01", "Windowed stats."),
-            ("{prog} print-stats --by agent --notify", "Push per-agent summaries."),
-            ("{prog} print-stats --by agent --notify --nudge-quiet", "Also nudge stalled agents."),
-            ("{prog} print-stats --by project --format json", "Machine-readable, by project."),
+            ("{prog} show-stats --by agent --since 2026-06-01", "Windowed stats."),
+            ("{prog} show-stats --by agent --notify", "Push per-agent summaries."),
+            (
+                "{prog} show-stats --by agent --notify --nudge-quiet",
+                "Also nudge stalled agents.",
+            ),
+            (
+                "{prog} show-stats --by project --format json",
+                "Machine-readable, by project.",
+            ),
         ),
     ),
 )
@@ -154,6 +161,12 @@ def _rollup(path, by, since, fmt):
     type=click.Choice(["text", "json"]),
     default="text",
     help="Output format. text = aligned table; json = list of objects.",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Shorthand for --format json (the §2 machine-readable flag).",
 )
 @click.option(
     "--notify",
@@ -186,8 +199,13 @@ def _rollup(path, by, since, fmt):
     help="Path to tasks.yaml (default: project -> user -> bundled example, or $SCITEX_TODO_TASKS_YAML_SHARED).",
 )
 def stats_cmd(
-    by: str, since: str | None, fmt: str, notify: bool,
-    nudge_quiet: bool, tasks_path: str | None,
+    by: str,
+    since: str | None,
+    fmt: str,
+    as_json: bool,
+    notify: bool,
+    nudge_quiet: bool,
+    tasks_path: str | None,
 ) -> None:
     """Print throughput stats (per-agent / project / host).
 
@@ -199,11 +217,16 @@ def stats_cmd(
 
     \b
     Example:
-      $ scitex-todo print-stats --by agent --since 2026-06-01
-      $ scitex-todo print-stats --by agent --notify
-      $ scitex-todo print-stats --by agent --notify --nudge-quiet
-      $ scitex-todo print-stats --by project --format json
+      $ scitex-cards show-stats --by agent --since 2026-06-01
+      $ scitex-cards show-stats --by agent --notify
+      $ scitex-cards show-stats --by agent --notify --nudge-quiet
+      $ scitex-cards show-stats --by project --json
     """
+    # `--json` is the §2 spelling every SciTeX read verb answers to; `--format`
+    # predates it and stays. One resolves into the other so the body below has
+    # a single notion of "did the caller ask for JSON".
+    if as_json:
+        fmt = "json"
     path = resolve_tasks_path(tasks_path)
 
     if (notify or nudge_quiet) and by == "agent":
@@ -240,7 +263,7 @@ def stats_cmd(
                     click.echo(f"  {wire:>6}  {r.name}  ({len(body)} chars)")
             if nudge_quiet:
                 click.echo("")
-                click.echo(f"# Quiet-nudge sweep (SCITEX_TODO_NUDGE_QUIET_MIN)")
+                click.echo("# Quiet-nudge sweep (SCITEX_TODO_NUDGE_QUIET_MIN)")
                 _emit_quiet_nudges(tasks, rows)
                 click.echo("")
                 click.echo(
@@ -294,6 +317,7 @@ def _emit_quiet_nudges(tasks: list[dict], rows: list) -> None:
             by_agent.setdefault(a, []).append(t)
 
     import datetime as _dt
+
     now = _dt.datetime.now(tz=_dt.timezone.utc)
 
     def _quiet_age_s(t: dict) -> float | None:
@@ -325,7 +349,7 @@ def _emit_quiet_nudges(tasks: list[dict], rows: list) -> None:
         result = deliver(agent, body, kind="quiet-nudge")
         ok_label = "✓" if result.get("ok") else "✗"
         click.echo(
-            f"  {ok_label}  {agent:30}  quiet {int(worst_age//60)}m  "
+            f"  {ok_label}  {agent:30}  quiet {int(worst_age // 60)}m  "
             f"wire={result.get('wire')}  reason={result.get('reason')}"
         )
         if result.get("ok"):
@@ -361,8 +385,10 @@ def _emit_stale_active_nudges(tasks: list[dict], store) -> None:
 
 def register(group: click.Group) -> None:
     from . import _sync_github
+    from ._compat import deprecated_alias
 
     group.add_command(stats_cmd)
+    deprecated_alias(group, "print-stats", target="show-stats", remove_in=_REMOVE_IN)
     _sync_github.register(group)
 
 

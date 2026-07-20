@@ -36,6 +36,7 @@ _COMMAND_CATEGORIES = (
     (
         "Core",
         (
+            "cards",
             "add",
             "update",
             "done",
@@ -45,40 +46,28 @@ _COMMAND_CATEGORIES = (
             "list-tasks",
             "list-stale",
             "find-card",
-            "next",
-            "runnable",
-            "triage",
-            "summary",
+            "show-triage",
             "render-graph",
             "emit-event",
             "help-wait",
             "help-clear",
             "hook",
-            "migration",
             "index",
             "inbox",
             "init-store",
-            "reconcile-merged-prs",
+            "sync-merged-prs",
         ),
     ),
-    ("Data & Sync", ("db", "sync-github", "sync-store", "deliver")),
+    ("Data & Sync", ("db", "sync-github", "sync-store", "deliver-notifications")),
     (
         "Service",
-        ("board", "gui", "hub", "mcp", "notifyd", "serve", "watch", "watch-ci"),
+        ("gui", "hub", "mcp", "notifyd", "watch", "watch-ci"),
     ),
     (
         "Diagnostics",
-        (
-            "blocked",
-            "may-stop",
-            "stop-hook",
-            "install-stop-hook",
-            "print-stats",
-            "health",
-            "resolve-store",
-        ),
+        ("show-stats", "doctor", "resolve-store"),
     ),
-    ("Introspection", ("list-python-apis", "skills")),
+    ("Introspection", ("dev", "list-python-apis")),
     ("Shell", ("install-shell-completion", "print-shell-completion")),
 )
 
@@ -423,15 +412,14 @@ from . import (  # hook-bypass: line-limit (_main.py pre-existing over-cap; mini
     _write,
 )  # noqa: E402
 
-# board <verb> — dependency-graph board lifecycle (start/stop/restart/
-# status). Extracted to _board.py to keep _main.py under the 512-line cap;
-# behaviour + pidfile path (~/.scitex/todo/board.pid) are unchanged.
-_board.register(main)
-# gui <verb> — the ecosystem-standard GUI verbs (open/serve/status/stop),
-# shared with figrecipe / scitex-writer / scitex-scholar so the operator's
-# `scitex_start_gui_servers` loop can bring every SciTeX GUI up the same way.
-# A thin front over the board lifecycle above; `board` stays canonical.
+# gui <verb> — the ecosystem-standard GUI verbs (open/serve/status/stop plus
+# start/restart), shared with figrecipe / scitex-writer / scitex-scholar so the
+# operator's `scitex_start_gui_servers` loop can bring every SciTeX GUI up the
+# same way. This is now the CANONICAL noun for the board server (doctrine §12).
 _gui.register(main)
+# board <verb> — the dependency-graph board lifecycle, kept working as a hidden
+# Phase-W alias of `gui`. MUST be registered after `_gui` (it forwards into it).
+_board.register(main)
 # index <verb> — SQLite derived-index lifecycle (rebuild / info). Extracted
 # to _index.py alongside the board split (same pure-move refactor).
 _index.register(main)

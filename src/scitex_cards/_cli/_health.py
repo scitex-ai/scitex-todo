@@ -17,25 +17,40 @@ import json
 
 import click
 
+from ._compat import deprecated_alias, spec_command_kwargs
+
+#: Version that removes the Phase-W ``health`` alias (doctrine §5).
+_REMOVE_IN = "0.20.0"
+
 
 def register(main: click.Group) -> None:
-    """Attach the ``health`` verb to the root group."""
-    main.add_command(health_cmd)
+    """Attach ``doctor`` (+ the Phase-W ``health`` alias) to the root group.
+
+    ``health`` is a noun; doctrine §1 forbids it as a bare top-level leaf and
+    names ``doctor`` as the sanctioned intransitive exception for exactly this
+    command shape (04_exceptions.md). The module's own docstring already
+    called it "the health doctor" — the name now says so too.
+    """
+    main.add_command(doctor_cmd)
+    deprecated_alias(main, "health", target="doctor", remove_in=_REMOVE_IN)
 
 
 @click.command(
-    "health",
-    help=(
-        "Run the scitex-todo health doctor: store / agent-id / notifyd / "
-        "channel checks.\n\n"
-        "Broader than `mcp doctor` (which only checks the fastmcp install): "
-        "verifies the resolved task store is canonical + readable/writable, "
-        "the agent id resolves, the notifyd delivery daemon is alive, this "
-        "agent's channel inbox is draining, and the channel server is present. "
-        "Exit 0 when all checks pass, else 1.\n\n"
-        "Examples:\n"
-        "  scitex-todo health\n"
-        "  scitex-todo health --json"
+    "doctor",
+    **spec_command_kwargs(
+        summary="Run the package health doctor: store / agent-id / delivery.",
+        description=(
+            "Broader than `mcp doctor` (which only checks the fastmcp "
+            "install): verifies the resolved task store is canonical + "
+            "readable/writable, the agent id resolves, the notifyd delivery "
+            "daemon is alive, this agent's channel inbox is draining, and "
+            "the channel server is present. Exit 0 when all checks pass, "
+            "else 1 — so it is usable as a shell gate / CI probe.",
+        ),
+        examples=(
+            ("{prog} doctor", "Human-readable report."),
+            ("{prog} doctor --json", "Raw standard-shape JSON."),
+        ),
     ),
 )
 @click.option(
@@ -51,7 +66,7 @@ def register(main: click.Group) -> None:
     is_flag=True,
     help="Emit the raw standard-shape JSON report.",
 )
-def health_cmd(tasks_path: str | None, as_json: bool) -> None:
+def doctor_cmd(tasks_path: str | None, as_json: bool) -> None:
     """Print the health report (human or JSON) and exit non-zero if unhealthy."""
     from .._health import health
 

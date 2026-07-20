@@ -9,18 +9,13 @@ code is the contract sac's Stop hook keys on: 0 = the board is empty for
 this agent, 2 = runnable work exists and stderr carries the hint list the
 idle-at-prompt re-drive injects.
 
-Real store files, AAA, no mocks. The CLI is driven through click's
-CliRunner (real argv → real exit codes).
+Real store files, AAA, no mocks.
 """
 
 from __future__ import annotations
 
-import json
-
 import pytest
-from click.testing import CliRunner
 
-from scitex_cards._cli._may_stop import may_stop_cmd
 from scitex_cards._inbox import enqueue, poll_inbox
 from scitex_cards._may_stop import may_stop
 from scitex_cards._store import add_task
@@ -72,14 +67,6 @@ def unread_inbox_store(store):
         actor="peer",
         store=store,
     )
-    return store
-
-
-@pytest.fixture()
-def cli_runnable_store(store):
-    """One in_progress card (w7) for the CLI exit-2 contract."""
-    add_task(store=store, id="w7", title="w7", status="in_progress", agent="worker-a")
-    _drain(store, "worker-a")
     return store
 
 
@@ -227,61 +214,19 @@ def test_other_agents_cards_do_not_bind_this_agent(store):
     assert verdict["runnable"] is False
 
 
-# === the CLI contract (exit codes + hints) =================================
-
-
-def test_cli_exit_zero_and_json_on_an_empty_board(store):
-    # Arrange
-    argv = ["--agent", "worker-a", "--tasks", store]
-    # Act
-    result = CliRunner().invoke(may_stop_cmd, argv)
-    # Assert — exit 0 is the Stop hook's "you may stop" code.
-    assert result.exit_code == 0
-
-
-def test_cli_json_verdict_on_an_empty_board_is_not_runnable(store):
-    # Arrange
-    argv = ["--agent", "worker-a", "--tasks", store]
-    # Act
-    result = CliRunner().invoke(may_stop_cmd, argv)
-    # Assert
-    assert json.loads(result.output)["runnable"] is False
-
-
-def test_cli_exits_two_on_runnable_work(cli_runnable_store):
-    # Arrange
-    argv = ["--agent", "worker-a", "--tasks", cli_runnable_store]
-    # Act
-    result = CliRunner().invoke(may_stop_cmd, argv)
-    # Assert — exit 2 is the Stop hook's "refuse to stop" code.
-    assert result.exit_code == 2
-
-
-def test_cli_stdout_carries_the_runnable_json_verdict(cli_runnable_store):
-    # Arrange
-    argv = ["--agent", "worker-a", "--tasks", cli_runnable_store]
-    # Act
-    result = CliRunner().invoke(may_stop_cmd, argv)
-    # Assert — stdout stays machine-readable even on the refusal path.
-    assert json.loads(result.stdout)["runnable"] is True
-
-
-def test_cli_exit_two_with_numbered_stderr_hints_on_runnable_work(cli_runnable_store):
-    # Arrange
-    argv = ["--agent", "worker-a", "--tasks", cli_runnable_store]
-    # Act
-    result = CliRunner().invoke(may_stop_cmd, argv)
-    # Assert — stderr carries the numbered hints the re-drive injects.
-    assert "1. w7" in result.stderr
-
-
-def test_cli_stderr_names_why_the_card_is_runnable(cli_runnable_store):
-    # Arrange
-    argv = ["--agent", "worker-a", "--tasks", cli_runnable_store]
-    # Act
-    result = CliRunner().invoke(may_stop_cmd, argv)
-    # Assert
-    assert "in_progress card" in result.stderr
-
+# === the CLI contract ======================================================
+#
+# The `may-stop` and `stop-hook` CLI verbs were DELETED in the noun-verb
+# restructure (branch cli/noun-verb-restructure): both were named for their
+# CALLER rather than for what they do — nothing "stops a hook", and "may-stop"
+# is a question the caller asks, not an action the CLI performs. Their tests
+# went with them.
+#
+# The DETECTOR they wrapped is what mattered, and it is fully covered above.
+# The one live consumer, the fleet's Stop hook at ~/.claude/hooks/stop/
+# idle_guard.sh, had already moved off `stop-hook` to `scitex-cards runnable
+# --agent <id> --json` (now `cards list --runnable`), doing its own JSON
+# shaping — which is the right layering: a card CLI must not know what a
+# Claude Code Stop hook is.
 
 # EOF

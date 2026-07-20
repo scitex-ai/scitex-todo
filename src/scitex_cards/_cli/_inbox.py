@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import click
 
+from ._compat import spec_command_kwargs, spec_group_kwargs
+
 
 def register(main: click.Group) -> None:
     """Attach the ``inbox`` noun group to the root group."""
@@ -33,12 +35,15 @@ def register(main: click.Group) -> None:
 
 @click.group(
     "inbox",
-    help=(
-        "Inbox storage-backend lifecycle (Phase 1 SQLite migration).\n\n"
-        "`inbox migrate-to-sqlite` copies the YAML `inboxes:` records into "
-        "the SQLite DB (<store_dir>/runtime/todo.db); it is idempotent and "
-        "does NOT delete the YAML section (reversible). Enable the backend "
-        "with SCITEX_TODO_INBOX_BACKEND=sqlite."
+    **spec_group_kwargs(
+        summary="Inbox storage-backend lifecycle (Phase 1 SQLite migration).",
+        description=(
+            "`inbox migrate-to-sqlite` copies the YAML `inboxes:` records "
+            "into the SQLite DB (<store_dir>/runtime/todo.db); it is "
+            "idempotent and does NOT delete the YAML section (reversible). "
+            "Enable the backend with SCITEX_CARDS_INBOX_BACKEND=sqlite.",
+        ),
+        command_categories=(("Core", ("migrate-to-sqlite", "info")),),
     ),
 )
 def inbox_group() -> None:
@@ -47,13 +52,16 @@ def inbox_group() -> None:
 
 @inbox_group.command(
     "migrate-to-sqlite",
-    help=(
-        "Copy the YAML `inboxes:` records into the SQLite inbox DB. "
-        "Idempotent (dedups on notification id) and reversible (never "
-        "deletes the YAML section).\n\n"
-        "Example:\n"
-        "  $ scitex-todo inbox migrate-to-sqlite --dry-run\n"
-        "  $ scitex-todo inbox migrate-to-sqlite -y"
+    **spec_command_kwargs(
+        summary="Copy the YAML `inboxes:` records into the SQLite inbox DB.",
+        description=(
+            "Idempotent (dedups on notification id) and reversible (never "
+            "deletes the YAML section).",
+        ),
+        examples=(
+            ("{prog} inbox migrate-to-sqlite --dry-run", "Count without copying."),
+            ("{prog} inbox migrate-to-sqlite -y", "Actually copy."),
+        ),
     ),
 )
 @click.option(
@@ -149,12 +157,12 @@ def inbox_migrate_cmd(
 
 @inbox_group.command(
     "info",
-    help=(
-        "Print status of the SQLite inbox DB (row count, unseen count, "
-        "path).\n\n"
-        "Example:\n"
-        "  $ scitex-todo inbox info\n"
-        "  $ scitex-todo inbox info --json"
+    **spec_command_kwargs(
+        summary="Print status of the SQLite inbox DB (rows, unseen, path).",
+        examples=(
+            ("{prog} inbox info", "Human-readable status."),
+            ("{prog} inbox info --json", "Machine-readable status."),
+        ),
     ),
 )
 @click.option(

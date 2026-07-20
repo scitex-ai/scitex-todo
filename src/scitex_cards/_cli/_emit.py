@@ -64,20 +64,26 @@ def _parse_extra(pairs: tuple[str, ...]) -> dict[str, str]:
 
 @click.command(
     "emit-event",
-    help=(
-        "Emit a canonical card-event onto the hook bus (no-import producer "
-        "seam).\n\n"
-        "Constructs a canonical Event from the flags and routes it through "
-        "scitex_cards._events.emit (bus -> C4 notify consumer -> standalone "
-        "pull-inbox). --type MUST be one of the closed EVENT_TYPES set "
-        "(fails loud with the valid set otherwise). --card-id is OPTIONAL: "
-        "a repo-level event (e.g. `pulled`) emits with --repo and no card, "
-        "which the C4 consumer treats as a quiet no-op. Prints the dispatch "
-        "summary as JSON (incl. any notify.enqueued / notify.delivered).\n\n"
-        "Examples:\n"
-        "  scitex-todo emit-event --type pulled --repo owner/repo\n"
-        "  scitex-todo emit-event --type released --card-id my-card "
-        "--repo owner/repo --version v1.2.3 --actor ci"
+    **spec_command_kwargs(
+        summary="Emit a canonical card-event onto the hook bus (producer seam).",
+        description=(
+            "Constructs a canonical Event from the flags and routes it "
+            "through scitex_cards._events.emit (bus -> C4 notify consumer -> "
+            "standalone pull-inbox). --type MUST be one of the closed "
+            "EVENT_TYPES set (fails loud with the valid set otherwise). "
+            "--card-id is OPTIONAL: a repo-level event (e.g. `pulled`) emits "
+            "with --repo and no card, which the C4 consumer treats as a "
+            "quiet no-op. Prints the dispatch summary as JSON (incl. any "
+            "notify.enqueued / notify.delivered).",
+        ),
+        examples=(
+            ("{prog} emit-event --type pulled --repo owner/repo", "Repo-level event."),
+            (
+                "{prog} emit-event --type released --card-id my-card "
+                "--repo owner/repo --version v1.2.3 --actor ci",
+                "Card-level release event.",
+            ),
+        ),
     ),
 )
 @click.option(
@@ -86,10 +92,17 @@ def _parse_extra(pairs: tuple[str, ...]) -> dict[str, str]:
     required=True,
     help="Canonical event type (closed enum — one of EVENT_TYPES).",
 )
-@click.option("--card-id", "card_id", default=None, help="Board card the event concerns (optional).")
+@click.option(
+    "--card-id",
+    "card_id",
+    default=None,
+    help="Board card the event concerns (optional).",
+)
 @click.option("--repo", default=None, help="owner/repo for git-flavoured events.")
 @click.option("--branch", default=None, help="Branch name (push / commit events).")
-@click.option("--pr-url", "pr_url", default=None, help="Pull-request URL (merge / done events).")
+@click.option(
+    "--pr-url", "pr_url", default=None, help="Pull-request URL (merge / done events)."
+)
 @click.option("--sha", default=None, help="Commit sha (commit / push events).")
 @click.option("--version", default=None, help="Release version / tag (release events).")
 @click.option(
@@ -162,16 +175,27 @@ def emit_event_cmd(
         examples=(
             ("{prog} find-card --repo owner/repo", ""),
             ("{prog} find-card --repo owner/repo --status pending", ""),
+            ("{prog} find-card --repo owner/repo --json", "Full card records."),
         ),
     ),
 )
-@click.option("--repo", required=True, help="owner/repo to match the card's `repo` field.")
+@click.option(
+    "--repo", required=True, help="owner/repo to match the card's `repo` field."
+)
 @click.option("--kind", default=None, help="Optional card-kind filter (closed enum).")
-@click.option("--status", default=None, help="Optional card-status filter (closed enum).")
+@click.option(
+    "--status", default=None, help="Optional card-status filter (closed enum)."
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Emit the matching cards as a JSON array (the plain form prints ids only).",
+)
 @_TASKS_OPTION
-def find_card_cmd(repo, kind, status, tasks_path) -> None:
+def find_card_cmd(repo, kind, status, as_json, tasks_path) -> None:
     """Print ids of cards with ``repo == <R>`` (one per line; empty when none)."""
-    # `scope=""` opts out of the $SCITEX_TODO_SCOPE env default — a producer
+    # `scope=""` opts out of the $SCITEX_CARDS_SCOPE env default — a producer
     # resolving repo->card must see EVERY matching card, not just its own
     # scope slice.
     cards = _store.list_tasks(
@@ -181,6 +205,9 @@ def find_card_cmd(repo, kind, status, tasks_path) -> None:
         kind=kind,
         status=status,
     )
+    if as_json:
+        click.echo(json.dumps(cards, default=str))
+        return
     for card in cards:
         cid = card.get("id")
         if cid:
