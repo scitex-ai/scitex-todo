@@ -12,13 +12,14 @@ for that exact tuple::
       last_ts: 2026-06-27T10:00:00Z
       next_eligible_ts: 2026-06-27T10:00:30Z   # failures only
 
-Persisted as YAML at ``<store_dir>/delivery_ledger.yaml`` where
+Persisted as JSON at ``<store_dir>/runtime/delivery_ledger.json`` where
 ``<store_dir>`` is the parent directory of the resolved task store
-(:func:`scitex_cards._inbox._resolved_store`). Reads go through the fast safe
-loader (:func:`scitex_cards._yaml.safe_load`); writes are ATOMIC (temp file +
-``os.replace``) and serialised behind the same advisory ``flock`` the task
-store uses (:func:`scitex_cards._model._store_lock`), keyed on the LEDGER
-path — single-writer per ledger file.
+(:func:`scitex_cards._inbox._resolved_store`). A pre-JSON
+``delivery_ledger.yaml`` is read ONCE for a forward migration when the JSON
+file is absent. Writes are ATOMIC (temp file + ``os.replace``) and serialised
+behind the same advisory ``flock`` the task store uses
+(:func:`scitex_cards._model._store_lock`), keyed on the LEDGER path —
+single-writer per ledger file.
 
 The ledger is what makes delivery idempotent: it answers "have we already
 sent this?" (:meth:`Ledger.already_done`) and "is this failed item due for
@@ -37,8 +38,12 @@ from .._model import _store_lock
 from .._yaml import safe_load
 from ._channel import DeliveryResult, Status
 
-#: Ledger filename, a sibling of the task store inside ``<store_dir>``.
-LEDGER_FILENAME = "delivery_ledger.yaml"
+#: Ledger filename, under the store's ``runtime/`` dir.
+LEDGER_FILENAME = "delivery_ledger.json"
+
+#: Pre-JSON ledger filename, read ONCE for a forward migration when the JSON
+#: ledger is absent but a legacy one exists (see :meth:`Ledger._load_entries`).
+_LEGACY_LEDGER_FILENAME = "delivery_ledger.yaml"
 
 #: Max delivery attempts before a failed item is left terminal (no retry).
 MAX_ATTEMPTS = 5
@@ -130,11 +135,31 @@ class Ledger:
 
     @staticmethod
     def _load_entries(path: Path) -> dict[str, dict]:
-        """Read the raw ledger mapping (defensive: bad shapes → {})."""
-        if not path.exists():
-            return {}
-        with path.open(encoding="utf-8") as handle:
-            data = safe_load(handle) or {}
+        """Read the raw ledger mapping (defensive: bad shapes → {}).
+
+        Reads the JSON ledger. FORWARD MIGRATION: when the JSON file is absent
+        but a pre-JSON ``delivery_ledger.yaml`` sibling exists, it is read ONCE
+        (the next :meth:`_save` writes JSON), so a live ledger is not lost on
+        the format switch.
+        """
+        import json
+
+        data: object = {}
+        if path.exists():
+            try:
+                text = path.read_text(encoding="utf-8")
+                data = json.loads(text) if text.strip() else {}
+            except (OSError, json.JSONDecodeError):
+                return {}
+        else:
+            legacy = path.with_name(_LEGACY_LEDGER_FILENAME)
+            if not legacy.exists():
+                return {}
+            try:
+                with legacy.open(encoding="utf-8") as handle:
+                    data = safe_load(handle) or {}
+            except OSError:
+                return {}
         if not isinstance(data, dict):
             return {}
         out: dict[str, dict] = {}
@@ -204,9 +229,7 @@ class Ledger:
     # ------------------------------------------------------------------ #
     # Mutation                                                            #
     # ------------------------------------------------------------------ #
-    def _backoff_seconds(
-        self, attempts: int, retry_after: float | None = None
-    ) -> int:
+    def _backoff_seconds(self, attempts: int, retry_after: float | None = None) -> int:
         """Backoff in seconds for a failed attempt, capped at MAX_BACKOFF_SEC.
 
         When ``retry_after`` is a positive hint (a 429 ``Retry-After``), HONOR
@@ -302,19 +325,19 @@ class Ledger:
         half-written ledger; the advisory lock (keyed on the ledger path)
         serialises concurrent writers — single-writer per file.
         """
-        import yaml
+        import json
 
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with _store_lock(self._path):
             tmp_path = self._path.parent / f".{self._path.name}.tmp"
             try:
                 with tmp_path.open("w", encoding="utf-8") as handle:
-                    yaml.safe_dump(
+                    json.dump(
                         self._entries,
                         handle,
-                        default_flow_style=False,
                         sort_keys=True,
-                        allow_unicode=True,
+                        indent=2,
+                        ensure_ascii=False,
                     )
                     handle.flush()
                     try:

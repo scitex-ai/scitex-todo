@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 """Tests for the keyed-dedup delivery ledger (slice 1).
 
-Real YAML round-trips against a real ``tmp_path`` store — NO mocks. Verifies
+Real JSON round-trips against a real ``tmp_path`` store — NO mocks. Verifies
 the ledger is a KEYED MAP (not an append-log), persists at
-``<store_dir>/runtime/delivery_ledger.yaml``, and that ``already_done`` /
+``<store_dir>/runtime/delivery_ledger.json``, and that ``already_done`` /
 ``retry_eligible`` / ``record`` behave per spec (exponential backoff, capped
 attempts).
 """
@@ -12,8 +12,9 @@ attempts).
 from __future__ import annotations
 
 import datetime as _dt
+import json
 
-import yaml
+import yaml  # only to author the pre-JSON legacy fixture the migration reads
 
 from scitex_cards._delivery._channel import DeliveryResult, Status
 from scitex_cards._delivery._ledger import (
@@ -34,8 +35,8 @@ def _store(tmp_path):
 
 
 def _raw_ledger(tmp_path):
-    """The persisted ledger YAML, parsed."""
-    return yaml.safe_load((tmp_path / "runtime" / "delivery_ledger.yaml").read_text())
+    """The persisted ledger JSON, parsed."""
+    return json.loads((tmp_path / "runtime" / "delivery_ledger.json").read_text())
 
 
 def _ledger_with_one_sent(tmp_path):
@@ -100,7 +101,37 @@ def test_ledger_path_under_store_runtime_dir(tmp_path):
     # Act
     path = ledger_path(store)
     # Assert
-    assert path == tmp_path / "runtime" / "delivery_ledger.yaml"
+    assert path == tmp_path / "runtime" / "delivery_ledger.json"
+
+
+def test_a_legacy_yaml_ledger_is_migrated_to_json_on_first_use(tmp_path):
+    """A pre-JSON delivery_ledger.yaml must not be lost on the format switch.
+
+    The JSON ledger is absent but a legacy YAML one exists → it is read once,
+    and the first ``record`` writes the JSON file (the YAML is left behind,
+    harmless).
+    """
+    # Arrange — a legacy YAML ledger with one SENT entry, no JSON ledger yet.
+    runtime = tmp_path / "runtime"
+    runtime.mkdir(parents=True, exist_ok=True)
+    from scitex_cards._delivery._ledger import _make_key
+
+    key = _make_key("u_legacy", "n_legacy", "log")
+    (runtime / "delivery_ledger.yaml").write_text(
+        yaml.safe_dump({key: {"status": Status.SENT.value, "attempts": 1}}),
+        encoding="utf-8",
+    )
+    assert not (runtime / "delivery_ledger.json").exists()
+
+    # Act — load reads the legacy YAML; a record persists JSON.
+    led = Ledger.load(_store(tmp_path))
+
+    # Assert — the legacy entry survived the migration.
+    assert led.already_done("u_legacy", "n_legacy", "log")
+    led.record("u_b", "n_b", "log", DeliveryResult(status=Status.SENT, channel="log"))
+    assert (runtime / "delivery_ledger.json").exists()
+    migrated = _raw_ledger(tmp_path)
+    assert key in migrated and migrated[key]["status"] == Status.SENT.value
 
 
 # --------------------------------------------------------------------------- #
