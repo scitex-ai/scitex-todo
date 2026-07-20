@@ -14,12 +14,11 @@ for that exact tuple::
 
 Persisted as JSON at ``<store_dir>/runtime/delivery_ledger.json`` where
 ``<store_dir>`` is the parent directory of the resolved task store
-(:func:`scitex_cards._inbox._resolved_store`). A pre-JSON
-``delivery_ledger.yaml`` is read ONCE for a forward migration when the JSON
-file is absent. Writes are ATOMIC (temp file + ``os.replace``) and serialised
-behind the same advisory ``flock`` the task store uses
-(:func:`scitex_cards._model._store_lock`), keyed on the LEDGER path —
-single-writer per ledger file.
+(:func:`scitex_cards._inbox._resolved_store`). This is regenerable runtime
+state, so an absent ledger simply starts empty (no legacy migration). Writes
+are ATOMIC (temp file + ``os.replace``) and serialised behind the same advisory
+``flock`` the task store uses (:func:`scitex_cards._model._store_lock`), keyed
+on the LEDGER path — single-writer per ledger file.
 
 The ledger is what makes delivery idempotent: it answers "have we already
 sent this?" (:meth:`Ledger.already_done`) and "is this failed item due for
@@ -35,15 +34,10 @@ from pathlib import Path
 
 from .._inbox import _resolved_store
 from .._model import _store_lock
-from .._yaml import safe_load
 from ._channel import DeliveryResult, Status
 
 #: Ledger filename, under the store's ``runtime/`` dir.
 LEDGER_FILENAME = "delivery_ledger.json"
-
-#: Pre-JSON ledger filename, read ONCE for a forward migration when the JSON
-#: ledger is absent but a legacy one exists (see :meth:`Ledger._load_entries`).
-_LEGACY_LEDGER_FILENAME = "delivery_ledger.yaml"
 
 #: Max delivery attempts before a failed item is left terminal (no retry).
 MAX_ATTEMPTS = 5
@@ -135,31 +129,21 @@ class Ledger:
 
     @staticmethod
     def _load_entries(path: Path) -> dict[str, dict]:
-        """Read the raw ledger mapping (defensive: bad shapes → {}).
+        """Read the raw JSON ledger mapping (defensive: bad shapes → {}).
 
-        Reads the JSON ledger. FORWARD MIGRATION: when the JSON file is absent
-        but a pre-JSON ``delivery_ledger.yaml`` sibling exists, it is read ONCE
-        (the next :meth:`_save` writes JSON), so a live ledger is not lost on
-        the format switch.
+        This is regenerable runtime state (a delivery-dedup ledger under
+        ``runtime/``), so there is no legacy migration: an absent/unreadable
+        ledger simply starts empty and is rebuilt on the next delivery run.
         """
         import json
 
-        data: object = {}
-        if path.exists():
-            try:
-                text = path.read_text(encoding="utf-8")
-                data = json.loads(text) if text.strip() else {}
-            except (OSError, json.JSONDecodeError):
-                return {}
-        else:
-            legacy = path.with_name(_LEGACY_LEDGER_FILENAME)
-            if not legacy.exists():
-                return {}
-            try:
-                with legacy.open(encoding="utf-8") as handle:
-                    data = safe_load(handle) or {}
-            except OSError:
-                return {}
+        if not path.exists():
+            return {}
+        try:
+            text = path.read_text(encoding="utf-8")
+            data: object = json.loads(text) if text.strip() else {}
+        except (OSError, json.JSONDecodeError):
+            return {}
         if not isinstance(data, dict):
             return {}
         out: dict[str, dict] = {}

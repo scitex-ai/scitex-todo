@@ -10,9 +10,8 @@ local-state convention as the task store (:mod:`scitex_cards._paths`), in a
     1. user scope:     ``$SCITEX_DIR/cards/config.json`` (default ``~/.scitex/cards``)
     2. project scope:  ``<git-root>/.scitex/cards/config.json``
 
-A pre-JSON ``config.yaml`` sibling is read as a FALLBACK when no ``config.json``
-exists at that scope (no auto-write, so a hand-edited YAML config keeps working
-until the operator converts it).
+A pre-JSON ``config.yaml`` at a scope is converted to JSON ONCE on first access
+(see :mod:`scitex_cards._legacy_yaml_migration`), after which reads are JSON-only.
 
 The user file is the BASE; the project file OVERRIDES it key-by-key (a repo
 can tighten/loosen a knob without touching the user default). A missing /
@@ -46,10 +45,6 @@ logger = logging.getLogger(__name__)
 #: Config file name (in each scope's ``.scitex/cards`` dir).
 CONFIG_NAME = "config.json"
 
-#: Pre-JSON config filename, read as a fallback so a hand-edited YAML config
-#: keeps working until the operator converts it (see :func:`_read_one`).
-_LEGACY_CONFIG_NAME = "config.yaml"
-
 #: The ``reminders:`` knobs.
 REMINDERS_SECTION = "reminders"
 
@@ -75,30 +70,27 @@ def config_paths() -> list[Path]:
 
 
 def _read_one(path: Path) -> dict:
-    """Read one config file → mapping; missing/malformed → ``{}`` (fail-soft).
+    """Read one JSON config file → mapping; missing/malformed → ``{}`` (fail-soft).
 
-    Reads a JSON config. When the JSON file is absent, a sibling legacy
-    ``config.yaml`` at the same scope is read as a fallback (no auto-write).
+    A pre-JSON ``config.yaml`` at the same scope is converted to JSON ONCE on
+    first access (see :mod:`scitex_cards._legacy_yaml_migration`).
     """
     import json
 
-    target = path if path.exists() else path.with_name(_LEGACY_CONFIG_NAME)
+    from ._legacy_yaml_migration import migrate_legacy_sidecar
+
+    migrate_legacy_sidecar(path)  # one-time pre-JSON config.yaml -> .json
     try:
-        text = target.read_text(encoding="utf-8")
+        text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return {}
     except OSError as exc:  # noqa: BLE001 — unreadable config must not break a sweep
-        logger.warning("config: cannot read %s: %s", target, exc)
+        logger.warning("config: cannot read %s: %s", path, exc)
         return {}
     try:
-        if target.suffix == ".json":
-            data = json.loads(text) if text.strip() else {}
-        else:
-            from ._yaml import safe_load
-
-            data = safe_load(text) or {}
-    except Exception as exc:  # noqa: BLE001 — malformed config must not break a sweep
-        logger.warning("config: malformed %s: %s", target, exc)
+        data = json.loads(text) if text.strip() else {}
+    except json.JSONDecodeError as exc:
+        logger.warning("config: malformed %s: %s", path, exc)
         return {}
     return data if isinstance(data, dict) else {}
 

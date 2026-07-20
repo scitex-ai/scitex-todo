@@ -91,14 +91,10 @@ def coerce_id_list(value: object, *, where: str) -> list[str]:
 # --------------------------------------------------------------------------- #
 #: Pre-JSON notify sidecar filename, read as a fallback (see
 #: :func:`load_notify_config`) so a hand-edited YAML config keeps working.
-_LEGACY_NOTIFY_SIDECAR_NAME = "notify.yaml"
-
-
 def _read_sidecar(path: Path) -> dict[str, list[str]]:
-    """Read + validate the notify sidecar's rule overrides.
+    """Read + validate the notify sidecar's JSON rule overrides.
 
-    Reads JSON; a pre-JSON ``notify.yaml`` (``path`` ending ``.yaml``) is read
-    with the safe YAML loader. Accepts two shapes for forward-compat / brevity:
+    Accepts two shapes for forward-compat / brevity:
 
     * ``{"rules": {event_type: [role, ...]}}`` — explicit ``rules:`` key.
     * ``{event_type: [role, ...]}`` — a bare top-level mapping (when no
@@ -107,17 +103,11 @@ def _read_sidecar(path: Path) -> dict[str, list[str]]:
     Returns the validated overrides (an empty dict for an empty document).
     Raises :class:`NotifyConfigError` on a malformed file (fail-loud).
     """
+    import json
+
     try:
-        if path.suffix == ".yaml":
-            from .._yaml import safe_load
-
-            with path.open(encoding="utf-8") as handle:
-                data = safe_load(handle)
-        else:
-            import json
-
-            text = path.read_text(encoding="utf-8")
-            data = json.loads(text) if text.strip() else None
+        text = path.read_text(encoding="utf-8")
+        data = json.loads(text) if text.strip() else None
     except Exception as exc:  # noqa: BLE001 — malformed sidecar — fail loud
         raise NotifyConfigError(f"{path}: notify sidecar is not valid ({exc})") from exc
 
@@ -132,7 +122,7 @@ def _read_sidecar(path: Path) -> dict[str, list[str]]:
 
 
 def notify_sidecar_path(store: str | Path | None) -> Path | None:
-    """Resolve the ``notify.yaml`` path that sits next to the task store.
+    """Resolve the ``notify.json`` path that sits next to the task store.
 
     Reuses :func:`scitex_cards._paths.resolve_tasks_path` so the sidecar
     tracks the SAME store the tasks live in. Returns ``None`` only if the
@@ -181,17 +171,13 @@ def load_notify_config(store: str | Path | None = None) -> NotifyConfig:
         et: list(roles) for et, roles in DEFAULT_NOTIFY_RULES.items()
     }
     sidecar = notify_sidecar_path(store)
-    chosen: Path | None = None
     if sidecar is not None:
+        from .._legacy_yaml_migration import migrate_legacy_sidecar
+
+        migrate_legacy_sidecar(sidecar)  # one-time pre-JSON notify.yaml -> .json
         if sidecar.exists():
-            chosen = sidecar
-        else:
-            legacy = sidecar.with_name(_LEGACY_NOTIFY_SIDECAR_NAME)
-            if legacy.exists():
-                chosen = legacy  # pre-JSON fallback (no auto-write)
-    if chosen is not None:
-        for event_type, roles in _read_sidecar(chosen).items():
-            merged[event_type] = roles
+            for event_type, roles in _read_sidecar(sidecar).items():
+                merged[event_type] = roles
     return NotifyConfig(rules=merged)
 
 

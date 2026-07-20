@@ -13,10 +13,9 @@ maps each user to the channels they should be delivered on::
 
 ``address`` is OPTIONAL (the ``log`` channel needs none). A missing file
 yields an empty recipient set (no crash) — delivery simply has nothing to
-do. A pre-JSON ``recipients.yaml`` is read as a FALLBACK when no
-``recipients.json`` exists, so an operator's existing config keeps working
-until they convert it (no auto-write, so hand-edits to the YAML are never
-silently ignored). Resolution follows the same store precedence via
+do. A pre-JSON ``recipients.yaml`` is converted to JSON ONCE on first access
+(see :mod:`scitex_cards._legacy_yaml_migration`), after which the read is
+JSON-only. Resolution follows the same store precedence via
 :func:`scitex_cards._inbox._resolved_store`.
 
 Policy lives HERE, never inside a channel: :func:`should_deliver_now` is the
@@ -34,10 +33,6 @@ from .._inbox import _resolved_store
 
 #: Recipients config filename, a sibling of the task store.
 RECIPIENTS_FILENAME = "recipients.json"
-
-#: Pre-JSON recipients filename, read as a fallback so an operator's existing
-#: config keeps working until they convert it (see :func:`load_recipients`).
-_LEGACY_RECIPIENTS_FILENAME = "recipients.yaml"
 
 
 @dataclass(frozen=True)
@@ -62,36 +57,27 @@ def recipients_path(store: str | Path | None = None) -> Path:
 
 
 def _load_recipients_doc(store: str | Path | None) -> dict:
-    """Load the raw recipients mapping: JSON, falling back to a legacy YAML.
+    """Load the raw recipients mapping from ``recipients.json``.
 
-    Reads ``recipients.json``. When it is absent but a pre-JSON
-    ``recipients.yaml`` sibling exists, that is read instead (no write, so a
-    hand-edited YAML config is never silently overridden). Absent/unreadable/
+    A one-time migration converts a pre-JSON ``recipients.yaml`` sibling to JSON
+    on first access; after that the read is JSON-only. Absent/unreadable/
     malformed → ``{}``.
     """
     import json
 
+    from .._legacy_yaml_migration import migrate_legacy_sidecar
+
     path = recipients_path(store)
-    if path.exists():
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            return {}
-        try:
-            data = json.loads(text) if text.strip() else {}
-        except json.JSONDecodeError:
-            return {}
-        return data if isinstance(data, dict) else {}
-
-    legacy = path.with_name(_LEGACY_RECIPIENTS_FILENAME)
-    if not legacy.exists():
+    migrate_legacy_sidecar(path)  # one-time pre-JSON recipients.yaml -> .json
+    if not path.exists():
         return {}
-    from .._yaml import safe_load
-
     try:
-        with legacy.open(encoding="utf-8") as handle:
-            data = safe_load(handle) or {}
+        text = path.read_text(encoding="utf-8")
     except OSError:
+        return {}
+    try:
+        data = json.loads(text) if text.strip() else {}
+    except json.JSONDecodeError:
         return {}
     return data if isinstance(data, dict) else {}
 

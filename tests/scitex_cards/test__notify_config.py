@@ -173,8 +173,8 @@ def test_empty_sidecar_yields_built_in_defaults(tmp_path):
     assert cfg.rules == DEFAULT_NOTIFY_RULES
 
 
-def test_a_legacy_yaml_sidecar_is_read_when_no_json(tmp_path):
-    """A pre-JSON notify.yaml is the fallback when no notify.json exists."""
+def test_a_legacy_yaml_sidecar_is_migrated_to_json_on_first_load(tmp_path):
+    """A pre-JSON notify.yaml is converted to notify.json ONCE on first load."""
     # Arrange — only the legacy YAML sidecar exists.
     (tmp_path / "notify.yaml").write_text(
         yaml.safe_dump({"rules": {"commented": ["subscribers"]}}),
@@ -182,8 +182,11 @@ def test_a_legacy_yaml_sidecar_is_read_when_no_json(tmp_path):
     )
     # Act
     cfg = load_notify_config(store=_store(tmp_path))
-    # Assert
+    # Assert — value read, and the legacy file was converted + renamed away.
     assert cfg.roles_for("commented") == ["subscribers"]
+    assert (tmp_path / "notify.json").exists()
+    assert (tmp_path / "notify.yaml.migrated").exists()
+    assert not (tmp_path / "notify.yaml").exists()
 
 
 # --------------------------------------------------------------------------- #
