@@ -228,13 +228,6 @@ def render_graph_cmd(output: str, print_mermaid: bool) -> None:
     ),
 )
 @click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Path to tasks.yaml (default: project -> user -> bundled example, "
-    "or $SCITEX_TODO_TASKS_YAML_SHARED).",
-)
-@click.option(
     "--scope",
     default=None,
     help="Match `scope` exactly (use '' to ignore $SCITEX_TODO_SCOPE).",
@@ -312,7 +305,6 @@ def render_graph_cmd(output: str, print_mermaid: bool) -> None:
     help="Emit the resolved tasks as a JSON array.",
 )
 def list_tasks_cmd(
-    tasks_path: str | None,
     scope: str | None,
     assignee: str | None,
     agent: str | None,
@@ -333,7 +325,7 @@ def list_tasks_cmd(
     if blocking_operator:
         from ._admin import list_blocking_operator
 
-        list_blocking_operator(tasks_path, as_json)
+        list_blocking_operator(None, as_json)
         return
     # Normalize: click's multiple=True returns a tuple; the helper
     # signature takes a list[str] | None. Empty tuple = no constraint.
@@ -368,7 +360,7 @@ def list_tasks_cmd(
             # is empty / multi; the multi case feeds `statuses=`.
             None,
             as_json,
-            tasks_path,
+            None,
             statuses=statuses_list,
             agent=agent,
             project=project,
@@ -381,7 +373,7 @@ def list_tasks_cmd(
         )
         return
     # Plain path — backward-compatible plain table / JSON array.
-    resolved = resolve_tasks_path(tasks_path)
+    resolved = resolve_tasks_path(None)
     tasks = load_tasks(resolved)
     if as_json:
         click.echo(json.dumps(tasks))

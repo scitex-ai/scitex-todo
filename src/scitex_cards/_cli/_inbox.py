@@ -167,7 +167,7 @@ def inbox_info_cmd(as_json: bool) -> None:
     from scitex_cards._inbox_sqlite import info as inbox_info
     from scitex_cards._paths import resolve_tasks_path
 
-    store = resolve_tasks_path(tasks_path)
+    store = resolve_tasks_path(None)
     payload = inbox_info(store=store)
     if as_json:
         click.echo(_json.dumps(payload))
