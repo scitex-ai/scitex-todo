@@ -200,6 +200,66 @@ def resolve_tasks_path(explicit: str | Path | None = None) -> Path:
     return user
 
 
+def refuse_ambient_store_creation(
+    resolved: str | Path, explicit: str | Path | None = None
+) -> None:
+    """Refuse to MANUFACTURE a board at a path nobody named.
+
+    A write against a store that does not exist is ambiguous: it is either
+    "first run, please bootstrap" or "I resolved the wrong path". Answering it
+    by CREATING the store always assumes the first, and the second is the one
+    that costs a board.
+
+    Measured 2026-07-20, before this guard::
+
+        store path: <somewhere>/tasks.yaml     (does not exist)
+        add_task(id="decoy-card", ...)         -> returned normally
+        filesystem after                       -> a 241-byte one-card store
+
+    That is how a decoy accumulates. Three sac cron jobs, each reading
+    ``FileNotFoundError`` as "no such card yet" and calling ``add_task``,
+    grew a five-card document at an ambiently-resolved path; the hourly
+    ``db snapshot --refresh`` then imported it as canonical and reconcile
+    deleted the 2160 cards absent from it. The conflation was sac's; the
+    manufacturing was OURS, and either half alone breaks the chain.
+
+    So: an EXPLICIT destination may be created (a caller that names a path has
+    stated its intent, and that is how tests, imports and deliberate bootstraps
+    work). An AMBIENT one may not — nothing named it, so a missing file there
+    is far more likely to mean the resolution is wrong than that the fleet has
+    no board yet.
+
+    Parameters
+    ----------
+    resolved : str or pathlib.Path
+        The store path the write is about to be performed against.
+    explicit : str or pathlib.Path or None
+        The caller's explicit destination, if any. When given, creation is
+        permitted — naming the path IS the opt-in.
+
+    Raises
+    ------
+    RuntimeError
+        When ``resolved`` does not exist and nothing named it.
+    """
+    path = Path(resolved)
+    if path.exists() or explicit is not None or os.environ.get(ENV_TASKS):
+        return
+    raise RuntimeError(
+        f"REFUSING to create a task store at {path}: it does not exist, and "
+        f"nothing named it — the path came from the ambient default "
+        f"(~/.scitex/{PKG_SHORT}/tasks.yaml). Writing here would MANUFACTURE a "
+        f"new board containing only this one card, which then looks like a "
+        f"real store to anything that imports it.\n"
+        f"If you meant to write to the fleet board, your store resolution is "
+        f"wrong: set ${ENV_TASKS} to the real store, or pass the path "
+        f"explicitly.\n"
+        f"If you genuinely want a NEW empty board here, create it deliberately "
+        f"first: `scitex-cards db export --out {path}` from the store you want "
+        f"to seed from, or `touch {path}` for a truly blank one."
+    )
+
+
 #: Subdirectory of the store dir holding NON-git-tracked runtime state
 #: (pidfiles, the delivery ledger, the reminder sidecar). scitex convention:
 #: runtime state lives under ``runtime/`` (gitignored), never scattered in the

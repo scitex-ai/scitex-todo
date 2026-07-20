@@ -32,6 +32,7 @@ from ._model import (
     _save_doc_unlocked,
     _store_lock,
 )
+from ._paths import refuse_ambient_store_creation as _refuse_ambient_store_creation
 from ._store_enums import resolve_enum_clears as _resolve_enum_clears
 from ._store_events import _emit_card_event, _emit_unblock_for_dependents
 from ._store_list import _resolved_store
@@ -88,6 +89,11 @@ def add_task(
     status = _enum_in.pop("status")
     extras = _enum_in
     resolved = _resolved_store(store)
+    # A write against a store that does not exist must not INVENT one when
+    # nothing named the path — that is how a decoy board accumulates and then
+    # gets imported over the real one. See the guard's docstring for the
+    # measured 2026-07-20 chain. An explicit `store` is the opt-in.
+    _refuse_ambient_store_creation(resolved, store)
     resolved.parent.mkdir(parents=True, exist_ok=True)
     # FAIL-LOUD on a missing/blank OWNER (operator mandate 2026-06-26,
     # constitution rule 2 "no silent fallbacks"). The OWNER is `assignee`
