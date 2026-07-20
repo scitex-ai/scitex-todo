@@ -179,7 +179,11 @@ def edit_tasks(path: str | Path):
     path = Path(path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
     with _store_lock(path):
-        doc = load_doc(path, validate=True) if path.exists() else {}
+        # SQLite is the store: load_doc reads the canonical DB (and fail-louds
+        # if it is missing). The old `if path.exists() else {}` gated on the
+        # YAML store PATH, which is NEVER a real file under SQLite, so it
+        # silently yielded an empty doc and the write below wiped the store.
+        doc = load_doc(path, validate=True)
         if not isinstance(doc, dict):
             raise TaskValidationError(f"{path}: top level is not a mapping")
         tasks = doc.get("tasks") or []
@@ -207,13 +211,15 @@ def _save_tasks_unlocked(tasks: list[dict], path: Path) -> None:
     """
     path = Path(path)
     # Recover the existing non-`tasks` sections (users:, …) so they survive
-    # the rewrite. This is the SAME read the old inline path did; it stays
-    # here ONLY for callers that don't already hold the parsed doc.
-    doc: dict = {"tasks": []}
-    if path.exists():
-        loaded = load_doc(path, validate=False)
-        if isinstance(loaded, dict):
-            doc = loaded
+    # the rewrite. Read UNCONDITIONALLY: load_doc reads the canonical DB (and
+    # fail-louds if it is missing). The old `if path.exists()` gated on the
+    # YAML store PATH — never a real file under SQLite — so it skipped this
+    # read, wrote back doc={"tasks": tasks} with NO users section, and the
+    # incremental mirror then DELETEd the users registry (a card write wiped
+    # every user). Every caller of this wrapper (save_tasks, help-wait/clear)
+    # hit that.
+    loaded = load_doc(path, validate=False)
+    doc: dict = loaded if isinstance(loaded, dict) else {"tasks": []}
     _save_doc_unlocked(doc, path, tasks=tasks)
 
 
