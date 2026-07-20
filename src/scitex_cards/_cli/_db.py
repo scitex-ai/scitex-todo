@@ -146,7 +146,7 @@ def db_verify_cmd(db_path: str | None, as_json: bool) -> None:
         "modified. Requires --from-yaml (the only S0 source).\n\n"
         "Example:\n"
         "  scitex-todo db import --from-yaml\n"
-        "  scitex-todo db import --from-yaml --tasks /path/to/tasks.yaml --json"
+        "  scitex-todo db import --from-yaml --json"
     ),
 )
 @click.option(
@@ -154,12 +154,6 @@ def db_verify_cmd(db_path: str | None, as_json: bool) -> None:
     "from_yaml",
     is_flag=True,
     help="Import from the YAML store (the only source in S0). Required.",
-)
-@click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Path to tasks.yaml (default: user store / $SCITEX_TODO_TASKS_YAML_SHARED).",
 )
 @click.option(
     "--as-store",
@@ -177,7 +171,6 @@ def db_verify_cmd(db_path: str | None, as_json: bool) -> None:
 )
 def db_import_cmd(
     from_yaml: bool,
-    tasks_path: str | None,
     as_store: str | None,
     db_path: str | None,
     as_json: bool,
@@ -189,9 +182,7 @@ def db_import_cmd(
         )
     from .._db_bootstrap import import_from_yaml
 
-    summary = import_from_yaml(
-        tasks_path=tasks_path, db_path=db_path, as_store=as_store
-    )
+    summary = import_from_yaml(tasks_path=None, db_path=db_path, as_store=as_store)
     if as_json:
         click.echo(json.dumps(summary))
         return
@@ -448,12 +439,6 @@ def db_snapshot_cmd(
     ),
 )
 @click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Store to rehearse against (default: resolved store).",
-)
-@click.option(
     "--workdir", default=None, help="Rehearsal dir (default: fresh temp dir)."
 )
 @click.option(
@@ -462,11 +447,11 @@ def db_snapshot_cmd(
 @click.option(
     "--json", "as_json", is_flag=True, help="Emit the verdict report as JSON."
 )
-def db_rehearse_cmd(tasks_path, workdir, keep, as_json):
+def db_rehearse_cmd(workdir, keep, as_json):
     """Run the frozen-copy equivalence rehearsal (the R4 cutover gate)."""
     from .._db_rehearse import rehearse
 
-    report = rehearse(tasks_path=tasks_path, workdir=workdir, keep=keep)
+    report = rehearse(tasks_path=None, workdir=workdir, keep=keep)
     if as_json:
         click.echo(json.dumps(report))
         raise SystemExit(0 if report["equal"] else 1)
