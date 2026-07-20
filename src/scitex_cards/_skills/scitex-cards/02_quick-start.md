@@ -1,8 +1,8 @@
 ---
 description: |
   [TOPIC] Quick Start
-  [DETAILS] 30-second tour — load a tasks.yaml, build mermaid source, render
-  to PNG (Python), plus the equivalent CLI one-liners.
+  [DETAILS] 30-second tour — load the task store, build mermaid source,
+  render to PNG (Python), plus the equivalent CLI one-liners.
 tags: [scitex-todo-quick-start]
 ---
 
@@ -19,15 +19,15 @@ from scitex_cards._model   import load_tasks
 from scitex_cards._diagram import build_mermaid
 from scitex_cards._diagram  import render
 
-tasks = load_tasks("tasks.yaml")           # validates id / title / status
-mermaid_src = build_mermaid(tasks)         # YAML -> flowchart TB
+tasks = load_tasks()                       # validates id / title / status
+mermaid_src = build_mermaid(tasks)         # store -> flowchart TB
 engine = render(mermaid_src, "tasks.png")
 print(f"rendered via {engine}")            # 'mmdc' or 'kroki'
 ```
 
-A minimal `tasks.yaml`:
+A minimal task list (the shape `load_tasks` returns):
 
-```yaml
+```
 tasks:
   - {id: design, title: Design, status: done}
   - {id: build, title: Build, status: in_progress, depends_on: [design]}
@@ -37,7 +37,7 @@ tasks:
 ## CLI
 
 ```bash
-# default store: project -> user -> bundled example (or $SCITEX_TODO_TASKS_YAML_SHARED)
+# default store: $SCITEX_CARDS_DB, else the user-canonical database
 scitex-todo render-graph -o tasks.png
 
 # inspect the generated mermaid without rendering

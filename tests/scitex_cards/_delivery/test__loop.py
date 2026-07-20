@@ -694,4 +694,32 @@ def test_load_recipients_parses_an_explicit_channel_address(tmp_path):
     assert recips[0].channels[1].address == "12345"
 
 
+def test_load_recipients_prefers_json_over_a_legacy_yaml(tmp_path):
+    """recipients.json is authoritative; a legacy recipients.yaml is the fallback
+    only when no JSON exists (no auto-write, so a hand-edited YAML is never lost —
+    but once JSON exists it wins)."""
+    import json
+
+    # Arrange — touch the store so the dir resolves, then write BOTH files.
+    store = _store(tmp_path)
+    enqueue(
+        "u_x",
+        event_type="reassigned",
+        card_id="c1",
+        body="x",
+        actor="a",
+        ts="2026-06-27T10:00:00Z",
+        store=store,
+    )
+    _write_recipients(tmp_path, {"u_stale": {"channels": [{"kind": "log"}]}})
+    (tmp_path / "recipients.json").write_text(
+        json.dumps({"users": {"u_json": {"channels": [{"kind": "log"}]}}}),
+        encoding="utf-8",
+    )
+    # Act
+    recips = _recipients.load_recipients(store)
+    # Assert — the JSON wins; the legacy YAML is ignored.
+    assert [r.user for r in recips] == ["u_json"]
+
+
 # EOF

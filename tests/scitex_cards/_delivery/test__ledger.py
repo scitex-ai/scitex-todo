@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 """Tests for the keyed-dedup delivery ledger (slice 1).
 
-Real YAML round-trips against a real ``tmp_path`` store — NO mocks. Verifies
+Real JSON round-trips against a real ``tmp_path`` store — NO mocks. Verifies
 the ledger is a KEYED MAP (not an append-log), persists at
-``<store_dir>/runtime/delivery_ledger.yaml``, and that ``already_done`` /
+``<store_dir>/runtime/delivery_ledger.json``, and that ``already_done`` /
 ``retry_eligible`` / ``record`` behave per spec (exponential backoff, capped
 attempts).
 """
@@ -12,8 +12,7 @@ attempts).
 from __future__ import annotations
 
 import datetime as _dt
-
-import yaml
+import json
 
 from scitex_cards._delivery._channel import DeliveryResult, Status
 from scitex_cards._delivery._ledger import (
@@ -34,8 +33,8 @@ def _store(tmp_path):
 
 
 def _raw_ledger(tmp_path):
-    """The persisted ledger YAML, parsed."""
-    return yaml.safe_load((tmp_path / "runtime" / "delivery_ledger.yaml").read_text())
+    """The persisted ledger JSON, parsed."""
+    return json.loads((tmp_path / "runtime" / "delivery_ledger.json").read_text())
 
 
 def _ledger_with_one_sent(tmp_path):
@@ -100,7 +99,7 @@ def test_ledger_path_under_store_runtime_dir(tmp_path):
     # Act
     path = ledger_path(store)
     # Assert
-    assert path == tmp_path / "runtime" / "delivery_ledger.yaml"
+    assert path == tmp_path / "runtime" / "delivery_ledger.json"
 
 
 # --------------------------------------------------------------------------- #

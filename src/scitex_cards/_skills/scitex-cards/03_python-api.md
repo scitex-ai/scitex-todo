@@ -29,15 +29,15 @@ Validating loader. Raises `TaskValidationError` on a missing `id`/`title`, a
 duplicate `id`, or an invalid `status`.
 
 ```python
-tasks = todo.load_tasks("tasks.yaml")
+tasks = todo.load_tasks()
 # [{"id": "design", "title": "Design", "status": "done"}, ...]
 ```
 
 ### `save_tasks(tasks, path) -> None`
 
-Round-trips the YAML store with `ruamel.yaml`, preserving hand-written
-comments. Validates before writing (an invalid task leaves the file
-untouched).
+Writes the store atomically (tmp + fsync + reparse-verify +
+`os.replace`). Validates before writing (an invalid task leaves the
+store untouched).
 
 ## Rendering
 

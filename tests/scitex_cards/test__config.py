@@ -17,13 +17,17 @@ def _paths(monkeypatch, *paths):
 
 def _layered_reminders(monkeypatch, tmp_path):
     """User base + a project layer that overrides ONLY interval_minutes."""
-    user = tmp_path / "user.yaml"
-    project = tmp_path / "project.yaml"
+    import json
+
+    user = tmp_path / "user.json"
+    project = tmp_path / "project.json"
     user.write_text(
-        "reminders:\n  interval_minutes: 5\n  escalate_after: 3\n",
+        json.dumps({"reminders": {"interval_minutes": 5, "escalate_after": 3}}),
         encoding="utf-8",
     )
-    project.write_text("reminders:\n  interval_minutes: 1\n", encoding="utf-8")
+    project.write_text(
+        json.dumps({"reminders": {"interval_minutes": 1}}), encoding="utf-8"
+    )
     _paths(monkeypatch, user, project)
     return _config.reminders_config()
 
@@ -33,7 +37,7 @@ def _layered_reminders(monkeypatch, tmp_path):
 
 def test_absent_files_yield_empty_config(tmp_path, monkeypatch):
     # Arrange
-    _paths(monkeypatch, tmp_path / "missing.yaml")
+    _paths(monkeypatch, tmp_path / "missing.json")
     # Act
     cfg = _config.load_config()
     # Assert
@@ -42,7 +46,7 @@ def test_absent_files_yield_empty_config(tmp_path, monkeypatch):
 
 def test_absent_files_yield_empty_reminders_config(tmp_path, monkeypatch):
     # Arrange
-    _paths(monkeypatch, tmp_path / "missing.yaml")
+    _paths(monkeypatch, tmp_path / "missing.json")
     # Act
     cfg = _config.reminders_config()
     # Assert
@@ -67,8 +71,8 @@ def test_project_layer_inherits_untouched_user_keys(tmp_path, monkeypatch):
 
 def test_malformed_file_is_ignored(tmp_path, monkeypatch):
     # Arrange
-    bad = tmp_path / "bad.yaml"
-    bad.write_text("reminders: [this is not a mapping\n", encoding="utf-8")
+    bad = tmp_path / "bad.json"
+    bad.write_text('{"reminders": [this is not valid json', encoding="utf-8")
     _paths(monkeypatch, bad)
     # Act
     cfg = _config.reminders_config()
@@ -124,6 +128,52 @@ def test_bool_is_not_a_valid_interval_number(tmp_path, monkeypatch):
     interval = _config.resolve_interval_minutes(None, cfg)
     # Assert
     assert interval == _config.DEFAULT_INTERVAL_MINUTES
+
+
+# === JSON format + one-time legacy YAML migration ==========================
+
+
+def test_a_json_config_is_read(tmp_path, monkeypatch):
+    # Arrange
+    import json
+
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(
+        json.dumps({"reminders": {"interval_minutes": 7}}), encoding="utf-8"
+    )
+    _paths(monkeypatch, cfg_path)
+    # Act / Assert
+    assert _config.reminders_config() == {"interval_minutes": 7}
+
+
+def test_json_config_wins_over_a_sibling_legacy_yaml(tmp_path, monkeypatch):
+    # Arrange — both files present at the same scope; JSON must win.
+    import json
+
+    (tmp_path / "config.yaml").write_text(
+        "reminders:\n  interval_minutes: 99\n", encoding="utf-8"
+    )
+    (tmp_path / "config.json").write_text(
+        json.dumps({"reminders": {"interval_minutes": 7}}), encoding="utf-8"
+    )
+    _paths(monkeypatch, tmp_path / "config.json")
+    # Act / Assert
+    assert _config.reminders_config() == {"interval_minutes": 7}
+
+
+def test_a_legacy_yaml_config_is_migrated_on_first_access(tmp_path, monkeypatch):
+    # Arrange — only the pre-JSON YAML exists; it is migrated to JSON on read.
+    (tmp_path / "config.yaml").write_text(
+        "reminders:\n  interval_minutes: 3\n", encoding="utf-8"
+    )
+    _paths(monkeypatch, tmp_path / "config.json")
+    # Act
+    result = _config.reminders_config()
+    # Assert — value read, and the legacy file was converted + renamed away.
+    assert result == {"interval_minutes": 3}
+    assert (tmp_path / "config.json").exists()
+    assert (tmp_path / "config.yaml.migrated").exists()
+    assert not (tmp_path / "config.yaml").exists()
 
 
 # EOF

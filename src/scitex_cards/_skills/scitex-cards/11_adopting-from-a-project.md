@@ -1,24 +1,24 @@
 ---
 description: |
-  [TOPIC] Adopting `~/.scitex/todo/` from your project
+  [TOPIC] Adopting the shared task store from your project
   [DETAILS] How a project agent (clew / neurovista / scitex-dev / scitex-hub
   / ripple-wm / scitex-orochi / scitex-agent-container / etc.) writes its
-  own tasks into the shared fleet board at `~/.scitex/todo/tasks.yaml` so
-  the operator's board (http://127.0.0.1:8051/) auto-renders your tasks as
-  a labeled column.
-  [HOW] Set `project` + `agent` on every task you create + write into the
-  shared YAML via the scitex-todo CLI or Python API. Three fields is the
-  minimum for your work to surface on the live board.
+  own tasks into the shared fleet board (the SQLite store) so the operator's
+  board (http://127.0.0.1:8051/) auto-renders your tasks as a labeled column.
+  [HOW] Set `project` + `agent` on every task you create + write via the
+  scitex-todo CLI or Python API. Three fields is the minimum for your work
+  to surface on the live board.
 tags: [scitex-todo-adopting]
 ---
 
-# Adopting `~/.scitex/todo/` from your project
+# Adopting the shared task store from your project
 
 You are a project agent. The operator's board lives at
-`http://127.0.0.1:8051/` and renders from `~/.scitex/todo/tasks.yaml`.
-This skill is the SHORTEST useful adoption path so your tasks show up
-as your own column on the operator's board within 5 seconds of your
-first write. The full convention + write-protocol contract lives in
+`http://127.0.0.1:8051/` and renders from the shared SQLite store
+(`$SCITEX_CARDS_DB`). This skill is the SHORTEST useful adoption path
+so your tasks show up as your own column on the operator's board
+within 5 seconds of your first write. The full convention +
+write-protocol contract lives in
 [`30_two-tier-conventions-and-write-protocol.md`](30_two-tier-conventions-and-write-protocol.md);
 this skill is the how-to-adopt-NOW counterpart.
 
@@ -26,14 +26,14 @@ this skill is the how-to-adopt-NOW counterpart.
 
 Three required fields per task — that's the minimum:
 
-```yaml
-- id: <stable-string-id>          # e.g. paper-scitex-clew/cohort-a-rerun
-  title: <short scannable label>
-  status: <see VALID_STATUSES>
-  # ----- and the three NEW fields the live board needs -----
-  project: <your-project-dir-basename>    # column header on the board
-  agent:   <your-agent-name>              # operator's "who is doing this"
-  task:    <one-line BIG-TEXT current-task description>
+```
+id: <stable-string-id>          # e.g. paper-scitex-clew/cohort-a-rerun
+title: <short scannable label>
+status: <see VALID_STATUSES>
+# ----- and the three NEW fields the live board needs -----
+project: <your-project-dir-basename>    # column header on the board
+agent:   <your-agent-name>              # operator's "who is doing this"
+task:    <one-line BIG-TEXT current-task description>
 ```
 
 Set `project = "neurovista"` (or `"paper-scitex-clew"`, `"scitex-dev"`,
@@ -142,26 +142,22 @@ clicks Resolve, the decision flips to `done`, your dependent
 auto-unblocks within 5 seconds. See ADR-0003 + ADR-0004 in
 `docs/adr/` for the full decision-node semantics.
 
-## Two-tier note
+## Scope note
 
-For project-LOCAL drafts you don't want on the fleet board yet:
-write to `<your-project>/.scitex/todo/tasks.yaml` (per-project tier).
-The aggregator (when it lands) rolls that up into
-`~/.scitex/todo/tasks.yaml` (global tier). Today there's no aggregator
-running, so write to the global tier directly via the CLI/Python/MCP
-above; the per-project tier is the future-distributed pattern. Spec
-in `30_two-tier-conventions-and-write-protocol.md`.
+For drafts you don't want on the fleet board's default view yet, write
+with a project-scoped `scope=agent:<you>` value — it's still the SAME
+database, just filtered differently by consumers. Spec in
+`30_two-tier-conventions-and-write-protocol.md`.
 
-## Path resolution precedence
+## Store resolution
 
 ```
-$SCITEX_TODO_TASKS_YAML_SHARED  →  <git-root>/.scitex/todo/tasks.yaml  →  ~/.scitex/todo/tasks.yaml  →  bundled example
+explicit path  →  $SCITEX_CARDS_DB  →  ~/.scitex/cards/cards.db
 ```
 
-Your project's `.scitex/todo/tasks.yaml` overrides the global one
-WHEN PRESENT — useful for per-project drafts. To write directly to
-the global, either omit the per-project file OR set
-`SCITEX_TODO_TASKS_YAML_SHARED=~/.scitex/todo/tasks.yaml` for that call.
+Set `$SCITEX_CARDS_DB` to point every call in this process at a
+specific database (useful for tests / scratch stores); unset it to use
+the user-canonical default.
 
 ## Operator's open questions = `kind: decision` + `blocker: operator-decision`
 
@@ -179,7 +175,7 @@ to "返事が来ない＝死んだのと同じ" (operator TG 9576).
 - Do NOT use legacy `blocker: "dep"` for new rows; use canonical
   `blocker: "dependency"` (the validator still accepts both during the
   deprecation window — see ADR-0007).
-- Do NOT cram prose into `tasks.yaml` — long-form goes in
+- Do NOT cram prose into the `note` field — long-form goes in
   `tasks/<id>/README.md`; ADR-shaped decisions go in
   `tasks/<id>/adr.md`. See skill 30.
 

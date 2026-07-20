@@ -529,8 +529,8 @@ def test_the_card_level_override_sends_a_second_note(tmp_path):
 def test_config_interval_knob_is_honored(tmp_path, monkeypatch):
     """reminders.interval_minutes in config.yaml sets the cadence."""
     # Arrange
-    cfg = tmp_path / "config.yaml"
-    cfg.write_text("reminders:\n  interval_minutes: 2\n", encoding="utf-8")
+    cfg = tmp_path / "config.json"
+    cfg.write_text('{"reminders": {"interval_minutes": 2}}', encoding="utf-8")
     monkeypatch.setattr("scitex_cards._config.config_paths", lambda: [cfg])
     store = tmp_path / "tasks.yaml"
     rec = _EnqueueRecorder()
@@ -979,8 +979,8 @@ def test_owner_allowlist_env_scopes_the_sweep(tmp_path, env):
 
 def test_owner_allowlist_config_scopes_the_sweep(tmp_path, monkeypatch):
     # Arrange
-    cfg = tmp_path / "config.yaml"
-    cfg.write_text("reminders:\n  owners: [alice]\n", encoding="utf-8")
+    cfg = tmp_path / "config.json"
+    cfg.write_text('{"reminders": {"owners": ["alice"]}}', encoding="utf-8")
     monkeypatch.setattr("scitex_cards._config.config_paths", lambda: [cfg])
     store = tmp_path / "tasks.yaml"
     rec = _EnqueueRecorder()

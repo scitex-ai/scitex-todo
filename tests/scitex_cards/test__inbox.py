@@ -47,9 +47,10 @@ def _store(tmp_path):
     # stamped with a tmp_path file is refused by the next read. Return the
     # PINNED store identity (== resolve_tasks_path(None)) the conftest already
     # aims the DB at, so writes stamp the same path reads resolve. The users:
-    # and inboxes: sections still live in THIS YAML file (only the task path
-    # moved off YAML on this branch), so register_user / enqueue / poll_inbox
-    # keep operating on it directly. `tmp_path` is now unused.
+    # section still lives in THIS YAML file; inboxes now live in their own
+    # inboxes.json sidecar next to it (see `_inbox._inboxes_path`).
+    # register_user keeps operating on this file directly. `tmp_path` is
+    # now unused.
     return Path(os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"])
 
 
@@ -908,12 +909,14 @@ def test_inbox_write_keeps_the_users_section(store_with_task_user_and_inbox):
     assert isinstance(data.get("users"), list)
 
 
-def test_inbox_write_creates_the_inboxes_section(store_with_task_user_and_inbox):
+def test_inbox_write_creates_the_inboxes_sidecar(store_with_task_user_and_inbox):
     # Arrange
     store = store_with_task_user_and_inbox
-    # Act
-    data = _read(store)
-    # Assert — all three sections coexist on disk.
+    # Act — inboxes now live in their OWN sidecar, not embedded in `store`.
+    from scitex_cards._inbox import _inboxes_path
+
+    data = json.loads(_inboxes_path(store).read_text(encoding="utf-8"))
+    # Assert
     assert isinstance(data.get("inboxes"), dict)
 
 
@@ -951,33 +954,34 @@ def test_inbox_write_preserves_the_registered_user(store_with_task_user_and_inbo
 def test_inbox_write_stores_the_record(store_with_task_user_and_inbox):
     # Arrange
     store = store_with_task_user_and_inbox
-    # Act
-    data = _read(store)
+    # Act — read the inboxes sidecar directly (not embedded in `store`).
+    from scitex_cards._inbox import _inboxes_path
+
+    data = json.loads(_inboxes_path(store).read_text(encoding="utf-8"))
     # Assert
     assert data["inboxes"]["u_abc"][0]["card_id"] == "c1"
 
 
-def test_inbox_first_write_seeds_tasks_list(tmp_path):
-    # Writing an inbox into a store with NO prior tasks must seed tasks: [] so
-    # a later add_task (which load_tasks hard-requires tasks:) still works.
+def test_inbox_only_write_does_not_touch_the_task_store_file(tmp_path):
+    # An inbox write now lands ONLY in its own inboxes.json sidecar — it must
+    # not create or touch the (unrelated) legacy task-store file at all.
     # Arrange
     store = _store(tmp_path)
     # Act
     _enqueue_completed(store, body="x")
-    data = _read(store)
     # Assert
-    assert data.get("tasks") == []
+    assert not store.exists()
 
 
-def test_add_task_after_inbox_seed_still_works(tmp_path):
+def test_add_task_after_inbox_write_still_works(tmp_path):
     # Arrange
     store = _store(tmp_path)
     _enqueue_completed(store, body="x")
     # Act
     add_task(store=store, id="c2", title="later", agent="alice")
     tasks = load_tasks(store)
-    # Assert — add_task does not raise after an inbox seed, and the row lands in
-    # the SQLite store.
+    # Assert — add_task does not raise after an inbox-only write, and the row
+    # lands in the SQLite store.
     assert any(t["id"] == "c2" for t in tasks)
 
 
@@ -987,7 +991,9 @@ def test_inbox_survives_a_later_task_write(tmp_path):
     _enqueue_completed(store, body="x")
     # Act
     add_task(store=store, id="c2", title="later", agent="alice")
-    data = _read(store)
+    from scitex_cards._inbox import _inboxes_path
+
+    data = json.loads(_inboxes_path(store).read_text(encoding="utf-8"))
     # Assert — the inbox is still intact after the task write.
     assert data["inboxes"]["u_abc"][0]["card_id"] == "c1"
 

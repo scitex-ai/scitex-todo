@@ -22,19 +22,14 @@ ONE thread per pair, both directions. The operator's reserved peer name is
 
 STORE ISOLATION (hard requirement — write-lock incident lesson)
 ----------------------------------------------------------------
-Threads live in a SIDECAR file, NOT ``tasks.yaml``: ``<store_dir>/threads.yaml``
-next to the resolved task store (e.g. ``~/.scitex/todo/threads.yaml``), guarded
-by its OWN flock (``.threads.yaml.lock``) so chat writes can never convoy with
-card writes. On-disk structure::
-
-    threads:
-      "dm:<a>::<b>":
-        - {id, thread, from, to, body, ts, read}
-        - ...
-
-The write mirrors the crash-safe pattern of ``_model._save_doc_unlocked``:
-dump → sibling ``.tmp`` → fsync → reparse-verify (thread + message counts) →
-``os.replace``. A missing file is never an error (empty store).
+Threads live in a SIDECAR file, NOT the task database:
+``<store_dir>/threads.json``, guarded by its OWN flock
+(``.threads.json.lock``) so chat writes never convoy with card writes.
+On-disk (JSON): ``{"threads": {"dm:<a>::<b>": [{id, thread, from, to,
+body, ts, read}, ...]}}``. A pre-existing legacy ``threads.yaml`` is
+migrated in place ONCE on first read (:func:`_migrate_legacy_yaml_once`);
+no permanent YAML fallback. Write mirrors ``_model._save_doc_unlocked``:
+dump → sibling ``.tmp`` → fsync → reparse-verify → ``os.replace``.
 
 dm-dispatch
 -----------
@@ -42,35 +37,27 @@ dm-dispatch
 recipient's EXISTING pull-inbox (:func:`scitex_cards._inbox.enqueue`, keyed via
 ``_users.resolve_user`` exactly like ``poll_notifications``) — the >=0.7.32
 unified channel server drains that inbox and pushes the message into the
-agent's live session. Durable, standalone; NO a2a dependency (sac's a2a POST
-is a separate fast-lane, not built here). The ``"operator"`` recipient is
-enqueued too, for symmetry: the inbox key is cheap, harmless, and keeps a
-future operator-side drain surface working without a special case (the board
-itself reads unread state from THIS sidecar, not the inbox).
+agent's live session. Durable, standalone; NO a2a dependency. The
+``"operator"`` recipient is enqueued too, for symmetry (the board itself
+reads unread state from THIS sidecar, not the inbox).
 
 READ CACHE vs WRITERS (the one rule this module lives or dies by)
 ----------------------------------------------------------------
-The GUI polls a thread every ~5s, and each poll used to cost TWO full parses
-of the entire sidecar plus a lock: ``mark_read`` (which sits on the poll path,
-not on a cold write path) and then ``get_thread``. So the READ paths
-(:func:`get_thread`, :func:`list_threads`) go through
-:func:`_load_threads_cached`, an mtime-guarded cache of the parsed content —
-the ``services.get_board`` pattern.
+The GUI polls a thread every ~5s. READ paths (:func:`get_thread`,
+:func:`list_threads`) go through :func:`_load_threads_cached`, an
+mtime-guarded cache of the parsed content.
 
 WRITERS NEVER READ THE CACHE. :func:`append_message` and the authoritative
 half of :func:`mark_read` do a read-modify-write and MUST re-read the file
-fresh, under the lock, via the uncached :func:`_load_threads`. A stale read
-there would silently DROP a message: two writes landing inside one mtime tick
-and the second clobbers the first. Optimizing a writer onto the cache is the
-one failure mode of this design; there is a test that refuses it.
+fresh, under the lock, via the uncached :func:`_load_threads` — a stale read
+there would silently DROP a message. Optimizing a writer onto the cache is
+the one failure mode of this design; there is a test that refuses it.
 
 :func:`mark_read` gets a lock-free FAST NO: it asks the cache whether this
-reader has anything to flip, and returns 0 without taking the lock or parsing
-when the answer is no. That is safe ONLY because marking-read is idempotent
-and self-healing — a stale cache costs at most one poll's delay (a badge
-clears ~5s late; the next poll sees a fresh mtime and flips it), never data.
-The instinct boundary in one sentence: this fast path is fine for
-``mark_read``; it would NOT be fine for ``append_message``.
+reader has anything to flip, and returns 0 without taking the lock when the
+answer is no — safe because marking-read is idempotent and self-healing (a
+stale cache costs at most one poll's delay, never data). That fast path is
+fine for ``mark_read``; it would NOT be fine for ``append_message``.
 """
 
 from __future__ import annotations
@@ -86,8 +73,11 @@ from ._paths import resolve_tasks_path
 
 logger = logging.getLogger(__name__)
 
-#: Sidecar filename, sibling of the resolved ``tasks.yaml``.
-THREADS_FILENAME = "threads.yaml"
+#: Sidecar filename, sibling of the resolved task store.
+THREADS_FILENAME = "threads.json"
+
+#: Legacy sidecar filename this module one-time-migrates from, if found.
+_LEGACY_THREADS_FILENAME = "threads.yaml"
 
 #: Top-level key of the sidecar document.
 _THREADS_KEY = "threads"
@@ -104,14 +94,29 @@ _MSG_ID_TOKEN_HEX = 12
 # Paths / keys / small helpers                                                 #
 # --------------------------------------------------------------------------- #
 def threads_path(store: str | Path | None = None) -> Path:
-    """Resolve the sidecar path: ``<store_dir>/threads.yaml``.
+    """Resolve the sidecar path: ``<store_dir>/threads.json``.
 
     ``store`` is the TASK store path (or ``None`` → the standard resolution
     chain); the threads sidecar always sits NEXT TO it so both files live in
     the same scope.
     """
     tasks = resolve_tasks_path(store) if store is None else Path(store).expanduser()
-    return tasks.parent / THREADS_FILENAME
+    path = tasks.parent / THREADS_FILENAME
+    _migrate_legacy_yaml_once(path)
+    return path
+
+
+def _migrate_legacy_yaml_once(json_path: Path) -> None:
+    """Fold a legacy ``threads.yaml`` into ``threads.json``, once (no fallback)."""
+    legacy = json_path.with_name(_LEGACY_THREADS_FILENAME)
+    if json_path.exists() or not legacy.exists():
+        return
+    from ._yaml import safe_load
+
+    with legacy.open(encoding="utf-8") as handle:
+        data = safe_load(handle) or {}
+    raw = data.get(_THREADS_KEY) if isinstance(data, dict) else None
+    _save_threads_unlocked(raw if isinstance(raw, dict) else {}, json_path)
 
 
 def thread_key(a: str, b: str) -> str:
@@ -148,9 +153,9 @@ def _generate_msg_id() -> str:
 
 @contextlib.contextmanager
 def _threads_lock(path: Path):
-    """Exclusive flock on the sidecar's OWN ``.threads.yaml.lock`` sentinel.
+    """Exclusive flock on the sidecar's OWN ``.threads.json.lock`` sentinel.
 
-    Deliberately SEPARATE from ``_model._store_lock`` (tasks.yaml): chat
+    Deliberately SEPARATE from ``_model._store_lock`` (the task store): chat
     traffic must never convoy with card writes. Same mechanics otherwise.
     """
     lock_path = path.parent / f".{path.name}.lock"
@@ -178,10 +183,10 @@ def _load_threads(path: Path) -> dict[str, list[dict]]:
     """
     if not path.exists():
         return {}
-    from ._yaml import safe_load
+    import json
 
     with path.open(encoding="utf-8") as handle:
-        data = safe_load(handle) or {}
+        data = json.load(handle) or {}
     raw = data.get(_THREADS_KEY) if isinstance(data, dict) else None
     if not isinstance(raw, dict):
         return {}
@@ -255,16 +260,17 @@ def _save_threads_unlocked(threads: dict[str, list[dict]], path: Path) -> None:
     REPARSE the tmp bytes and verify the thread count + total message count
     match the in-memory doc, then ``os.replace`` (POSIX-atomic) into place.
     Never promotes suspect bytes; the canonical file stays intact on any
-    failure. Callers must already hold :func:`_threads_lock`.
+    failure. Callers must already hold :func:`_threads_lock` (the one-time
+    legacy-migration caller is the sole exception — see its docstring).
     """
-    from ._yaml import safe_dump, safe_load
+    import json
 
     doc = {_THREADS_KEY: threads}
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.parent / f".{path.name}.tmp"
     try:
         with tmp_path.open("w", encoding="utf-8") as handle:
-            safe_dump(doc, handle)
+            json.dump(doc, handle, ensure_ascii=False, indent=2, sort_keys=False)
             handle.flush()
             try:
                 os.fsync(handle.fileno())
@@ -272,7 +278,7 @@ def _save_threads_unlocked(threads: dict[str, list[dict]], path: Path) -> None:
                 pass  # best-effort (overlay/fuse); os.replace is the swap
         try:
             with tmp_path.open(encoding="utf-8") as verify_handle:
-                verify_doc = safe_load(verify_handle)
+                verify_doc = json.load(verify_handle)
         except Exception as verify_exc:  # noqa: BLE001 — any parse fail = abort
             raise RuntimeError(
                 f"refusing to replace {path}: tmp file at {tmp_path} did not "
@@ -315,9 +321,8 @@ def _dispatch_to_inbox(record: dict, store: str | Path | None) -> None:
 
     Keyed exactly like ``poll_notifications``: the recipient name resolves to
     its stable ``u_*`` user id when registered, else the raw name is the key.
-    The thread record in the sidecar is the SSOT — an enqueue failure is
-    logged loudly but never loses the already-persisted message. The
-    ``operator`` recipient is enqueued too (symmetry; see module docstring).
+    The thread sidecar is the SSOT — an enqueue failure is logged loudly but
+    never loses the already-persisted message.
     """
     try:
         from . import _inbox
@@ -463,20 +468,15 @@ def mark_read(
     thread; otherwise only the listed message ids. Idempotent; returns the
     number of records actually flipped. Unknown thread → 0.
 
-    Sits on the GUI's ~5s poll path, where the answer is almost always "nothing
-    to flip", so it opens with a lock-free FAST NO off the read cache and only
-    pays the lock + fresh parse when there is real work. The check derives the
-    answer for THIS reader from the cached content on every call — the boolean
-    itself is never memoized, because the reader varies per request and one
-    peer's "nothing unread" must never answer for another's.
+    Sits on the GUI's ~5s poll path ("nothing to flip" almost always), so it
+    opens with a lock-free FAST NO off the read cache and only pays the lock
+    + fresh parse when there is real work.
     """
     wanted = set(ids) if ids is not None else None
     path = threads_path(store)
 
-    # Fast NO. A stale cache is tolerable here and only here: a false negative
-    # costs one poll's delay (the next poll sees a fresh mtime and flips), and
-    # a false positive costs one wasted lock. Neither can lose a message —
-    # everything below re-reads the file fresh and is the authority.
+    # Fast NO — tolerable here only: a stale cache costs one poll's delay or
+    # one wasted lock, never a lost message (everything below re-reads fresh).
     cached = _load_threads_cached(path).get(thread)
     if not any(_is_unread_for(r, reader, wanted) for r in cached or []):
         return 0
