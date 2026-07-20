@@ -211,7 +211,7 @@ def _db_mirrors_this_store(db_path: str | Path, store_path: str | Path) -> bool:
     package's own legitimate tests, which deliberately pair a tmp store with a
     tmp DB and are correct to mirror. The honest question is not "is this store
     special" but "do these two belong together", and the DB already answers it:
-    :func:`_db_freshness.stamp_yaml_provenance` records which YAML it reflects.
+    :func:`_db_freshness.stamp_store_provenance` records which store it reflects.
 
     An UNSTAMPED DB is adoptable (a fresh/bootstrapping mirror, incl. every test
     fixture) — the first write claims it. A DB stamped for a DIFFERENT store is
@@ -240,7 +240,7 @@ def _db_mirrors_this_store(db_path: str | Path, store_path: str | Path) -> bool:
         "!! REFUSING TO MIRROR: %s is the shadow DB of %s, but this write is to "
         "%s. Mirroring would REPLACE that store's rows with this one's. If you "
         "meant to repoint the mirror, re-bootstrap it explicitly "
-        "(`scitex-cards db import --from-yaml`); if this is a test or scratch "
+        "(`scitex-cards db import`); if this is a test or scratch "
         "store, point $SCITEX_CARDS_DB at a scratch DB.",
         db_path,
         stamped,
@@ -290,7 +290,7 @@ def mirror_after_save(doc: dict, store_path: str | Path) -> bool:
         #
         # A typical write changes ONE card. Now it writes one card.
         #
-        # `store_path` is passed so the mirror can stamp WHICH yaml it reflects
+        # `store_path` is passed so the mirror can stamp WHICH store it reflects
         # (path + mtime + size + card count) in the same transaction as the rows.
         # We are called AFTER the canonical write and still under the store lock,
         # so the file on disk is exactly the doc in hand — the one moment at which

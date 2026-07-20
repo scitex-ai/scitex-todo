@@ -30,10 +30,10 @@ Design constraints
 ------------------
 - **Generic** (Req 8): scope/assignee/status are free-form strings. The
   helpers don't know what an "agent" is.
-- **Centralized** (Req 3): the default store is whatever
-  :func:`_paths.resolve_tasks_path` returns; callers can override with an
+- **Centralized** (Req 3): the default store is the SQLite database
+  resolved by ``$SCITEX_CARDS_DB``; callers can override with an
   explicit ``store=`` path. The user-scope default
-  (``~/.scitex/todo/tasks.yaml``) covers Req 7.
+  (``~/.scitex/cards/cards.db``) covers Req 7.
 - **Shared with scopes** (Req 1): ``$SCITEX_TODO_SCOPE`` provides the
   default value for ``list_tasks(scope=...)`` when the caller doesn't pass
   one explicitly. Pass ``scope=""`` (empty string) to ignore the env
@@ -240,7 +240,7 @@ def _read_canonical_db_or_raise() -> dict:
             f"the exporter answers a missing database with an empty document, "
             f"and this value is written back as the WHOLE store — every card "
             f"replaced by nothing. Point $SCITEX_CARDS_DB at the real database, "
-            f"or bootstrap one with `scitex-cards db import --from-yaml`."
+            f"or bootstrap one with `scitex-cards db import`."
         )
 
     # OWNERSHIP IS CHECKED HERE TOO, NOT ONLY ON WRITE. This is a read-MODIFY-
@@ -298,7 +298,7 @@ def _read_canonical_db_or_raise() -> dict:
             f"to continue — this document is written back as the whole store, "
             f"so the {in_table - exported} missing cards would be DELETED. "
             f"Verify with `scitex-cards db verify`; re-bootstrap with "
-            f"`scitex-cards db import --from-yaml`."
+            f"`scitex-cards db import`."
         )
     return doc
 
