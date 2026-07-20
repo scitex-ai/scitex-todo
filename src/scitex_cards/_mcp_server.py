@@ -286,7 +286,7 @@ TOOL_NAMES: tuple[str, ...] = (
     "health",
     "todo_skills_list",
     "todo_skills_get",
-    # Operator↔agent DMs (threads.yaml sidecar; registered in _mcp_skills).
+    # Operator↔agent DMs (threads.json sidecar; registered in _mcp_skills).
     "dm_send",
     "dm_list",
 )

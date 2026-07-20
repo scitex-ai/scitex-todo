@@ -373,7 +373,6 @@ class TestWipIsNotBacklog:
         import contextlib
 
         from scitex_cards._model import TaskValidationError
-        from scitex_cards._paths import ENV_TASKS
         from scitex_cards._store import add_task
 
         env.set(ENV_WIP_LIMIT, "1")
@@ -382,7 +381,6 @@ class TestWipIsNotBacklog:
         # add_task's post-write card-event dispatcher resolves the DEFAULT
         # store, not the one passed in — so without this the suite reads and
         # writes the operator's live ~/.scitex/todo/tasks.yaml.
-        env.set(ENV_TASKS, str(store))
         for i in range(4):
             with contextlib.suppress(TaskValidationError):
                 add_task(
@@ -409,13 +407,11 @@ class TestWipIsNotBacklog:
     def test_starting_more_work_past_2x_is_still_refused(self, tmp_path, env):
         # Arrange — the gate must not become a no-op.
         from scitex_cards._model import TaskValidationError
-        from scitex_cards._paths import ENV_TASKS
         from scitex_cards._store import add_task
 
         env.set(ENV_WIP_LIMIT, "1")
         store = tmp_path / "tasks.yaml"
         store.write_text("tasks: []\n")
-        env.set(ENV_TASKS, str(store))
         for i in range(2):
             add_task(
                 id=f"wip-{i}",

@@ -28,9 +28,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
+from scitex_cards._db import ENV_DB
 from scitex_cards._inbox import enqueue as real_enqueue
 from scitex_cards._inbox import poll_inbox
-from scitex_cards._paths import ENV_TASKS
 from scitex_cards._push import ENV_DRY_RUN
 from scitex_cards._stale_active import (
     ENV_PENDING_NUDGE_HOURS,
@@ -50,9 +50,17 @@ from scitex_cards._stale_active_nudge import (
 @pytest.fixture(autouse=True)
 def _isolated_store(tmp_path, monkeypatch):
     """Point the store (and therefore the inbox + nudge sidecar) at a tmp dir."""
-    store = tmp_path / "tasks.yaml"
-    monkeypatch.setenv(ENV_TASKS, str(store))
-    return store
+    from scitex_cards._db import connect, init_schema
+
+    db = tmp_path / "cards.db"
+    monkeypatch.setenv(ENV_DB, str(db))
+    conn = connect(str(db))
+    try:
+        init_schema(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    return db
 
 
 @contextlib.contextmanager

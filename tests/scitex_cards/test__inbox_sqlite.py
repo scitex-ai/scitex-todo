@@ -81,17 +81,44 @@ def _enqueue_digest(store, body, ts):
 
 
 def _seed_yaml_inbox(store, recipient, card_id, body, actor, ts, event_type):
-    from scitex_cards import _inbox as yaml_inbox
+    """Seed one record directly into the LEGACY embedded ``inboxes:`` section
+    of the pre-cutover task-store document — the exact shape
+    ``migrate_to_sqlite`` reads (see ``_inbox._read_legacy_embedded_inboxes``).
 
-    return yaml_inbox.enqueue(
-        recipient,
-        event_type=event_type,
-        card_id=card_id,
-        body=body,
-        actor=actor,
-        ts=ts,
-        store=store,
-    )
+    Deliberately independent of the live ``_inbox`` module's own write path:
+    that module's break-glass backend now persists to its own
+    ``inboxes.json`` sidecar (a DIFFERENT file), so seeding through it would
+    no longer land in the legacy location this migration test exercises.
+    """
+    doc = {}
+    if store.exists():
+        loaded = _yaml.safe_load(store.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            doc = loaded
+    doc.setdefault("tasks", [])
+    inboxes = doc.setdefault("inboxes", {})
+    record = {
+        "id": f"n_{recipient}_{card_id}_{len(inboxes.get(recipient, []))}",
+        "event_type": event_type,
+        "card_id": card_id,
+        "body": body,
+        "actor": actor,
+        "ts": ts,
+        "seen": False,
+    }
+    inboxes.setdefault(recipient, []).append(record)
+    store.write_text(_yaml.safe_dump(doc), encoding="utf-8")
+    return dict(record)
+
+
+def _mark_yaml_seen(store, recipient, record_id):
+    """Flip one legacy embedded record's ``seen`` flag directly (test-only
+    counterpart to :func:`_seed_yaml_inbox` — see its docstring)."""
+    doc = _yaml.safe_load(store.read_text(encoding="utf-8")) or {}
+    for record in doc.get("inboxes", {}).get(recipient, []):
+        if record.get("id") == record_id:
+            record["seen"] = True
+    store.write_text(_yaml.safe_dump(doc), encoding="utf-8")
 
 
 # --------------------------------------------------------------------------- #
@@ -117,9 +144,7 @@ def migrated_store(tmp_path):
         store, "dave", "c2", "bye", "carol", "2026-06-26T00:00:01Z", "completed"
     )
     # Mark one seen so the seen flag carries across.
-    from scitex_cards import _inbox as yaml_inbox
-
-    yaml_inbox.ack("dave", [b["id"]], store=store)
+    _mark_yaml_seen(store, "dave", b["id"])
     stats = sq.migrate_to_sqlite(store=store)
     return {"store": store, "a": a, "b": b, "stats": stats}
 
@@ -792,9 +817,14 @@ def test_default_backend_round_trips_the_record(default_backend_store):
 def test_break_glass_yaml_backend(yaml_backend_store):
     # Arrange
     store = yaml_backend_store["store"]
-    # Act
-    doc = _read(store)
-    # Assert — explicit yaml writes the YAML inboxes: section.
+    # Act — the break-glass backend persists to its own inboxes.json sidecar,
+    # not the main store file (see scitex_cards._inbox's module docstring).
+    import json
+
+    from scitex_cards._inbox import _INBOXES_FILENAME
+
+    doc = json.loads((store.parent / _INBOXES_FILENAME).read_text(encoding="utf-8"))
+    # Assert
     assert doc["inboxes"]["u_abc"][0]["card_id"] == "c1"
 
 

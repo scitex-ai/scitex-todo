@@ -20,13 +20,11 @@ from .._paths import resolve_tasks_path
 from ._compat import spec_command_kwargs, spec_group_kwargs
 
 _STORE_RESOLUTION = (
-    "Canonical store: a SQLite DB at $SCITEX_CARDS_DB (default",
-    "~/.scitex/cards/cards.db) when $SCITEX_CARDS_STORE_BACKEND=sqlite.",
-    "YAML path resolution (first existing wins):",
-    "$SCITEX_CARDS_TASKS_YAML_SHARED, then the user store",
-    "~/.scitex/cards/tasks.yaml (relocatable via $SCITEX_DIR). There is NO",
-    "bundled-example fallback — an unresolvable store raises. Run",
-    "`scitex-cards resolve-store` to see what you actually resolved to.",
+    "Canonical store: the SQLite database at $SCITEX_CARDS_DB (default",
+    "~/.scitex/cards/cards.db, relocatable via $SCITEX_DIR). That path is the",
+    "SOLE store identity. An unresolvable/absent store raises rather than",
+    "standing in an empty board. Run `scitex-cards resolve-store` to see what",
+    "you actually resolved to.",
 )
 
 # Doctrine §4a (10a_command-categories.md): fixed, ordered category headers.
@@ -476,7 +474,7 @@ _reconcile.register(
 # deliver (slice 1 of the standalone notification-DELIVERY rail). One-shot
 # delivery pass — reads each recipient's pending notifications (read-only,
 # never touches the user's `seen` cursor) and hands them to the channels in
-# recipients.yaml, recording outcomes in the delivery ledger. cron/loop-
+# recipients.json, recording outcomes in the delivery ledger. cron/loop-
 # runnable; the daemon + systemd unit are a LATER slice. See
 # src/scitex_cards/_delivery/.
 _deliver.register(main)

@@ -16,13 +16,14 @@ from __future__ import annotations
 
 import pytest
 
-from scitex_cards._paths import ENV_TASKS, refuse_ambient_store_creation
+from scitex_cards._db import ENV_DB
+from scitex_cards._paths import refuse_ambient_store_creation
 
 
 def test_a_write_to_a_nonexistent_ambient_store_is_refused(tmp_path, monkeypatch):
     # ARRANGE — nothing names the store: no explicit arg, no env var.
-    monkeypatch.delenv(ENV_TASKS, raising=False)
-    absent = tmp_path / "never-created" / "tasks.yaml"
+    monkeypatch.delenv(ENV_DB, raising=False)
+    absent = tmp_path / "never-created" / "cards.db"
 
     # ACT / ASSERT — refusing is the whole point.
     with pytest.raises(RuntimeError) as excinfo:
@@ -32,15 +33,15 @@ def test_a_write_to_a_nonexistent_ambient_store_is_refused(tmp_path, monkeypatch
     assert "REFUSING to create a task store" in message
     # The error must be ACTIONABLE: name the path, and say what to do instead.
     assert str(absent) in message
-    assert ENV_TASKS in message
+    assert ENV_DB in message
 
 
 def test_a_write_to_an_explicitly_named_nonexistent_store_is_allowed(
     tmp_path, monkeypatch
 ):
     # ARRANGE — the caller NAMED the destination; naming it is the opt-in.
-    monkeypatch.delenv(ENV_TASKS, raising=False)
-    absent = tmp_path / "deliberate" / "tasks.yaml"
+    monkeypatch.delenv(ENV_DB, raising=False)
+    absent = tmp_path / "deliberate" / "cards.db"
 
     # ACT / ASSERT — must not raise; bootstraps and tests depend on this.
     refuse_ambient_store_creation(absent, explicit=absent)
@@ -49,8 +50,8 @@ def test_a_write_to_an_explicitly_named_nonexistent_store_is_allowed(
 def test_an_env_named_nonexistent_store_is_allowed(tmp_path, monkeypatch):
     # ARRANGE — an operator who exported the store variable has stated intent
     # just as clearly as one who passed the path.
-    absent = tmp_path / "configured" / "tasks.yaml"
-    monkeypatch.setenv(ENV_TASKS, str(absent))
+    absent = tmp_path / "configured" / "cards.db"
+    monkeypatch.setenv(ENV_DB, str(absent))
 
     # ACT / ASSERT
     refuse_ambient_store_creation(absent)
@@ -58,9 +59,9 @@ def test_an_env_named_nonexistent_store_is_allowed(tmp_path, monkeypatch):
 
 def test_an_existing_ambient_store_is_untouched_by_the_guard(tmp_path, monkeypatch):
     # ARRANGE — the ordinary healthy case: the board already exists.
-    monkeypatch.delenv(ENV_TASKS, raising=False)
-    present = tmp_path / "tasks.yaml"
-    present.write_text("tasks: []\n", encoding="utf-8")
+    monkeypatch.delenv(ENV_DB, raising=False)
+    present = tmp_path / "cards.db"
+    present.write_text("", encoding="utf-8")
 
     # ACT / ASSERT — the guard is about CREATION, never about writing.
     refuse_ambient_store_creation(present)
@@ -77,9 +78,10 @@ def test_add_task_does_not_manufacture_a_board_at_an_ambient_path(
     # ARRANGE — point the ambient user root at an empty dir, name nothing.
     import scitex_cards
 
-    monkeypatch.delenv(ENV_TASKS, raising=False)
+    monkeypatch.delenv(ENV_DB, raising=False)
+    monkeypatch.delenv("SCITEX_TODO_DB", raising=False)
     monkeypatch.setenv("SCITEX_DIR", str(tmp_path / "scitex"))
-    would_be = tmp_path / "scitex" / "cards" / "tasks.yaml"
+    would_be = tmp_path / "scitex" / "cards" / "cards.db"
 
     # ACT
     with pytest.raises(RuntimeError):

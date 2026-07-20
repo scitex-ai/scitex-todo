@@ -1,38 +1,37 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""SHADOW SQLite adapter for scitex-todo — STAGE S0 (RFC #348).
+"""SQLite adapter — the canonical store lives here (schema, connect, resolution).
 
-SAFETY BOUNDARY (S0)
---------------------
-This module is PURELY ADDITIVE. The YAML store (``tasks.yaml`` + the
-``threads.yaml`` sidecar) stays the CANONICAL source of truth. The SQLite
-database created here is a **SHADOW** that is bootstrapped FROM the YAML by
-:mod:`scitex_cards._db_bootstrap`. Nothing in the existing CRUD / MCP /
-``load_doc`` / ``_save_doc_unlocked`` path reads or writes this DB in S0 —
-dual-write (S1) and DB-canonical (S2) are later, separately-shipped stages.
-The shadow DB is therefore INCAPABLE of harming the YAML by construction:
-it is a different file, opened read/create, never linked into any write path.
+THE STORE IS THIS DATABASE
+--------------------------
+Post-cutover, the SQLite database created here is THE canonical store — not a
+shadow of a YAML file. There is no second document to reconcile to: the CRUD /
+MCP / ``load_doc`` / ``_save_doc_unlocked`` path reads and writes this database
+directly (see :mod:`scitex_cards._store_backend`). ``$SCITEX_CARDS_DB`` (the
+database path) is the SOLE store identity, stamped into ``schema_meta`` and
+enforced by the ownership guard (:mod:`scitex_cards._dual_write`). The YAML that
+remains in the package is a BACKUP/EXPORT rail (``db export``) and a set of
+non-card sidecars — never the task store.
 
 Adapter scope
 -------------
-stdlib ``sqlite3`` ONLY (no scitex-db, no third-party) per the S0 decision on
-RFC #348 Q2 — keeps the corruption-adjacent canonical store dependency-light,
-mirroring scitex-clew's hand-rolled PRAGMA approach. On every writable connect
+stdlib ``sqlite3`` ONLY (no scitex-db, no third-party) — keeps the
+corruption-adjacent canonical store dependency-light. On every writable connect
 we set ``journal_mode=WAL``, ``synchronous=NORMAL``, ``busy_timeout=300000``
 (5 min), ``foreign_keys=ON``. The schema is created idempotently
-(``CREATE TABLE/INDEX IF NOT EXISTS``) and stamped with ``PRAGMA user_version=1``
-plus a ``schema_meta`` row.
+(``CREATE TABLE/INDEX IF NOT EXISTS``) and stamped with ``PRAGMA user_version``
+plus ``schema_meta`` rows.
 
-Path resolution (RFC #348 §1.2) — DELEGATED, never re-rolled
-------------------------------------------------------------
+Path resolution — DELEGATED, never re-rolled
+--------------------------------------------
 Precedence: explicit arg → ``$SCITEX_CARDS_DB`` env → ``$SCITEX_TODO_DB``
 (deprecated, warned) → the ecosystem ``local_state.user_path("cards",
 "cards.db")``. We DELEGATE the final tier to
 ``scitex_config._ecosystem.local_state.user_path`` rather than re-rolling a
 project/user precedence chain. ``user_path()`` is user-canonical and CANNOT
-express a project scope — which is the whole point: the 2026-07-06 stale-store
-incident was caused by a rolled-own resolver that ranked a project copy above
-the user store. Resolves to ``~/.scitex/cards/cards.db``.
+express a project scope — the whole point: the 2026-07-06 stale-store incident
+was caused by a rolled-own resolver that ranked a project copy above the user
+store. Resolves to ``~/.scitex/cards/cards.db``.
 """
 
 from __future__ import annotations
@@ -81,14 +80,15 @@ ENV_DB_DEPRECATED = "SCITEX_TODO_DB"
 #: CONSTRUCTION, and it cannot rot as new fields are added.
 #: v4 adds ``inbox_recipients`` — the inboxes: MAP KEYS, so a recipient
 #: whose inbox is currently EMPTY (drained) still round-trips through the
-#: yaml export instead of silently vanishing with their zero rows.
+#: JSON export instead of silently vanishing with their zero rows.
 #:
 #: v3 (S4 export rail) extends the same verbatim-payload rule to the NON-CARD
 #: sections: ``users.record_json``, ``notifications.record_json``,
-#: ``messages.record_json`` hold each record EXACTLY as the YAML doc carried
-#: it. Same rationale as ``card_json``: typed columns are the INDEX, the JSON
-#: is the PAYLOAD — a column-based export would silently drop unknown keys,
-#: and the yaml-snapshot backup rail (ADR-0010) must be exact by construction.
+#: ``messages.record_json`` hold each record EXACTLY as the source document
+#: carried it. Same rationale as ``card_json``: typed columns are the INDEX,
+#: the JSON is the PAYLOAD — a column-based export would silently drop
+#: unknown keys, and the JSON-snapshot backup rail (ADR-0010) must be exact
+#: by construction.
 SCHEMA_VERSION = 4
 
 
@@ -311,9 +311,7 @@ def table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
     a number some code wrote — and a stamp is metadata, so it can outlive the
     thing it describes. The columns are the artifact itself.
     """
-    return {
-        str(r[1]) for r in conn.execute(f"PRAGMA table_info({table})").fetchall()
-    }
+    return {str(r[1]) for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
 
 
 def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
@@ -419,12 +417,8 @@ def verify(explicit: str | Path | None = None) -> dict:
 
     conn = connect(path)
     try:
-        report["user_version"] = int(
-            conn.execute("PRAGMA user_version").fetchone()[0]
-        )
-        report["quick_check"] = conn.execute(
-            "PRAGMA quick_check"
-        ).fetchone()[0]
+        report["user_version"] = int(conn.execute("PRAGMA user_version").fetchone()[0])
+        report["quick_check"] = conn.execute("PRAGMA quick_check").fetchone()[0]
         present = {
             r[0]
             for r in conn.execute(
@@ -439,8 +433,7 @@ def verify(explicit: str | Path | None = None) -> dict:
                 )
         report["tables"] = tables
         meta = {
-            row[0]: row[1]
-            for row in conn.execute("SELECT key, value FROM schema_meta")
+            row[0]: row[1] for row in conn.execute("SELECT key, value FROM schema_meta")
         }
         report["schema_version"] = meta.get("schema_version")
         report["source"] = meta.get("source")

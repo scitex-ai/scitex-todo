@@ -21,7 +21,6 @@ import pytest
 
 from scitex_cards import _dual_write, _store, _store_backend
 from scitex_cards._db import ENV_DB
-from scitex_cards._paths import ENV_TASKS
 
 
 @pytest.fixture(autouse=True)
@@ -323,31 +322,41 @@ def test_every_repeated_call_still_refuses_the_flag(monkeypatch, caplog):
 
 
 def _mirror_of_store_a(monkeypatch, tmp_path):
-    """Build a DB that is store A's mirror, holding A's single card.
+    """A DB holding A's card, STAMPED for a FOREIGN identity (not its own path).
 
-    Uses the canonical write door directly: `write_doc_to_db(doc, store_a)`
-    adopts the fresh DB resolved from ``$SCITEX_CARDS_DB`` and STAMPS its
-    provenance for store A — the same primitive the production write path runs.
-    (The old add_task+dual-write route cannot build this: with SQLite canonical,
-    add_task is a read-modify-write that RAISES on a not-yet-existing DB.)
+    Single-identity model: the store IS the database, so "a database that
+    belongs to a different store" is one whose provenance stamp names a
+    DIFFERENT database path than ``$SCITEX_CARDS_DB`` resolves. The ownership
+    guard must refuse a write or read against it. Built by seeding the rows then
+    stamping the provenance for a foreign path by hand (the production write
+    door stamps the database's OWN path, so it cannot manufacture this).
     """
-    store_a = tmp_path / "a" / "tasks.yaml"
-    store_a.parent.mkdir()
+    from conftest import seed_db_from_doc
+
+    from scitex_cards._db import connect
+    from scitex_cards._db_freshness import stamp_store_provenance
+
     db = tmp_path / "mirror-of-a.db"
+    foreign = tmp_path / "a" / "cards.db"  # a DIFFERENT database path
     monkeypatch.setenv(ENV_DB, str(db))
-    _store_backend.write_doc_to_db(
-        {
-            "tasks": [
-                {
-                    "id": "a-only",
-                    "title": "A",
-                    "status": "deferred",
-                    "assignee": "agent:test-suite",
-                }
-            ]
-        },
-        store_a,
-    )
+    doc = {
+        "tasks": [
+            {
+                "id": "a-only",
+                "title": "A",
+                "status": "deferred",
+                "assignee": "agent:test-suite",
+            }
+        ]
+    }
+    seed_db_from_doc(doc, str(db))
+    conn = connect(str(db))
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        stamp_store_provenance(conn, foreign)
+        conn.commit()
+    finally:
+        conn.close()
     return db
 
 
@@ -369,13 +378,13 @@ def test_a_write_to_a_foreign_store_does_not_clobber_another_stores_mirror(
     is the resolved store, but the DB it resolves is stamped for store A, so the
     read door of `add_task` RAISES before any row is touched.
     """
-    # Arrange — a DB that is store A's mirror, holding A's card.
+    # Arrange — a DB stamped for a FOREIGN identity, holding A's card.
     db = _mirror_of_store_a(monkeypatch, tmp_path)
 
-    # Act — store B is the resolved store, but the same DB (store A's) is on env.
-    store_b = tmp_path / "b" / "tasks.yaml"
-    store_b.parent.mkdir()
-    monkeypatch.setenv(ENV_TASKS, str(store_b))
+    # Act — the resolved database is foreign-stamped, so the read door of
+    # add_task RAISES before any row is touched (the `store` arg is cosmetic —
+    # identity is the database path).
+    store_b = tmp_path / "b" / "cards.db"
     with pytest.raises(RuntimeError):
         _store.add_task(store_b, id="b-only", title="B", assignee="agent:test-suite")
 
@@ -476,11 +485,11 @@ def test_canonical_write_to_a_foreign_db_RAISES_rather_than_clobbering(
     # Arrange — a DB that belongs to store A.
 
     db = _mirror_of_store_a(monkeypatch, tmp_path)
-    store_b = tmp_path / "b" / "tasks.yaml"
+    store_b = tmp_path / "b" / "cards.db"
 
     # Act
-    # Assert — a canonical write addressed to store B must refuse LOUDLY.
-    with pytest.raises(RuntimeError, match="DIFFERENT path"):
+    # Assert — a canonical write to a foreign-stamped database must refuse LOUDLY.
+    with pytest.raises(RuntimeError, match="DIFFERENT"):
         _store_backend.write_doc_to_db({"tasks": [{"id": "b-only"}]}, store_b)
 
 
@@ -490,7 +499,7 @@ def test_a_refused_canonical_write_leaves_the_foreign_rows_untouched(
     # Arrange — a DB that belongs to store A.
 
     db = _mirror_of_store_a(monkeypatch, tmp_path)
-    store_b = tmp_path / "b" / "tasks.yaml"
+    store_b = tmp_path / "b" / "cards.db"
 
     # Act — the refused write. (Captured, not `pytest.raises`: the refusal
     # itself is pinned by the test above; here it is only the setup for the
@@ -520,11 +529,10 @@ def test_a_refused_canonical_write_leaves_the_foreign_rows_untouched(
 def test_reading_a_foreign_stamped_db_RAISES_rather_than_returning_its_rows(
     monkeypatch, tmp_path
 ):
-    # Arrange — a DB that belongs to store A, but resolve store B.
+    # Arrange — a database whose provenance names a DIFFERENT database path.
     from scitex_cards._store import _read_canonical_db_or_raise
 
     _mirror_of_store_a(monkeypatch, tmp_path)
-    monkeypatch.setenv(ENV_TASKS, str(tmp_path / "b" / "tasks.yaml"))
 
     # Act
     # Assert
@@ -533,11 +541,25 @@ def test_reading_a_foreign_stamped_db_RAISES_rather_than_returning_its_rows(
 
 
 def test_reading_the_db_that_owns_this_store_returns_its_cards(monkeypatch, tmp_path):
-    # Arrange — the same DB, resolved as the store it actually belongs to.
+    # Arrange — a database stamped for its OWN path (the normal case): the first
+    # canonical write adopts the fresh database and stamps its own identity.
     from scitex_cards._store import _read_canonical_db_or_raise
 
-    _mirror_of_store_a(monkeypatch, tmp_path)
-    monkeypatch.setenv(ENV_TASKS, str(tmp_path / "a" / "tasks.yaml"))
+    db = tmp_path / "own.db"
+    monkeypatch.setenv(ENV_DB, str(db))
+    _store_backend.write_doc_to_db(
+        {
+            "tasks": [
+                {
+                    "id": "a-only",
+                    "title": "A",
+                    "status": "deferred",
+                    "assignee": "agent:test-suite",
+                }
+            ]
+        },
+        tmp_path / "cosmetic.db",
+    )
 
     # Act
     doc = _read_canonical_db_or_raise()

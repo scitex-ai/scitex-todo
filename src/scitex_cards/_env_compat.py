@@ -27,10 +27,10 @@ implemented as an UNCONDITIONAL overwrite, and that is a different thing: it
 means a malformed new-prefix value silently defeats a working old-prefix one.
 Measured on the live fleet, from the MCP server's own ``/proc/<pid>/environ``:
 
-    SCITEX_TODO_TASKS_YAML_SHARED  = ~/.scitex/todo/tasks.yaml    (2117 cards)
-    SCITEX_CARDS_TASKS_YAML_SHARED = ~/.scitex/cards/tasks.yaml   (5 cards)
-    SCITEX_TODO_AGENT_ID           = scitex-cards
-    SCITEX_CARDS_AGENT_ID          = ${SCITEX_CARDS_AGENT_ID}     <- literal
+    SCITEX_TODO_DB        = ~/.scitex/todo/cards.db    (2117 cards)
+    SCITEX_CARDS_DB       = ~/.scitex/cards/cards.db   (5 cards)
+    SCITEX_TODO_AGENT_ID  = scitex-cards
+    SCITEX_CARDS_AGENT_ID = ${SCITEX_CARDS_AGENT_ID}   <- literal
 
 Both overrides applied. The store silently FORKED: agents wrote into an empty
 store while the fleet's history sat untouched in the other one, and every card
@@ -75,8 +75,10 @@ _UNEXPANDED = re.compile(
 
 #: Suffixes of vars that name a MUTABLE DATA STORE. Relocating one of these
 #: does not change behaviour — it changes which data you are looking at, and a
-#: wrong answer here is indistinguishable from an empty board.
-_DATA_STORE_SUFFIXES = ("TASKS_YAML_SHARED", "TASKS_DB", "DB_PATH")
+#: wrong answer here is indistinguishable from an empty board. ``DB`` is the
+#: store identity ($SCITEX_CARDS_DB); the legacy ``…_TASKS_YAML_SHARED`` var was
+#: deleted with the SQLite cutover.
+_DATA_STORE_SUFFIXES = ("DB", "TASKS_DB", "DB_PATH")
 
 
 def _is_unexpanded(value: str) -> bool:

@@ -163,7 +163,7 @@ def _auto_claim(path, task_id: str, *, assignee: str) -> None:
 @click.command(
     "watch",
     **spec_command_kwargs(
-        summary="Watch tasks.yaml and POST /v1/turn to the owning agent on change.",
+        summary="Watch the task store and POST /v1/turn to the owning agent on change.",
         description=(
             "Wakes on new/commented/status-changed tasks (the push side "
             "of the self-consuming board loop). Pairs with `next` (the "

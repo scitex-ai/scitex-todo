@@ -234,7 +234,7 @@ async def dm_send(
     """Send a DIRECT MESSAGE to a peer (operator or another agent).
 
     Appends the canonical DM record ``{id, thread, from, to, body, ts, read}``
-    to the pair's thread in the ``threads.yaml`` sidecar (thread id
+    to the pair's thread in the ``threads.json`` sidecar (thread id
     ``dm:<a>::<b>``, peers sorted) and enqueues a ``dm`` notification into the
     recipient's pull-inbox so the unified channel server delivers it into
     their live session. ``from`` is THIS agent's resolved identity

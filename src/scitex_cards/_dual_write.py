@@ -1,75 +1,37 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""S1 DUAL-WRITE — mirror every card write into SQLite, YAML still canonical.
+"""STORE OWNERSHIP GUARD — does this database belong to the store we resolved?
 
-WHY THIS EXISTS — THE NUMBERS (measured end-to-end, live store, 2026-07-13)
---------------------------------------------------------------------------
-    ONE uncontended card write : 16.31 s   <- what the operator actually waits on
-        of which, this mirror  :  8.69 s   <- MORE THAN HALF
-    ONE SQLite row update      :  4.71 ms  <- what S2 buys
+SQLite IS the canonical store (the YAML-mirror era ended with the cutover). What
+survives here, and is load-bearing, is the OWNERSHIP GUARD that keeps one
+database from being written with another store's rows.
 
-**A card write takes SIXTEEN SECONDS while holding a fleet-wide lock**, and a
-16-second critical section serialises every other writer: two agents means the
-second waits 32 s, ten means the last waits 160 s. A single comment waiting ~4
-minutes (2026-07-11) is exactly what that predicts. The lock is not at fault — the
-lock is correct. What we DO while holding it is at fault.
+THE INVARIANT
+-------------
+A database is the database of exactly ONE store. Point ``$SCITEX_CARDS_DB`` at a
+database built as store B's, then write store A into it, and nothing merges —
+B's rows are REPLACED with A's. On 2026-07-19 this package's own concurrency
+test did exactly that to the live fleet database, rebuilding it from a 21-card
+fixture, because the destination came from the ambient environment while the
+source came from the caller and nothing checked the two matched.
 
-So this migration is not a performance nicety. The store is already broken, and
-SQLite is the repair: it collapses the CRITICAL SECTION, which is what kills the
-convoy. It was never about the YAML serialiser (that is ~1.7 s, about 10%).
+So :func:`_db_mirrors_this_store` refuses a write whose resolved store disagrees
+with the database's own provenance stamp (:data:`scitex_cards._db_freshness.KEY_STORE_PATH`).
+An UNSTAMPED database is adoptable — a fresh one, or a populated board being
+adopted at deploy — and the first write claims it by stamping its identity.
 
-WHAT THE EARLIER VERSION OF THIS DOCSTRING GOT WRONG — READ THIS BEFORE TRUSTING A NUMBER
------------------------------------------------------------------------------------------
-It said: "full YAML rewrite 11,176 ms; the mirror's full rebuild is NINE TIMES
-FASTER than the YAML rewrite beside it; dual-write costs +11%; it is effectively
-free." **Every one of those numbers was real, and the conclusion was still wrong.**
+WHY IDENTITY IS COMPARED BY INODE, NOT BY STRING
+------------------------------------------------
+:func:`_same_file` compares ``st_dev``/``st_ino``, because on this host one store
+directory is reached by two names that ``realpath`` resolves DIFFERENTLY
+(``/home/agent/.scitex/cards`` vs ``/home/ywatanabe/.scitex/cards``, a bind
+mount). A string compare called them different stores and refused every write
+from whichever population did not match the stamp — measured live on 2026-07-20.
 
-  * The 11,176 ms measured ``save_tasks`` IN ISOLATION — not the write path a card
-    actually takes. It was a true measurement of one COMPONENT, quoted as the cost
-    of the SYSTEM.
-  * "+11%, effectively free" used a CONTENDED denominator (105 s, taken while the
-    measurer's own writes were draining). Against the real 16.3 s write, the mirror
-    is 8.7 s — it MORE THAN DOUBLES a card write. Not free: the largest single
-    item in it.
-
-The discipline that would have caught both: MEASURE THE PATH THE USER IS WAITING
-ON, END TO END, AND STATE THE DENOMINATOR.
-
-THE FULL REBUILD IS GONE FROM THIS PATH — MIND THE DENOMINATOR
---------------------------------------------------------------
-The 8.69 s above is the OLD full rebuild, and it is no longer what a card write
-pays. The write chokepoint (:func:`scitex_cards._model._save_doc_unlocked`) hands us
-the WHOLE doc without saying which card changed, so this mirror used to DELETE and
-re-insert every row, every time — O(n), growing with the board (1.24 s in the
-morning, 8.69 s by the evening). It now diffs by card hash and touches only what
-actually changed: **8.69 s -> 0.199 s**. A typical write changes one card, so it
-writes one card.
-
-The full rebuild still exists in :mod:`scitex_cards._db_bootstrap` — the right shape
-for ``db import`` and for the re-bootstrap after a mirror failure — and it is ~5x
-faster than it was, because ``INSERT OR REPLACE INTO tasks`` turned out to be 86% of
-it (see :func:`scitex_cards._db_bootstrap._insert_tasks`; one word of SQL, 42x per
-row). But that is the BOOTSTRAP path, NOT the write path. Do not quote the rebuild's
-numbers as the cost of a card write: that substitution — a true measurement of one
-component, reported against the wrong denominator — is the exact mistake catalogued
-above, and it has now been made twice in this file.
-
-THE THREE RULES THIS MODULE ENFORCES
-------------------------------------
-1. **YAML STAYS CANONICAL.** The mirror is a different file and cannot corrupt it.
-   A mirror failure must NEVER fail the user's write — by the time we run, their
-   card is already safely on disk. Raising here would turn a cosmetic problem into
-   data loss.
-
-2. **BUT IT MUST NEVER BE SILENT.** A mirror that fails quietly lets the DB rot out
-   of sync, and S2 would then cut over to a store that is confidently wrong. That
-   is the exact disease this codebase spent 2026-07-11/12 digging out of: a signal
-   that reads healthy and carries no information. So every failure is logged LOUD,
-   counted, and surfaced in ``scitex-todo health``.
-
-3. **IT MUST BE KILLABLE WITHOUT A RELEASE.** ``SCITEX_TODO_DUAL_WRITE`` gates it.
-   Default OFF while S1 is proven under real traffic; flipped on per-agent first.
-   A store this critical does not get a flag day.
+The historical ``SCITEX_TODO_DUAL_WRITE`` mirror gate and its ``mirror_after_save``
+path remain below for the health check that reports mirror failures; they are no
+longer on the write path (the store's ONE write chokepoint is
+:func:`scitex_cards._store_backend.write_doc_to_db`).
 """
 
 from __future__ import annotations
@@ -249,7 +211,7 @@ def _db_mirrors_this_store(db_path: str | Path, store_path: str | Path) -> bool:
     package's own legitimate tests, which deliberately pair a tmp store with a
     tmp DB and are correct to mirror. The honest question is not "is this store
     special" but "do these two belong together", and the DB already answers it:
-    :func:`_db_freshness.stamp_yaml_provenance` records which YAML it reflects.
+    :func:`_db_freshness.stamp_store_provenance` records which store it reflects.
 
     An UNSTAMPED DB is adoptable (a fresh/bootstrapping mirror, incl. every test
     fixture) — the first write claims it. A DB stamped for a DIFFERENT store is
@@ -258,14 +220,14 @@ def _db_mirrors_this_store(db_path: str | Path, store_path: str | Path) -> bool:
     """
     import sqlite3
 
-    from ._db_freshness import KEY_YAML_PATH, read_provenance
+    from ._db_freshness import stamped_store_path
 
     if not Path(db_path).exists():
         return True  # nothing to clobber yet
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         try:
-            stamped = read_provenance(conn).get(KEY_YAML_PATH)
+            stamped = stamped_store_path(conn)
         finally:
             conn.close()
     except Exception:  # noqa: BLE001 — unreadable stamp ⇒ let the mirror try
@@ -278,7 +240,7 @@ def _db_mirrors_this_store(db_path: str | Path, store_path: str | Path) -> bool:
         "!! REFUSING TO MIRROR: %s is the shadow DB of %s, but this write is to "
         "%s. Mirroring would REPLACE that store's rows with this one's. If you "
         "meant to repoint the mirror, re-bootstrap it explicitly "
-        "(`scitex-cards db import --from-yaml`); if this is a test or scratch "
+        "(`scitex-cards db import`); if this is a test or scratch "
         "store, point $SCITEX_CARDS_DB at a scratch DB.",
         db_path,
         stamped,
@@ -328,7 +290,7 @@ def mirror_after_save(doc: dict, store_path: str | Path) -> bool:
         #
         # A typical write changes ONE card. Now it writes one card.
         #
-        # `store_path` is passed so the mirror can stamp WHICH yaml it reflects
+        # `store_path` is passed so the mirror can stamp WHICH store it reflects
         # (path + mtime + size + card count) in the same transaction as the rows.
         # We are called AFTER the canonical write and still under the store lock,
         # so the file on disk is exactly the doc in hand — the one moment at which

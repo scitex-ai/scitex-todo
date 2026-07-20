@@ -163,9 +163,17 @@ def user_id_keyed_inbox(tmp_path):
 @pytest.fixture()
 def mtime_gate_verdicts(tmp_path):
     """``should_drain`` verdicts across four ticks: first (seeds last_mtime),
-    unchanged, mtime-advanced, and settled again."""
+    unchanged, mtime-advanced, and settled again.
+
+    The gate stats the ACTUAL file the break-glass inbox backend reads —
+    ``inboxes.json``, a sibling of the (legacy) task-store path — not the
+    task-store path itself (see ``_channel_drain_state._resolve_store_file``).
+    """
     store = _store(tmp_path)
-    store.write_text("tasks: []\n", encoding="utf-8")
+    from scitex_cards._inbox import _inboxes_path
+
+    gated_file = _inboxes_path(store)
+    gated_file.write_text('{"inboxes": {}}', encoding="utf-8")
     state = _DrainState()
     verdicts = [
         should_drain(state, store=store),  # first tick → drain (seed)
@@ -173,8 +181,8 @@ def mtime_gate_verdicts(tmp_path):
     ]
     # Force a strictly-later mtime (deterministic — no sleep / no FS-granularity
     # race): an advanced store mtime must re-open the drain.
-    bumped = os.stat(store).st_mtime + 10.0
-    os.utime(store, (bumped, bumped))
+    bumped = os.stat(gated_file).st_mtime + 10.0
+    os.utime(gated_file, (bumped, bumped))
     verdicts.append(should_drain(state, store=store))  # advanced → drain
     verdicts.append(should_drain(state, store=store))  # settled again → skip
     return verdicts
@@ -273,9 +281,14 @@ def gated_drain_after_change(tmp_path):
         ts="2026-06-28T10:01:00Z",
         store=store,
     )
-    # Guarantee a strictly-later mtime regardless of FS granularity.
-    bumped = os.stat(store).st_mtime + 10.0
-    os.utime(store, (bumped, bumped))
+    # Guarantee a strictly-later mtime regardless of FS granularity. Stat the
+    # ACTUAL gated file (see _channel_drain_state._resolve_store_file) — the
+    # break-glass backend's inboxes.json sidecar, not the legacy store path.
+    from scitex_cards._inbox import _inboxes_path
+
+    gated_file = _inboxes_path(store)
+    bumped = os.stat(gated_file).st_mtime + 10.0
+    os.utime(gated_file, (bumped, bumped))
     recorder = _SendRecorder()
     pushed = asyncio.run(
         gated_drain_once(agent, recorder, state, source="stodo", store=store)

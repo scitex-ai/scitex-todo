@@ -62,7 +62,7 @@ def test_apply_writes_correct_command_args(tmp_path):
 #
 # When the fleet operator (typically agent-container at to_home/.mcp.json
 # generation time) passes --env-tasks-path, the MCP entry gets an `env`
-# block with SCITEX_TODO_TASKS_YAML_SHARED pinned to that absolute path. This makes the
+# block with SCITEX_CARDS_DB pinned to that absolute path. This makes the
 # wire-up self-documenting in the generated config AND immune to $HOME /
 # symlink drift in any container that loads the .mcp.json.
 
@@ -71,7 +71,7 @@ def test_apply_env_tasks_path_pins_env_block(tmp_path):
     # Arrange
     runner = CliRunner()
     target = tmp_path / ".mcp.json"
-    pinned = "/home/agent/.scitex/todo/tasks.yaml"
+    pinned = "/home/agent/.scitex/cards/cards.db"
     # Act
     runner.invoke(
         main,
@@ -88,14 +88,14 @@ def test_apply_env_tasks_path_pins_env_block(tmp_path):
     )
     # Assert
     entry = _read_json(target)["mcpServers"]["scitex-todo"]
-    assert entry.get("env") == {"SCITEX_TODO_TASKS_YAML_SHARED": pinned}
+    assert entry.get("env") == {"SCITEX_CARDS_DB": pinned}
 
 
 def test_apply_env_tasks_path_preserves_command_args(tmp_path):
     # Arrange
     runner = CliRunner()
     target = tmp_path / ".mcp.json"
-    pinned = "/home/agent/.scitex/todo/tasks.yaml"
+    pinned = "/home/agent/.scitex/cards/cards.db"
     # Act
     runner.invoke(
         main,
@@ -130,7 +130,7 @@ def test_apply_env_tasks_path_idempotent_when_repeated(tmp_path):
     # Arrange — applying twice with the same pin is a noop the second time.
     runner = CliRunner()
     target = tmp_path / ".mcp.json"
-    pinned = "/home/agent/.scitex/todo/tasks.yaml"
+    pinned = "/home/agent/.scitex/cards/cards.db"
     args = [
         "mcp",
         "install",
@@ -176,20 +176,20 @@ def test_apply_env_tasks_path_updates_when_pin_changes(tmp_path):
             "--to",
             str(target),
             "--env-tasks-path",
-            "/new/tasks.yaml",
+            "/new/cards.db",
             "-y",
         ],
     )
     # Assert
     entry = _read_json(target)["mcpServers"]["scitex-todo"]
-    assert entry["env"]["SCITEX_TODO_TASKS_YAML_SHARED"] == "/new/tasks.yaml"
+    assert entry["env"]["SCITEX_CARDS_DB"] == "/new/cards.db"
 
 
 def test_print_only_env_tasks_path_emits_env_block(tmp_path):
     # Arrange — the print path (no --apply) honours the same flag so a
     # user can preview the pinned snippet before writing.
     runner = CliRunner()
-    pinned = "/home/agent/.scitex/todo/tasks.yaml"
+    pinned = "/home/agent/.scitex/cards/cards.db"
     # Act
     result = runner.invoke(
         main, ["mcp", "install", "--env-tasks-path", pinned]

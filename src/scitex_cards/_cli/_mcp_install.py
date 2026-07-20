@@ -39,12 +39,15 @@ def attach_install_verbs(mcp_group: click.Group) -> None:
                 ("{prog} mcp install --format raw", "Print the raw snippet."),
                 ("{prog} mcp install --apply --dry-run", "Preview a user-scope apply."),
                 ("{prog} mcp install --apply -y", "Write into ~/.mcp.json."),
-                ("{prog} mcp install --apply --to ./.mcp.json", "Project-scope .mcp.json."),
+                (
+                    "{prog} mcp install --apply --to ./.mcp.json",
+                    "Project-scope .mcp.json.",
+                ),
                 (
                     "{prog} mcp install --apply --to to_home/.mcp.json "
                     "--env-tasks-path /home/agent/.scitex/todo/tasks.yaml -y",
                     "Fleet host-store pin (P3a).",
-        ),
+                ),
             ),
         ),
     )
@@ -82,10 +85,9 @@ def attach_install_verbs(mcp_group: click.Group) -> None:
         type=str,
         default=None,
         help=(
-            "Pin SCITEX_TODO_TASKS_YAML_SHARED in the snippet's `env` block — the MCP\n"
-            "subprocess uses this path as the task-store via the normal\n"
-            "resolution chain (explicit env > project > user > example).\n"
-            "Fleet P3a use case: when this CLI is run by agent-container\n"
+            "Pin $SCITEX_CARDS_DB in the snippet's `env` block — the MCP\n"
+            "subprocess uses this database path as the store (the sole store\n"
+            "identity). Fleet use case: when this CLI is run by agent-container\n"
             "to seed every container's ``to_home/.mcp.json``, the pinned\n"
             "path makes the wire-up self-documenting and immune to $HOME\n"
             "or symlink drift in any container. Omit to leave the entry\n"
@@ -114,15 +116,13 @@ def attach_install_verbs(mcp_group: click.Group) -> None:
             "command": _CLI_NAME,
             "args": ["mcp", "start"],
         }
-        # P3a host-store wire-up: when an explicit task-store path is
-        # provided, pin it in the MCP entry's `env` block. The MCP server
-        # subprocess picks up SCITEX_TODO_TASKS_YAML_SHARED via the normal resolution
-        # chain (env beats project/user scopes), so a containerized agent
-        # ends up reading the shared host store regardless of its $HOME or
-        # symlink state. Keeping this OPT-IN preserves back-compat with
-        # the existing snippet shape.
+        # Host-store wire-up: when an explicit database path is provided, pin
+        # it in the MCP entry's `env` block as $SCITEX_CARDS_DB (the sole store
+        # identity), so a containerized agent reads the shared host store
+        # regardless of its $HOME or symlink state. OPT-IN preserves back-compat
+        # with the existing snippet shape.
         if env_tasks_path:
-            entry["env"] = {"SCITEX_TODO_TASKS_YAML_SHARED": env_tasks_path}
+            entry["env"] = {"SCITEX_CARDS_DB": env_tasks_path}
         snippet = {"mcpServers": {_CLI_NAME: entry}}
 
         if not do_apply:
@@ -216,7 +216,7 @@ def attach_install_verbs(mcp_group: click.Group) -> None:
                     "--agents-dir ~/.dotfiles/src/.scitex/agent-container/agents "
                     "--env-tasks-path /home/agent/.scitex/todo/tasks.yaml -y",
                     "Sweep every agent's to_home/.mcp.json.",
-        ),
+                ),
             ),
         ),
     )
@@ -232,7 +232,7 @@ def attach_install_verbs(mcp_group: click.Group) -> None:
         "env_tasks_path",
         type=str,
         default=None,
-        help="Pin SCITEX_TODO_TASKS_YAML_SHARED in every emitted entry's env block.",
+        help="Pin $SCITEX_CARDS_DB in every emitted entry's env block.",
     )
     @click.option(
         "--dry-run", is_flag=True, help="Print planned per-agent action; no writes."
@@ -247,7 +247,7 @@ def attach_install_verbs(mcp_group: click.Group) -> None:
             )
         entry: dict = {"command": _CLI_NAME, "args": ["mcp", "start"]}
         if env_tasks_path:
-            entry["env"] = {"SCITEX_TODO_TASKS_YAML_SHARED": env_tasks_path}
+            entry["env"] = {"SCITEX_CARDS_DB": env_tasks_path}
 
         agent_count = applied = noop = 0
         errors: list[str] = []

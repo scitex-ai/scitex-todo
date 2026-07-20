@@ -10,9 +10,9 @@ contract (lead a2a ``c2908456`` / ``d35f5ae6``, 2026-06-11): one
 per-package systemctl ceremony.
 
 scitex-todo's only piece today is the **board** web dashboard — the
-live ``http://127.0.0.1:8051/`` view of the shared
-``~/.scitex/todo/tasks.yaml`` board that every sac agent reads from
-and writes to. The board is the operator's primary daily surface;
+live ``http://127.0.0.1:8051/`` view of the shared task store that
+every sac agent reads from and writes to. The board is the operator's
+primary daily surface;
 having it brought up + kept alive at the systemd layer
 (``Restart=on-failure``) is what makes the cross-fleet feedback loop
 actually visible.
@@ -74,14 +74,14 @@ def provide_jobs() -> list[JobSpec]:
             command="scitex-todo board start --port 8051",
             description=(
                 "scitex-todo board start — read-only live view of the "
-                "shared ~/.scitex/todo/tasks.yaml at http://127.0.0.1:8051/"
+                "shared task store at http://127.0.0.1:8051/"
             ),
             on_boot_sec="15s",
             restart_policy="on-failure",
             timeout_sec=30,
         ),
         # P3b + P3d (lead-approved 2026-06-12) — wake-watcher. The push
-        # side of the self-consuming board loop: polls tasks.yaml,
+        # side of the self-consuming board loop: polls the task store,
         # detects new/commented/changed tasks, POSTs /v1/turn to the
         # owning agent's a2a port. Pairs with `scitex-todo next --mine`
         # (pull side) + the agent self-consumption loop sub-skill (32).

@@ -2,14 +2,14 @@
 # -*- coding: utf-8 -*-
 """scitex-cards: a canonical task-card store with pluggable adapters.
 
-The task store (YAML, top-level ``tasks:`` list) is the single source of
-truth. Adapters render or import it; the mermaid adapter (YAML -> dependency
+The task store (SQLite, one ``tasks`` table) is the single source of
+truth. Adapters render or import it; the mermaid adapter (store -> dependency
 PNG) ships today. See the project roadmap for org and Web-UI adapters.
 
 Quick Start
 -----------
 >>> import scitex_cards as todo
->>> tasks = todo.load_tasks("tasks.yaml")        # doctest: +SKIP
+>>> tasks = todo.load_tasks()                    # doctest: +SKIP
 >>> src = todo.build_mermaid(tasks)              # doctest: +SKIP
 >>> todo.render(src, "tasks.png")                # doctest: +SKIP
 'mmdc'
