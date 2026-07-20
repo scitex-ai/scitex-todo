@@ -32,7 +32,7 @@ ROLE_COLLABORATORS = "collaborators"
 ROLE_SUBSCRIBERS = "subscribers"
 
 #: Closed, validated set of role names usable in a notify rule (global
-#: default, ``notify.yaml``, or a per-card ``events`` override). Fail-loud on
+#: default, ``notify.json``, or a per-card ``events`` override). Fail-loud on
 #: any other value — a typo'd role would otherwise silently notify no one.
 VALID_ROLES: frozenset[str] = frozenset(
     {ROLE_OWNER, ROLE_ASSIGNEE, ROLE_COLLABORATORS, ROLE_SUBSCRIBERS}
@@ -43,7 +43,7 @@ VALID_ROLES: frozenset[str] = frozenset(
 # Global default rules — the SSOT zero-config baseline                        #
 # --------------------------------------------------------------------------- #
 #: Built-in ``{event_type: [role, ...]}`` defaults — the SSOT baseline used
-#: when no ``notify.yaml`` sidecar overrides a given event. Sensible signal
+#: when no ``notify.json`` sidecar overrides a given event. Sensible signal
 #: levels:
 #:
 #: * ``commented``      → owner + collaborators + subscribers (full thread)
@@ -129,7 +129,7 @@ class NotifyConfigError(ValueError):
 class NotifyConfig:
     """The merged GLOBAL notify layer: ``{event_type: [role, ...]}``.
 
-    This is layer 1 (the global default) AFTER an optional ``notify.yaml``
+    This is layer 1 (the global default) AFTER an optional ``notify.json``
     sidecar has been merged onto :data:`DEFAULT_NOTIFY_RULES`. It does NOT
     carry per-user or per-card data — those layers live on ``User.notify``
     and ``card["notify"]`` respectively and are applied by
