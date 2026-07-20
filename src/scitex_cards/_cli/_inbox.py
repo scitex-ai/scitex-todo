@@ -90,15 +90,18 @@ def inbox_migrate_cmd(
     import json as _json
     import sys as _sys
 
-    from scitex_cards._inbox import _load_inboxes_section
-    from scitex_cards._inbox_sqlite import inbox_db_path, migrate_to_sqlite
+    from scitex_cards._inbox_sqlite import (
+        gather_migratable_inboxes,
+        inbox_db_path,
+        migrate_to_sqlite,
+    )
     from scitex_cards._paths import resolve_tasks_path
 
     store = resolve_tasks_path(None)
     db = inbox_db_path(store)
 
     if dry_run:
-        inboxes = _load_inboxes_section(store)
+        inboxes = gather_migratable_inboxes(store)
         recipients = len(inboxes)
         records = sum(len(v) for v in inboxes.values() if isinstance(v, list))
         if as_json:

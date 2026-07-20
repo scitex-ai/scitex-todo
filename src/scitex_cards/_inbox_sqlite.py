@@ -7,12 +7,11 @@ Why
 ---
 The legacy task store was a single ~9 MB document holding BOTH the
 ``tasks:`` cards AND the ``inboxes:`` per-recipient notification
-records. Every agent runs ``scitex-todo mcp start``, whose digest-poll
-loop calls :func:`scitex_cards._inbox.poll_inbox` every 5 s — each
-call re-parsed the ENTIRE store (all ~1000 cards) just to read ONE
-recipient's inbox. Across ~21 agents that was the fleet's biggest CPU
-sink; notifyd's per-owner enqueue also rewrote the whole file
-repeatedly (a store-lock convoy).
+records. Every agent's digest-poll loop
+(:func:`scitex_cards._inbox.poll_inbox` every 5 s) re-parsed the ENTIRE
+store just to read ONE recipient's inbox — across ~21 agents the
+fleet's biggest CPU sink; notifyd's per-owner enqueue also rewrote the
+whole file repeatedly (a store-lock convoy).
 
 This module moves ONLY the inbox read/write path onto SQLite so a poll
 no longer parses all cards. The SciTeX runtime-DB convention places
@@ -174,16 +173,14 @@ def _is_migrated(conn: sqlite3.Connection) -> bool:
 
 
 def _ensure_ready(conn: sqlite3.Connection, store: str | Path | None) -> None:
-    """Per-connection readiness: ensure the schema, then lazily migrate the
-    legacy embedded ``inboxes:`` section into SQLite EXACTLY ONCE.
+    """Per-connection readiness: ensure the schema, then lazily migrate
+    pre-existing file-backed inbox records into SQLite EXACTLY ONCE.
 
     Guarded by the ``migrated_from_yaml`` meta flag: the first access on a
     fresh DB performs the one-time copy + sets the flag; every later access
-    is a cheap flag probe, no read of the legacy document. Concurrency-safe
-    across the ~21 agents sharing one ``todo.db`` — the copy is idempotent
-    (``INSERT OR IGNORE`` on the ``id`` PK) and the flag write is
-    ``INSERT OR IGNORE``, so a double-migrate race is harmless. The flag is
-    set even when there's nothing to copy, so a fresh store still converges.
+    is a cheap flag probe. Concurrency-safe across the ~21 agents sharing one
+    ``todo.db`` — idempotent (``INSERT OR IGNORE`` on the ``id`` PK); the
+    flag is set even when there's nothing to copy, so a fresh store converges.
     """
     init_schema(conn)
     if _is_migrated(conn):
@@ -379,21 +376,43 @@ def ack(
 # --------------------------------------------------------------------------- #
 # Migration: legacy embedded inboxes: section -> SQLite                       #
 # --------------------------------------------------------------------------- #
-def _migrate_into_conn(conn: sqlite3.Connection, store: str | Path | None) -> dict:
-    """Copy the legacy embedded ``inboxes:`` records into ``conn``'s ``inbox`` table.
+def gather_migratable_inboxes(store: str | Path | None) -> dict[str, list]:
+    """Read + merge every pre-existing file-backed inbox source, per recipient.
 
-    The shared body of :func:`migrate_to_sqlite` (explicit CLI verb) and the
-    lazy :func:`_ensure_ready` guard. Dedups on the notification ``id`` PRIMARY
-    KEY (``INSERT OR IGNORE``) so it is idempotent, copies BOTH seen + unseen
-    for fidelity, and NEVER touches the source document (reversible). Assumes
-    the schema already exists (caller ran :func:`init_schema`); does NOT
-    commit — the caller owns the transaction. Returns
-    ``{recipients, records, inserted, skipped}``.
+    Two sources so a store carries over regardless of which one an operator
+    was using: the pre-cutover LEGACY embedded ``inboxes:`` section, and the
+    break-glass ``inboxes.json`` sidecar. Read-only. Shared by
+    :func:`_migrate_into_conn` and the CLI's ``--dry-run`` preview.
     """
-    from ._inbox import _read_legacy_embedded_inboxes, _resolved_store
+    from ._inbox import (
+        _INBOXES_FILENAME,
+        _load_inboxes_section,
+        _read_legacy_embedded_inboxes,
+        _resolved_store,
+    )
 
     path = _resolved_store(store)
-    inboxes = _read_legacy_embedded_inboxes(path)
+    inboxes: dict[str, list] = {}
+    for recipient_id, records in _read_legacy_embedded_inboxes(path).items():
+        inboxes.setdefault(recipient_id, []).extend(records)
+    breakglass_path = path.parent / _INBOXES_FILENAME
+    for recipient_id, records in _load_inboxes_section(breakglass_path).items():
+        inboxes.setdefault(recipient_id, []).extend(records)
+    return inboxes
+
+
+def _migrate_into_conn(conn: sqlite3.Connection, store: str | Path | None) -> dict:
+    """Copy pre-existing file-backed inbox records into ``conn``'s ``inbox`` table.
+
+    The shared body of :func:`migrate_to_sqlite` (explicit CLI verb) and the
+    lazy :func:`_ensure_ready` guard. Dedups on the notification ``id``
+    PRIMARY KEY (``INSERT OR IGNORE``) so it is idempotent, copies BOTH seen +
+    unseen for fidelity, and NEVER touches either source document
+    (reversible). Assumes the schema already exists (caller ran
+    :func:`init_schema`); does NOT commit — the caller owns the transaction.
+    Returns ``{recipients, records, inserted, skipped}``.
+    """
+    inboxes = gather_migratable_inboxes(store)
     stats = {"recipients": 0, "records": 0, "inserted": 0, "skipped": 0}
     for recipient_id, records in inboxes.items():
         if not recipient_id or not isinstance(records, list):
@@ -479,6 +498,7 @@ __all__ = [
     "SCHEMA_VERSION",
     "ack",
     "enqueue",
+    "gather_migratable_inboxes",
     "inbox_db_path",
     "info",
     "init_schema",

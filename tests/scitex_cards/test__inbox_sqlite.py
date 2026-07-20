@@ -817,9 +817,14 @@ def test_default_backend_round_trips_the_record(default_backend_store):
 def test_break_glass_yaml_backend(yaml_backend_store):
     # Arrange
     store = yaml_backend_store["store"]
-    # Act
-    doc = _read(store)
-    # Assert — explicit yaml writes the YAML inboxes: section.
+    # Act — the break-glass backend persists to its own inboxes.json sidecar,
+    # not the main store file (see scitex_cards._inbox's module docstring).
+    import json
+
+    from scitex_cards._inbox import _INBOXES_FILENAME
+
+    doc = json.loads((store.parent / _INBOXES_FILENAME).read_text(encoding="utf-8"))
+    # Assert
     assert doc["inboxes"]["u_abc"][0]["card_id"] == "c1"
 
 
