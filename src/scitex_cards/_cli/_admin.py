@@ -176,11 +176,12 @@ def resolve_store_cmd(as_json) -> None:
 @click.command(
     "init-store",
     **spec_command_kwargs(
-        summary="Create an empty task store at the chosen scope (idempotent).",
+        summary="Create an empty SQLite task store at the chosen scope (idempotent).",
         description=(
-            "--shared -> ~/.scitex/todo/tasks.yaml (user scope, the "
-            "default). --project -> <git-root>/.scitex/todo/tasks.yaml. "
-            "No-op (prints 'exists') when the target already exists.",
+            "--shared -> ~/.scitex/cards/cards.db (user scope, the "
+            "default). --project -> <git-root>/.scitex/cards/cards.db. "
+            "Creates an empty, schema-complete SQLite DB. No-op (prints "
+            "'exists') when the target DB already exists.",
         ),
         examples=(("{prog} init-store --shared", "Create the user-scope store."),),
     ),
@@ -190,13 +191,13 @@ def resolve_store_cmd(as_json) -> None:
     "scope_choice",
     flag_value="shared",
     default="shared",
-    help="Create the user-scope store (~/.scitex/todo/tasks.yaml).",
+    help="Create the user-scope SQLite store (~/.scitex/cards/cards.db).",
 )
 @click.option(
     "--project",
     "scope_choice",
     flag_value="project",
-    help="Create <git-root>/.scitex/todo/tasks.yaml instead.",
+    help="Create <git-root>/.scitex/cards/cards.db instead.",
 )
 @click.option(
     "--dry-run",
