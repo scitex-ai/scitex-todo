@@ -35,6 +35,7 @@ One assertion per test (STX-TQ007).
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -84,12 +85,26 @@ _STORE_TEXT = (
 
 
 @pytest.fixture
-def store(tmp_path):
-    """Write a real tmp task store and reset the board cache around the test."""
-    path = tmp_path / "tasks.yaml"
-    path.write_text(_STORE_TEXT, encoding="utf-8")
+def store():
+    """Seed the canonical DB from the fixture doc; reset the board cache around it.
+
+    The store is SQLite now: ``load_tasks`` / the ``/graph`` handler read and
+    write the canonical DB and ignore the store path (it survives only as a
+    provenance label). So parse the readable YAML fixture text into the doc the
+    YAML used to hold, seed the canonical DB from it, and yield the PINNED store
+    identity path (``SCITEX_CARDS_TASKS_YAML_SHARED``, == ``resolve_tasks_path(None)``)
+    — never a tmp yaml, which would trip the "stamped for a DIFFERENT store"
+    refusal. urgency/importance/rank ride through the ``card_json`` payload
+    verbatim, so every axis assertion below round-trips unchanged.
+    """
+    from conftest import seed_db_from_doc
+
+    from scitex_cards._yaml import safe_load
+
+    doc = safe_load(_STORE_TEXT) or {}
+    seed_db_from_doc(doc, os.environ["SCITEX_CARDS_DB"])
     _reset_cache()
-    yield str(path)
+    yield os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _reset_cache()
 
 
