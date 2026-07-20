@@ -42,15 +42,12 @@ def validate_event_type(event_type: object, *, where: str) -> str:
 def validate_roles(value: object, *, where: str) -> list[str]:
     """Coerce + validate a role list (every item must be a known role)."""
     if not isinstance(value, (list, tuple)):
-        raise NotifyConfigError(
-            f"{where}: role list must be a list, got {value!r}"
-        )
+        raise NotifyConfigError(f"{where}: role list must be a list, got {value!r}")
     out: list[str] = []
     for role in value:
         if not (isinstance(role, str) and role in VALID_ROLES):
             raise NotifyConfigError(
-                f"{where}: invalid role {role!r}; must be one of "
-                f"{sorted(VALID_ROLES)}"
+                f"{where}: invalid role {role!r}; must be one of {sorted(VALID_ROLES)}"
             )
         out.append(role)
     return out
@@ -64,8 +61,7 @@ def coerce_rules_mapping(raw: object, *, where: str) -> dict[str, list[str]]:
     """
     if not isinstance(raw, Mapping):
         raise NotifyConfigError(
-            f"{where}: must be a mapping of event_type -> [role, ...], "
-            f"got {raw!r}"
+            f"{where}: must be a mapping of event_type -> [role, ...], got {raw!r}"
         )
     coerced: dict[str, list[str]] = {}
     for event_type, roles in raw.items():
@@ -93,10 +89,16 @@ def coerce_id_list(value: object, *, where: str) -> list[str]:
 # --------------------------------------------------------------------------- #
 # notify.yaml sidecar                                                         #
 # --------------------------------------------------------------------------- #
-def _read_sidecar(path: Path) -> dict[str, list[str]]:
-    """Read + validate the ``notify.yaml`` sidecar's rule overrides.
+#: Pre-JSON notify sidecar filename, read as a fallback (see
+#: :func:`load_notify_config`) so a hand-edited YAML config keeps working.
+_LEGACY_NOTIFY_SIDECAR_NAME = "notify.yaml"
 
-    Accepts two shapes for forward-compat / brevity:
+
+def _read_sidecar(path: Path) -> dict[str, list[str]]:
+    """Read + validate the notify sidecar's rule overrides.
+
+    Reads JSON; a pre-JSON ``notify.yaml`` (``path`` ending ``.yaml``) is read
+    with the safe YAML loader. Accepts two shapes for forward-compat / brevity:
 
     * ``{"rules": {event_type: [role, ...]}}`` — explicit ``rules:`` key.
     * ``{event_type: [role, ...]}`` — a bare top-level mapping (when no
@@ -105,24 +107,25 @@ def _read_sidecar(path: Path) -> dict[str, list[str]]:
     Returns the validated overrides (an empty dict for an empty document).
     Raises :class:`NotifyConfigError` on a malformed file (fail-loud).
     """
-    import yaml
-
-    from .._yaml import safe_load
-
     try:
-        with path.open(encoding="utf-8") as handle:
-            data = safe_load(handle)
-    except yaml.YAMLError as exc:  # malformed YAML — fail loud
-        raise NotifyConfigError(
-            f"{path}: notify sidecar is not valid YAML: {exc}"
-        ) from exc
+        if path.suffix == ".yaml":
+            from .._yaml import safe_load
+
+            with path.open(encoding="utf-8") as handle:
+                data = safe_load(handle)
+        else:
+            import json
+
+            text = path.read_text(encoding="utf-8")
+            data = json.loads(text) if text.strip() else None
+    except Exception as exc:  # noqa: BLE001 — malformed sidecar — fail loud
+        raise NotifyConfigError(f"{path}: notify sidecar is not valid ({exc})") from exc
 
     if data is None:
         return {}
     if not isinstance(data, Mapping):
         raise NotifyConfigError(
-            f"{path}: notify sidecar top level must be a mapping, got "
-            f"{data!r}"
+            f"{path}: notify sidecar top level must be a mapping, got {data!r}"
         )
     raw_rules = data["rules"] if "rules" in data else data
     return coerce_rules_mapping(raw_rules, where=f"{path} rules")
@@ -138,9 +141,7 @@ def notify_sidecar_path(store: str | Path | None) -> Path | None:
     """
     try:
         tasks_path = (
-            resolve_tasks_path(store)
-            if store is None
-            else Path(store).expanduser()
+            resolve_tasks_path(store) if store is None else Path(store).expanduser()
         )
     except Exception:  # noqa: BLE001 — never break on a path-resolution edge
         return None
@@ -180,8 +181,16 @@ def load_notify_config(store: str | Path | None = None) -> NotifyConfig:
         et: list(roles) for et, roles in DEFAULT_NOTIFY_RULES.items()
     }
     sidecar = notify_sidecar_path(store)
-    if sidecar is not None and sidecar.exists():
-        for event_type, roles in _read_sidecar(sidecar).items():
+    chosen: Path | None = None
+    if sidecar is not None:
+        if sidecar.exists():
+            chosen = sidecar
+        else:
+            legacy = sidecar.with_name(_LEGACY_NOTIFY_SIDECAR_NAME)
+            if legacy.exists():
+                chosen = legacy  # pre-JSON fallback (no auto-write)
+    if chosen is not None:
+        for event_type, roles in _read_sidecar(chosen).items():
             merged[event_type] = roles
     return NotifyConfig(rules=merged)
 

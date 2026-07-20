@@ -44,9 +44,11 @@ def _store(tmp_path):
 
 
 def _write_sidecar(tmp_path, payload):
-    """Write a notify.yaml sidecar next to the (tmp) tasks store."""
+    """Write a notify.json sidecar next to the (tmp) tasks store."""
+    import json
+
     sidecar = tmp_path / NOTIFY_SIDECAR_NAME
-    sidecar.write_text(yaml.safe_dump(payload), encoding="utf-8")
+    sidecar.write_text(json.dumps(payload), encoding="utf-8")
     return sidecar
 
 
@@ -140,9 +142,9 @@ def test_malformed_sidecar_unknown_role_fails_loud(tmp_path):
 
 
 def test_malformed_sidecar_non_mapping_top_level_fails_loud(tmp_path):
-    # Arrange
+    # Arrange — valid JSON, but a list at the top level (not a mapping).
     sidecar = tmp_path / NOTIFY_SIDECAR_NAME
-    sidecar.write_text("- just\n- a\n- list\n", encoding="utf-8")
+    sidecar.write_text('["just", "a", "list"]\n', encoding="utf-8")
     # Act
     ctx = pytest.raises(NotifyConfigError)
     # Assert
@@ -150,10 +152,10 @@ def test_malformed_sidecar_non_mapping_top_level_fails_loud(tmp_path):
         load_notify_config(store=_store(tmp_path))
 
 
-def test_malformed_sidecar_bad_yaml_fails_loud(tmp_path):
-    # Arrange
+def test_malformed_sidecar_bad_json_fails_loud(tmp_path):
+    # Arrange — syntactically invalid JSON.
     sidecar = tmp_path / NOTIFY_SIDECAR_NAME
-    sidecar.write_text("commented: [owner\n  : :::\n", encoding="utf-8")
+    sidecar.write_text('{"commented": [owner\n', encoding="utf-8")
     # Act
     ctx = pytest.raises(NotifyConfigError)
     # Assert
@@ -169,6 +171,19 @@ def test_empty_sidecar_yields_built_in_defaults(tmp_path):
     cfg = load_notify_config(store=_store(tmp_path))
     # Assert
     assert cfg.rules == DEFAULT_NOTIFY_RULES
+
+
+def test_a_legacy_yaml_sidecar_is_read_when_no_json(tmp_path):
+    """A pre-JSON notify.yaml is the fallback when no notify.json exists."""
+    # Arrange — only the legacy YAML sidecar exists.
+    (tmp_path / "notify.yaml").write_text(
+        yaml.safe_dump({"rules": {"commented": ["subscribers"]}}),
+        encoding="utf-8",
+    )
+    # Act
+    cfg = load_notify_config(store=_store(tmp_path))
+    # Assert
+    assert cfg.roles_for("commented") == ["subscribers"]
 
 
 # --------------------------------------------------------------------------- #

@@ -103,7 +103,7 @@ DEFAULT_NOTIFY_RULES: dict[str, list[str]] = {
 #: Filename of the optional sidecar that overrides / extends the built-in
 #: defaults. It lives NEXT TO ``tasks.yaml`` (same directory) — SoC-separate
 #: from the task payload (do NOT fold notify rules into ``tasks.yaml``).
-NOTIFY_SIDECAR_NAME = "notify.yaml"
+NOTIFY_SIDECAR_NAME = "notify.json"
 
 #: Recognised keys in a ``User.notify`` prefs dict. See :class:`NotifyConfig`
 #: for the semantics. Unknown keys are ignored (forward-compat).
