@@ -158,4 +158,43 @@ def _store_env_stays_pinned(tmp_path_factory) -> None:
     _bootstrap_empty_db(scratch / "cards.db")
 
 
+def seed_db_from_doc(doc, db_path, *, threads=None, as_store=None):
+    """Populate a fresh database from an IN-MEMORY document. Returns the summary.
+
+    THE REPLACEMENT FOR ``import_from_yaml`` IN TESTS. That function read a doc
+    off a YAML file and rebuilt the DB from it; it is deleted, because SQLite is
+    the only store and there is no YAML to read. Tests that used it to *seed* a
+    database (build a doc, write YAML, import) now build the same doc and call
+    this — which reaches the SAME surviving primitive (``_rebuild_from_doc``),
+    so every downstream assertion about schema / columns / counts is unchanged.
+
+    Use this to SEED. Do NOT use it to test importing — the import path is gone;
+    a test whose subject was "importing YAML" has no subject and should be
+    deleted, not rerouted here.
+
+    ``threads`` (the ``{thread_key: [msgs]}`` map, i.e. ``threads_doc["threads"]``)
+    additionally rebuilds the ``messages`` table, exactly as the old import did
+    when it loaded the ``threads.yaml`` sidecar.
+
+    Returns ``{"db_path", "tasks", "comments", ...}``. NOTE: there is no
+    ``"yaml_path"`` key — nothing was read from YAML. A test that asserted on
+    ``summary["yaml_path"]`` is asserting a fact that no longer exists; drop that
+    line (it is not a weakened assertion, it is a removed one).
+    """
+    from scitex_cards._db import connect, init_schema
+    from scitex_cards._db_bootstrap import _rebuild_from_doc, _stamp_meta
+
+    conn = connect(str(db_path))
+    try:
+        init_schema(conn)
+        conn.execute("BEGIN IMMEDIATE")
+        summary = _rebuild_from_doc(conn, doc, threads=threads)
+        summary["db_path"] = str(db_path)
+        _stamp_meta(conn, "test-seed")
+        conn.commit()
+    finally:
+        conn.close()
+    return summary
+
+
 # EOF
