@@ -96,7 +96,7 @@ def add_task(
     # comment relay that silently no-op'd — so an owner is REQUIRED.
     # `agent` arrives via **extras (operator-co-designed field). (hook-bypass: line-limit)
     _agent_in = extras.get("agent")
-    _owner_in = (assignee or _agent_in or "")
+    _owner_in = assignee or _agent_in or ""
     _owner_in = _owner_in.strip() if isinstance(_owner_in, str) else _owner_in
     if not _owner_in:
         raise TaskValidationError(
@@ -157,7 +157,12 @@ def add_task(
     # silently clobbers the first writer's insert. See
     # tests/scitex_cards/test__store.py::test_two_concurrent_writers...
     with _store_lock(resolved):
-        doc, tasks = _read_write_doc(resolved, missing_ok=True)
+        # `missing_ok=True` is gone deliberately. It meant "an absent store
+        # yields an empty doc", which against a database feeds an empty doc
+        # into this read-modify-write and lets the subsequent save delete every
+        # card absent from it. A missing database is a configuration error, not
+        # an empty board — see `_read_write_doc`.
+        doc, tasks = _read_write_doc(resolved)
         # WIP-validation gate (operator standing direction via lead a2a
         # `d99b8de6839d46e586e4ee692f43c1d9` + ``5acfbb5d0db44db8a7fa4f70c399d539``,
         # 2026-06-12). WARN to stderr at the limit, HARD REFUSE at 2x — EXCEPT

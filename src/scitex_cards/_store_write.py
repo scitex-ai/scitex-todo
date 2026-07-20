@@ -45,8 +45,6 @@ from ._model import (
     _validate_tasks,
     load_doc,
 )
-from ._store_verify import _verify_dumped_tmp
-from ._yaml import safe_dump, safe_load
 
 
 @contextlib.contextmanager
@@ -245,122 +243,28 @@ def _save_doc_unlocked(
         doc["tasks"] = tasks
     _validate_tasks(tasks, source="<save_tasks>")  # hook-bypass: line-limit
 
-    # DB-CANONICAL: SQLite IS the store, so return BEFORE the YAML write below
-    # — nothing downstream runs, including the dual-write mirror and the git
-    # auto-commit. `write_doc_to_db` RAISES on failure (there is no YAML behind
-    # it); see `_store_backend` for why that inverts the usual posture.
-    from ._store_backend import db_is_canonical, write_doc_to_db
-
-    if db_is_canonical():
-        write_doc_to_db(doc, path)
-        return
-
-    # FAST WRITE (was: ruamel round-trip). The old path loaded the whole
-    # 2.3 MB / ~695-card store with ruamel round-trip mode, merged the new
-    # tasks into the comment-bearing nodes by id, then re-serialized with
-    # ruamel — ~20 s PER single-card write, O(whole-store). ruamel's
-    # round-trip machinery is the cost; it exists only to preserve the ~41
-    # hand-written header/section comments. The store is machine-managed, so
-    # dropping those comments is accepted. We now read with the fast safe
-    # loader and dump with the fast safe dumper (libyaml when present).
+    # SQLite IS the store. This is the whole write path — there is no second
+    # branch, and that is the point of the change rather than a side effect of
+    # it. `write_doc_to_db` RAISES on failure; see `_store_backend` for why
+    # that inverts the usual best-effort posture.
     #
-    # CRITICAL: the NON-`tasks` top-level sections (notably the `users:`
-    # registry) are preserved because `doc` — parsed under the lock by the
-    # caller (or by the `_save_tasks_unlocked` wrapper) — is written back
-    # whole; we only ever replaced `doc["tasks"]`, every other top-level
-    # key is carried through untouched.
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # CRASH-SAFE WRITE (lead a2a `3b0df14a`, post-2026-06-08 autoassign-
-    # parallel-run data loss): dump to a sibling .tmp file, fsync it, then
-    # os.replace into the canonical path. os.replace is POSIX-atomic — a
-    # SIGTERM/SIGKILL mid-dump leaves either the OLD file intact (if the
-    # crash hits before replace) or the NEW file in place (if after).
-    # Never a half-written file like the one we recovered from today.
-    tmp_path = path.parent / f".{path.name}.tmp"
-    try:
-        # Serialize to a STRING first so the post-dump byte-length check can
-        # compare on-disk bytes to what we intended to write (and so we never
-        # dump twice). Then write that exact string to the tmp, flush + fsync.
-        dumped = safe_dump(doc)  # returns the YAML string (stream=None)
-        with tmp_path.open("w", encoding="utf-8") as handle:
-            handle.write(dumped)
-            handle.flush()
-            try:
-                os.fsync(handle.fileno())
-            except OSError:
-                # fsync can fail on some FS (overlay / fuse). Best-effort —
-                # the os.replace below is what gives the atomic guarantee.
-                pass
-        # POST-DUMP INTEGRITY CHECK (lead a2a `d5809cd3`, 2026-06-13 — the
-        # recovered-by-hand corruption episode where the canonical file ended
-        # mid-string at line ~2784). Before we promote the tmp into the
-        # canonical slot, prove the written bytes are FULLY REPARSEABLE. The
-        # pre-write `_validate_tasks` proves the in-memory structure is sound;
-        # this catches any failure mode introduced by the dump itself
-        # (unterminated scalar, partial flush, disk-full leaving a truncated
-        # file even if fsync didn't error).
-        #
-        # CHEAPENED (Fix B2): the old check ran a FULL `safe_load` construct-
-        # reparse (~2.3 s / ~159k objects on the live 9.2 MB store) purely to
-        # prove parseability, then compared the reparsed task COUNT to the
-        # in-memory count. We now do the equivalent two cheap checks in
-        # `_verify_dumped_tmp` — a byte-length check + a libyaml EVENT-SCAN
-        # reparse to StreamEnd — which proves the same "fully reparseable"
-        # property WITHOUT building the objects. The task-count match is
-        # DROPPED deliberately: reaching StreamEnd proves the whole stream
-        # parsed, so a truncation that silently drops tasks can't reach
-        # promotion (it aborts the parse first). Flagged for scitex-dev
-        # review; see docs/ CHANGELOG + `_store_verify._verify_dumped_tmp`.
-        _verify_dumped_tmp(tmp_path, dumped)
-        # All checks passed — atomic POSIX rename promotes tmp → canonical.
-        os.replace(tmp_path, path)
-    except Exception:
-        # Best-effort tmp cleanup so a crashed dump doesn't leave a
-        # stale sidecar.
-        try:
-            tmp_path.unlink(missing_ok=True)
-        except OSError:
-            pass
-        raise
+    # WHAT WAS DELETED HERE, recorded because the absences are load-bearing and
+    # a future reader will otherwise reintroduce one of them as an improvement:
+    #
+    #   the YAML dump + atomic tmp/os.replace promotion — there is no file to
+    #     promote; SQLite's own transaction is the atomicity boundary now
+    #   the dual-write mirror — a mirror needs an original, and the original
+    #     was the thing removed
+    #   the git auto-commit of the store directory — it version-controlled a
+    #     YAML file that no longer exists, and doing it on every card write was
+    #     only ever affordable because it was best-effort
+    #
+    # Each of those was correct while YAML was canonical. None of them is
+    # correct now, and keeping any one would recreate a second representation
+    # of the board — which is the exact defect this cutover exists to remove.
+    from ._store_backend import write_doc_to_db
 
-    # S1 DUAL-WRITE — mirror this doc into the SQLite shadow DB.
-    #
-    # HERE, and not earlier: the `os.replace` above is POSIX-atomic, so the user's
-    # card is now DURABLE. A mirror failure can therefore cost them nothing.
-    # HERE, and not later: we still hold `_store_lock`, so the mirror cannot
-    # interleave with another writer and needs no lock of its own.
-    #
-    # NEVER raises — a mirror hiccup must not turn a successful card write into a
-    # failed one. But it is never SILENT either: `_dual_write` logs it LOUD, counts
-    # it, and surfaces it in `health`. A mirror that fails quietly lets the DB rot
-    # out of sync while every check reports green, and S2 would then cut the fleet
-    # over to a store that is confidently wrong.
-    #
-    # OFF by default (`SCITEX_TODO_DUAL_WRITE`): the write path of the fleet's
-    # critical store does not get a flag day.
-    #
-    # COST, MEASURED on the live 1,257-card store: the YAML rewrite above takes
-    # 11,176 ms; this mirror adds 1,243 ms (+11%). That looks expensive and is not —
-    # SQLite's FULL rebuild is 9x FASTER than the YAML rewrite it sits beside. That
-    # measurement is why this is a simple full mirror rather than the row-diffing
-    # engine I first assumed it would need to be. (S2, writing ONE row: 4.71 ms.)
-    try:
-        from ._dual_write import mirror_after_save
-
-        mirror_after_save(doc, path)
-    except Exception:  # noqa: BLE001 — even the import must not break a save
-        pass
-
-    # Best-effort git auto-commit on the store dir (lead a2a `3b0df14a`).
-    # Lazy-init a small `.git` inside the store dir on first call; commit
-    # each save so the operator gets time-travel via `git show <sha>:<file>`.
-    # NEVER raises — a git failure must not block the actual save (the
-    # YAML is already on disk; the commit is an audit-trail bonus).
-    try:
-        _git_autocommit_store(path)
-    except Exception:  # noqa: BLE001 — best-effort
-        pass
+    write_doc_to_db(doc, path)
 
 
 def _git_autocommit_store(path: Path) -> None:

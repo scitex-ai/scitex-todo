@@ -1,100 +1,71 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Which store is CANONICAL — the YAML file, or the SQLite DB?
+"""SQLite IS the store. There is no other backend and no way to select one.
 
-THE ORDER (operator, 2026-07-18): 「db にハードに切り替えてください、ヤムル
-ファイルは全てアーカイブしてください」「書き出ししなくていいですよ！！ぜんぶ
-db で！」 — switch hard to the DB, archive the YAML, and do NOT keep writing an
-export. The DB is the store, not a mirror of one.
+THE ORDER (operator, 2026-07-20): 「例外を用意しないでください。甘くせずにハード
+に切り替えてください。曖昧にするとバグが残ります。他のエージェントも迷ってしまい
+ます。唯一の方法だけソースコードに含めてください。」 — provide no exceptions,
+switch hard, leave nothing ambiguous, and carry exactly ONE way in the source.
 
-WHY THIS IS THE RIGHT END STATE and not merely an instruction followed. While
-YAML was canonical and the DB a mirror, the SQLite read path was gated on
-``_db_freshness.check_fresh``, which demands EXACT (mtime_ns, size) equality
-between the DB's stamp and the YAML on disk. The fleet rewrites that YAML every
-few seconds, so the gate could pass only in the gaps between writes — measured
-alternating fresh/stale under live load. That race exists BY CONSTRUCTION in a
-mirror design; no tuning removes it, because tightening the gate keeps the fast
-path off and loosening it risks serving stale cards. Making the DB canonical
-deletes the entire failure class: there is nothing left for it to be stale
-against.
+WHAT THIS MODULE USED TO DO, and why that is gone. It exported
+``db_is_canonical()``, reading ``$SCITEX_CARDS_STORE_BACKEND`` to decide whether
+SQLite was the store or merely a mirror of a YAML file. That switch is deleted,
+along with both env names, because a selectable backend is precisely the defect:
 
-THE ONE-WAY DOOR, stated plainly. In canonical mode a card that fails to reach
-SQLite is GONE — there is no YAML behind it to fall back on. So the write path
-must NOT keep the mirror's best-effort, never-raise posture: under
-:func:`db_is_canonical` a failed DB write MUST raise and the caller MUST see
-it. Swallowing an exception here would silently drop the operator's cards,
-which is the single worst thing this package can do. See ``_store_write``.
+    「今の問題はワイエムLとデータベース両方使えてしまってるところで壊れると思う
+      んですよ」 — the problem is that BOTH can be used, and THAT is where it breaks.
 
-DEFAULT IS OFF. This flips the source of truth for the fleet's shared memory,
-so it is opt-in per process and reversible by unsetting one variable — with a
-full archive taken before the flip (~/.scitex/cards/.old/<stamp>/).
+He is right, and the evidence is on the record rather than in the argument. Every
+board wipe in the 2026-07-19/20 sequence needed a SECOND store to be
+authoritative-ish. Reconcile means "make identical", and identical includes
+deleting rows absent from whatever document is treated as the source — which is
+how a 5-row temporary YAML replaced 2,159 live rows. With one store there is no
+second document to reconcile TO, so that entire failure class stops being
+REACHABLE rather than being guarded against. A guard is a thing that can be
+bypassed; an unreachable state cannot.
+
+Flipping the DEFAULT would not have been enough, and this is the part worth
+keeping. A default is an opinion about the common case; it leaves the other
+world supported, reachable, and reviewed by nobody. Two supported worlds is two
+sets of behaviour to reason about at every call site, and the fleet's agents
+each resolve their own environment — so "which world am I in?" would be a live
+question with a different answer per process. That is the ambiguity the operator
+named, and deletion is the only thing that answers it.
+
+THE ONE-WAY DOOR, stated plainly because it is the real cost. A card that fails
+to reach SQLite is GONE — there is no YAML behind it to fall back on. So the
+write path must NOT take the mirror's best-effort, never-raise posture: a failed
+write MUST raise and the caller MUST see it. Swallowing an exception here would
+silently drop the operator's cards, which is the single worst thing this package
+can do.
 """
 
 from __future__ import annotations
 
-import os
-
-#: Selects the canonical store. ``sqlite`` = the DB IS the store; anything
-#: else (default) = the YAML is canonical and the DB is a mirror.
-ENV_STORE_BACKEND = "SCITEX_CARDS_STORE_BACKEND"
-
-#: Legacy twin. ``_env_compat`` mirrors SCITEX_CARDS_* onto SCITEX_TODO_* at
-#: import, but a process that sets only the OLD name must still be honoured
-#: during the transition window — so both are read here rather than trusting
-#: the mirror to have run.
-ENV_STORE_BACKEND_LEGACY = "SCITEX_TODO_STORE_BACKEND"
-
-BACKEND_SQLITE = "sqlite"
-
-
-def db_is_canonical() -> bool:
-    """True when SQLite is the STORE rather than a mirror of the YAML.
-
-    Reads both env prefixes so it cannot be defeated by the rename being
-    half-applied — which is exactly how the fleet's dual-write silently sat
-    OFF on three daemons for hours (they carried no scitex env at all, so
-    every write they made skipped the mirror and rotted the DB).
-    """
-    for name in (ENV_STORE_BACKEND, ENV_STORE_BACKEND_LEGACY):
-        raw = os.environ.get(name, "")
-        if raw.strip().lower() == BACKEND_SQLITE:
-            return True
-    return False
-
 
 def write_doc_to_db(doc: dict, store_path) -> dict:
-    """Commit ``doc`` to SQLite as the CANONICAL store. RAISES on failure.
+    """Commit ``doc`` to SQLite, the only store. RAISES on failure.
 
-    THE INVERSE POSTURE of :func:`_dual_write.mirror_after_save`, and the
-    inversion is deliberate. That one swallows every exception because the
-    YAML already holds the card, so a mirror hiccup must never turn a
-    successful write into a failed one. Here SQLite is the ONLY copy: a
-    swallowed exception is a card that vanished while the caller was told it
-    saved. So this propagates, and callers must not wrap it in a bare
-    ``except``.
+    ``store_path`` identifies WHICH logical store is addressed, and therefore
+    stamps provenance. Nothing is written to that path.
 
-    ``store_path`` still identifies WHICH logical store is addressed (and
-    therefore stamps provenance), even though nothing is written to that file
-    in this mode.
+    OWNERSHIP IS CHECKED FIRST and a mismatch RAISES rather than returning
+    quietly. The destination comes from the ambient environment
+    (``resolve_db_path(None)``) while ``doc`` comes from the caller, so a
+    mispairing is possible on this path and there is no second copy to recover
+    from when it happens.
 
-    OWNERSHIP IS CHECKED FIRST, and in canonical mode a mismatch RAISES rather
-    than returning quietly. The destination still comes from the ambient
-    environment (``resolve_db_path(None)``) while ``doc`` comes from the
-    caller, so the same pairing bug that :func:`_dual_write.mirror_after_save`
-    guards against exists on THIS path too — and here it is worse, because
-    there is no YAML behind the DB to recover from.
-
-    That is not a hypothetical either. Both halves were demonstrated on
-    2026-07-19: first the mirror path let a pytest fixture rebuild the live DB
-    (2,136 cards -> 21), and after that path was guarded, the CANONICAL path —
+    That is not hypothetical. Both halves were demonstrated on 2026-07-19:
+    first the mirror path let a pytest fixture rebuild the live DB
+    (2,136 cards -> 21), and after that path was guarded, the canonical path —
     unguarded — let the same suite do it again, harder (2,138 -> 1). Two doors
     into one room; guarding one taught the caller nothing about the other.
 
-    Why RAISE here when the mirror merely declines: declining is right when the
-    card is already durable in YAML, and wrong when the DB is the only copy.
-    Silently not-writing would report success for a card that was never stored.
-    Both outcomes of a mismatch — clobbering the wrong DB, or dropping the
-    card — are unacceptable, so the caller must be told.
+    Why RAISE rather than decline: declining is right when the card is already
+    durable somewhere else, and wrong when this is the only copy. Silently
+    not-writing would report success for a card that was never stored. Both
+    outcomes of a mismatch — clobbering the wrong database, or dropping the
+    card — are unacceptable, so the caller is told.
     """
     from ._db import resolve_db_path
     from ._db_mirror import mirror_doc_incremental
@@ -104,10 +75,9 @@ def write_doc_to_db(doc: dict, store_path) -> dict:
     if not _db_mirrors_this_store(db_path, store_path):
         raise RuntimeError(
             f"refusing to write {store_path} into {db_path}: that database is "
-            f"the store for a DIFFERENT path, and in DB-canonical mode writing "
-            f"it would replace that store's rows with this one's. Point "
-            f"$SCITEX_CARDS_DB at this store's own database, or re-bootstrap "
-            f"deliberately with `scitex-cards db import --from-yaml`."
+            f"the store for a DIFFERENT path, and writing it would replace "
+            f"that store's rows with this one's. Point $SCITEX_CARDS_DB at "
+            f"this store's own database."
         )
 
     # `mirror_doc_incremental` already raises on failure — no try/except here
@@ -117,10 +87,6 @@ def write_doc_to_db(doc: dict, store_path) -> dict:
 
 
 __all__ = [
-    "BACKEND_SQLITE",
-    "ENV_STORE_BACKEND",
-    "ENV_STORE_BACKEND_LEGACY",
-    "db_is_canonical",
     "write_doc_to_db",
 ]
 

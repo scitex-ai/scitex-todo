@@ -23,15 +23,10 @@ structure via ruamel.yaml.
 
 from __future__ import annotations
 
-import contextlib
-import fcntl
-import os
 from pathlib import Path
 
-from ._store_verify import _verify_dumped_tmp  # hook-bypass: line-limit
 from ._task import VALID_STATUSES, TaskValidationError  # noqa: F401
 from ._validate import _validate_tasks  # noqa: F401
-from ._yaml import safe_dump, safe_load  # hook-bypass: line-limit
 
 
 def load_tasks(path: str | Path) -> list[dict]:
@@ -117,41 +112,20 @@ def load_doc(path: str | Path, *, validate: bool = False) -> dict:
     # card. Measured on a scratch store during the cutover: writing a second
     # card left exactly one row. On the live board that is 2065 cards down to 1,
     # with no error raised anywhere.
-    try:
-        from ._store_backend import db_is_canonical
-    except Exception:  # noqa: BLE001 — undecidable means "not canonical"
-        db_is_canonical = None
-    if db_is_canonical is not None and db_is_canonical():
-        from ._db_export import export_doc
+    # `or {}` on this read would be a total-loss hazard: whatever this returns
+    # feeds a read-modify-write, so an empty dict is not "no cards" but "write
+    # nothing over everything". Delegated to the one fail-loud reader so every
+    # caller shares a single policy — one sibling expression being fixed and
+    # another not is exactly how that survived the last time.
+    from ._store import _read_canonical_db_or_raise
 
-        # `or {}` here was the same total-loss hazard as in `_store`: whatever
-        # this returns feeds a read-modify-write, so an empty dict is not "no
-        # cards" but "write nothing over everything". Delegated to the one
-        # fail-loud reader so both callers share a single policy — the sibling
-        # expression being fixed and this one not is exactly how it survived.
-        from ._store import _read_canonical_db_or_raise
-
-        data = _read_canonical_db_or_raise()
-        if validate:
-            _validate_tasks(
-                data.get("tasks"),
-                source=f"<sqlite:{path}>",
-                strict=False,
-            )
-        return data
-
-    if not path.exists():
-        raise FileNotFoundError(f"task store not found: {path}")
-
-    with path.open(encoding="utf-8") as handle:
-        data = safe_load(handle) or {}  # hook-bypass: line-limit
-
+    data = _read_canonical_db_or_raise()
     if validate:
-        tasks = data.get("tasks") if isinstance(data, dict) else None
-        # READ side: tolerate values this build does not know (a newer agent
-        # may have written them) and warn loudly. Structural corruption still
-        # raises. One unknown status must never take the fleet's board down.
-        _validate_tasks(tasks, source=str(path), strict=False)
+        _validate_tasks(
+            data.get("tasks"),
+            source=f"<sqlite:{path}>",
+            strict=False,
+        )
     return data
 
 

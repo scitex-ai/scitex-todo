@@ -322,61 +322,35 @@ def _utc_now_iso() -> str:
 # --------------------------------------------------------------------------- #
 # Read-modify-write helper                                                     #
 # --------------------------------------------------------------------------- #
-def _read_write_doc(path: str | Path, *, missing_ok: bool = False) -> tuple[dict, list]:
+def _read_write_doc(path: str | Path) -> tuple[dict, list]:
     """Load the FULL store doc ONCE for a locked read-modify-write cycle.
 
     Returns ``(doc, tasks)`` where ``tasks is doc["tasks"]`` (always a list).
     Callers mutate ``tasks`` (or rebind it) then persist via
-    ``_save_doc_unlocked(doc, path, tasks=tasks)`` — so the ONE parse done
-    here serves BOTH the mutated ``tasks`` payload AND the non-``tasks``
-    sections (``users:`` etc.) that must survive the rewrite, eliminating the
-    second ``safe_load`` the old ``_save_tasks_unlocked`` re-read performed.
+    ``_save_doc_unlocked(doc, path, tasks=tasks)``, so this one read serves
+    BOTH the mutated ``tasks`` payload AND the non-``tasks`` sections
+    (``users:`` etc.) that must survive the rewrite.
 
-    Mirrors the two historical read shapes:
-    - ``missing_ok=False`` (default) → ``load_tasks(p)`` semantics: raises
-      ``FileNotFoundError`` if the store is absent; also re-validates on read.
-    - ``missing_ok=True`` → ``load_tasks(p) if p.exists() else []`` semantics:
-      an absent store yields an empty doc instead of raising.
+    THE ``missing_ok`` PARAMETER IS GONE, and its removal is the safety
+    property rather than a tidy-up. It used to mean "an absent store yields an
+    empty doc instead of raising", which was reasonable when the store was a
+    file that a fresh install legitimately lacked. Against a database it is a
+    loaded gun: an empty doc flows into a read-modify-write, the caller appends
+    its one new card, and ``mirror_doc_incremental`` diffs that one-card
+    document against the DB and DELETES every card missing from it.
+
+    Measured on a scratch store during this cutover: five sequential writes
+    left exactly ONE row each time. On the live board that is 2065 cards down
+    to 1, silently, with nothing raised anywhere in the stack. Found by
+    round-tripping real writes, not by reading the diff — the write path looked
+    correct in isolation and only end-to-end exercise showed the loss.
+
+    So there is no "absent store" case to be tolerant about: a missing database
+    is a configuration error and :func:`_read_canonical_db_or_raise` says so.
+    Emptiness must never be inferred; it must be read.
     """
-    p = Path(path)
-
-    # DB-CANONICAL: source the doc from SQLite. THIS MUST COME BEFORE the
-    # `missing_ok and not exists` branch below, and that ordering is the
-    # difference between a working cutover and an erased board.
-    #
-    # In canonical mode the YAML is archived and never written, so
-    # `p.exists()` is False FOREVER. Falling into that branch returns an EMPTY
-    # doc, the caller appends its one new card, and `_save_doc_unlocked` hands
-    # a one-card document to `mirror_doc_incremental` — which diffs against the
-    # DB and DELETES every card not present. Measured on a scratch store during
-    # this cutover: five sequential writes left exactly ONE row each time. On
-    # the live board that is 2065 cards down to 1, silently, with no error
-    # raised anywhere in the stack.
-    #
-    # Found by round-tripping real writes rather than by reading the diff. The
-    # write path looked correct in isolation; only exercising read-modify-write
-    # end to end showed the loss.
-    try:
-        from ._store_backend import db_is_canonical
-    except Exception:  # noqa: BLE001 — undecidable means "not canonical"
-        db_is_canonical = None
-    if db_is_canonical is not None and db_is_canonical():
-        from ._db_export import export_doc
-
-        doc = _read_canonical_db_or_raise()
-        tasks = doc["tasks"]
-        return doc, tasks
-
-    if missing_ok and not p.exists():
-        return {"tasks": []}, []
-    doc = load_doc(p, validate=True)  # raises FileNotFoundError if absent
-    if not isinstance(doc, dict):
-        doc = {"tasks": []}
-    tasks = doc.get("tasks")
-    if not isinstance(tasks, list):
-        tasks = []
-        doc["tasks"] = tasks
-    return doc, tasks
+    doc = _read_canonical_db_or_raise()
+    return doc, doc["tasks"]
 
 
 # --------------------------------------------------------------------------- #

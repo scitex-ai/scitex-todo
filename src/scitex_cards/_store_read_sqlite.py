@@ -231,56 +231,25 @@ def enabled(store_path: str | Path, db_path: str | Path | None = None) -> bool:
     loop pays two ``stat`` calls, not a table scan. Every fact the verdict rests on
     is in the key, so the cache cannot outlive its own justification.
     """
-    # DB-CANONICAL short-circuit. When SQLite IS the store, the YAML-freshness
-    # half of this gate is not merely unnecessary — it is INCOHERENT. Freshness
-    # asks "has the canonical YAML moved since we mirrored it", and in this mode
-    # there is no canonical YAML: it is archived and never written. Left in
-    # place the check would either pass vacuously (a frozen file always matches
-    # its own stamp) or fail permanently once the file is gone — a verdict about
-    # a question nobody asked, which is precisely the class of instrument error
-    # this file's own docstring warns about.
+    # SQLite IS the store, so there is nothing to be fresh AGAINST and nothing
+    # to fall back TO. The freshness comparison this function used to perform —
+    # "has the canonical YAML moved since we mirrored it" — is not merely
+    # unnecessary now, it is INCOHERENT: it asks a question about a document
+    # that no longer participates. Left in place it would either pass vacuously
+    # (a frozen file always matches its own stamp) or fail permanently once the
+    # file is gone, which is a verdict about a question nobody asked. That is
+    # exactly the instrument error this module's own docstring warns about, so
+    # the check is deleted rather than disabled.
     #
-    # The CODE-CAPABILITY check above is still required and deliberately kept:
-    # a process that cannot write the card_json payload would serve cards with
-    # their unknown fields stripped, and that is just as wrong when the DB is
-    # canonical as when it is a mirror.
-    try:
-        from ._store_backend import db_is_canonical
-    except Exception:  # noqa: BLE001 — undecidable means "not canonical"
-        db_is_canonical = lambda: False  # noqa: E731
-
-    if db_is_canonical():
-        incapable = _code_can_mirror_payload()
-        if incapable:
-            return _refuse(incapable)[0]
-        return True
-
-    if not _flag_on():
-        return False
-
+    # The CODE-CAPABILITY check is KEPT and is now the only gate. A process
+    # whose code cannot write the card_json payload would serve cards with
+    # their unknown fields silently stripped. That was wrong when the DB was a
+    # mirror and it is worse now: with no YAML behind it, a stripped field is
+    # not stale, it is lost.
     incapable = _code_can_mirror_payload()
     if incapable:
         return _refuse(incapable)[0]
-
-    from ._db import resolve_db_path
-    from ._db_freshness import canonical_path, stat_snapshot
-
-    store = Path(store_path).expanduser()
-    db = Path(db_path).expanduser() if db_path is not None else resolve_db_path(None)
-
-    # CANONICAL paths in the key: the same store reached by two spellings (relative
-    # vs absolute, or through a symlink) is ONE store, and must not get two verdicts.
-    key = (
-        canonical_path(db),
-        stat_snapshot(db),
-        canonical_path(store),
-        stat_snapshot(store),
-    )
-    cached = _verdict_cache.get(key)
-    if cached is None:
-        cached = _check_db(db, store)
-        _verdict_cache[key] = cached
-    return cached[0]
+    return True
 
 
 def reset_cache() -> None:
