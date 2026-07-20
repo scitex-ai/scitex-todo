@@ -52,6 +52,11 @@ def _previous_snapshot_count(git) -> int | None:
 
 def register(main: click.Group) -> None:
     """Attach the ``db`` noun group to the root group."""
+    from . import _db_recovery
+
+    # DB-to-DB backup/restore lives in its own module: this file is already at its
+    # size limit, and recovery is a distinct concern from the shadow-store verbs.
+    _db_recovery.register(db_group)
     main.add_command(db_group)
 
 
