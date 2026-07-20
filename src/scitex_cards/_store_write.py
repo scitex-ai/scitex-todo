@@ -150,18 +150,28 @@ def store_generation(path: str | Path) -> str:
     mtime-based: mtime has coarse granularity on some filesystems and lies
     across clock skew, and this store is shared over network mounts.
     """
-    # Hash the canonical DB (the store), NOT the `path` argument's file: the
-    # store-identity path (.../tasks.yaml) is never a real file under SQLite, so
-    # hashing it always returned "absent" and silently disabled optimistic
-    # concurrency — a stale write was never refused, so a concurrent writer's
-    # row was lost. The `path` arg is kept for the signature; the token derives
-    # from the resolved canonical database.
+    # Read-STABLE content hash of the canonical store. The token is the LOGICAL
+    # content (load_doc's output), NOT the DB file's bytes and NOT the `path`
+    # argument's file. Two traps this avoids:
+    #   - the store-identity path (.../tasks.yaml) is never a real file under
+    #     SQLite, so hashing it always returned "absent" and silently disabled
+    #     the optimistic-concurrency guard (a stale write was never refused);
+    #   - SQLite in WAL mode rewrites cards.db on a plain READ (it creates
+    #     -wal/-shm), so hashing the DB FILE returned a new token after an
+    #     un-contended read and falsely refused a fresh guarded write.
+    # Hashing the logical doc is stable across reads and changes only when the
+    # cards/users actually change. Missing DB -> "absent".
+    import json
+
     from ._db import resolve_db_path
 
     db = Path(resolve_db_path(None)).expanduser()
     if not db.exists():
         return "absent"
-    return hashlib.sha256(db.read_bytes()).hexdigest()
+    doc = load_doc(path, validate=False)
+    return hashlib.sha256(
+        json.dumps(doc, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
 
 
 @contextlib.contextmanager
