@@ -64,9 +64,8 @@ So:
 
 ## Store resolution (every tool)
 
-`tasks_path` argument → `$SCITEX_TODO_TASKS_YAML_SHARED` → `<git-root>/.scitex/todo/tasks.yaml`
-→ `~/.scitex/todo/tasks.yaml` → bundled example. See
-[20_env-vars.md](20_env-vars.md).
+`tasks_path` argument → `$SCITEX_CARDS_DB` → the user-canonical
+database. See [20_env-vars.md](20_env-vars.md).
 
 ## Scope filtering
 
