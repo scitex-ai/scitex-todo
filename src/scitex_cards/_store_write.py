@@ -150,11 +150,18 @@ def store_generation(path: str | Path) -> str:
     mtime-based: mtime has coarse granularity on some filesystems and lies
     across clock skew, and this store is shared over network mounts.
     """
-    p = Path(path).expanduser()
-    if not p.exists():
-        return "absent"
+    # Hash the canonical DB (the store), NOT the `path` argument's file: the
+    # store-identity path (.../tasks.yaml) is never a real file under SQLite, so
+    # hashing it always returned "absent" and silently disabled optimistic
+    # concurrency — a stale write was never refused, so a concurrent writer's
+    # row was lost. The `path` arg is kept for the signature; the token derives
+    # from the resolved canonical database.
+    from ._db import resolve_db_path
 
-    return hashlib.sha256(p.read_bytes()).hexdigest()
+    db = Path(resolve_db_path(None)).expanduser()
+    if not db.exists():
+        return "absent"
+    return hashlib.sha256(db.read_bytes()).hexdigest()
 
 
 @contextlib.contextmanager
