@@ -103,7 +103,7 @@ def next_cmd(
             )
         assignee = env
 
-    path = resolve_tasks_path(tasks_path)
+    path = resolve_tasks_path(None)
     tasks = load_tasks(path)
 
     pick = next_task(tasks, assignee=assignee, project=project)
@@ -185,12 +185,6 @@ def _auto_claim(path, task_id: str, *, assignee: str) -> None:
     ),
 )
 @click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Path to tasks.yaml (default: resolver chain).",
-)
-@click.option(
     "--interval",
     "interval_s",
     type=float,
@@ -217,7 +211,6 @@ def _auto_claim(path, task_id: str, *, assignee: str) -> None:
 )
 def watch_cmd(
     push: bool,
-    tasks_path: str | None,
     interval_s: float,
     min_wake_interval_s: float,
     once: bool,
@@ -235,7 +228,7 @@ def watch_cmd(
     # warning fires for an interactive operator, not only inside the loop.
     interval_s = clamp_interval(interval_s)
 
-    path = resolve_tasks_path(tasks_path)
+    path = resolve_tasks_path(None)
     if once:
         state = WatcherState()
         # First tick seeds; second tick reports any changes that landed

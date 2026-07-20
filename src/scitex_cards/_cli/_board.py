@@ -211,12 +211,12 @@ def board_start_cmd(
     if dry_run:
         click.echo(
             f"# dry-run: would start board on port {port}, "
-            f"tasks={tasks_path or '<default-resolution>'}, "
             f"no-browser={bool(no_browser)} "
             f"(pidfile: {_board_pidfile()})",
         )
         return
-    _board_run_server(tasks_path, port, no_browser)
+    # First positional slot is the store path; it is always ambient now.
+    _board_run_server(None, port, no_browser)
 
 
 @board_group.command(
@@ -348,7 +348,6 @@ def board_stop_cmd(port: int, timeout: float, dry_run: bool, assume_yes: bool) -
         examples=(("{prog} board restart", "Reload the board."),),
     ),
 )
-@click.option("--tasks", "tasks_path", default=None, help="Path to tasks.yaml.")
 @click.option("--port", type=int, default=8051, show_default=True, help="Server port.")
 @click.option("--no-browser", is_flag=True, help="Don't open a browser automatically.")
 @click.option(
@@ -368,7 +367,6 @@ def board_stop_cmd(port: int, timeout: float, dry_run: bool, assume_yes: bool) -
 @click.pass_context
 def board_restart_cmd(
     ctx: click.Context,
-    tasks_path: str | None,
     port: int,
     no_browser: bool,
     dry_run: bool,
@@ -391,7 +389,6 @@ def board_restart_cmd(
         click.echo(
             f"# dry-run: would stop (currently {prefix}) then start "
             f"on port {port}, "
-            f"tasks={tasks_path or '<default-resolution>'}, "
             f"no-browser={bool(no_browser)}",
         )
         return
@@ -401,7 +398,6 @@ def board_restart_cmd(
     ctx.invoke(board_stop_cmd, port=port, timeout=5.0, dry_run=False, assume_yes=True)
     ctx.invoke(
         board_start_cmd,
-        tasks_path=tasks_path,
         port=port,
         no_browser=no_browser,
         dry_run=False,

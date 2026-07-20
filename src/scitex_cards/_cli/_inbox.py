@@ -57,13 +57,6 @@ def inbox_group() -> None:
     ),
 )
 @click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Path to tasks.yaml (default: $SCITEX_TODO_TASKS_YAML_SHARED -> "
-    "user store -> bundled example).",
-)
-@click.option(
     "--dry-run",
     is_flag=True,
     help="Report how many records WOULD be copied without touching the "
@@ -84,7 +77,6 @@ def inbox_group() -> None:
     help="Emit the migration stats as JSON.",
 )
 def inbox_migrate_cmd(
-    tasks_path: str | None,
     dry_run: bool,
     assume_yes: bool,
     as_json: bool,
@@ -102,7 +94,7 @@ def inbox_migrate_cmd(
     from scitex_cards._inbox_sqlite import inbox_db_path, migrate_to_sqlite
     from scitex_cards._paths import resolve_tasks_path
 
-    store = resolve_tasks_path(tasks_path)
+    store = resolve_tasks_path(None)
     db = inbox_db_path(store)
 
     if dry_run:
@@ -158,19 +150,12 @@ def inbox_migrate_cmd(
     ),
 )
 @click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Path to tasks.yaml (default: $SCITEX_TODO_TASKS_YAML_SHARED -> "
-    "user store -> bundled example).",
-)
-@click.option(
     "--json",
     "as_json",
     is_flag=True,
     help="Emit machine-readable JSON. Required by SciTeX §2 audit on read verbs.",
 )
-def inbox_info_cmd(tasks_path: str | None, as_json: bool) -> None:
+def inbox_info_cmd(as_json: bool) -> None:
     """Read-side report on the SQLite inbox DB.
 
     Example:

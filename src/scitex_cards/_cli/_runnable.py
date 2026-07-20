@@ -200,7 +200,7 @@ def blocked_cmd(
             )
         agent = env
 
-    path = resolve_tasks_path(tasks_path)
+    path = resolve_tasks_path(None)
     tasks = load_tasks(path)
 
     result = blocked_tasks(tasks, agent=agent, group=group)

@@ -22,8 +22,8 @@ from ._compat import spec_command_kwargs, spec_group_kwargs
 _STORE_RESOLUTION = (
     "Canonical store: a SQLite DB at $SCITEX_CARDS_DB (default",
     "~/.scitex/cards/cards.db) when $SCITEX_CARDS_STORE_BACKEND=sqlite.",
-    "YAML path resolution (first existing wins): an explicit --tasks path,",
-    "then $SCITEX_CARDS_TASKS_YAML_SHARED, then the user store",
+    "YAML path resolution (first existing wins):",
+    "$SCITEX_CARDS_TASKS_YAML_SHARED, then the user store",
     "~/.scitex/cards/tasks.yaml (relocatable via $SCITEX_DIR). There is NO",
     "bundled-example fallback — an unresolvable store raises. Run",
     "`scitex-cards resolve-store` to see what you actually resolved to.",
@@ -170,18 +170,11 @@ def main(ctx: click.Context, help_recursive: bool, as_json: bool) -> None:
         ),
         examples=(
             (
-                "{prog} render-graph --tasks ./.scitex/todo/tasks.yaml -o tasks.png",
-                "Render the project store to tasks.png.",
+                "{prog} render-graph -o tasks.png",
+                "Render the resolved store to tasks.png.",
             ),
         ),
     ),
-)
-@click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Path to tasks.yaml (default: project -> user -> bundled example, "
-    "or $SCITEX_TODO_TASKS_YAML_SHARED).",
 )
 @click.option(
     "-o",
@@ -195,9 +188,9 @@ def main(ctx: click.Context, help_recursive: bool, as_json: bool) -> None:
     is_flag=True,
     help="Print the generated mermaid source to stdout and exit (no render).",
 )
-def render_graph_cmd(tasks_path: str | None, output: str, print_mermaid: bool) -> None:
+def render_graph_cmd(output: str, print_mermaid: bool) -> None:
     """Render the resolved task store to a dependency PNG."""
-    resolved = resolve_tasks_path(tasks_path)
+    resolved = resolve_tasks_path(None)
     tasks = load_tasks(resolved)
     mermaid_src = build_mermaid(tasks)
 
