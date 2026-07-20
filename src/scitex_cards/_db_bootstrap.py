@@ -34,9 +34,15 @@ import sqlite3
 from pathlib import Path
 
 from ._db import SCHEMA_VERSION, connect, init_schema, resolve_db_path
+from ._db_cards import (  # re-exported: _db_mirror imports these from here
+    TASK_INSERT_COLS,  # noqa: F401
+    _dedupe_last_wins,  # noqa: F401
+    _insert_comments,  # noqa: F401
+    _insert_edges,  # noqa: F401
+    _insert_roles,  # noqa: F401
+    _insert_tasks,
+)
 from ._db_freshness import stamp_yaml_provenance
-from ._db_payload import CARD_JSON_COL, card_payload_json
-from ._db_payload import json_or_none as _json_or_none
 from ._db_sections import (  # re-exported: _db_mirror imports these from here
     _gen_id,  # noqa: F401
     _insert_messages,
@@ -46,54 +52,6 @@ from ._db_sections import (  # re-exported: _db_mirror imports these from here
 from ._paths import resolve_tasks_path
 
 logger = logging.getLogger(__name__)
-
-#: (column, yaml-key) pairs for the scalar ``tasks`` columns. ``group`` maps to
-#: the ``grp`` column (SQL reserved word); ``deadlines`` / ``_log_meta`` /
-#: ``row_order`` / ``card_json`` are handled separately (JSON / positional).
-_TASK_SCALAR_COLS: tuple[tuple[str, str], ...] = (
-    ("id", "id"),
-    ("title", "title"),
-    ("status", "status"),
-    ("kind", "kind"),
-    ("blocker", "blocker"),
-    ("task", "task"),
-    ("note", "note"),
-    ("goal", "goal"),
-    ("project", "project"),
-    ("repo", "repo"),
-    ("host", "host"),
-    ("agent", "agent"),
-    ("assignee", "assignee"),
-    ("scope", "scope"),
-    ("grp", "group"),
-    ("priority", "priority"),
-    ("parent", "parent"),
-    ("pr_url", "pr_url"),
-    ("issue_url", "issue_url"),
-    ("deadline", "deadline"),
-    ("scheduled", "scheduled"),
-    ("created_at", "created_at"),
-    ("last_activity", "last_activity"),
-    ("started_at", "started_at"),
-    ("finished_at", "finished_at"),
-    ("created_by", "created_by"),
-    ("job_id", "job_id"),
-    ("command", "command"),
-)
-
-#: The FULL ordered column list every ``tasks`` INSERT writes: the scalars, the two
-#: JSON side-cars, the positional ``row_order``, and the verbatim ``card_json``.
-#:
-#: PUBLIC ON PURPOSE. The S2 read guard probes THIS TUPLE for ``card_json`` to answer
-#: "can the code running in THIS process actually populate the payload column?" — a
-#: SYMBOL check against the imported object, never a version string. A version string
-#: is metadata, and metadata lies: a stale wheel, an orphaned ``.dist-info`` and a SIF
-#: baked months ago all report a version that outlived the code beside them. This repo
-#: paid 135 SECONDS PER CARD WRITE for exactly that mistake on 2026-07-13.
-TASK_INSERT_COLS: tuple[str, ...] = tuple(
-    [col for col, _ in _TASK_SCALAR_COLS]
-    + ["deadlines_json", "log_meta_json", "row_order", CARD_JSON_COL]
-)
 
 #: Data tables cleared before a rebuild, child-before-parent so the explicit
 #: deletes never fight the FK order (cascade would also cover the children).
@@ -115,24 +73,43 @@ def _load_source(
 ) -> tuple[dict, Path, tuple[int, int] | None]:
     """Load the YAML doc (tasks/users/inboxes) + the store path + its stat snapshot.
 
-    Uses the existing ``load_doc`` read primitive (no validation gate — a
-    bootstrap must ingest whatever is on disk). A missing store yields an
-    empty doc so ``db import`` on a fresh install is a no-op, not a crash.
+    Parses the file directly (no validation gate — a bootstrap must ingest
+    whatever is on disk). A missing store yields an empty doc so ``db import``
+    on a fresh install is a no-op, not a crash.
 
     The stat is taken BEFORE the parse, on purpose. If another writer rewrites the
     store while we are reading it, the snapshot we stamp is the pre-read one, which
     will no longer match the file on disk — so the next read declares the mirror
     STALE and falls back to YAML. Stat-AFTER-parse would instead stamp a version of
     the file the DB never saw, and the mirror would look fresh while being wrong.
+
+    READS THE FILE, NOT THE BACKEND. This used to call ``_model.load_doc``, which
+    ROUTES: under ``db_is_canonical()`` it ignores the path it is handed and returns
+    the canonical DB's own contents. That turned this function — whose entire
+    contract is "read THIS yaml" — into "read the destination", and broke the only
+    documented recovery command in BOTH of the states you are ever in when
+    recovering:
+
+      * DB present -> the restore read the DB, wrote it back into itself, and
+        reported a summary indistinguishable from success. A no-op that says it
+        worked is worse than a crash: the 2026-07-19 recovery had to be done by
+        hand with ``mirror_doc_incremental`` because ``db import --from-yaml``
+        silently restored nothing.
+      * DB absent -> the canonical reader raised "store does not exist" and told
+        the operator to bootstrap with ``db import --from-yaml``. This command.
+
+    A bootstrap must never consult the thing it is bootstrapping, so the YAML is
+    parsed directly here and the backend has no say in it.
     """
     from ._db_freshness import stat_snapshot
-    from ._model import load_doc
+    from ._yaml import safe_load
 
     path = resolve_tasks_path(tasks_path)
     if not path.exists():
         return {}, path, None
     snapshot = stat_snapshot(path)
-    doc = load_doc(path, validate=False)
+    with path.open(encoding="utf-8") as handle:
+        doc = safe_load(handle) or {}
     return (doc if isinstance(doc, dict) else {}), path, snapshot
 
 
@@ -142,155 +119,6 @@ def _load_threads(store_path: Path) -> dict[str, list[dict]]:
 
     tpath = _threads.threads_path(store_path)
     return _threads._load_threads(tpath)
-
-
-def _dedupe_last_wins(tasks: list) -> list[tuple[int, dict]]:
-    """``(row_order, card)`` pairs, duplicate ids collapsed — LAST occurrence wins.
-
-    The semantics ``INSERT OR REPLACE`` gave us for free, hoisted into Python so the
-    SQL can be a plain ``INSERT`` (see :func:`_insert_tasks` — that word cost 42x).
-    A duplicate card id is a DATA BUG, not routine: REPLACE absorbed it silently
-    (and still appended BOTH copies' comments). Same winner, said out loud.
-    """
-    by_id: dict[str, tuple[int, dict]] = {}
-    ordered: list[tuple[int, dict]] = []
-    dupes: list[str] = []
-    for order, row in enumerate(tasks):
-        if not isinstance(row, dict):
-            continue
-        tid = row.get("id")
-        if isinstance(tid, str) and tid:
-            if tid in by_id:
-                dupes.append(tid)
-            by_id[tid] = (order, row)
-        else:
-            ordered.append((order, row))
-    if dupes:
-        logger.error(
-            "!! DUPLICATE CARD ID(S) IN THE CANONICAL STORE: %s. The mirror keeps "
-            "the LAST occurrence of each (the same row `INSERT OR REPLACE` would "
-            "have kept), but the YAML itself is inconsistent and should be "
-            "repaired — two cards cannot share an id.",
-            ", ".join(sorted(set(dupes))),
-        )
-    ordered.extend(by_id.values())
-    ordered.sort(key=lambda pair: pair[0])
-    return ordered
-
-
-def _insert_tasks(
-    conn: sqlite3.Connection, tasks: list, *, replace: bool = True
-) -> dict[str, int]:
-    """Insert every card + its children.
-
-    ``replace`` picks the conflict clause, and it is worth 42x — MEASURED on the
-    live 1,370-card store (2026-07-13)::
-
-        INSERT OR REPLACE INTO tasks , FK ON : 4,592 us/row  -> 6.3 s for the store
-        INSERT           INTO tasks , FK ON  :   110 us/row  -> 0.15 s
-
-    ``tasks`` is a PARENT of ``task_comments`` / ``task_edges`` / ``task_roles``
-    (``ON DELETE CASCADE``), so under ``PRAGMA foreign_keys=ON`` a REPLACE — a DELETE
-    plus an INSERT — runs the whole cascade/FK-check machinery FOR EVERY ROW. The
-    control group is next door: ``task_comments`` already uses a plain INSERT and FK
-    enforcement costs it NOTHING (150 vs 149 us/row, FK on vs off). It is
-    REPLACE-**on-a-parent** that is expensive, not foreign keys. (``PRAGMA
-    defer_foreign_keys=ON`` does NOT help — measured SLOWER. Do not reach for it.)
-
-    So the clause is a PRECONDITION, not a style choice, and the callers differ:
-
-    * ``replace=False`` — caller ALREADY DELETED these rows, so a conflict is
-      impossible and REPLACE is pure waste. :func:`_rebuild_from_doc` clears every
-      table first; this is its 42x.
-    * ``replace=True`` (DEFAULT, the SAFE one) — caller is UPSERTING over rows that
-      may still be present (the incremental mirror re-writes one changed card
-      without dropping its ``tasks`` row). A plain INSERT would raise ``UNIQUE
-      constraint failed: tasks.id`` there, so REPLACE is load-bearing.
-
-    Duplicate ids are collapsed by :func:`_dedupe_last_wins` (last-wins — the winner
-    REPLACE would have picked), so ``replace=False`` cannot conflict with itself.
-    """
-    counts = {"tasks": 0, "comments": 0, "edges": 0, "roles": 0}
-    placeholders = ", ".join("?" for _ in TASK_INSERT_COLS)
-    verb = "INSERT OR REPLACE" if replace else "INSERT"
-    insert_sql = (
-        f"{verb} INTO tasks ({', '.join(TASK_INSERT_COLS)}) VALUES ({placeholders})"
-    )
-    for order, row in _dedupe_last_wins(tasks):
-        values = [row.get(ykey) for _, ykey in _TASK_SCALAR_COLS]
-        values.append(_json_or_none(row.get("deadlines")))
-        values.append(_json_or_none(row.get("_log_meta")))
-        values.append(order)
-        # The VERBATIM card — the payload an S2 read reconstructs from, exactly as
-        # it appeared in the YAML (unknown keys, key order, types and all). The
-        # typed columns above are only the INDEX. See :mod:`_db_payload`.
-        values.append(card_payload_json(row))
-        conn.execute(insert_sql, values)
-        counts["tasks"] += 1
-        tid = row.get("id")
-        counts["comments"] += _insert_comments(conn, tid, row.get("comments"))
-        counts["edges"] += _insert_edges(conn, tid, row)
-        counts["roles"] += _insert_roles(conn, tid, row)
-    return counts
-
-
-def _insert_comments(conn, task_id, comments) -> int:
-    if not isinstance(comments, list):
-        return 0
-    n = 0
-    for seq, c in enumerate(comments):
-        if not isinstance(c, dict):
-            continue
-        conn.execute(
-            "INSERT INTO task_comments(task_id, seq, author, ts, kind, text) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                task_id,
-                seq,
-                c.get("author"),
-                c.get("ts"),
-                c.get("kind"),
-                "" if c.get("text") is None else str(c.get("text")),
-            ),
-        )
-        n += 1
-    return n
-
-
-def _insert_edges(conn, task_id, row) -> int:
-    n = 0
-    for edge_type in ("depends_on", "blocks"):
-        targets = row.get(edge_type)
-        if not isinstance(targets, list):
-            continue
-        for dst in targets:
-            if not (isinstance(dst, str) and dst):
-                continue
-            conn.execute(
-                "INSERT OR REPLACE INTO task_edges"
-                "(src_task_id, dst_task_id, edge_type) VALUES (?, ?, ?)",
-                (task_id, dst, edge_type),
-            )
-            n += 1
-    return n
-
-
-def _insert_roles(conn, task_id, row) -> int:
-    n = 0
-    for role, key in (("collaborator", "collaborators"), ("subscriber", "subscribers")):
-        members = row.get(key)
-        if not isinstance(members, list):
-            continue
-        for who in members:
-            if not (isinstance(who, str) and who):
-                continue
-            conn.execute(
-                "INSERT OR REPLACE INTO task_roles(task_id, who, role) "
-                "VALUES (?, ?, ?)",
-                (task_id, who, role),
-            )
-            n += 1
-    return n
 
 
 #: Tables owned by the ``tasks.yaml`` doc. The ``messages`` table is DELIBERATELY
@@ -382,6 +210,47 @@ def import_from_yaml(
     doc, store_path, snapshot = _load_source(tasks_path)
     threads = _load_threads(store_path)
     resolved_db = resolve_db_path(db_path)
+
+    # AN AMBIENT DESTINATION MAY NOT BE REBUILT FROM A FOREIGN STORE.
+    #
+    # This function DELETEs every data table and re-stamps the DB's identity as
+    # the file it imported. Both are correct for the bootstrap it was written
+    # for, and catastrophic when the source is unrelated to the destination —
+    # which is exactly what happens when a caller isolates its YAML and forgets
+    # the DB, because `db_path=None` then resolves the LIVE database out of the
+    # ambient environment while `tasks_path` points at a fixture.
+    #
+    # MEASURED, twice, on the live fleet board (2026-07-19 and 2026-07-20):
+    # ~2,150 real cards replaced by a handful of test fixtures.
+    #
+    # The re-stamp is the half that made it recur. Once the live DB is labelled
+    # for the fixture's path, `_db_mirrors_this_store` answers True for that
+    # store, so the ownership guard on the ORDINARY write path — which had been
+    # refusing those writes correctly — is DISARMED for every write that
+    # follows. A guard whose credential the guarded operation can rewrite is not
+    # a guard.
+    #
+    # Both legitimate callers already say which DB they mean, so neither is
+    # affected: a RESTORE passes `as_store=` (taking data from a snapshot for a
+    # store it names), and a test pairing a tmp store with a tmp DB passes
+    # `db_path=`. Only the accident is silent, so only the accident is refused.
+    if db_path is None and as_store is None:
+        from ._dual_write import _db_mirrors_this_store
+
+        if not _db_mirrors_this_store(resolved_db, store_path):
+            raise RuntimeError(
+                f"REFUSING to rebuild {resolved_db} from {store_path}: that "
+                f"database is the store for a DIFFERENT path, and this import "
+                f"DELETES every row and re-stamps the database as this source's."
+                f" Nothing here named that database — it came from the ambient "
+                f"environment ($SCITEX_CARDS_DB, or the user default), which is "
+                f"how a test that isolated its YAML but not its DB replaced the "
+                f"live fleet board with its fixtures. If you are RESTORING, name "
+                f"the store this database serves: `--as-store <path>` keeps that "
+                f"identity while taking the data from here. If you meant a "
+                f"different database, name it: `--db <path>`."
+            )
+
     doc_cards = doc.get("tasks") if isinstance(doc, dict) else None
     card_count = len(doc_cards) if isinstance(doc_cards, list) else 0
 
