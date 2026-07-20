@@ -48,7 +48,11 @@ def _valid_doc(n: int = 1) -> dict:
             {"id": f"t{i}", "title": f"Title {i}", "status": "pending"}
             for i in range(n)
         ],
-        "users": {"alice": {"role": "dev"}},
+        # The store is SQLite now: the `users:` section is a LIST of records
+        # each carrying its own `id` (the DB-canonical shape), not the old YAML
+        # dict-map `{name: {...}}` (which the write path silently drops). `kind`
+        # is the one NOT-NULL column beyond the id PK.
+        "users": [{"id": "alice", "kind": "human", "role": "dev"}],
     }
 
 
@@ -106,15 +110,23 @@ BAD_SAME_LENGTH = GOOD_DUMP.replace("status: pending", 'status: "ending', 1)
 # Happy path
 # ---------------------------------------------------------------------------
 @pytest.fixture()
-def promoted_store(tmp_path, env):
+def promoted_store(env):
     """A 3-task doc written end-to-end through the REAL save path.
 
-    Yields the canonical path after ``_save_doc_unlocked`` promoted it, so
-    each ``TestHappyPath`` test below pins one property of that single
-    completed write instead of re-running it.
+    Yields the canonical STORE path after ``_save_doc_unlocked`` committed the
+    doc to SQLite (the canonical slot now — there is no YAML file to
+    os.replace), so each ``TestHappyPath`` test below pins one property of that
+    single completed write instead of re-running it.
+
+    The write MUST address the pinned STORE identity
+    (``SCITEX_CARDS_TASKS_YAML_SHARED`` == ``resolve_tasks_path(None)``): a
+    write stamps the canonical DB with the path it was handed, and the next
+    read refuses the DB unless that stamp equals the resolved store. Handing a
+    throwaway ``tmp_path`` here would stamp the DB for a store nothing reads,
+    so every round-trip below would raise "stamped for a DIFFERENT store".
     """
     env.set("SCITEX_TODO_STORE_GIT_AUTOCOMMIT", "0")
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     with _model._store_lock(store):
         _model._save_doc_unlocked(_valid_doc(3), store)
     return store
@@ -130,23 +142,17 @@ class TestHappyPath:
         # Assert — returns None, does not raise.
         assert out is None
 
-    def test_save_doc_unlocked_promotes_the_canonical_file(self, promoted_store):
-        """End-to-end: the write path still atomically promotes (os.replace)
-        a valid doc into the canonical slot."""
+    def test_save_doc_unlocked_persists_into_the_canonical_store(self, promoted_store):
+        """End-to-end: the write path still commits a valid doc into the
+        canonical slot. SQLite is that slot now (there is no YAML file to
+        os.replace, and no ``.tmp`` sidecar to promote), so 'promoted' means
+        the doc is durably readable back from the canonical store."""
         # Arrange
         store = promoted_store
         # Act
-        exists = store.exists()
+        reloaded = _model.load_doc(store)
         # Assert
-        assert exists
-
-    def test_save_doc_unlocked_removes_the_tmp_sidecar(self, promoted_store):
-        # Arrange
-        sidecar = promoted_store.parent / ".tasks.yaml.tmp"
-        # Act
-        exists = sidecar.exists()
-        # Assert
-        assert not exists
+        assert len(reloaded["tasks"]) == 3
 
     def test_save_doc_unlocked_round_trips_every_task(self, promoted_store):
         # Arrange
@@ -157,8 +163,10 @@ class TestHappyPath:
         assert {t["id"] for t in reloaded["tasks"]} == expected
 
     def test_save_doc_unlocked_round_trips_the_users_section(self, promoted_store):
-        # Arrange
-        expected = {"alice": {"role": "dev"}}
+        # Arrange — the non-tasks ``users:`` section still survives the write
+        # untouched; it round-trips as the DB's canonical list-of-records shape
+        # (each record carries its own ``id``), not the old YAML dict-map.
+        expected = [{"id": "alice", "kind": "human", "role": "dev"}]
         # Act
         reloaded = _model.load_doc(promoted_store)
         # Assert

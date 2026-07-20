@@ -52,14 +52,6 @@ def register(main: click.Group) -> None:
     ),
 )
 @click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Path to tasks.yaml (default: project -> user -> bundled example, "
-    "or $SCITEX_TODO_TASKS_YAML_SHARED). Resolves the inbox + ledger + recipients + "
-    "pidfile dir.",
-)
-@click.option(
     "--interval",
     type=float,
     default=120.0,
@@ -91,7 +83,6 @@ def register(main: click.Group) -> None:
 @click.pass_context
 def notifyd_group(
     ctx: click.Context,
-    tasks_path: str | None,
     interval: float,
     run_once: bool,
     terminal_report_every: int,
@@ -111,7 +102,7 @@ def notifyd_group(
     if run_once:
         from .._delivery import deliver_pending
 
-        summary = deliver_pending(store=tasks_path)
+        summary = deliver_pending(store=None)
         click.echo(
             f"# notifyd --once: sent={summary['sent']} "
             f"failed={summary['failed']} "
@@ -121,20 +112,20 @@ def notifyd_group(
         )
         return
 
+    import os as _os
+
     from .._delivery._daemon import DaemonAlreadyRunning, pidfile_path, run_notifyd
     from .._inbox import _resolved_store
 
-    import os as _os
-
     click.echo(
         f"# scitex-todo notifyd starting: pid={_os.getpid()} "
-        f"store={_resolved_store(tasks_path)} "
+        f"store={_resolved_store(None)} "
         f"interval={interval}s "
-        f"pidfile={pidfile_path(tasks_path)}"
+        f"pidfile={pidfile_path(None)}"
     )
     try:
         result = run_notifyd(
-            store=tasks_path,
+            store=None,
             interval=interval,
             terminal_report_every=terminal_report_every,
             nudge_sweep_minutes=nudge_sweep_minutes,
@@ -200,19 +191,12 @@ def install_unit_cmd(force: bool) -> None:
         "  scitex-todo notifyd collapse-digests --json"
     ),
 )
-@click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Path to tasks.yaml (default: project -> user -> bundled example, "
-    "or $SCITEX_TODO_TASKS_YAML_SHARED).",
-)
 @click.option("--json", "as_json", is_flag=True, help="Emit the summary as JSON.")
-def collapse_digests_cmd(tasks_path: str | None, as_json: bool) -> None:
+def collapse_digests_cmd(as_json: bool) -> None:
     """Collapse the unseen digest backlog per recipient (maintenance verb)."""
     from .._inbox_maint import collapse_digests
 
-    summary = collapse_digests(store=tasks_path)
+    summary = collapse_digests(store=None)
     if as_json:
         import json
 

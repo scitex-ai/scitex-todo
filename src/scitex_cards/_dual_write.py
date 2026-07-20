@@ -187,6 +187,39 @@ def reset_failures() -> None:
     _failures.clear()
 
 
+def _same_file(a: str | Path, b: str | Path) -> bool:
+    """Do these two paths name the SAME FILE — by identity, not by spelling?
+
+    ``realpath`` alone is not enough, and the difference is not academic: this
+    host reaches ONE store directory by two names that resolve DIFFERENTLY.
+
+        /home/agent/.scitex/cards      -> /home/agent/.scitex/cards
+        /home/ywatanabe/.scitex/cards  -> /home/ywatanabe/.dotfiles/src/.scitex/cards
+
+    Same ``st_dev``/``st_ino`` — the same directory, reached through a bind
+    mount — but two different realpath STRINGS. A string compare therefore
+    called them different stores and REFUSED every write from whichever
+    population did not match the stamp, on a database that was in fact theirs.
+    MEASURED on the live board 2026-07-20, immediately after a restore: cards
+    written via ``/home/ywatanabe/...`` were refused against a DB stamped
+    ``/home/agent/...``.
+
+    So ask the filesystem what it knows: two paths are the same file when the
+    kernel says so. The realpath compare stays as the FALLBACK for when a path
+    does not exist yet — which is normal here, since in DB-canonical mode the
+    YAML store is a name the DB is stamped with rather than a file on disk.
+    """
+    try:
+        sa, sb = Path(a).stat(), Path(b).stat()
+        return (sa.st_dev, sa.st_ino) == (sb.st_dev, sb.st_ino)
+    except OSError:
+        pass
+    try:
+        return os.path.realpath(str(a)) == os.path.realpath(str(b))
+    except OSError:
+        return False
+
+
 def _db_mirrors_this_store(db_path: str | Path, store_path: str | Path) -> bool:
     """Is the DB at ``db_path`` the mirror of ``store_path`` — or of some OTHER store?
 
@@ -239,11 +272,8 @@ def _db_mirrors_this_store(db_path: str | Path, store_path: str | Path) -> bool:
         return True
     if not stamped:
         return True  # unstamped ⇒ adoptable
-    try:
-        if os.path.realpath(stamped) == os.path.realpath(str(store_path)):
-            return True
-    except OSError:
-        return False
+    if _same_file(stamped, str(store_path)):
+        return True
     logger.error(
         "!! REFUSING TO MIRROR: %s is the shadow DB of %s, but this write is to "
         "%s. Mirroring would REPLACE that store's rows with this one's. If you "

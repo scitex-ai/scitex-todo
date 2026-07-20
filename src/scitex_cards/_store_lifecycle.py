@@ -188,7 +188,12 @@ def delete_task(
                 mutated = True
             if mutated:
                 refs.append(t.get("id"))
-        _model._save_doc_unlocked(doc, tasks_path, tasks=keep)
+        # SQLite is upsert-only and the mirror never INFERS a delete from a
+        # card's absence (that inference is the board-wipe class it refuses).
+        # So name the card we intentionally removed: the mirror drops exactly
+        # this row, and restore_task is the Undo. Absence alone would leave the
+        # row behind — the silent no-op the pre-cutover mirror hid.
+        _model._save_doc_unlocked(doc, tasks_path, tasks=keep, deleted_ids=[task_id])
     return {"removed": target, "refs": refs}
 
 

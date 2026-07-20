@@ -48,21 +48,14 @@ from .._reconcile_prs import reconcile_merged_prs
     ),
 )
 @click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Path to tasks.yaml (default: project -> user -> bundled example, "
-    "or $SCITEX_TODO_TASKS_YAML_SHARED).",
-)
-@click.option(
     "--json",
     "as_json",
     is_flag=True,
     help="Emit the summary as JSON (machine-readable).",
 )
-def reconcile_merged_prs_cmd(apply: bool, tasks_path, as_json: bool) -> None:
+def reconcile_merged_prs_cmd(apply: bool, as_json: bool) -> None:
     """Run the reconcile pass and print the summary (dry-run by default)."""
-    resolved = resolve_tasks_path(tasks_path)
+    resolved = resolve_tasks_path(None)
     result = reconcile_merged_prs(resolved, apply=apply)
 
     if as_json:

@@ -23,6 +23,7 @@ Pinned here:
 from __future__ import annotations
 
 import json
+import os
 import threading
 import urllib.error
 import urllib.request
@@ -35,15 +36,26 @@ from scitex_cards import _server, _store
 
 @pytest.fixture()
 def rig(tmp_path, env):
-    """A serving rig: tmp store + tmp tokens + tmp audit + live server."""
+    """A serving rig: pinned store + tmp tokens + tmp audit + live server.
+
+    The store is SQLite now, and the harness (tests/conftest.py) already pins
+    every store-selecting env var at a per-test scratch dir and bootstraps an
+    EMPTY, schema-complete canonical DB there. So the server must be pinned to
+    that SAME store identity — ``$SCITEX_CARDS_TASKS_YAML_SHARED`` (==
+    ``resolve_tasks_path(None)``) — not to a private ``tmp_path/tasks.yaml``.
+    A write stamps the canonical DB with whatever store path the server holds;
+    if that is a private path, the next read (server-side, and the direct
+    ``_store`` read-backs below) resolves the pinned identity, sees a DB stamped
+    for a DIFFERENT store, and refuses. Pinning them to the same path makes the
+    round trips land. The rig starts empty because the bootstrapped DB is empty.
+    """
     env.set("SCITEX_TODO_AGENT_ID", "rpc-tester")
-    store = tmp_path / "tasks.yaml"
-    store.write_text("tasks: []\n", encoding="utf-8")
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     tokens_dir = tmp_path / "tokens"
     audit_path = tmp_path / "logs" / "hub_access.jsonl"
 
     server = _server.make_server(
-        store=str(store), port=0, tokens_dir=tokens_dir, audit_path=audit_path
+        store=store, port=0, tokens_dir=tokens_dir, audit_path=audit_path
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -51,7 +63,7 @@ def rig(tmp_path, env):
     token = (tokens_dir / "hub.token").read_text(encoding="utf-8").strip()
 
     yield {
-        "store": str(store),
+        "store": store,
         "port": port,
         "token": token,
         "tokens_dir": tokens_dir,

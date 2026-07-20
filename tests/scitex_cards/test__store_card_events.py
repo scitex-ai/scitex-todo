@@ -28,6 +28,7 @@ mocks, no monkeypatch (STX-NM / PA-306). AAA pattern.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from scitex_cards._model import load_tasks
@@ -80,7 +81,7 @@ def _card_events(sink: _Capturing, ev_type: str | None = None) -> list[dict]:
 
 def test_add_task_emits_exactly_one_created(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     sink = _Capturing()
     # Act
     add_task(
@@ -97,7 +98,7 @@ def test_add_task_emits_exactly_one_created(tmp_path: Path):
 
 def test_created_event_carries_card_id(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     sink = _Capturing()
     # Act
     add_task(
@@ -113,7 +114,7 @@ def test_created_event_carries_card_id(tmp_path: Path):
 
 def test_created_event_actor_is_creating_user(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     sink = _Capturing()
     # Act
     add_task(
@@ -133,7 +134,7 @@ def test_created_event_actor_is_creating_user(tmp_path: Path):
 
 def test_comment_task_emits_commented(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
     sink = _Capturing()
     # Act
@@ -153,7 +154,7 @@ def test_comment_task_emits_commented(tmp_path: Path):
 #: halves are asserted separately below, because "the new event fired" and "the
 #: old one still does" fail for opposite reasons and need naming apart.
 def _commented_sink(tmp_path: Path) -> _Capturing:
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
     sink = _Capturing()
     comment_task(
@@ -186,7 +187,7 @@ def test_comment_task_also_emits_the_canonical_event(tmp_path: Path):
 
 def test_commented_event_carries_body_and_actor(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
     sink = _Capturing()
     # Act
@@ -209,7 +210,7 @@ def test_commented_event_carries_body_and_actor(tmp_path: Path):
 
 def test_status_flip_emits_status_changed_with_from_to(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(
         store=store, id="c-1", title="x", status="pending", assignee="agent:test-suite"
     )
@@ -227,7 +228,7 @@ def test_status_flip_emits_status_changed_with_from_to(tmp_path: Path):
 #: double-count every completion, so the absence is as load-bearing as the
 #: presence and deserves its own name.
 def _flip_to_done_sink(tmp_path: Path) -> _Capturing:
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(
         store=store,
         id="c-1",
@@ -261,7 +262,7 @@ def test_update_to_done_emits_no_status_changed(tmp_path: Path):
 #: Touching a non-status field must emit NEITHER status event. Split so a
 #: regression names which one leaked.
 def _note_only_sink(tmp_path: Path) -> _Capturing:
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(
         store=store, id="c-1", title="x", status="pending", assignee="agent:test-suite"
     )
@@ -290,7 +291,7 @@ def test_update_without_status_change_emits_no_completed(tmp_path: Path):
 
 def test_update_status_to_same_value_emits_no_event(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(
         store=store, id="c-1", title="x", status="pending", assignee="agent:test-suite"
     )
@@ -306,7 +307,7 @@ def test_update_status_to_same_value_emits_no_event(tmp_path: Path):
 
 def test_complete_task_emits_completed(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(
         store=store,
         id="c-1",
@@ -326,7 +327,7 @@ def test_complete_task_emits_completed(tmp_path: Path):
 # emit nothing at all.
 def test_recomplete_done_task_emits_no_event(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(
         store=store,
         id="c-1",
@@ -347,7 +348,7 @@ def test_recomplete_done_task_emits_no_event(tmp_path: Path):
 
 def test_resolve_task_emits_status_changed_to_done(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(
         store=store,
         id="c-1",
@@ -366,7 +367,7 @@ def test_resolve_task_emits_status_changed_to_done(tmp_path: Path):
 
 def test_resolve_already_done_emits_no_event(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(
         store=store, id="c-1", title="x", status="done", assignee="agent:test-suite"
     )
@@ -385,7 +386,7 @@ def test_resolve_already_done_emits_no_event(tmp_path: Path):
 #: `scope` behind would put the card in one agent's queue and another's filter,
 #: and a single compound assertion would only say "reassign is broken".
 def _reassigned_card(tmp_path: Path) -> dict:
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(store=store, id="c-1", title="x", agent="proj-old")
     reassign_task(store, "c-1", "proj-new", by="operator")
     return [t for t in load_tasks(store) if t["id"] == "c-1"][0]
@@ -434,7 +435,7 @@ def test_reassign_appends_audit_comment(tmp_path: Path):
 #: payload IS the notification — a recipient resolver reading `to_owner` cannot
 #: recover from it being wrong, so each field is pinned by name.
 def _reassigned_events(tmp_path: Path) -> list[dict]:
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(store=store, id="c-1", title="x", agent="proj-old")
     sink = _Capturing()
     reassign_task(store, "c-1", "proj-new", by="operator", entry_points=_eps(sink))
@@ -488,7 +489,7 @@ def test_reassigned_event_carries_the_actor(tmp_path: Path):
 
 def test_reassign_to_same_owner_is_noop_no_event(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(store=store, id="c-1", title="x", agent="proj-old")
     sink = _Capturing()
     # Act
@@ -501,7 +502,7 @@ def test_reassign_to_same_owner_is_noop_no_event(tmp_path: Path):
 
 def test_reassign_to_same_owner_writes_no_audit_comment(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(store=store, id="c-1", title="x", agent="proj-old")
     before = [t for t in load_tasks(store) if t["id"] == "c-1"][0]
     n_comments_before = len(before.get("comments") or [])
@@ -514,7 +515,7 @@ def test_reassign_to_same_owner_writes_no_audit_comment(tmp_path: Path):
 
 def test_reassign_to_same_owner_emits_no_event(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(store=store, id="c-1", title="x", agent="proj-old")
     sink = _Capturing()
     # Act
@@ -526,7 +527,7 @@ def test_reassign_to_same_owner_emits_no_event(tmp_path: Path):
 #: Reassign once, then reassign identically again. The second call is the one
 #: under test: it must report `changed=False` AND stay silent on the bus.
 def _second_identical_reassign(tmp_path: Path):
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(store=store, id="c-1", title="x", agent="proj-old")
     reassign_task(store, "c-1", "proj-new", by="operator")
     sink = _Capturing()
@@ -559,8 +560,15 @@ def test_reassign_second_identical_call_emits_no_event(tmp_path: Path):
 #: must carry ``from_owner=None`` rather than invent a placeholder, and the card
 #: must end up genuinely owned.
 def _reassigned_from_unowned(tmp_path: Path):
-    store = tmp_path / "tasks.yaml"
-    store.write_text("tasks:\n  - id: c-1\n    title: x\n    status: pending\n")
+    from conftest import seed_db_from_doc
+
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
+    # add_task now REQUIRES an owner (fail-loud), so seed the owner-less raw
+    # row straight into the canonical DB to exercise reassign-from-None.
+    seed_db_from_doc(
+        {"tasks": [{"id": "c-1", "title": "x", "status": "pending"}]},
+        os.environ["SCITEX_CARDS_DB"],
+    )
     sink = _Capturing()
     reassign_task(store, "c-1", "proj-new", by="operator", entry_points=_eps(sink))
     card = [t for t in load_tasks(store) if t["id"] == "c-1"][0]
@@ -600,7 +608,7 @@ def _bad_eps() -> list[_FakeEP]:
 #: propagate the handler's exception) and the card is DURABLY on disk (it did
 #: not roll the write back on the way out).
 def _added_with_exploding_handler(tmp_path: Path):
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     inserted = add_task(
         store=store,
         id="c-1",
@@ -631,7 +639,7 @@ def test_add_task_persists_even_when_emit_raises(tmp_path: Path):
 
 def test_complete_task_persists_even_when_emit_raises(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(
         store=store,
         id="c-1",
@@ -648,7 +656,7 @@ def test_complete_task_persists_even_when_emit_raises(tmp_path: Path):
 
 def test_update_status_persists_even_when_emit_raises(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(
         store=store, id="c-1", title="x", status="pending", assignee="agent:test-suite"
     )
@@ -663,7 +671,7 @@ def test_update_status_persists_even_when_emit_raises(tmp_path: Path):
 # this covers the pair in one shot.
 def test_comment_task_persists_even_when_emit_raises(tmp_path: Path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(store=store, id="c-1", title="x", assignee="agent:test-suite")
     # Act
     comment_task(store=store, task_id="c-1", text="hi", entry_points=_bad_eps())
@@ -673,7 +681,7 @@ def test_comment_task_persists_even_when_emit_raises(tmp_path: Path):
 
 
 def _reassigned_with_exploding_handler(tmp_path: Path):
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(store=store, id="c-1", title="x", agent="proj-old")
     result = reassign_task(
         store, "c-1", "proj-new", by="operator", entry_points=_bad_eps()
@@ -718,7 +726,7 @@ def test_reassign_persists_even_when_emit_raises(tmp_path: Path):
 def _created_notifications(tmp_path: Path):
     from scitex_cards import _inbox
 
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(store=store, id="c-1", title="x", assignee="alice", created_by="operator")
     return _inbox.poll_inbox("alice", unseen_only=False, mark_seen=False, store=store)
 
@@ -745,7 +753,7 @@ def test_reassign_enqueues_notification_into_same_store(tmp_path: Path):
     # Arrange
     from scitex_cards import _inbox
 
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     add_task(store=store, id="c-1", title="x", agent="proj-old")
     # Act
     reassign_task(store, "c-1", "proj-new", by="operator")

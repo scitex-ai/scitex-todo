@@ -24,12 +24,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+from pathlib import Path
 
 import pytest
 import yaml
 
 from scitex_cards._events import Event, EventType
 from scitex_cards._inbox import ack, enqueue, poll_inbox
+from scitex_cards._model import load_tasks
 from scitex_cards._notify._dispatch import dispatch_notifications
 from scitex_cards._store import add_task
 from scitex_cards._users import register_user, resolve_user
@@ -39,7 +42,15 @@ from scitex_cards._users import register_user, resolve_user
 # helpers                                                                     #
 # --------------------------------------------------------------------------- #
 def _store(tmp_path):
-    return tmp_path / "tasks.yaml"
+    # SQLite is the TASK store now: load_tasks / add_task read+write the
+    # canonical DB and only use this path to STAMP provenance, so a write
+    # stamped with a tmp_path file is refused by the next read. Return the
+    # PINNED store identity (== resolve_tasks_path(None)) the conftest already
+    # aims the DB at, so writes stamp the same path reads resolve. The users:
+    # and inboxes: sections still live in THIS YAML file (only the task path
+    # moved off YAML on this branch), so register_user / enqueue / poll_inbox
+    # keep operating on it directly. `tmp_path` is now unused.
+    return Path(os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"])
 
 
 def _read(store):
@@ -909,10 +920,12 @@ def test_inbox_write_creates_the_inboxes_section(store_with_task_user_and_inbox)
 def test_inbox_write_keeps_the_seeded_task(store_with_task_user_and_inbox):
     # Arrange
     store = store_with_task_user_and_inbox
-    # Act
-    data = _read(store)
+    # Act — the task lives in the SQLite store now, not the YAML file; read it
+    # back through load_tasks (the DB read path) to prove the inbox write left
+    # it intact.
+    tasks = load_tasks(store)
     # Assert
-    assert "c1" in {t["id"] for t in data["tasks"]}
+    assert "c1" in {t["id"] for t in tasks}
 
 
 def test_inbox_persistence_does_not_clobber_tasks_and_users(
@@ -920,9 +933,8 @@ def test_inbox_persistence_does_not_clobber_tasks_and_users(
 ):
     # Arrange
     store = store_with_task_user_and_inbox
-    # Act
-    data = _read(store)
-    task = {t["id"]: t for t in data["tasks"]}["c1"]
+    # Act — the task payload lives in the SQLite store now; load it from there.
+    task = {t["id"]: t for t in load_tasks(store)}["c1"]
     # Assert — the task PAYLOAD survived, not merely the row.
     assert task["note"] == "keep me"
 
@@ -963,9 +975,10 @@ def test_add_task_after_inbox_seed_still_works(tmp_path):
     _enqueue_completed(store, body="x")
     # Act
     add_task(store=store, id="c2", title="later", agent="alice")
-    data = _read(store)
-    # Assert — add_task does not raise on the seeded file, and the row lands.
-    assert any(t["id"] == "c2" for t in data["tasks"])
+    tasks = load_tasks(store)
+    # Assert — add_task does not raise after an inbox seed, and the row lands in
+    # the SQLite store.
+    assert any(t["id"] == "c2" for t in tasks)
 
 
 def test_inbox_survives_a_later_task_write(tmp_path):

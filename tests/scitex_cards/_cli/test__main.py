@@ -9,57 +9,63 @@ import json
 from click.testing import CliRunner
 
 from scitex_cards._cli import main
+from scitex_cards._store import add_task
 
 
-def _store(tmp_path):
-    """Write a small valid tasks.yaml and return its path string."""
-    path = tmp_path / "tasks.yaml"
-    path.write_text(
-        "tasks:\n"
-        "  - {id: design, title: Design, status: done}\n"
-        "  - {id: build, title: Build, status: deferred, depends_on: [design]}\n",
-        encoding="utf-8",
+def _seed():
+    """Seed the harness-provided store with a small dependency pair.
+
+    ``tests/conftest.py`` bootstraps an empty per-test store and pins every
+    store-selecting env var at it, so neither this seeder nor the CLI needs
+    to be told where the store is.
+    """
+    add_task(id="design", title="Design", status="done", assignee="agent:test")
+    add_task(
+        id="build",
+        title="Build",
+        status="deferred",
+        assignee="agent:test",
+        depends_on=["design"],
     )
-    return str(path)
 
 
-def test_list_tasks_command_prints_resolved_task_ids(tmp_path):
+def test_list_tasks_command_prints_resolved_task_ids():
     # Arrange
     runner = CliRunner()
-    store = _store(tmp_path)
+    _seed()
     # Act
-    result = runner.invoke(main, ["list-tasks", "--tasks", store])
+    result = runner.invoke(main, ["list-tasks"])
     # Assert
     assert "design" in result.output
 
 
-def test_list_tasks_json_emits_parseable_array(tmp_path):
+def test_list_tasks_json_emits_parseable_array():
     # Arrange
     runner = CliRunner()
-    store = _store(tmp_path)
+    _seed()
     # Act
-    result = runner.invoke(main, ["list-tasks", "--tasks", store, "--json"])
+    result = runner.invoke(main, ["list-tasks", "--json"])
     ids = [task["id"] for task in json.loads(result.output)]
     # Assert
     assert ids == ["design", "build"]
 
 
-def test_render_graph_print_mermaid_emits_flowchart_source(tmp_path):
+def test_render_graph_print_mermaid_emits_flowchart_source():
     # Arrange
     runner = CliRunner()
-    store = _store(tmp_path)
+    _seed()
     # Act
-    result = runner.invoke(main, ["render-graph", "--tasks", store, "--print-mermaid"])
+    result = runner.invoke(main, ["render-graph", "--print-mermaid"])
     # Assert
     assert result.output.startswith("flowchart TB")
 
 
-def test_render_graph_print_mermaid_includes_dependency_edge(tmp_path):
+def test_render_graph_print_mermaid_includes_dependency_edge():
     # Arrange
     runner = CliRunner()
-    store = _store(tmp_path)
+    _seed()
     # Act
-    result = runner.invoke(main, ["render-graph", "--tasks", store, "--print-mermaid"])
+    result = runner.invoke(main, ["render-graph", "--print-mermaid"])
     # Assert
     assert "design --> build" in result.output
 

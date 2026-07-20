@@ -24,6 +24,7 @@ Also pinned:
 
 from __future__ import annotations
 
+import os
 import threading
 
 import pytest
@@ -36,8 +37,13 @@ from scitex_cards._backend_http import HubBackend, HubBackendError
 @pytest.fixture()
 def hub(tmp_path, env):
     """A live hub + a fully-provisioned client environment."""
-    store = tmp_path / "tasks.yaml"
-    store.write_text("tasks: []\n", encoding="utf-8")
+    # SQLite is the store: the conftest already pins every store env var at a
+    # per-test scratch dir and bootstraps an EMPTY, schema-complete DB there.
+    # The hub server must address that SAME pinned store identity so its writes
+    # stamp the canonical DB with `resolve_tasks_path(None)` and the direct
+    # hub-side read-backs below round-trip (a tmp_path/tasks.yaml store would
+    # stamp the DB for a DIFFERENT path than reads resolve → hard refusal).
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     tokens_dir = tmp_path / "tokens"
     audit_path = tmp_path / "logs" / "hub_access.jsonl"
 

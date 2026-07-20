@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Tests for the S0 shadow-SQLite adapter + YAML bootstrap (RFC #348).
+"""Tests for the SQLite adapter + in-memory doc bootstrap (RFC #348).
 
-Real ``sqlite3`` + real ``tmp_path`` YAML fixtures — NO mocks. Every test
-proves the S0 contract: the DB is a shadow bootstrapped from YAML, the schema
-matches the RFC, and the import NEVER modifies the source YAML.
+Real ``sqlite3`` + real in-memory doc fixtures — NO mocks. SQLite is the only
+store now; there is no YAML file to read and the ``import_from_yaml`` entry
+point is gone. Tests build the same in-memory document the YAML used to hold
+and seed it into a scratch DB via ``seed_db_from_doc`` (the surviving
+``_rebuild_from_doc`` primitive), then assert the schema/columns/counts the RFC
+pins.
 """
 
 from __future__ import annotations
@@ -13,7 +16,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-import yaml
+from conftest import seed_db_from_doc
 
 from scitex_cards import _db, _db_bootstrap, _model
 
@@ -21,13 +24,14 @@ from scitex_cards import _db, _db_bootstrap, _model
 # --------------------------------------------------------------------------- #
 # Fixtures                                                                     #
 # --------------------------------------------------------------------------- #
-def _write_yaml(path: Path, data: dict) -> None:
-    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-
-
 @pytest.fixture
 def store(tmp_path):
-    """A tasks.yaml + threads.yaml pair exercising every child collection."""
+    """An in-memory tasks doc + threads map exercising every child collection.
+
+    The store is SQLite-only now; there is no YAML file to read. Tests build the
+    same in-memory document the YAML used to hold and seed it into the scratch
+    ``db_path`` via ``seed_db_from_doc``.
+    """
     tasks_doc = {
         "tasks": [
             {
@@ -117,22 +121,18 @@ def store(tmp_path):
             ],
         },
     }
-    tasks_path = tmp_path / "tasks.yaml"
-    threads_path = tmp_path / "threads.yaml"
-    _write_yaml(tasks_path, tasks_doc)
-    _write_yaml(threads_path, threads_doc)
     return {
-        "tasks_path": tasks_path,
-        "threads_path": threads_path,
+        "tasks_doc": tasks_doc,
+        "threads": threads_doc["threads"],
         "db_path": tmp_path / "todo.db",
     }
 
 
 @pytest.fixture
 def imported(store):
-    """The `store` fixture imported into SQLite: summary + a live row-factory conn."""
-    summary = _db_bootstrap.import_from_yaml(
-        tasks_path=store["tasks_path"], db_path=store["db_path"]
+    """The `store` doc seeded into SQLite: summary + a live row-factory conn."""
+    summary = seed_db_from_doc(
+        store["tasks_doc"], store["db_path"], threads=store["threads"]
     )
     conn = sqlite3.connect(str(store["db_path"]))
     conn.row_factory = sqlite3.Row
@@ -866,12 +866,17 @@ def test_import_keeps_an_unread_message_unread(imported):
 # Bootstrap — idempotency                                                     #
 # --------------------------------------------------------------------------- #
 def _import_twice(store):
-    """Import the same yaml twice; return both summaries."""
-    first = _db_bootstrap.import_from_yaml(
-        tasks_path=store["tasks_path"], db_path=store["db_path"]
+    """Seed the same doc twice; return both summaries.
+
+    ``_rebuild_from_doc`` DELETEs every table before it inserts, so re-seeding is
+    idempotent by construction — the same property the twice-run YAML import
+    proved.
+    """
+    first = seed_db_from_doc(
+        store["tasks_doc"], store["db_path"], threads=store["threads"]
     )
-    second = _db_bootstrap.import_from_yaml(
-        tasks_path=store["tasks_path"], db_path=store["db_path"]
+    second = seed_db_from_doc(
+        store["tasks_doc"], store["db_path"], threads=store["threads"]
     )
     return first, second
 
@@ -954,10 +959,8 @@ def test_a_second_import_does_not_multiply_notification_rows(store):
 # --------------------------------------------------------------------------- #
 @pytest.fixture
 def verified(store):
-    """The report `verify` gives for a freshly imported store."""
-    _db_bootstrap.import_from_yaml(
-        tasks_path=store["tasks_path"], db_path=store["db_path"]
-    )
+    """The report `verify` gives for a freshly seeded store."""
+    seed_db_from_doc(store["tasks_doc"], store["db_path"], threads=store["threads"])
     return _db.verify(store["db_path"])
 
 
@@ -999,13 +1002,20 @@ def test_verify_runs_sqlites_own_integrity_quick_check(verified):
     assert report["quick_check"] == "ok"
 
 
-def test_verify_records_that_the_db_came_from_a_yaml_import(verified):
+def test_verify_records_the_db_provenance_source(verified):
+    """verify() surfaces the ``schema_meta`` 'source' stamp.
+
+    The old 'yaml-import' provenance is gone with the import path; the seed
+    helper stamps 'test-seed'. What still matters — and what this pins — is that
+    verify reports whatever source the DB was actually stamped with, not a
+    hard-coded literal.
+    """
     # Arrange
     # Act
     report = verified
 
     # Assert
-    assert report["source"] == "yaml-import"
+    assert report["source"] == "test-seed"
 
 
 def test_verify_counts_the_rows_of_each_table(verified):
@@ -1097,31 +1107,6 @@ def test_repo_field_round_trips_db_column(imported):
 
 
 # --------------------------------------------------------------------------- #
-# SAFETY: import never modifies the source YAML                              #
-# --------------------------------------------------------------------------- #
-def test_import_does_not_modify_the_source_tasks_yaml(store):
-    # Arrange
-    before = store["tasks_path"].read_bytes()
-
-    # Act — twice, to be extra sure a second pass also leaves YAML untouched.
-    _import_twice(store)
-
-    # Assert
-    assert store["tasks_path"].read_bytes() == before
-
-
-def test_import_does_not_modify_the_source_threads_yaml(store):
-    # Arrange
-    before = store["threads_path"].read_bytes()
-
-    # Act — twice, to be extra sure a second pass also leaves YAML untouched.
-    _import_twice(store)
-
-    # Assert
-    assert store["threads_path"].read_bytes() == before
-
-
-# --------------------------------------------------------------------------- #
 # PERF REGRESSION: the REBUILD must not pay for `OR REPLACE`                  #
 # --------------------------------------------------------------------------- #
 # `INSERT OR REPLACE INTO tasks` cost 4,592 us/row against 110 us/row for a plain
@@ -1143,7 +1128,7 @@ def _sql_trace(conn, fn):
 
 def _traced_rebuild_inserts(store) -> list[str]:
     """Run `_rebuild_from_doc` under a SQL trace; return the `INTO tasks` statements."""
-    doc = _model.load_doc(store["tasks_path"], validate=False)
+    doc = store["tasks_doc"]
     conn = _db.connect(store["db_path"])
     _db.init_schema(conn)
 
@@ -1208,32 +1193,28 @@ def test_insert_tasks_defaults_to_upsert_over_a_live_row(store):
 # Python (`_dedupe_last_wins`) so the SQL can stay plain. A duplicate id is a
 # real data bug, so it is also logged LOUD rather than silently absorbed.
 def _import_a_store_with_a_duplicate_id(tmp_path, caplog) -> dict:
-    """Import a yaml carrying the same card id twice; return the observable state."""
-    tasks_path = tmp_path / "tasks.yaml"
-    _write_yaml(
-        tasks_path,
-        {
-            "tasks": [
-                {
-                    "id": "dup",
-                    "title": "FIRST",
-                    "status": "todo",
-                    "comments": [{"author": "a", "ts": "t", "text": "old"}],
-                },
-                {"id": "keep", "title": "Untouched", "status": "done"},
-                {
-                    "id": "dup",
-                    "title": "SECOND",
-                    "status": "done",
-                    "comments": [{"author": "b", "ts": "t", "text": "new"}],
-                },
-            ]
-        },
-    )
+    """Seed a doc carrying the same card id twice; return the observable state."""
+    doc = {
+        "tasks": [
+            {
+                "id": "dup",
+                "title": "FIRST",
+                "status": "todo",
+                "comments": [{"author": "a", "ts": "t", "text": "old"}],
+            },
+            {"id": "keep", "title": "Untouched", "status": "done"},
+            {
+                "id": "dup",
+                "title": "SECOND",
+                "status": "done",
+                "comments": [{"author": "b", "ts": "t", "text": "new"}],
+            },
+        ]
+    }
     db_path = tmp_path / "todo.db"
 
     with caplog.at_level("ERROR"):
-        summary = _db_bootstrap.import_from_yaml(tasks_path=tasks_path, db_path=db_path)
+        summary = seed_db_from_doc(doc, db_path)
 
     conn = sqlite3.connect(str(db_path))
     try:

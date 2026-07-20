@@ -23,17 +23,36 @@ Pinned here the same three ways as the sibling crud/edge handlers:
 from __future__ import annotations
 
 import json
+import os
+import sys
+from pathlib import Path
 
 import pytest
-import yaml
 
 pytest.importorskip("django")
+
+# ``seed_db_from_doc`` lives in the SHARED tests/scitex_cards/conftest.py, but
+# this file sits under _django/, whose own conftest.py shadows the bare
+# ``conftest`` module name — ``from conftest import seed_db_from_doc`` binds that
+# sibling and is fragile. Load the shared conftest deterministically by path.
+import importlib.util as _ilu  # noqa: E402
 
 from django.test import RequestFactory  # noqa: E402
 
 from scitex_cards._django import views  # noqa: E402
 from scitex_cards._django.handlers import rescore  # noqa: E402
 from scitex_cards._django.services import _reset_cache, get_board  # noqa: E402
+from scitex_cards._model import load_tasks  # noqa: E402
+from scitex_cards._yaml import safe_load  # noqa: E402
+
+_shared_conftest = Path(__file__).resolve().parents[2] / "conftest.py"
+_spec = _ilu.spec_from_file_location("_scitex_cards_shared_conftest", _shared_conftest)
+_mod = _ilu.module_from_spec(_spec)
+# Register BEFORE exec: the shared conftest defines a @dataclass, and on py3.12
+# the dataclass machinery looks the module up in sys.modules while executing.
+sys.modules[_spec.name] = _mod
+_spec.loader.exec_module(_mod)
+seed_db_from_doc = _mod.seed_db_from_doc
 
 _STORE_TEXT = (
     "tasks:\n"
@@ -44,13 +63,21 @@ _STORE_TEXT = (
 
 
 @pytest.fixture
-def store(tmp_path, env):
+def store(env):
     # Hermetic: no per-project lane union from the real ~/proj tree.
     env.set("SCITEX_TODO_LANE_GLOBS", "")
-    path = tmp_path / "tasks.yaml"
-    path.write_text(_STORE_TEXT, encoding="utf-8")
+    # SQLite store: seed the prior cards into the canonical DB, then hand the
+    # handler the PINNED store-identity path (never a tmp_path YAML — a write
+    # stamped with a tmp path fails the next read's ownership check). The DB is
+    # authoritative for content; the handler ignores the path except as a
+    # provenance label. The board/services layer (get_board -> load_groups)
+    # still stat()s the identity file, so it must EXIST even though its content
+    # is never read — an empty file is enough.
+    seed_db_from_doc(safe_load(_STORE_TEXT) or {}, os.environ["SCITEX_CARDS_DB"])
+    store_path = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
+    Path(store_path).write_text("", encoding="utf-8")
     _reset_cache()
-    yield str(path)
+    yield store_path
     _reset_cache()
 
 
@@ -70,9 +97,8 @@ def _request(body):
 
 
 def _load(store_path):
-    with open(store_path, encoding="utf-8") as handle:
-        data = yaml.safe_load(handle)
-    return {t["id"]: t for t in data["tasks"]}
+    # Read back through the canonical store (SQLite); the path is a label only.
+    return {t["id"]: t for t in load_tasks(store_path)}
 
 
 def _stale_board(store_path):

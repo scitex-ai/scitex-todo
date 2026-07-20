@@ -22,8 +22,8 @@ from ._compat import spec_command_kwargs, spec_group_kwargs
 _STORE_RESOLUTION = (
     "Canonical store: a SQLite DB at $SCITEX_CARDS_DB (default",
     "~/.scitex/cards/cards.db) when $SCITEX_CARDS_STORE_BACKEND=sqlite.",
-    "YAML path resolution (first existing wins): an explicit --tasks path,",
-    "then $SCITEX_CARDS_TASKS_YAML_SHARED, then the user store",
+    "YAML path resolution (first existing wins):",
+    "$SCITEX_CARDS_TASKS_YAML_SHARED, then the user store",
     "~/.scitex/cards/tasks.yaml (relocatable via $SCITEX_DIR). There is NO",
     "bundled-example fallback — an unresolvable store raises. Run",
     "`scitex-cards resolve-store` to see what you actually resolved to.",
@@ -170,18 +170,11 @@ def main(ctx: click.Context, help_recursive: bool, as_json: bool) -> None:
         ),
         examples=(
             (
-                "{prog} render-graph --tasks ./.scitex/todo/tasks.yaml -o tasks.png",
-                "Render the project store to tasks.png.",
+                "{prog} render-graph -o tasks.png",
+                "Render the resolved store to tasks.png.",
             ),
         ),
     ),
-)
-@click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Path to tasks.yaml (default: project -> user -> bundled example, "
-    "or $SCITEX_TODO_TASKS_YAML_SHARED).",
 )
 @click.option(
     "-o",
@@ -195,9 +188,9 @@ def main(ctx: click.Context, help_recursive: bool, as_json: bool) -> None:
     is_flag=True,
     help="Print the generated mermaid source to stdout and exit (no render).",
 )
-def render_graph_cmd(tasks_path: str | None, output: str, print_mermaid: bool) -> None:
+def render_graph_cmd(output: str, print_mermaid: bool) -> None:
     """Render the resolved task store to a dependency PNG."""
-    resolved = resolve_tasks_path(tasks_path)
+    resolved = resolve_tasks_path(None)
     tasks = load_tasks(resolved)
     mermaid_src = build_mermaid(tasks)
 
@@ -233,13 +226,6 @@ def render_graph_cmd(tasks_path: str | None, output: str, print_mermaid: bool) -
             ("{prog} list-tasks --blocker __none", "rows with no blocker"),
         ),
     ),
-)
-@click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Path to tasks.yaml (default: project -> user -> bundled example, "
-    "or $SCITEX_TODO_TASKS_YAML_SHARED).",
 )
 @click.option(
     "--scope",
@@ -319,7 +305,6 @@ def render_graph_cmd(tasks_path: str | None, output: str, print_mermaid: bool) -
     help="Emit the resolved tasks as a JSON array.",
 )
 def list_tasks_cmd(
-    tasks_path: str | None,
     scope: str | None,
     assignee: str | None,
     agent: str | None,
@@ -340,7 +325,7 @@ def list_tasks_cmd(
     if blocking_operator:
         from ._admin import list_blocking_operator
 
-        list_blocking_operator(tasks_path, as_json)
+        list_blocking_operator(None, as_json)
         return
     # Normalize: click's multiple=True returns a tuple; the helper
     # signature takes a list[str] | None. Empty tuple = no constraint.
@@ -375,7 +360,7 @@ def list_tasks_cmd(
             # is empty / multi; the multi case feeds `statuses=`.
             None,
             as_json,
-            tasks_path,
+            None,
             statuses=statuses_list,
             agent=agent,
             project=project,
@@ -388,7 +373,7 @@ def list_tasks_cmd(
         )
         return
     # Plain path — backward-compatible plain table / JSON array.
-    resolved = resolve_tasks_path(tasks_path)
+    resolved = resolve_tasks_path(None)
     tasks = load_tasks(resolved)
     if as_json:
         click.echo(json.dumps(tasks))

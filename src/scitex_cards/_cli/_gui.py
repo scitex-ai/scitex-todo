@@ -99,29 +99,18 @@ def gui_group(ctx: click.Context) -> None:
 @click.option("--port", type=int, default=DEFAULT_PORT, show_default=True)
 @click.option("--host", default=DEFAULT_HOST, show_default=True)
 @click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Path to tasks.yaml (default: the user-canonical store).",
-)
-@click.option(
     "--dry-run",
     is_flag=True,
     help="Print the planned launch without starting the server.",
 )
-def gui_serve_cmd(
-    port: int, host: str, tasks_path: str | None, dry_run: bool
-) -> None:
+def gui_serve_cmd(port: int, host: str, dry_run: bool) -> None:
     """Foreground-blocking serve, no browser.
 
     Example:
       $ scitex-todo gui serve --port 8051
     """
     if dry_run:
-        click.echo(
-            f"# dry-run: would serve the board on {host}:{port}, "
-            f"tasks={tasks_path or '<default-resolution>'}, no browser"
-        )
+        click.echo(f"# dry-run: would serve the board on {host}:{port}, no browser")
         return
     existing = _board_read_pid()
     if existing is not None:
@@ -129,7 +118,7 @@ def gui_serve_cmd(
             f"the board is already running (pid {existing}). Use "
             "`scitex-todo gui stop` or `scitex-todo gui status`."
         )
-    _board_run_server(tasks_path, port, no_browser=True, host=host)
+    _board_run_server(None, port, no_browser=True, host=host)
 
 
 @gui_group.command(
@@ -151,10 +140,7 @@ def gui_serve_cmd(
 @click.argument("surface", required=False, default="")
 @click.option("--port", type=int, default=DEFAULT_PORT, show_default=True)
 @click.option("--host", default=DEFAULT_HOST, show_default=True)
-@click.option("--tasks", "tasks_path", default=None, help="Path to tasks.yaml.")
-def gui_open_cmd(
-    surface: str, port: int, host: str, tasks_path: str | None
-) -> None:
+def gui_open_cmd(surface: str, port: int, host: str) -> None:
     """Serve + open a browser. Reuses a running board if there is one.
 
     Example:
@@ -179,10 +165,10 @@ def gui_open_cmd(
         import webbrowser
 
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
-        _board_run_server(tasks_path, port, no_browser=True, host=host)
+        _board_run_server(None, port, no_browser=True, host=host)
         return
 
-    _board_run_server(tasks_path, port, no_browser=False, host=host)
+    _board_run_server(None, port, no_browser=False, host=host)
 
 
 # `status` and `stop` are the SAME commands the `board` group exposes, not

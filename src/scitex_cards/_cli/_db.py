@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CLI noun group ``scitex-todo db`` — shadow-SQLite operability verbs (S0).
+"""CLI noun group ``scitex-cards db`` — SQLite operability verbs.
 
-STAGE S0 (RFC #348): the SQLite DB is a SHADOW bootstrapped from the canonical
-YAML store; nothing reads it as truth yet. These verbs are the operability
-surface:
+SQLite is the store. These verbs are its operability surface:
 
-  * ``db path``            — print the resolved shadow-DB path.
-  * ``db verify``          — open the DB, check user_version + table counts.
-  * ``db import --from-yaml`` — (re)bootstrap the DB from ``tasks.yaml``.
+  * ``db path``     — print the resolved database path.
+  * ``db verify``   — open the DB, check user_version + table counts.
+  * ``db export``   — write the store out as YAML text (a backup, never a source).
+  * ``db snapshot`` — export + git-commit the export off-site.
+
+The YAML-import verbs (``db import --from-yaml``, ``db rehearse``, and
+``db snapshot --refresh``) are DELETED: there is no YAML to import from, and an
+importer built on the DB read path rebuilt the database from itself.
 
 The group token is a NOUN per the SciTeX noun-verb CLI convention. Attached to
-the root group via :func:`register`, mirroring the sibling ``migration`` /
-``health`` modules so the over-budget ``_main.py`` stays untouched.
+the root group via :func:`register`.
 """
 
 from __future__ import annotations
@@ -58,12 +60,11 @@ def register(main: click.Group) -> None:
 @click.group(
     "db",
     help=(
-        "Shadow-SQLite store verbs (SQLite migration S0, RFC #348).\n\n"
-        "The DB is a SHADOW bootstrapped from the canonical tasks.yaml; the "
-        "YAML stays the source of truth and no read/write path uses the DB "
-        "yet. `db path` prints the resolved DB location, `db verify` checks "
-        "schema health, and `db import --from-yaml` (re)builds the DB from "
-        "the YAML (idempotent, never modifies the YAML)."
+        "SQLite store verbs. SQLite is the store.\n\n"
+        "`db path` prints the resolved database location, `db verify` checks "
+        "schema health, `db export` writes the store out as YAML text (a "
+        "backup, never a source), and `db snapshot` commits that export "
+        "off-site."
     ),
 )
 def db_group() -> None:
@@ -124,7 +125,7 @@ def db_verify_cmd(db_path: str | None, as_json: bool) -> None:
     status = "OK" if report["ok"] else "UNHEALTHY"
     click.echo(f"# scitex-todo db verify: {status} — {report['path']}")
     if not report["exists"]:
-        click.echo("[FAIL] db does not exist yet (run `db import --from-yaml`)")
+        click.echo("[FAIL] db does not exist yet (run `init-store`)")
         raise SystemExit(1)
     click.echo(
         f"  user_version={report['user_version']} "
@@ -134,76 +135,6 @@ def db_verify_cmd(db_path: str | None, as_json: bool) -> None:
     for name, count in report["tables"].items():
         click.echo(f"  {name}: {count}")
     raise SystemExit(0 if report["ok"] else 1)
-
-
-@db_group.command(
-    "import",
-    help=(
-        "Bootstrap the shadow DB from the canonical YAML store.\n\n"
-        "Reads tasks.yaml (tasks + users + inboxes) and the threads.yaml "
-        "sidecar and rebuilds every DB table in one transaction. Idempotent "
-        "(re-run = same state). The YAML is opened READ-ONLY and never "
-        "modified. Requires --from-yaml (the only S0 source).\n\n"
-        "Example:\n"
-        "  scitex-todo db import --from-yaml\n"
-        "  scitex-todo db import --from-yaml --tasks /path/to/tasks.yaml --json"
-    ),
-)
-@click.option(
-    "--from-yaml",
-    "from_yaml",
-    is_flag=True,
-    help="Import from the YAML store (the only source in S0). Required.",
-)
-@click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Path to tasks.yaml (default: user store / $SCITEX_TODO_TASKS_YAML_SHARED).",
-)
-@click.option(
-    "--as-store",
-    "as_store",
-    default=None,
-    help=(
-        "Stamp the DB as the store for THIS path instead of the imported file. "
-        "Use when restoring from a backup/snapshot: the source file is where the "
-        "DATA came from, not what the DB IS."
-    ),
-)
-@_DB_OPTION
-@click.option(
-    "--json", "as_json", is_flag=True, help="Emit the import summary as JSON."
-)
-def db_import_cmd(
-    from_yaml: bool,
-    tasks_path: str | None,
-    as_store: str | None,
-    db_path: str | None,
-    as_json: bool,
-) -> None:
-    """(Re)bootstrap the shadow DB from the YAML store."""
-    if not from_yaml:
-        raise click.ClickException(
-            "`db import` requires --from-yaml (the only source in S0)."
-        )
-    from .._db_bootstrap import import_from_yaml
-
-    summary = import_from_yaml(
-        tasks_path=tasks_path, db_path=db_path, as_store=as_store
-    )
-    if as_json:
-        click.echo(json.dumps(summary))
-        return
-    click.echo(
-        f"# imported YAML -> shadow DB\n"
-        f"  yaml: {summary['yaml_path']}\n"
-        f"  db:   {summary['db_path']}\n"
-        f"  tasks={summary['tasks']} comments={summary['comments']} "
-        f"edges={summary['edges']} roles={summary['roles']}\n"
-        f"  users={summary['users']} user_names={summary['user_names']} "
-        f"notifications={summary['notifications']} messages={summary['messages']}"
-    )
 
 
 def _echo_export_report(report: dict) -> None:
@@ -225,7 +156,7 @@ def _echo_export_report(report: dict) -> None:
         "Every record is reconstructed from its VERBATIM json payload "
         "(card_json / record_json) — never from typed columns — so the "
         "export is exact by construction. REFUSES loudly if any row has no "
-        "payload (a pre-v3 DB: re-run `db import --from-yaml` first).\n\n"
+        "payload.\n\n"
         "Example:\n"
         "  scitex-cards db export\n"
         "  scitex-cards db export --out /tmp/tasks.yaml --json"
@@ -281,15 +212,6 @@ def db_export_cmd(
     help="Snapshot directory (default: <db_dir>/snapshots; its own git repo).",
 )
 @click.option(
-    "--refresh",
-    is_flag=True,
-    help=(
-        "Rebuild the DB from the canonical YAML first (import), then "
-        "snapshot. The honest pre-cutover cadence: import IS the freshness "
-        "step while the yaml is still canonical; after the flip, drop it."
-    ),
-)
-@click.option(
     "--push",
     is_flag=True,
     help=(
@@ -315,7 +237,6 @@ def db_export_cmd(
 def db_snapshot_cmd(
     db_path: str | None,
     snap_dir: str | None,
-    refresh: bool,
     push: bool,
     allow_shrink: bool,
     as_json: bool,
@@ -326,16 +247,6 @@ def db_snapshot_cmd(
 
     from .._db import resolve_db_path
     from .._db_export import export_yaml
-
-    if refresh:
-        from .._db_bootstrap import import_from_yaml
-
-        summary = import_from_yaml(db_path=db_path)
-        if not as_json:
-            click.echo(
-                f"# refreshed DB from YAML: {summary['yaml_path']} -> "
-                f"{summary['db_path']} ({summary['tasks']} tasks)"
-            )
 
     root = (
         Path(snap_dir).expanduser()
@@ -432,58 +343,6 @@ def db_snapshot_cmd(
     _echo_export_report(report)
     state = "committed" if report["committed"] else "no changes since last snapshot"
     click.echo(f"  snapshot: {root} ({state})")
-
-
-@db_group.command(
-    "rehearse",
-    help=(
-        "Cutover rehearsal: prove yaml -> cards.db -> yaml is exact.\n\n"
-        "Freezes (copies) the store + threads sidecar, imports into a "
-        "throwaway DB, exports, and deep-compares every section. "
-        "READ-ONLY on the live store. Exit 0 iff ALL sections equal; "
-        "a failing rehearsal keeps its workdir as evidence.\n\n"
-        "Example:\n"
-        "  scitex-cards db rehearse\n"
-        "  scitex-cards db rehearse --json"
-    ),
-)
-@click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Store to rehearse against (default: resolved store).",
-)
-@click.option(
-    "--workdir", default=None, help="Rehearsal dir (default: fresh temp dir)."
-)
-@click.option(
-    "--keep", is_flag=True, help="Keep the workdir even when the rehearsal passes."
-)
-@click.option(
-    "--json", "as_json", is_flag=True, help="Emit the verdict report as JSON."
-)
-def db_rehearse_cmd(tasks_path, workdir, keep, as_json):
-    """Run the frozen-copy equivalence rehearsal (the R4 cutover gate)."""
-    from .._db_rehearse import rehearse
-
-    report = rehearse(tasks_path=tasks_path, workdir=workdir, keep=keep)
-    if as_json:
-        click.echo(json.dumps(report))
-        raise SystemExit(0 if report["equal"] else 1)
-    verdict = "EQUAL" if report["equal"] else "NOT EQUAL"
-    click.echo(f"# db rehearse: {verdict} — {report['store']}")
-    for name, ok in report["sections"].items():
-        click.echo(f"  {name}: {'ok' if ok else 'MISMATCH'}")
-    click.echo(
-        f"  tasks={report['tasks']} users={report['users']} "
-        f"inbox_recipients={report['inbox_recipients']} threads={report['threads']} "
-        f"(import {report['import_s']}s / export {report['export_s']}s)"
-    )
-    if not report["equal"]:
-        click.echo(f"  evidence kept in: {report['workdir']}")
-        if report["mismatch_sample"]:
-            click.echo(f"  mismatched task ids: {report['mismatch_sample']}")
-    raise SystemExit(0 if report["equal"] else 1)
 
 
 # EOF

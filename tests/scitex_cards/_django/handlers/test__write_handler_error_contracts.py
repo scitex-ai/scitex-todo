@@ -20,17 +20,22 @@ adversarial review (2026-07-17):
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
-import yaml
 
 pytest.importorskip("django")
 
+from conftest import (
+    seed_db_from_doc,  # noqa: E402  (re-exported by _django/conftest.py)
+)
 from django.test import RequestFactory  # noqa: E402
 
 from scitex_cards._django.handlers import crud  # noqa: E402
 from scitex_cards._django.handlers import edge as edge_handlers  # noqa: E402
 from scitex_cards._django.services import _reset_cache, get_board  # noqa: E402
+from scitex_cards._model import load_tasks  # noqa: E402
+from scitex_cards._yaml import safe_load  # noqa: E402
 
 _STORE_TEXT = (
     "tasks:\n"
@@ -42,13 +47,19 @@ _STORE_TEXT = (
 
 
 @pytest.fixture
-def store(tmp_path, env):
+def store(env):
     # Hermetic: no per-project lane union from the real ~/proj tree.
     env.set("SCITEX_TODO_LANE_GLOBS", "")
-    path = tmp_path / "tasks.yaml"
-    path.write_text(_STORE_TEXT, encoding="utf-8")
+    # SQLite store: seed the prior cards into the canonical DB, then hand the
+    # handlers the PINNED store-identity path (never a tmp_path YAML — a write
+    # stamped with a tmp path fails the next read's ownership check). The DB is
+    # authoritative for content; the path is a provenance label. The
+    # board/services layer (get_board -> load_groups) still stat()s the identity
+    # file, but an autouse fixture in _django/conftest.py guarantees it exists.
+    seed_db_from_doc(safe_load(_STORE_TEXT) or {}, os.environ["SCITEX_CARDS_DB"])
+    store_path = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _reset_cache()
-    yield str(path)
+    yield store_path
     _reset_cache()
 
 
@@ -69,8 +80,8 @@ def _stale_board(store_path):
 
 
 def _tasks_by_id(store_path):
-    with open(store_path, encoding="utf-8") as handle:
-        return {t["id"]: t for t in yaml.safe_load(handle)["tasks"]}
+    # Read back through the canonical store (SQLite); the path is a label only.
+    return {t["id"]: t for t in load_tasks(store_path)}
 
 
 def _edge_onto_a_concurrently_deleted_target(store_path):

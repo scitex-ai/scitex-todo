@@ -24,13 +24,8 @@ import json
 
 import click
 
-from ._compat import spec_command_kwargs
-
 from .._paths import resolve_tasks_path
-from . import _write as _write_mod  # for the shared _TASKS_OPTION constant
-
-
-_TASKS_OPTION = _write_mod._TASKS_OPTION
+from ._compat import spec_command_kwargs
 
 
 # --------------------------------------------------------------------------- #
@@ -89,10 +84,7 @@ def list_tasks_filtered(
     click.echo(f"# {resolved}  ({len(rows)} tasks)")
     for task in rows:
         sc = task.get("scope") or "-"
-        click.echo(
-            f"{task['id']:<24} {task['status']:<12} "
-            f"{sc:<28} {task['title']}"
-        )
+        click.echo(f"{task['id']:<24} {task['status']:<12} {sc:<28} {task['title']}")
 
 
 def list_blocking_operator(tasks_path: str | None, as_json: bool) -> None:
@@ -137,7 +129,9 @@ def list_blocking_operator(tasks_path: str | None, as_json: bool) -> None:
             if note:
                 click.echo(f"      ↳ {note.splitlines()[0]}")
             else:
-                click.echo("      ↳ (no context noted — ask the owner to add why + options)")
+                click.echo(
+                    "      ↳ (no context noted — ask the owner to add why + options)"
+                )
     click.echo(
         "\nClear a block from the board, or via the CLI update/resolve verbs "
         "once you've decided."
@@ -152,22 +146,19 @@ def list_blocking_operator(tasks_path: str | None, as_json: bool) -> None:
     **spec_command_kwargs(
         summary="Show which store would be used and the precedence chain.",
         description=(
-            "Prints the resolved tasks.yaml path plus every candidate "
-            "in the precedence chain (explicit --tasks, "
-            "$SCITEX_TODO_TASKS, project store, user store, bundled "
-            "example) — the debugging tool for 'why is my task not "
-            "showing up.'",
+            "Prints the resolved store path plus every candidate in the "
+            "precedence chain — the debugging tool for 'why is my task "
+            "not showing up.'",
         ),
         examples=(("{prog} resolve-store", "Show the resolved store."),),
     ),
 )
 @click.option("--json", "as_json", is_flag=True)
-@_TASKS_OPTION
-def resolve_store_cmd(as_json, tasks_path) -> None:
+def resolve_store_cmd(as_json) -> None:
     """Resolve the store path and print the chain so agents can verify."""
     from .. import _store
 
-    info = _store.resolve_store(tasks_path)
+    info = _store.resolve_store(None)
     if as_json:
         click.echo(json.dumps(info))
         return
@@ -185,11 +176,12 @@ def resolve_store_cmd(as_json, tasks_path) -> None:
 @click.command(
     "init-store",
     **spec_command_kwargs(
-        summary="Create an empty task store at the chosen scope (idempotent).",
+        summary="Create an empty SQLite task store at the chosen scope (idempotent).",
         description=(
-            "--shared -> ~/.scitex/todo/tasks.yaml (user scope, the "
-            "default). --project -> <git-root>/.scitex/todo/tasks.yaml. "
-            "No-op (prints 'exists') when the target already exists.",
+            "--shared -> ~/.scitex/cards/cards.db (user scope, the "
+            "default). --project -> <git-root>/.scitex/cards/cards.db. "
+            "Creates an empty, schema-complete SQLite DB. No-op (prints "
+            "'exists') when the target DB already exists.",
         ),
         examples=(("{prog} init-store --shared", "Create the user-scope store."),),
     ),
@@ -199,13 +191,13 @@ def resolve_store_cmd(as_json, tasks_path) -> None:
     "scope_choice",
     flag_value="shared",
     default="shared",
-    help="Create the user-scope store (~/.scitex/todo/tasks.yaml).",
+    help="Create the user-scope SQLite store (~/.scitex/cards/cards.db).",
 )
 @click.option(
     "--project",
     "scope_choice",
     flag_value="project",
-    help="Create <git-root>/.scitex/todo/tasks.yaml instead.",
+    help="Create <git-root>/.scitex/cards/cards.db instead.",
 )
 @click.option(
     "--dry-run",
@@ -219,12 +211,12 @@ def resolve_store_cmd(as_json, tasks_path) -> None:
     help="Skip confirmation (no-op today — init-store is non-interactive; reserved for §2).",
 )
 def init_store_cmd(scope_choice, dry_run, yes) -> None:
-    """Materialize an empty `tasks: []` store at the chosen scope."""
+    """Create an empty, schema-complete SQLite store at the chosen scope."""
     _ = yes  # accepted for §2 compliance
     from pathlib import Path
 
-    from .._model import save_tasks
-    from .._paths import _find_git_root, _user_root
+    from .._db import connect, init_schema, resolve_db_path
+    from .._paths import _find_git_root
 
     if scope_choice == "project":
         git_root = _find_git_root(Path.cwd())
@@ -234,9 +226,9 @@ def init_store_cmd(scope_choice, dry_run, yes) -> None:
                 "no `.git` directory found in any parent of "
                 f"{Path.cwd()}"
             )
-        target = git_root / ".scitex" / "todo" / "tasks.yaml"
+        target = git_root / ".scitex" / "cards" / "cards.db"
     else:
-        target = _user_root() / "tasks.yaml"
+        target = resolve_db_path(None)
 
     if dry_run:
         click.echo(f"# dry-run: would create {target} (scope={scope_choice})")
@@ -244,8 +236,15 @@ def init_store_cmd(scope_choice, dry_run, yes) -> None:
     if target.exists():
         click.echo(f"exists: {target}  (no-op)")
         return
+    # The store is the canonical SQLite DB — no YAML. Create it empty and
+    # schema-complete; an unstamped DB is adoptable, so the first write claims it.
     target.parent.mkdir(parents=True, exist_ok=True)
-    save_tasks([], target)
+    conn = connect(target)
+    try:
+        init_schema(conn)
+        conn.commit()
+    finally:
+        conn.close()
     click.echo(f"created: {target}")
 
 

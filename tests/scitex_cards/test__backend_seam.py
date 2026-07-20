@@ -18,6 +18,8 @@ Three guarantees, per docs/design/remote-hub-backend.md §2/§6:
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from scitex_cards import _store
@@ -29,12 +31,14 @@ from scitex_cards._backend import (
 
 
 @pytest.fixture
-def store(tmp_path, env):
+def store(env):
     env.set("SCITEX_TODO_AGENT_ID", "seam-tester")
     env.delete("SCITEX_CARDS_HUB_URL")
-    path = tmp_path / "tasks.yaml"
-    path.write_text("tasks: []\n", encoding="utf-8")
-    return str(path)
+    # SQLite is the store; the conftest pins + bootstraps an empty canonical
+    # DB per test. Return the pinned STORE IDENTITY path (== resolve_tasks_path
+    # (None)), NOT a tmp yaml: a write stamped with a tmp path would fail the
+    # next read's stamp check (THE STORE-PATH RULE).
+    return os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
 
 
 def _add(backend, store_path, cid, title, assignee):

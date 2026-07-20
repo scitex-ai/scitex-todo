@@ -421,16 +421,12 @@ def _build_fleet(tasks: list[dict], *, now=None) -> list[dict]:
 
 
 #: In-process cache of the BUILT graph payload, keyed on
-#: ``(store_path_str, mtime)``. ``get_board`` already mtime-caches the
-#: parsed task list; this cache piggybacks on the same key to skip the
-#: per-request ``_build_graph`` rebuild (mermaid + nodes + edges +
-#: fleet + groups) when the store hasn't changed. ~50-100 ms savings
-#: per /graph for a 500-task store — directly addresses operator
-#: TG12911 ("the board UI is slow") and is the Stage-1 perf half of
-#: lead a2a `aa02fb0e` + `e5243003`.
-#:
-#: NEVER authoritative: any change to ``board.mtime`` invalidates the
-#: entry; entries are dropped on TTL via :func:`_graph_cache_gc`.
+#: ``(store_path_str, board.mtime, board.sig)``. Skips the per-request
+#: ``_build_graph`` rebuild when the store hasn't changed (operator TG12911).
+#: The key INCLUDES ``board.sig`` (the DB's read-stable content version), NOT
+#: ``board.mtime`` alone: a DB write never moves the identity file's mtime, so
+#: an mtime-only key served the STALE graph after a reorder. ``board.sig``
+#: moves on any DB change, so the graph self-invalidates with the board.
 _GRAPH_PAYLOAD_CACHE: dict = {}
 _GRAPH_PAYLOAD_CACHE_TTL_S = 3_600.0  # 1h, mirrors BoardState's TTL.
 
@@ -438,9 +434,11 @@ _GRAPH_PAYLOAD_CACHE_TTL_S = 3_600.0  # 1h, mirrors BoardState's TTL.
 def _graph_cache_gc() -> None:
     """Drop stale entries from :data:`_GRAPH_PAYLOAD_CACHE`."""
     import time
+
     now = time.time()
     stale = [
-        k for k, (_, ts) in _GRAPH_PAYLOAD_CACHE.items()
+        k
+        for k, (_, ts) in _GRAPH_PAYLOAD_CACHE.items()
         if now - ts > _GRAPH_PAYLOAD_CACHE_TTL_S
     ]
     for k in stale:
@@ -455,16 +453,18 @@ def _graph_cache_reset() -> None:
 def handle_graph(request, board):
     """GET graph -> structured nodes + edges + status colors (+ mermaid).
 
-    Cached by ``(store_path, mtime)``; on hit, returns the prior payload
-    directly. Cache is invalidated when the YAML's mtime changes (i.e.
-    any agent or operator write rolls the cache forward by one rebuild).
-    The auto-update SSE wire (PR-C in the lead-approved Stage 2 plan)
-    will additionally PUSH the new payload — this cache is the same
+    Cached by ``(store_path, board.mtime, board.sig)``; on hit, returns the
+    prior payload directly. ``board.sig`` is the DB's read-stable content
+    version, so any write rolls the cache forward by one rebuild — including a
+    DB write that never touches the identity file's mtime, which an mtime-only
+    key missed. The auto-update SSE wire (PR-C in the lead-approved Stage 2
+    plan) will additionally PUSH the new payload — this cache is the same
     derivation, just stored.
     """
     import time
+
     _graph_cache_gc()
-    key = (str(board.store_path), board.mtime)
+    key = (str(board.store_path), board.mtime, board.sig)
     hit = _GRAPH_PAYLOAD_CACHE.get(key)
     if hit is not None:
         payload, _ = hit

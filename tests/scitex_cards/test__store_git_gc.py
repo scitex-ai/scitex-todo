@@ -1,133 +1,70 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""The store's autocommit repo must PACK, and must never PRUNE.
+"""A card write is durable, and it stands up NO per-write git repo.
 
-*** THIS EXISTS BECAUSE gc.auto=0 COST 13 GIGABYTES. ***
+*** HISTORY: gc.auto=0 ON THE PER-WRITE AUTOCOMMIT REPO ONCE COST 13 GB. ***
 
-The store repo is committed on EVERY card write. The old code set
-``gc.auto=0`` "so every snapshot stays reachable" — conflating two different
-things:
+Card writes used to auto-commit the store *directory* to a lazily-init'd
+``.git`` "recovery repo" (the "must PACK, never PRUNE" layer whose ``gc.auto=0``
+misconfiguration grew 23,252 loose objects / 13 GB on the live fleet store).
 
-  * gc does NOT prune REACHABLE objects. Every commit on the branch is
-    reachable by definition, so gc PACKS them; it never deletes them.
-  * ``gc.pruneExpire=never`` already forbids pruning even UNREACHABLE objects.
-    That is the guard that actually protects old snapshots.
+The SQLite cutover REMOVED that per-write autocommit entirely.
+``_store_write._save_doc_unlocked`` now writes through ``write_doc_to_db`` and
+stands up no git repo — the removal is deliberate and load-bearing (see the
+comment there explicitly warning a future reader against reintroducing it).
+Post-mortem recovery moved to the EXPLICIT ``scitex-cards db snapshot`` command,
+which commits an export into a SEPARATE git repo under the DB's ``snapshots/``
+dir; that repo's gc/prune contract belongs with that command, not the hot write
+path.
 
-All ``gc.auto=0`` achieved was stopping git from ever packing, so every save's
-full ~6.5 MB blob stayed a separate loose object forever.
+So the "must PACK, never PRUNE" tests for the per-write repo have no subject
+anymore and are deleted. What SURVIVES is the deeper rule they stood for:
 
-MEASURED on the live fleet store, 2026-07-14 (5 weeks, 10,828 commits):
-    .git = 13 GB, 23,252 loose objects, on a 94%-full shared disk
-    after `git gc`: 90 MB, 3 loose objects, ALL 10,829 commits preserved
-144x smaller, zero history lost.
-
-So this pins BOTH halves of the contract: packing allowed, pruning forbidden.
+  * a card write must PERSIST — pinned now against the canonical DB
+    (round-trip), not against a git commit; and
+  * the 13 GB disaster is prevented BY CONSTRUCTION — the write path creates
+    no per-store ``.git`` at all.
 """
 
 from __future__ import annotations
 
-import shutil
-import subprocess
 from pathlib import Path
 
-import pytest
-
 from scitex_cards import _store
-
-pytestmark = pytest.mark.skipif(
-    shutil.which("git") is None, reason="git not installed; autocommit is skipped"
-)
+from scitex_cards._paths import resolve_tasks_path
 
 
-def _git_config(store_dir: Path, key: str) -> str | None:
-    """The repo's value for `key`, or None when unset."""
-    out = subprocess.run(
-        ["git", "-C", str(store_dir), "config", "--get", key],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    val = out.stdout.strip()
-    return val or None
+def _store_dir() -> Path:
+    """The directory the (now-removed) autocommit repo would have lived in.
 
-
-def _commit_count(store_dir: Path) -> int:
-    """How many commits are reachable from HEAD in the autocommit repo."""
-    out = subprocess.run(
-        ["git", "-C", str(store_dir), "rev-list", "--count", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return int(out.stdout.strip() or 0)
-
-
-@pytest.fixture()
-def committed_store(tmp_path: Path) -> Path:
-    """A store that has been written once, so the autocommit repo is initialized."""
-    path = tmp_path / "tasks.yaml"
-    _store.add_task(path, id="c1", title="t", status="deferred", agent="a")
-    return path
-
-
-def test_autocommit_initializes_a_repo(committed_store: Path):
-    # Arrange
-    store_dir = committed_store.parent
-    # Act
-    git_dir = store_dir / ".git"
-    # Assert — one card write is enough to lazily init the recovery repo.
-    assert git_dir.exists()
-
-
-def test_gc_auto_is_NOT_disabled(committed_store: Path):
-    """THE 13 GB BUG.
-
-    ``gc.auto=0`` stops git ever packing, so every save's full blob stays a
-    loose object forever. It must not be set to 0.
+    The old autocommit used ``resolve_tasks_path(None).parent`` as its repo
+    root; the pinned STORE identity and the canonical DB share that scratch dir
+    under the test harness, so this is exactly where a ``.git`` would appear if
+    the write path still created one.
     """
-    # Arrange
-    store_dir = committed_store.parent
-    # Act
-    gc_auto = _git_config(store_dir, "gc.auto")
-    # Assert — packing must stay ALLOWED.
-    assert gc_auto != "0"
+    return resolve_tasks_path(None).parent
 
 
-def test_pruning_is_forbidden(committed_store: Path):
-    # Arrange
-    store_dir = committed_store.parent
-    # Act
-    prune_expire = _git_config(store_dir, "gc.pruneExpire")
-    # Assert — the guard that ACTUALLY protects old snapshots: pack, never delete.
-    assert prune_expire == "never"
+def test_a_card_write_is_durable():
+    """A write PERSISTS — the surviving rule the old 'a write is committed'
+    test pinned, now against the canonical SQLite store rather than a git
+    commit."""
+    # Arrange / Act — one card write via the store API.
+    _store.add_task(None, id="c1", title="t", status="deferred", agent="a")
+    # Assert — the write round-trips through the canonical DB.
+    got = _store.get_task(None, task_id="c1")
+    assert got is not None and got["id"] == "c1"
 
 
-def test_a_write_is_committed(committed_store: Path):
-    # Arrange
-    store_dir = committed_store.parent
-    # Act
-    commits = _commit_count(store_dir)
-    # Assert — the recovery layer works; the point of the repo is the history.
-    assert commits >= 1
+def test_a_write_creates_no_per_store_git_repo():
+    """THE 13 GB era is over by construction.
 
-
-def test_gc_packs_without_losing_commits(committed_store: Path):
-    """The empirical claim, in miniature: gc shrinks and preserves.
-
-    Several writes -> several commits -> `git gc` -> every commit still there.
-    This is the property the 13 GB fix relies on, so it is pinned rather than
-    assumed.
+    The per-write autocommit repo was removed with the SQLite cutover, so a
+    card write must NOT lazily init a ``.git`` in the store directory. Pinning
+    its absence guards the deliberate removal against a well-meaning
+    reintroduction.
     """
-    # Arrange
-    store_dir = committed_store.parent
-    for i in range(3):
-        _store.update_task(committed_store, "c1", note=f"n{i}")
-    before = _commit_count(store_dir)
-    # Act
-    subprocess.run(
-        ["git", "-C", str(store_dir), "gc", "--prune=now"],
-        capture_output=True,
-        check=False,
-    )
-    # Assert — gc PACKED; it did not delete a single commit.
-    assert _commit_count(store_dir) == before
+    # Arrange / Act — one card write.
+    _store.add_task(None, id="c1", title="t", status="deferred", agent="a")
+    # Assert — no per-store recovery repo is created on the write path.
+    assert not (_store_dir() / ".git").exists()

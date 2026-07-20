@@ -15,15 +15,22 @@ is gone, the claim is false, and a false `blocked` converts "I have not done thi
 into "I am PREVENTED from doing this". That is what makes a backlog untouchable.
 """
 
-import yaml
+import os
+
+from conftest import seed_db_from_doc
 
 from scitex_cards._health import _check_no_falsely_blocked
 
 
 def _store(tmp_path, tasks):
-    p = tmp_path / "tasks.yaml"
-    p.write_text(yaml.safe_dump({"tasks": tasks}, sort_keys=False))
-    return p
+    """Seed the canonical DB from an in-memory task list; return the STORE path.
+
+    The store is SQLite now: the health checks read the canonical DB, not a
+    YAML file. Seed the DB the harness pinned + bootstrapped, and return the
+    pinned STORE identity path (NOT the DB path — see THE STORE-PATH RULE).
+    """
+    seed_db_from_doc({"tasks": tasks}, os.environ["SCITEX_CARDS_DB"])
+    return os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
 
 
 #: The regression itself: the only gate finished, the card still says blocked.

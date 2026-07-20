@@ -15,11 +15,12 @@ now never gated; a card admitted over the cap says so, on the card.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from scitex_cards._model import TaskValidationError
-from scitex_cards._paths import ENV_TASKS
-from scitex_cards._store import add_task
+from scitex_cards._store import add_task, get_task
 from scitex_cards._store_wip import (
     EXEMPT_PRIORITY_MAX,
     OVERRIDE_COMMENT_KIND,
@@ -53,28 +54,33 @@ def _refusal_message(store, card_id: str) -> str:
 
 
 @pytest.fixture()
-def over_cap(tmp_path, env):
+def over_cap(env):
     """An agent ``a`` sitting FAR over its refuse threshold (limit 1 → 2x = 2).
 
-    Yields the store path. Seeded by hand-writing the YAML: the gate itself
-    refuses seeding past 2x through ``add_task``, which is the point.
+    Yields the STORE path. Seeded by writing the 8 in-flight rows DIRECTLY
+    into the canonical SQLite DB (``seed_db_from_doc``): the gate itself
+    refuses seeding past 2x through ``add_task``, which is the point — the
+    seed must bypass the gate the tests then exercise. Returns the pinned
+    STORE identity path (NOT the DB path — see the migration playbook's
+    STORE-PATH RULE), which the harness's per-test DB is stamped for.
     """
+    from conftest import seed_db_from_doc
+
     env.set(ENV_WIP_LIMIT, "1")
-    store = tmp_path / "tasks.yaml"
-    rows = "\n".join(
-        f"  - id: wip-{i}\n"
-        f"    title: in flight {i}\n"
-        f"    status: in_progress\n"
-        f"    agent: a\n"
-        f"    assignee: a\n"
-        for i in range(8)
-    )
-    store.write_text(f"tasks:\n{rows}")
-    # add_task's post-write card-event dispatcher resolves the DEFAULT store,
-    # not the one passed in — without this the test would read and write the
-    # operator's live ~/.scitex/todo/tasks.yaml.
-    env.set(ENV_TASKS, str(store))
-    return store
+    doc = {
+        "tasks": [
+            {
+                "id": f"wip-{i}",
+                "title": f"in flight {i}",
+                "status": "in_progress",
+                "agent": "a",
+                "assignee": "a",
+            }
+            for i in range(8)
+        ]
+    }
+    seed_db_from_doc(doc, os.environ["SCITEX_CARDS_DB"])
+    return os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
 
 
 class TestPriorityExemptPredicate:
@@ -210,19 +216,21 @@ class TestBypassIsLoudNotSilent:
     def test_audit_stamp_is_persisted_not_just_returned(self, over_cap):
         # Arrange
         card_id = "p1-persisted"
-        # Act
         add_task(id=card_id, store=over_cap, **INCIDENT_CARD)
-        # Assert — read it back off disk; the board renders THIS.
-        assert OVERRIDE_COMMENT_KIND in over_cap.read_text()
+        # Act — read it back off the store; the board renders THIS, not the
+        # in-memory return value.
+        persisted = get_task(store=over_cap, task_id=card_id)
+        # Assert
+        kinds = [c.get("kind") for c in persisted.get("comments") or []]
+        assert OVERRIDE_COMMENT_KIND in kinds
 
-    def test_card_under_the_cap_is_not_stamped(self, tmp_path, env):
+    def test_card_under_the_cap_is_not_stamped(self, env):
         """A P1 filed by an agent with room to spare is ordinary; the stamp
         must mean "a bypass happened", not "someone typed priority 1"."""
-        # Arrange
+        # Arrange — the harness bootstraps an EMPTY canonical DB per test, so
+        # agent ``a`` starts with zero in-flight cards; no seeding needed.
         env.set(ENV_WIP_LIMIT, "10")
-        store = tmp_path / "tasks.yaml"
-        store.write_text("tasks: []\n")
-        env.set(ENV_TASKS, str(store))
+        store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
         card = dict(INCIDENT_CARD, title="[P1] urgent but the board is calm")
         # Act
         rec = add_task(id="p1-roomy", store=store, **card)

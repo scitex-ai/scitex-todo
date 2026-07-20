@@ -31,6 +31,8 @@ Coverage mirrors the C4 card's checklist:
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from scitex_cards._events import Event, EventType, emit
@@ -45,7 +47,13 @@ from scitex_cards._users import register_user
 # helpers                                                                     #
 # --------------------------------------------------------------------------- #
 def _store(tmp_path):
-    return tmp_path / "tasks.yaml"
+    # Store is SQLite; reads/writes hit the canonical DB and the path survives
+    # only as the store IDENTITY stamp. Return the PINNED store path (== the
+    # conftest-bootstrapped canonical DB's identity) so writes stamp it and the
+    # matching reads round-trip — NOT tmp_path/tasks.yaml, which trips the
+    # stamp-mismatch guard on the next read (see the migration playbook's
+    # STORE-PATH RULE).
+    return os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
 
 
 class _ExplodingDeliver:

@@ -27,6 +27,7 @@ Pinned here, per the contract on card
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -65,11 +66,13 @@ def _eps(sink: _Capturing) -> list[_FakeEP]:
 
 
 @pytest.fixture()
-def store(tmp_path, env):
+def store(env):
+    # Store is SQLite now; the harness bootstraps an empty canonical DB per test
+    # and pins SCITEX_CARDS_TASKS_YAML_SHARED as the STORE IDENTITY. Return that
+    # pinned store path (NOT a tmp_path file — a write stamped with any other
+    # path fails the next read's ownership guard; see THE STORE-PATH RULE).
     env.set("SCITEX_TODO_AGENT_ID", "rank-tester")
-    path = tmp_path / "tasks.yaml"
-    path.write_text("tasks: []\n", encoding="utf-8")
-    return str(path)
+    return os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
 
 
 def _add(store, card_id, status="deferred"):

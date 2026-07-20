@@ -14,9 +14,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from conftest import seed_db_from_doc
 
-from scitex_cards._db import connect, init_schema, resolve_db_path
-from scitex_cards._db_bootstrap import import_from_yaml
+from scitex_cards._db import connect, resolve_db_path
 from scitex_cards._db_export import ExportRefused, export_doc, export_yaml
 from scitex_cards._yaml import safe_dump, safe_load
 
@@ -75,7 +75,7 @@ def seeded(tmp_path: Path) -> dict:
         safe_dump({"threads": threads}), encoding="utf-8"
     )
     db = tmp_path / "cards.db"
-    import_from_yaml(tasks_path=tasks_yaml, db_path=db)
+    seed_db_from_doc(doc, db, threads=threads)
     return {"doc": doc, "threads": threads, "db": db, "tmp": tmp_path}
 
 
@@ -235,7 +235,7 @@ def _export_a_store_with_one_drained_inbox(tmp_path) -> dict:
     tasks_yaml = tmp_path / "tasks.yaml"
     tasks_yaml.write_text(safe_dump(doc), encoding="utf-8")
     db = tmp_path / "cards.db"
-    import_from_yaml(tasks_path=tasks_yaml, db_path=db)
+    seed_db_from_doc(doc, db)
     out, _threads = export_doc(db)
     return out
 
@@ -260,79 +260,57 @@ def test_export_drops_no_recipient_when_one_inbox_is_drained(tmp_path):
 
 # === `db snapshot` — the cadence job's one-argv backup rail ================
 #
-# `--refresh` = rebuild from yaml, export, commit — one command. The cadence
-# job's exact invocation shape (systemd ExecStart runs a single argv — no
-# shell `&&` available), so the flag must do both halves itself.
+# `db snapshot` exports the database to YAML text and git-commits the export
+# off-site. The `--refresh` flag (rebuild the DB from YAML first) is DELETED —
+# there is no YAML to rebuild from — so these tests seed the DATABASE directly
+# (`seed_db_from_doc`) and snapshot the already-populated store.
 
 _SNAPSHOT_DOC = {"tasks": [{"id": "t", "title": "t", "status": "done"}]}
 
 
-def _seed_canonical_store(tmp_path, monkeypatch):
-    """Write the canonical yaml and point the env at it, like the host run."""
-    store = tmp_path / "tasks.yaml"
-    store.write_text(safe_dump(_SNAPSHOT_DOC), encoding="utf-8")
-    monkeypatch.setenv("SCITEX_TODO_TASKS_YAML_SHARED", str(store))
-    return store
+def _seed_snapshot_db(tmp_path):
+    """Populate the DB the snapshot command will export, and return its path."""
+    db = tmp_path / "cards.db"
+    seed_db_from_doc(_SNAPSHOT_DOC, db)
+    return db
 
 
-def _run_snapshot_refresh(tmp_path, monkeypatch):
-    """Seed a store and run `db snapshot --refresh`; return (result, snap)."""
+def _run_snapshot(tmp_path):
+    """Seed the DB and run `db snapshot`; return (result, snap)."""
     from click.testing import CliRunner
 
     from scitex_cards._cli import main
 
-    _seed_canonical_store(tmp_path, monkeypatch)
+    db = _seed_snapshot_db(tmp_path)
     snap = tmp_path / "snapshots"
     result = CliRunner().invoke(
         main,
-        [
-            "db",
-            "snapshot",
-            "--refresh",
-            "--db",
-            str(tmp_path / "cards.db"),
-            "--dir",
-            str(snap),
-        ],
+        ["db", "snapshot", "--db", str(db), "--dir", str(snap)],
     )
     return result, snap
 
 
-def test_snapshot_refresh_exits_clean(tmp_path, monkeypatch):
-    # Arrange — canonical yaml resolved via env, like the host cadence run.
-    # Act
-    result, _snap = _run_snapshot_refresh(tmp_path, monkeypatch)
+def test_snapshot_exits_clean(tmp_path):
+    # Arrange / Act
+    result, _snap = _run_snapshot(tmp_path)
 
     # Assert
     assert result.exit_code == 0, result.output
 
 
-def test_snapshot_refresh_says_it_rebuilt_the_db_from_yaml(tmp_path, monkeypatch):
-    # Arrange — canonical yaml resolved via env, like the host cadence run.
-    # Act
-    result, _snap = _run_snapshot_refresh(tmp_path, monkeypatch)
+def test_snapshot_exports_the_store_into_the_snapshot_dir(tmp_path):
+    # Arrange / Act
+    _result, snap = _run_snapshot(tmp_path)
 
-    # Assert — the import half is reported, not silent.
-    assert "refreshed DB from YAML" in result.output
-
-
-def test_snapshot_refresh_exports_the_store_into_the_snapshot_dir(
-    tmp_path, monkeypatch
-):
-    # Arrange — canonical yaml resolved via env, like the host cadence run.
-    # Act
-    _result, snap = _run_snapshot_refresh(tmp_path, monkeypatch)
-
-    # Assert — read the export back; it is the original doc.
+    # Assert — read the export back; it is the seeded doc.
     assert safe_load((snap / "tasks.yaml").read_text()) == _SNAPSHOT_DOC
 
 
-def test_snapshot_refresh_commits_the_export_into_a_git_repo(tmp_path, monkeypatch):
-    # Arrange — canonical yaml resolved via env, like the host cadence run.
-    # Act
-    _result, snap = _run_snapshot_refresh(tmp_path, monkeypatch)
+def test_snapshot_commits_the_export_into_a_git_repo(tmp_path):
+    # Arrange / Act
+    _result, snap = _run_snapshot(tmp_path)
 
-    # Assert — the commit half ran; the dir is a repo.
+    # Assert — the commit ran; the dir is a repo.
     assert (snap / ".git").exists()
 
 
@@ -347,15 +325,14 @@ def _run_snapshot_push_to_a_bare_remote(tmp_path, monkeypatch):
 
     from scitex_cards._cli import main
 
-    _seed_canonical_store(tmp_path, monkeypatch)
+    db = _seed_snapshot_db(tmp_path)
     bare = tmp_path / "offsite.git"
     subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
-    db = tmp_path / "cards.db"
     snap = tmp_path / "snapshots"
     runner = CliRunner()
     first = runner.invoke(
         main,
-        ["db", "snapshot", "--refresh", "--db", str(db), "--dir", str(snap)],
+        ["db", "snapshot", "--db", str(db), "--dir", str(snap)],
     )
     subprocess.run(
         ["git", "-C", str(snap), "remote", "add", "origin", str(bare)],
@@ -366,7 +343,6 @@ def _run_snapshot_push_to_a_bare_remote(tmp_path, monkeypatch):
         [
             "db",
             "snapshot",
-            "--refresh",
             "--push",
             "--db",
             str(db),
@@ -420,17 +396,16 @@ def _run_snapshot_push_without_a_remote(tmp_path, monkeypatch):
 
     from scitex_cards._cli import main
 
-    _seed_canonical_store(tmp_path, monkeypatch)
+    db = _seed_snapshot_db(tmp_path)
     return CliRunner().invoke(
         main,
         [
             "db",
             "snapshot",
-            "--refresh",
             "--push",
             "--json",
             "--db",
-            str(tmp_path / "cards.db"),
+            str(db),
             "--dir",
             str(tmp_path / "snapshots"),
         ],
