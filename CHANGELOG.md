@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.17.3] - 2026-07-20
+
+The store-safety release. Five fixes, each closing a path by which the fleet's
+one board could be destroyed or the fleet could fail to boot.
+
+### Fixed
+
+- **`db import` could wipe the live board, and could not restore it** (#531).
+  The importer resolved its destination from the ambient environment, so an
+  import against any store could rebuild the one globally-resolved database.
+  Store identity is now compared by inode, dissolving the class where two
+  spellings of one file (`~/.scitex/cards` vs `~/.scitex/todo`) each re-stamped
+  the other and locked writers out.
+- **A write no longer manufactures a board nobody asked for** (#533). A write
+  to a store that did not exist silently created it, which is how a packaged
+  fixture came to be read as the board. The write now refuses.
+- **The hourly snapshot no longer declares a YAML import** (#534). The cadence
+  job declared `db snapshot --refresh`, which rebuilds the database *from* a
+  YAML document — a data-loss engine on a timer once the database is the store.
+  Removed at the declaration, with a test that fails if any scheduled job
+  declares `--refresh` or `--from-yaml`. `--push` (the off-site backup) is
+  kept.
+- **Reconcile inserts and updates; it never deletes** (#536). A document that
+  merely *lacked* a card destroyed it — the mechanism that removed the same 16
+  cards twice in one day, because a writer holding a document read before those
+  cards existed wrote it back and the diff called them "removed". The delete is
+  removed from the reconcile path, not guarded: absence from a document is not
+  evidence of deletion, it is evidence of a stale read. The explicit delete
+  verb is unaffected.
+- **The bundled skills directory is named for this package** (#532).
+  `_skills/scitex-todo` → `_skills/scitex-cards`, with an in-repo compat symlink
+  so the fleet's staging links do not dangle mid-migration (the failure that
+  made every agent unstartable on 2026-07-16).
+
 ## [0.17.1] - 2026-07-19
 
 ### Fixed
