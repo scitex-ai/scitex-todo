@@ -230,6 +230,23 @@
       <h1>SciTeX Cards
         <span class="small">v{{ scitex_cards_version|default:"?" }}</span></h1>
       <span class="small"><span class="live-dot"></span>LIVE</span>
+      {% comment %}DM nav link — makes the operator↔agent direct-message page
+        discoverable from the root board (operator ask). Points at the canonical
+        `/dm` route (served by chat_page; `/chat` 302-redirects there), mirroring
+        chat.html's reciprocal "← board" link. href is the hardcoded root-relative
+        `/dm` — NOT `{% url %}` — because this template renders under ROOT_URLCONF
+        where `scitex_cards:dm_page` is not a registered namespace (a namespaced
+        reverse would NoReverseMatch and drop the whole board to its static
+        fallback); the board serves at `/`, so `/dm` is correct. Reuses the
+        identity band's own `.small` class + the toolbar's emoji iconography
+        (⏱🗒📊🎯🔎) so it matches the surrounding chrome; no inline style, no new
+        CSS rule. (hook-bypass: line-limit — board_v3.html is >1024 lines, over
+        the HTML cap; splitting this template is tracked separately, so this
+        one-line additive nav link follows the file's existing bypass convention
+        rather than smuggling a whole-template refactor into a UI change.)
+      {% endcomment %}
+      <a class="small" href="/dm"
+         title="Direct messages — operator ↔ agents">💬 DM</a>
     </div>
 
     <div class="fb-center stx-todo-filterbar__group stx-todo-filterbar__group--search">

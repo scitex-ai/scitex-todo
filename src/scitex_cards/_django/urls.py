@@ -3,6 +3,7 @@
 """URL patterns for the scitex-todo board Django app."""
 
 from django.urls import path
+from django.views.generic.base import RedirectView
 
 from . import views
 from .handlers.chat import chat_view
@@ -64,13 +65,26 @@ urlpatterns = [
     # ``api_dispatch`` (which would 404 — no handler named "chat/<id>").
     path("chat/<str:card_id>", chat_view, name="chat"),
     # Operator↔agent DIRECT-MESSAGE surface (scitex-dev DM convention v1;
-    # card fleet-agent-direct-message-board-pane-20260707). `/chat` (no
-    # trailing segment — distinct from the per-card `/chat/<card_id>`
-    # comment thread above) serves the mobile-first DM page; the two
-    # `/dm/*` JSON endpoints back its agent list + thread pane + compose.
+    # card fleet-agent-direct-message-board-pane-20260707). `/dm` is the
+    # CANONICAL page route (served by ``chat_page`` — the mobile-first DM
+    # view); the two `/dm/*` JSON endpoints back its agent list + thread
+    # pane + compose. `/chat` (no trailing segment — distinct from the
+    # per-card `/chat/<card_id>` comment thread above) now 302-redirects to
+    # `/dm` so `/dm` is the single canonical URL while old `/chat`
+    # bookmarks keep working. The redirect target is the hardcoded
+    # root-relative `/dm`, NOT a namespaced reverse: this module is the
+    # ROOT_URLCONF (settings.ROOT_URLCONF), and ``app_name`` does NOT
+    # register an instance namespace on the root resolver, so
+    # ``reverse("scitex_cards:dm_page")`` raises NoReverseMatch here
+    # (verified). The board serves at `/`, so `/dm` is the correct target.
     # Registered BEFORE the catch-all `<path:endpoint>` route so the
     # slashed paths are matched cleanly instead of 404ing in api_dispatch.
-    path("chat", views.chat_page, name="chat_page"),
+    path("dm", views.chat_page, name="dm_page"),
+    path(
+        "chat",
+        RedirectView.as_view(url="/dm", permanent=False),
+        name="chat_page",
+    ),
     path("dm/threads", dm_threads_view, name="dm_threads"),
     path("dm/thread/<str:peer>", dm_thread_view, name="dm_thread"),
     # Hook-consumer endpoints (lead a2a `6fff33d6` + `fbffb879`,
