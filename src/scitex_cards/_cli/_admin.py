@@ -210,12 +210,12 @@ def resolve_store_cmd(as_json) -> None:
     help="Skip confirmation (no-op today — init-store is non-interactive; reserved for §2).",
 )
 def init_store_cmd(scope_choice, dry_run, yes) -> None:
-    """Materialize an empty `tasks: []` store at the chosen scope."""
+    """Create an empty, schema-complete SQLite store at the chosen scope."""
     _ = yes  # accepted for §2 compliance
     from pathlib import Path
 
-    from .._model import save_tasks
-    from .._paths import _find_git_root, _user_root
+    from .._db import connect, init_schema, resolve_db_path
+    from .._paths import _find_git_root
 
     if scope_choice == "project":
         git_root = _find_git_root(Path.cwd())
@@ -225,9 +225,9 @@ def init_store_cmd(scope_choice, dry_run, yes) -> None:
                 "no `.git` directory found in any parent of "
                 f"{Path.cwd()}"
             )
-        target = git_root / ".scitex" / "todo" / "tasks.yaml"
+        target = git_root / ".scitex" / "cards" / "cards.db"
     else:
-        target = _user_root() / "tasks.yaml"
+        target = resolve_db_path(None)
 
     if dry_run:
         click.echo(f"# dry-run: would create {target} (scope={scope_choice})")
@@ -235,8 +235,15 @@ def init_store_cmd(scope_choice, dry_run, yes) -> None:
     if target.exists():
         click.echo(f"exists: {target}  (no-op)")
         return
+    # The store is the canonical SQLite DB — no YAML. Create it empty and
+    # schema-complete; an unstamped DB is adoptable, so the first write claims it.
     target.parent.mkdir(parents=True, exist_ok=True)
-    save_tasks([], target)
+    conn = connect(target)
+    try:
+        init_schema(conn)
+        conn.commit()
+    finally:
+        conn.close()
     click.echo(f"created: {target}")
 
 

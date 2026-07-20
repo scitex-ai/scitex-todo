@@ -1007,7 +1007,8 @@ def test_where_exits_zero(tmp_path, env):
     runner = CliRunner()
     store = _store_path(tmp_path)
     Path(store).write_text("tasks: []\n", encoding="utf-8")
-    env.delete("SCITEX_TODO_TASKS_YAML_SHARED")
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", store)
+    env.set("SCITEX_CARDS_TASKS_YAML_SHARED", store)
     # Act
     result = runner.invoke(main, ["resolve-store", "--json"])
     # Assert
@@ -1019,7 +1020,8 @@ def test_where_resolved_path(tmp_path, env):
     runner = CliRunner()
     store = _store_path(tmp_path)
     Path(store).write_text("tasks: []\n", encoding="utf-8")
-    env.delete("SCITEX_TODO_TASKS_YAML_SHARED")
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", store)
+    env.set("SCITEX_CARDS_TASKS_YAML_SHARED", store)
     result = runner.invoke(main, ["resolve-store", "--json"])
     # Act
     info = json.loads(result.output.strip())
@@ -1032,7 +1034,8 @@ def test_where_exists_true(tmp_path, env):
     runner = CliRunner()
     store = _store_path(tmp_path)
     Path(store).write_text("tasks: []\n", encoding="utf-8")
-    env.delete("SCITEX_TODO_TASKS_YAML_SHARED")
+    env.set("SCITEX_TODO_TASKS_YAML_SHARED", store)
+    env.set("SCITEX_CARDS_TASKS_YAML_SHARED", store)
     result = runner.invoke(main, ["resolve-store", "--json"])
     # Act
     info = json.loads(result.output.strip())
@@ -1054,34 +1057,41 @@ def test_init_shared_exits_zero(tmp_path, env):
 
 
 def test_init_shared_output_mentions_created(tmp_path, env):
-    # Arrange
+    # Arrange — redirect to a fresh store so init-store CREATES (not no-op).
     runner = CliRunner()
     env.set("SCITEX_DIR", str(tmp_path / "fake-home"))
+    env.delete("SCITEX_CARDS_DB")
+    env.delete("SCITEX_TODO_DB")
     # Act
     result = runner.invoke(main, ["init-store", "--shared"])
     # Assert
     assert "created" in result.output
 
 
-def test_init_shared_creates_file(tmp_path, env):
-    # Arrange
+def test_init_shared_creates_the_db(tmp_path, env):
+    # Arrange — redirect the store to a fresh location (unset the harness pin so
+    # SCITEX_DIR takes effect), so init-store has a store to CREATE.
     runner = CliRunner()
     env.set("SCITEX_DIR", str(tmp_path / "fake-home"))
+    env.delete("SCITEX_CARDS_DB")
+    env.delete("SCITEX_TODO_DB")
+    from scitex_cards._db import resolve_db_path
+
     runner.invoke(main, ["init-store", "--shared"])
-    # Act
-    expected = tmp_path / "fake-home" / PKG_SHORT / "tasks.yaml"
-    # Assert
-    assert expected.exists()
+    # Act / Assert — the store is the canonical DB now, not a YAML file.
+    assert resolve_db_path(None).exists()
 
 
 def test_init_shared_is_idempotent(tmp_path, env):
     # Arrange
     runner = CliRunner()
     env.set("SCITEX_DIR", str(tmp_path / "fake-home"))
+    env.delete("SCITEX_CARDS_DB")
+    env.delete("SCITEX_TODO_DB")
     runner.invoke(main, ["init-store", "--shared"])
     # Act
     again = runner.invoke(main, ["init-store", "--shared"])
-    # Assert
+    # Assert — second run finds the DB already there.
     assert "no-op" in again.output
 
 
