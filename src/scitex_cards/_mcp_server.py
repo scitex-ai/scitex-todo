@@ -67,7 +67,6 @@ from ._mcp_app import _ENUM_FIELDS, mcp  # noqa: F401  (re-export)
 async def complete_task(
     task_id: str,
     by: str | None = None,
-    tasks_path: str | None = None,
 ) -> str:
     """Mark a task done and stamp `_log_meta.completed_{at,by}`.
 
@@ -75,7 +74,7 @@ async def complete_task(
     `by` overrides the $SCITEX_TODO_AGENT_ID → $USER precedence.
     """
     done = await anyio.to_thread.run_sync(
-        functools.partial(get_backend().complete_task, tasks_path, task_id, by=by)
+        functools.partial(get_backend().complete_task, None, task_id, by=by)
     )
     return json.dumps(done)
 
@@ -94,7 +93,6 @@ async def list_tasks(
     id_prefix: str | None = None,
     blocking_me: bool = False,
     overdue: bool = False,
-    tasks_path: str | None = None,
 ) -> str:
     """List tasks, filtered by any combination of fields. Returns a JSON array.
 
@@ -116,7 +114,7 @@ async def list_tasks(
     """
     _call = functools.partial(
         get_backend().list_tasks,
-        tasks_path,
+        None,
         scope=scope,
         assignee=assignee,
         status=status,
@@ -138,31 +136,29 @@ async def list_tasks(
 async def summarize_tasks(
     scope: str | None = None,
     assignee: str | None = None,
-    tasks_path: str | None = None,
 ) -> str:
     """Numeric progress: counts by status / scope / assignee."""
     result = await anyio.to_thread.run_sync(
         functools.partial(
-            get_backend().summarize_tasks, tasks_path, scope=scope, assignee=assignee
+            get_backend().summarize_tasks, None, scope=scope, assignee=assignee
         )
     )
     return json.dumps(result)
 
 
 @mcp.tool()
-async def resolve_store(tasks_path: str | None = None) -> str:
+async def resolve_store() -> str:
     """Show the resolved store path and the precedence chain.
 
     Useful for an agent to confirm "yes, I am writing to the shared
     user-scope store, not to a project shadow."
     """
-    return json.dumps(_store.resolve_store(tasks_path))
+    return json.dumps(_store.resolve_store(None))
 
 
 @mcp.tool()
 async def get_task(
     task_id: str,
-    tasks_path: str | None = None,
 ) -> str:
     """Return one task by id as JSON. Raises if the id is unknown.
 
@@ -171,7 +167,7 @@ async def get_task(
     MCP agents can use it without going through HTTP.
     """
     result = await anyio.to_thread.run_sync(
-        functools.partial(get_backend().get_task, tasks_path, task_id)
+        functools.partial(get_backend().get_task, None, task_id)
     )
     return json.dumps(result)
 
@@ -179,7 +175,6 @@ async def get_task(
 @mcp.tool()
 async def delete_task(
     task_id: str,
-    tasks_path: str | None = None,
 ) -> str:
     """Delete a task + scrub references; returns the lossless payload
     a follow-up ``restore_task`` can consume to undo.
@@ -188,7 +183,7 @@ async def delete_task(
     Wraps the board v3 Delete-with-Undo flow for MCP agents.
     """
     result = await anyio.to_thread.run_sync(
-        functools.partial(get_backend().delete_task, tasks_path, task_id)
+        functools.partial(get_backend().delete_task, None, task_id)
     )
     return json.dumps(result)
 
@@ -197,13 +192,12 @@ async def delete_task(
 async def restore_task(
     task: dict,
     refs: list[str] | None = None,
-    tasks_path: str | None = None,
 ) -> str:
     """Undo a ``delete_task`` — re-insert at the original id. ``task``
     must be the exact dict ``delete_task`` returned in ``"removed"``.
     """
     result = await anyio.to_thread.run_sync(
-        functools.partial(get_backend().restore_task, tasks_path, task=task, refs=refs)
+        functools.partial(get_backend().restore_task, None, task=task, refs=refs)
     )
     return json.dumps(result)
 
@@ -213,14 +207,13 @@ async def comment_task(
     task_id: str,
     text: str,
     by: str | None = None,
-    tasks_path: str | None = None,
 ) -> str:
     """Append an entry to a task's ``comments[]`` thread (the
     Gitea-compatible Issue-activity log). ``by`` overrides the default
     author resolution ($SCITEX_TODO_AGENT_ID → $USER).
     """
     result = await anyio.to_thread.run_sync(
-        functools.partial(get_backend().comment_task, tasks_path, task_id, text, by=by)
+        functools.partial(get_backend().comment_task, None, task_id, text, by=by)
     )
     return json.dumps(result)
 
@@ -229,7 +222,6 @@ async def comment_task(
 async def resolve_task(
     task_id: str,
     actor: str | None = None,
-    tasks_path: str | None = None,
 ) -> str:
     """Flip a blocked task to done + clear the blocker. Appends an audit
     comment naming the actor. Idempotent on already-resolved tasks.
@@ -238,7 +230,7 @@ async def resolve_task(
     button (ADR-0006/0007).
     """
     result = await anyio.to_thread.run_sync(
-        functools.partial(get_backend().resolve_task, tasks_path, task_id, actor=actor)
+        functools.partial(get_backend().resolve_task, None, task_id, actor=actor)
     )
     return json.dumps(result)
 
@@ -247,13 +239,12 @@ async def resolve_task(
 async def reopen_task(
     task_id: str,
     by: str | None = None,
-    tasks_path: str | None = None,
 ) -> str:
     """Un-resolve: flip ``status=done`` back to ``blocked`` /
     ``blocker=operator-decision``. The Resolve→Undo partner.
     """
     result = await anyio.to_thread.run_sync(
-        functools.partial(get_backend().reopen_task, tasks_path, task_id, by=by)
+        functools.partial(get_backend().reopen_task, None, task_id, by=by)
     )
     return json.dumps(result)
 
