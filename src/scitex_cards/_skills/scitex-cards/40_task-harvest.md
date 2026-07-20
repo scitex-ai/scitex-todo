@@ -1,7 +1,7 @@
 ---
 description: |
   [TOPIC] Task harvest — blocker-driven backlog consumption on the shared board
-  [DETAILS] The fleet's contract for keeping `~/.scitex/todo/tasks.yaml`
+  [DETAILS] The fleet's contract for keeping the shared task store
   fresh: every task is either BLOCKED (with a recorded reason +
   dependency, drawn from a closed enum) or RUNNABLE (no live blocker → a
   lead-driven escalation cycle dispatches it). Each harvest pass (1)
@@ -12,7 +12,7 @@ description: |
   Naming locked by operator TG 2026-06-07 msg 332 + 335: must carry
   "task" (you're consuming tasks, not branches); no "branch" / "graph"
   metaphors (those clash with git / knowledge-graph mental models).
-  [HOW] Harvest the YAML: partition into BLOCKED vs RUNNABLE, re-check
+  [HOW] Harvest the store: partition into BLOCKED vs RUNNABLE, re-check
   blockers, then a2a the lead with a punch-list. Lead-centric funnel —
   agents report new blockers BACK to the lead, the lead dispatches
   RUNNABLE work OUT.
@@ -21,7 +21,7 @@ tags: [scitex-todo-task-harvest, scitex-todo-blockers, scitex-todo-throughput]
 
 # Task harvest — blocker-driven backlog consumption
 
-The shared board (`~/.scitex/todo/tasks.yaml`, rendered live at
+The shared board (the SQLite task store, rendered live at
 `http://127.0.0.1:8051/`) is only valuable when **consumption rate >
 arrival rate**. Otherwise old entries drift away from the live codebase,
 the operator stops trusting the map, and the SSoT decays. This skill
@@ -146,9 +146,9 @@ wrong row, and the harvest needs to walk further down.
 ### Recording a blocker
 
 When a task transitions RUNNABLE → BLOCKED, the agent (or lead, during
-a sweep) writes the blocker + the dependency into the YAML:
+a sweep) writes the blocker + the dependency into the row:
 
-```yaml
+```
 - id: paper-scitex-clew/cohort-a-rerun
   title: "Cohort A rerun #50"
   status: blocked
@@ -227,7 +227,7 @@ All escalation flows through the lead:
 
 ```
               ┌────────────────────────────┐
-              │   ~/.scitex/todo/tasks.yaml │ ← SSoT (operator + lead + agents write)
+              │   the shared task store    │ ← SSoT (operator + lead + agents write)
               └────────────┬───────────────┘
                            │
                            ▼  sweep
@@ -295,8 +295,8 @@ To add the task-harvest as a registered cron job:
    ```
    scitex_dev/_cli/cron/_task_harvest.py
        def run_once() -> None:
-           # 1. load tasks.yaml (resolve via the standard scitex-todo
-           #    path resolver)
+           # 1. load the task store (resolve via the standard scitex-todo
+           #    store resolver)
            # 2. Phase 1 — re-check every blocked task, walking the
            #    task-dependency chain to its root (see "ROOT BLOCKER
            #    walk" above)
@@ -339,7 +339,7 @@ To add the task-harvest as a registered cron job:
 
 `task-harvest` slots into the same family: a fleet-wide
 scheduled job that mutates the shared state (here: the
-SSoT `tasks.yaml`) on a fixed cadence.
+SSoT task store) on a fixed cadence.
 
 ### Auxiliary triggers (NOT in cron)
 
