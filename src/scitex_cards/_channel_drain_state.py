@@ -52,18 +52,30 @@ class _DrainState:
 
 
 def _resolve_store_file(store: str | Path | None) -> Optional[Path]:
-    """Resolve the store path to the SAME file ``poll_inbox`` will parse.
+    """Resolve the ONE file whose mtime tracks new inbox activity, or ``None``.
 
-    ``_inbox.poll_inbox`` / ``recipient_keys`` resolve ``store`` through
-    :func:`scitex_cards._paths.resolve_tasks_path` (via ``_inbox._resolved_store``);
-    the gate must ``stat`` that EXACT file for the mtime comparison to be sound.
+    Must stat the EXACT file ``_inbox.poll_inbox`` / ``recipient_keys`` will
+    read from — that routing lives in ``_inbox._use_sqlite()`` and has two
+    outcomes:
+
+    * SQLite (the DEFAULT backend) — no single sidecar file to gate on
+      cheaply (WAL mode rewrites the DB file on plain READS too, so its
+      mtime is not a reliable "did anything change" signal); reads are
+      already indexed/fast, so the gate's original 9 MB-full-parse problem
+      doesn't apply here. Returns ``None`` (fail-safe: every tick drains).
+    * The break-glass file backend (``SCITEX_TODO_INBOX_BACKEND=yaml``) —
+      its own ``inboxes.json`` sidecar (see ``_inbox._inboxes_path``); THIS
+      is the file that must be stat'd for the gate to be sound.
+
     Returns ``None`` when the path cannot be resolved — the caller then fails
     SAFE and drains.
     """
     try:
-        from ._paths import resolve_tasks_path
+        from ._inbox import _inboxes_path, _use_sqlite
 
-        return resolve_tasks_path(store) if store is None else Path(store).expanduser()
+        if _use_sqlite():
+            return None
+        return _inboxes_path(store)
     except Exception as exc:  # noqa: BLE001 — unresolvable ⇒ fail-safe drain
         logger.debug("scitex-todo channel: store path unresolved for gate: %s", exc)
         return None
