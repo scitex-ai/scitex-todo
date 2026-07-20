@@ -99,8 +99,28 @@ def test_mirror_writes_the_card_into_sqlite(monkeypatch, tmp_path):
     assert _db_ids(resolve_db_path()) == {"a"}
 
 
-def test_mirror_tracks_a_delete(monkeypatch, tmp_path):
-    """A rebuild-mirror must DROP rows that left the YAML, not just add new ones."""
+def test_reconcile_keeps_a_row_the_document_no_longer_lists(monkeypatch, tmp_path):
+    """A row that leaves the document SURVIVES in the database.
+
+    THIS ASSERTION IS INVERTED FROM WHAT IT USED TO BE, deliberately. It read:
+
+        assert _db_ids(resolve_db_path()) == {"b"}   # 'a' was dropped
+
+    and it pinned the behaviour that destroyed live data twice on 2026-07-20 —
+    the same 16 cards, twenty minutes apart, every card created that day and
+    nothing older. A writer holding a document read BEFORE those cards existed
+    wrote it back, the reconcile diff called them "removed", and they were
+    deleted. The second loss happened with no test suite running.
+
+    Operator ruling: once something has entered the database, better never to
+    delete it. Absence from a document is not evidence of deletion — far more
+    often it is evidence of a stale read, and reconcile cannot tell the two
+    apart. So it no longer tries.
+
+    The delete VERB is unaffected and still removes the row from the caller's
+    document; what changed is that reconcile no longer infers a deletion from
+    a document that merely lacks a card.
+    """
     # Arrange
     monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
     store = tmp_path / "tasks.yaml"
@@ -110,8 +130,8 @@ def test_mirror_tracks_a_delete(monkeypatch, tmp_path):
     # Act
     _store.delete_task(store, "a")
 
-    # Assert
-    assert _db_ids(resolve_db_path()) == {"b"}
+    # Assert — 'a' is still in the database. That is the point.
+    assert _db_ids(resolve_db_path()) == {"a", "b"}
 
 
 def test_mirror_leaves_no_failures_on_the_happy_path(monkeypatch, tmp_path):

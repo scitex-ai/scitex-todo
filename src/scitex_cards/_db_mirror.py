@@ -205,12 +205,40 @@ def mirror_doc_incremental(
         by_id = {str(c["id"]): c for c in cards}
 
         changed = [i for i, h in now_hashes.items() if prior.get(i) != h]
-        removed = [i for i in prior if i not in now_hashes]
 
+        # RECONCILE INSERTS AND UPDATES. IT NEVER DELETES.
+        #
+        # This loop used to end with:
+        #
+        #     removed = [i for i in prior if i not in now_hashes]
+        #     for tid in removed:
+        #         _delete_card(conn, tid)
+        #
+        # A document that merely LACKED a card therefore destroyed it. That is
+        # not a hypothetical reading of the code — it is the mechanism that
+        # removed the same 16 cards twice on 2026-07-20, twenty minutes apart:
+        # every card created that day and nothing older, because a writer
+        # holding a document read BEFORE they existed wrote it back, and the
+        # diff called them "removed". Restoring only fed the loop; the second
+        # loss happened with no test suite running at all.
+        #
+        # Operator ruling: 「一度データベースに入ったものって消さないほうがいい
+        # んじゃないですか」 — once something has entered the database, better
+        # never to delete it.
+        #
+        # DELETED RATHER THAN GUARDED, deliberately. A guarded delete is one
+        # bug away from firing again, and this store has now been destroyed by
+        # three different callers reaching the same delete. Guarding the door
+        # teaches the next caller nothing; removing it ends the class. Absence
+        # from a document is not evidence of deletion — it is far more often
+        # evidence of a stale read.
+        #
+        # Deliberate consequence: a card genuinely deleted elsewhere is no
+        # longer propagated here, so rows accumulate. That is the trade the
+        # ruling makes, and it is the right one — unbounded growth is a
+        # storage cost, and this was data loss.
         for tid in changed:
             _write_card(conn, by_id[tid])
-        for tid in removed:
-            _delete_card(conn, tid)
 
         if changed:
             conn.executemany(
@@ -230,7 +258,9 @@ def mirror_doc_incremental(
         conn.commit()
         return {
             "changed": len(changed),
-            "removed": len(removed),
+            # ALWAYS 0. The key is kept so the summary's shape does not change
+            # for callers that read it; reconcile no longer removes anything.
+            "removed": 0,
             "unchanged": len(cards) - len(changed),
             "full": False,
         }
@@ -249,10 +279,7 @@ def _section_key(name: str) -> str:
 def _remember_sections(conn: sqlite3.Connection, doc: dict) -> None:
     conn.executemany(
         f"INSERT OR REPLACE INTO {HASH_TABLE}(task_id, hash) VALUES (?, ?)",
-        [
-            (_section_key(k), _section_hash(doc.get(k)))
-            for k in _SECTION_KEYS
-        ],
+        [(_section_key(k), _section_hash(doc.get(k))) for k in _SECTION_KEYS],
     )
 
 
