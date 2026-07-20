@@ -11,13 +11,14 @@ A DB whose payloads are missing is REFUSED, not exported stripped.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 from conftest import seed_db_from_doc
 
 from scitex_cards._db import connect, resolve_db_path
-from scitex_cards._db_export import ExportRefused, export_doc, export_yaml
+from scitex_cards._db_export import ExportRefused, export_doc, export_json
 from scitex_cards._yaml import safe_dump, safe_load
 
 
@@ -119,34 +120,34 @@ def test_export_preserves_each_records_own_key_order(seeded):
 
 
 def _export_to_files(seeded) -> dict:
-    """Run `export_yaml` into a fresh dir; return the report + the two paths."""
-    out = seeded["tmp"] / "export" / "tasks.yaml"
-    threads_out = seeded["tmp"] / "export" / "threads.yaml"
-    report = export_yaml(db_path=seeded["db"], out=out, threads_out=threads_out)
+    """Run `export_json` into a fresh dir; return the report + the two paths."""
+    out = seeded["tmp"] / "export" / "tasks.json"
+    threads_out = seeded["tmp"] / "export" / "threads.json"
+    report = export_json(db_path=seeded["db"], out=out, threads_out=threads_out)
     return {"report": report, "out": out, "threads_out": threads_out}
 
 
-def test_export_yaml_file_reloads_to_the_original_doc(seeded):
+def test_export_json_file_reloads_to_the_original_doc(seeded):
     # Arrange
     # Act
     exported = _export_to_files(seeded)
 
     # Assert
-    assert safe_load(exported["out"].read_text()) == seeded["doc"]
+    assert json.loads(exported["out"].read_text()) == seeded["doc"]
 
 
-def test_export_yaml_threads_file_reloads_to_the_original_threads(seeded):
+def test_export_json_threads_file_reloads_to_the_original_threads(seeded):
     # Arrange
     # Act
     exported = _export_to_files(seeded)
 
     # Assert
-    assert safe_load(exported["threads_out"].read_text()) == {
+    assert json.loads(exported["threads_out"].read_text()) == {
         "threads": seeded["threads"]
     }
 
 
-def test_export_yaml_report_counts_every_exported_task(seeded):
+def test_export_json_report_counts_every_exported_task(seeded):
     # Arrange
     # Act
     exported = _export_to_files(seeded)
@@ -155,7 +156,7 @@ def test_export_yaml_report_counts_every_exported_task(seeded):
     assert exported["report"]["tasks"] == 2
 
 
-def test_export_yaml_report_counts_every_exported_message(seeded):
+def test_export_json_report_counts_every_exported_message(seeded):
     # Arrange
     # Act
     exported = _export_to_files(seeded)
@@ -303,7 +304,7 @@ def test_snapshot_exports_the_store_into_the_snapshot_dir(tmp_path):
     _result, snap = _run_snapshot(tmp_path)
 
     # Assert — read the export back; it is the seeded doc.
-    assert safe_load((snap / "tasks.yaml").read_text()) == _SNAPSHOT_DOC
+    assert json.loads((snap / "tasks.json").read_text()) == _SNAPSHOT_DOC
 
 
 def test_snapshot_commits_the_export_into_a_git_repo(tmp_path):
