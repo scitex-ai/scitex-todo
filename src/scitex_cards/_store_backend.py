@@ -46,39 +46,41 @@ from __future__ import annotations
 def write_doc_to_db(doc: dict, store_path) -> dict:
     """Commit ``doc`` to SQLite, the only store. RAISES on failure.
 
-    ``store_path`` identifies WHICH logical store is addressed, and therefore
-    stamps provenance. Nothing is written to that path.
+    ``store_path`` is carried through to stamp provenance. Nothing is written
+    to that path.
 
-    OWNERSHIP IS CHECKED FIRST and a mismatch RAISES rather than returning
-    quietly. The destination comes from the ambient environment
-    (``resolve_db_path(None)``) while ``doc`` comes from the caller, so a
-    mispairing is possible on this path and there is no second copy to recover
-    from when it happens.
+    THE YAML-PATH OWNERSHIP CHECK USED TO GUARD THIS FUNCTION AND IS DELETED.
+    It asked ``_db_mirrors_this_store(db_path, store_path)`` — does this
+    database's stamp name the same YAML file the caller is addressing.
 
-    That is not hypothetical. Both halves were demonstrated on 2026-07-19:
-    first the mirror path let a pytest fixture rebuild the live DB
-    (2,136 cards -> 21), and after that path was guarded, the canonical path —
-    unguarded — let the same suite do it again, harder (2,138 -> 1). Two doors
-    into one room; guarding one taught the caller nothing about the other.
+    It was a sound check and it is going anyway, so the reason must be exact:
 
-    Why RAISE rather than decline: declining is right when the card is already
-    durable somewhere else, and wrong when this is the only copy. Silently
-    not-writing would report success for a card that was never stored. Both
-    outcomes of a mismatch — clobbering the wrong database, or dropping the
-    card — are unacceptable, so the caller is told.
+    It never caught the dangerous case. If the environment pointed at a
+    DIFFERENT database, ``resolve_db_path()`` would open that one, whose stamp
+    matches its own resolver, and the check would stay silent. Writing to the
+    wrong board is invisible from inside the code — the real barrier for the
+    test suite lives in the harness (``tests/conftest.py``), above the code
+    under test, precisely because no in-code guard can bound this.
+
+    What it DID catch is two processes disagreeing about the NAME of the one
+    database they are both correctly using. With a YAML path as the store's
+    identity, ``~/.scitex/cards/tasks.yaml`` and ``~/.scitex/todo/tasks.yaml``
+    were two names for one board and each writer re-stamped the other out.
+    SQLite is now the only store, so identity IS the database path: one name,
+    the file itself, nothing left to disagree about. The question is removed,
+    not the answer.
+
+    WHAT STILL RAISES, because destruction is a different question from
+    identity: a missing database (``_store._read_canonical_db_or_raise``), the
+    ambient-store-creation guard, and the shrink floor. And this function still
+    propagates rather than swallowing — declining is right when the card is
+    durable elsewhere and wrong when this is the only copy. Silently
+    not-writing would report success for a card that was never stored.
     """
     from ._db import resolve_db_path
     from ._db_mirror import mirror_doc_incremental
-    from ._dual_write import _db_mirrors_this_store
 
     db_path = resolve_db_path(None)
-    if not _db_mirrors_this_store(db_path, store_path):
-        raise RuntimeError(
-            f"refusing to write {store_path} into {db_path}: that database is "
-            f"the store for a DIFFERENT path, and writing it would replace "
-            f"that store's rows with this one's. Point $SCITEX_CARDS_DB at "
-            f"this store's own database."
-        )
 
     # `mirror_doc_incremental` already raises on failure — no try/except here
     # ON PURPOSE. Adding one could only make this quieter, which is the one
