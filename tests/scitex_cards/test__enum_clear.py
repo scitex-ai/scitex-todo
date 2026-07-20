@@ -29,10 +29,9 @@ from scitex_cards import _model, _store
 from scitex_cards._cli import main
 
 
-def _blocked_card(store, *, task_id="triage-1", blocker="operator-decision"):
+def _blocked_card(*, task_id="triage-1", blocker="operator-decision"):
     """Insert a real blocked card carrying a blocker."""
     return _store.add_task(
-        store,
         id=task_id,
         title="A blocked card",
         status="blocked",
@@ -41,69 +40,64 @@ def _blocked_card(store, *, task_id="triage-1", blocker="operator-decision"):
     )
 
 
-def _reload(store, task_id):
-    """Re-read the task FROM DISK — the key question is what got persisted."""
-    tasks = _model.load_tasks(store)
-    return next(t for t in tasks if t["id"] == task_id)
+def _reload(task_id):
+    """Re-read the task FROM THE STORE — the key question is what got persisted."""
+    return _store.get_task(task_id=task_id)
 
 
 # --------------------------------------------------------------------------- #
 # blocker: "" CLEARS (the reported bug)                                       #
 # --------------------------------------------------------------------------- #
-def test_a_freshly_inserted_blocked_card_names_its_gate(tmp_path):
+def test_a_freshly_inserted_blocked_card_names_its_gate():
     # Arrange — a blocked card that names its gate.
-    store = tmp_path / "tasks.yaml"
 
     # Act
-    _blocked_card(store)
+    _blocked_card()
 
     # Assert — the premise for every clear test below.
-    assert _reload(store, "triage-1")["blocker"] == "operator-decision"
+    assert _reload("triage-1")["blocker"] == "operator-decision"
 
 
-def test_blocker_empty_string_deletes_the_key_from_the_merged_card(tmp_path):
+def test_blocker_empty_string_deletes_the_key_from_the_merged_card():
     # Arrange — a blocked card that names its gate.
-    store = tmp_path / "tasks.yaml"
-    _blocked_card(store)
+    _blocked_card()
 
     # Act — the DOCUMENTED clear. Must not raise (it used to, at save time).
-    merged = _store.update_task(store, "triage-1", status="in_progress", blocker="")
+    merged = _store.update_task(task_id="triage-1", status="in_progress", blocker="")
 
     # Assert — the key is ABSENT, not "" and not the "none" workaround.
     assert "blocker" not in merged
 
 
-def test_blocker_empty_string_deletes_the_key_from_the_persisted_card(tmp_path):
+def test_blocker_empty_string_deletes_the_key_from_the_persisted_card():
     # Arrange — a blocked card that names its gate.
-    store = tmp_path / "tasks.yaml"
-    _blocked_card(store)
+    _blocked_card()
 
     # Act
-    _store.update_task(store, "triage-1", status="in_progress", blocker="")
+    _store.update_task(task_id="triage-1", status="in_progress", blocker="")
 
-    # Assert — the clear survived the round-trip to disk.
-    assert "blocker" not in _reload(store, "triage-1")
+    # Assert — the clear survived the round-trip to the store.
+    assert "blocker" not in _reload("triage-1")
 
 
-def test_clearing_a_blocker_still_applies_the_sibling_status(tmp_path):
+def test_clearing_a_blocker_still_applies_the_sibling_status():
     # Arrange — a blocked card that names its gate.
-    store = tmp_path / "tasks.yaml"
-    _blocked_card(store)
+    _blocked_card()
 
     # Act
-    _store.update_task(store, "triage-1", status="in_progress", blocker="")
+    _store.update_task(task_id="triage-1", status="in_progress", blocker="")
 
     # Assert — the save succeeded as a whole, not just the delete half.
-    assert _reload(store, "triage-1")["status"] == "in_progress"
+    assert _reload("triage-1")["status"] == "in_progress"
 
 
 def test_blocker_empty_string_never_reaches_disk_as_a_value(tmp_path):
     # Arrange
     store = tmp_path / "tasks.yaml"
-    _blocked_card(store, task_id="triage-raw")
+    _blocked_card(task_id="triage-raw")
 
     # Act
-    _store.update_task(store, "triage-raw", status="deferred", blocker="")
+    _store.update_task(task_id="triage-raw", status="deferred", blocker="")
 
     # Assert — read the RAW YAML: no `blocker: ''` key survived the write.
     raw = yaml.safe_load(store.read_text())
@@ -111,13 +105,14 @@ def test_blocker_empty_string_never_reaches_disk_as_a_value(tmp_path):
     assert "blocker" not in card
 
 
-def test_blocker_whitespace_only_is_also_a_clear(tmp_path):
+def test_blocker_whitespace_only_is_also_a_clear():
     # Arrange — "  " is a typo'd "", never a legal enum member.
-    store = tmp_path / "tasks.yaml"
-    _blocked_card(store, task_id="triage-ws")
+    _blocked_card(task_id="triage-ws")
 
     # Act
-    merged = _store.update_task(store, "triage-ws", status="in_progress", blocker="   ")
+    merged = _store.update_task(
+        task_id="triage-ws", status="in_progress", blocker="   "
+    )
 
     # Assert
     assert "blocker" not in merged
@@ -126,15 +121,14 @@ def test_blocker_whitespace_only_is_also_a_clear(tmp_path):
 # --------------------------------------------------------------------------- #
 # The validator is NOT weakened                                               #
 # --------------------------------------------------------------------------- #
-def test_genuinely_invalid_blocker_still_raises(tmp_path):
+def test_genuinely_invalid_blocker_still_raises():
     # Arrange
-    store = tmp_path / "tasks.yaml"
-    _blocked_card(store, task_id="triage-bad")
+    _blocked_card(task_id="triage-bad")
 
     # Act
     # Assert — "" is a delete instruction; "banana" is a bad VALUE.
     with pytest.raises(_model.TaskValidationError):
-        _store.update_task(store, "triage-bad", blocker="banana")
+        _store.update_task(task_id="triage-bad", blocker="banana")
 
 
 def _refusal_message(fn) -> str:

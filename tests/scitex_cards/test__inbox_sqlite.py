@@ -194,36 +194,39 @@ def yaml_backend_store(tmp_path, env):
 
 
 @pytest.fixture()
-def cli_migrated_store(tmp_path):
-    """A YAML-seeded store run through the `inbox migrate-to-sqlite` verb."""
+def cli_migrated_store():
+    """A YAML-seeded store run through the `inbox migrate-to-sqlite` verb.
+
+    The verb resolves the store itself (``tests/conftest.py`` provisions one
+    per test), so the seed has to land on the SAME resolved store rather than
+    on a path this test names.
+    """
     from click.testing import CliRunner
 
     from scitex_cards._cli import main
+    from scitex_cards._paths import resolve_tasks_path
 
-    store = _store(tmp_path)
+    store = resolve_tasks_path(None)
     _seed_yaml_inbox(
         store, "u_abc", "c1", "hi", "bob", "2026-06-26T00:00:00Z", "reassigned"
     )
-    result = CliRunner().invoke(
-        main, ["inbox", "migrate-to-sqlite", "--tasks", str(store), "-y"]
-    )
+    result = CliRunner().invoke(main, ["inbox", "migrate-to-sqlite", "-y"])
     return {"store": store, "result": result}
 
 
 @pytest.fixture()
-def cli_dry_run_store(tmp_path):
+def cli_dry_run_store():
     """A YAML-seeded store run through the migrate verb in --dry-run mode."""
     from click.testing import CliRunner
 
     from scitex_cards._cli import main
+    from scitex_cards._paths import resolve_tasks_path
 
-    store = _store(tmp_path)
+    store = resolve_tasks_path(None)
     _seed_yaml_inbox(
         store, "u_abc", "c1", "hi", "bob", "2026-06-26T00:00:00Z", "reassigned"
     )
-    result = CliRunner().invoke(
-        main, ["inbox", "migrate-to-sqlite", "--tasks", str(store), "--dry-run"]
-    )
+    result = CliRunner().invoke(main, ["inbox", "migrate-to-sqlite", "--dry-run"])
     return {"store": store, "result": result}
 
 
