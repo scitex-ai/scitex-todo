@@ -1,14 +1,14 @@
 ---
 name: scitex-todo
 description: |
-  [WHAT] Canonical YAML task store with pluggable adapters — validate a
-  `tasks:` list (id/title/status + depends_on/blocks/priority/parent) and
-  render it as a mermaid dependency graph (PNG), a read-only React-Flow web
+  [WHAT] Canonical SQLite task store with pluggable adapters — validate
+  task rows (id/title/status + depends_on/blocks/priority/parent) and
+  render them as a mermaid dependency graph (PNG), a read-only React-Flow web
   board, or a plain task listing.
   [WHEN] **Use scitex-todo for EVERY durable / cross-session / cross-agent
   todo.** When the user wants to "track tasks as a dependency graph",
-  "render my todo as a diagram", "show what blocks what", "list tasks
-  from tasks.yaml", or "launch the todo board" — AND any time YOU are
+  "render my todo as a diagram", "show what blocks what", "list my
+  tasks", or "launch the todo board" — AND any time YOU are
   about to write a private TODO / FUTURE / notes file in your repo's
   `GITIGNORED/` for something that should persist or be operator- or
   peer-visible.
@@ -28,14 +28,14 @@ interfaces:
 
 # scitex-todo
 
-A canonical YAML task store with pluggable adapters. The YAML document
-(top-level `tasks:` list) is the single source of truth; adapters render or
-import it. The mermaid adapter (YAML → dependency PNG) and a read-only web
+A canonical SQLite task store with pluggable adapters. The database
+(one `tasks` table) is the single source of truth; adapters render or
+import it. The mermaid adapter (store → dependency PNG) and a read-only web
 board ship today; org-mode and drag-to-reprioritize are on the roadmap.
 
-The store is resolved in precedence order: explicit `--tasks` →
-`$SCITEX_TODO_TASKS_YAML_SHARED` → project `<git-root>/.scitex/todo/tasks.yaml` → user
-`~/.scitex/todo/tasks.yaml` → the bundled generic example.
+The store identity is `$SCITEX_CARDS_DB` (explicit env var wins,
+otherwise the user-canonical `~/.scitex/cards/cards.db` — see
+`scitex-todo resolve-store`).
 
 ## ⚑ MANDATE — single source of truth (operator + lead, 2026-06-12)
 
@@ -51,7 +51,7 @@ binding rule:
 - **DO NOT create parallel todo formats.** No private task-markdown, no
   per-agent `GITIGNORED/FUTURE/*.md` / `GITIGNORED/TODO.md` /
   `GITIGNORED/RUNNING/*.md` for durable tracking; **migrate them into
-  `tasks.yaml`** the moment the underlying task is actionable.
+  the shared store** the moment the underlying task is actionable.
 - **The harness `TaskList` is in-session SCRATCH ONLY.** Use it for a
   single turn's check-off list — it disappears when the turn ends.
   Anything that should persist to the next turn, be visible to the
@@ -61,26 +61,23 @@ binding rule:
   update; a missing entry is invisible (operator + lead + every other
   agent can't react to what isn't on the board).
 
-## ⚑ MANDATE — NEVER hand-edit `tasks.yaml` (lead a2a `02c8a4ae`, 2026-06-13)
+## ⚑ MANDATE — NEVER hand-edit the store (lead a2a `02c8a4ae`, 2026-06-13)
 
-Real corruption episode: on 2026-06-13 the shared
-`~/.scitex/todo/tasks.yaml` was found **truncated mid-string** at
-line ~2784 (unterminated double-quoted `note:` scalar). The board
-render broke, the throughput script broke, AND every agent's
-read/write through scitex-todo broke until the lead repaired it by
-hand. The PR-#166 post-dump round-trip-validate layer makes the
-WRITER side safer going forward — but **only for writes that go
-through scitex-todo's API**. A hand-edit (vim / sed / `Edit` tool /
-GUI save) bypasses every safety net the package provides.
+Real corruption episode: on 2026-06-13 the (then file-based) shared
+store was found **truncated mid-string**. The board render broke, the
+throughput script broke, AND every agent's read/write through
+scitex-todo broke until the lead repaired it by hand. The store has
+since moved to SQLite, which removes that specific failure class, but
+the underlying rule is unchanged: a hand-edit (direct SQL, a text
+editor on the file, GUI save on a raw export) bypasses every safety
+net the package provides.
 
 The binding rule:
 
-- **NEVER hand-edit `~/.scitex/todo/tasks.yaml` directly.** No vim
-  save. No `sed -i`. No editor "find-and-replace". No `git commit
-  -m` on a hand-modified copy. The file is a binary-style asset
-  from your point of view: read via the API, mutate via the API,
-  write via the API. The flock + atomic-rename + post-dump-validate
-  in `_save_tasks_unlocked` are the ONLY safe write path.
+- **NEVER hand-edit the store directly.** No manual SQL. No editing a
+  raw export and re-importing it as canonical. The store is a
+  binary-style asset from your point of view: read via the API,
+  mutate via the API, write via the API.
 - **Always use one of**: the `scitex-todo` CLI verbs (`add`,
   `update`, `done`, `comment`, `close`, `delete`, `sync-github`,
   `migrate-*`), the MCP tools (`add_task`, `update_task`,
@@ -89,26 +86,24 @@ The binding rule:
   update_task, …`). The MCP wire is preferred from inside an
   agent container — P3a wired it into every container's
   `.mcp.json` precisely so no agent needs to hand-edit.
-- **Emergency repair exception**: a file that is ALREADY broken
-  (won't parse via `load_tasks`) cannot be repaired through the
-  API. In that single case a hand-edit is justified — but you MUST
-  (a) back up the broken file first, (b) verify the repaired file
-  parses cleanly via `load_tasks` before declaring done, (c) report
-  the episode to the lead so the API-side safety net can be hardened
-  against whatever caused the breakage. The lead's
-  2026-06-13 repair followed this exact protocol.
+- **Emergency repair exception**: a store that is ALREADY broken
+  (won't open / validate) cannot be repaired through the API. In
+  that single case a hand-repair is justified — but you MUST
+  (a) back up the broken store first, (b) verify the repaired store
+  validates cleanly before declaring done, (c) report the episode to
+  the lead so the API-side safety net can be hardened against
+  whatever caused the breakage. The lead's 2026-06-13 repair followed
+  this exact protocol.
 
-Rationale: the file is the fleet's single ledger. Hand-edits don't
-just risk corruption — they also race with concurrent agent writes
-(no flock), bypass `_validate_tasks` (so a typo lands as accepted
-schema), and skip the git auto-commit (so the operator loses
-time-travel recovery on the bad version). Use the API.
+Rationale: the store is the fleet's single ledger. Hand-edits don't
+just risk corruption — they also race with concurrent agent writes,
+bypass `_validate_tasks` (so a typo lands as accepted schema), and
+skip the audit trail (so the operator loses time-travel recovery on
+the bad version). Use the API.
 
 Enforcement: cultural for now (this skill is propagated to every
 agent via `scitex-todo skills propagate` per PR #161, so every
-agent reads it on boot). A PostToolUse hook flagging direct edits
-to `*/.scitex/todo/tasks.yaml` paths is the documented follow-up
-(`rec-no-hand-edit-tasks-yaml-hook`, recommended file when needed).
+agent reads it on boot).
 
 ## ⚑ MANDATE — record evidence at PR-merge / issue-close time (op-2026-06-13, lead a2a `0cdca03a`)
 
@@ -167,11 +162,10 @@ full write-protocol table in
 
 | Actor          | Writes to                                                    | When                                                |
 | -------------- | ------------------------------------------------------------ | --------------------------------------------------- |
-| project agent  | project tier (`<repo>/.scitex/todo/tasks.yaml`)              | own tasks: create / status flip / blocker / comment |
-| lead           | global tier (`~/.scitex/todo/tasks.yaml`)                    | fleet-coordination rows; cross-project decisions    |
-| aggregator     | global tier (rolls up project tiers continuously, every 5 s) | merged read-out for the operator's board            |
-| operator (UI)  | global tier (Resolve button / re-priority / tag edits)       | unblocks `BLOCKING YOU`; sets `priority`            |
-| sac-status-writer | `agents.json` (fleet liveness) — NEVER `tasks.yaml`       | every 5 s on operator's host                        |
+| project agent  | own rows (`scope=agent:<self>`) in the shared database       | own tasks: create / status flip / blocker / comment |
+| lead           | fleet-coordination rows in the same database                 | cross-project decisions                             |
+| operator (UI)  | any row (Resolve button / re-priority / tag edits)            | unblocks `BLOCKING YOU`; sets `priority`            |
+| sac-status-writer | `agents.json` (fleet liveness) — a separate machine artifact, never the task store | every 5 s on operator's host |
 
 Three rules to internalize: (a) you own rows where `task.agent ==
 <you>`; never edit another agent's fields — append a `comments[]`
@@ -263,7 +257,7 @@ monitors. Read 32 before wiring up a new agent's harness.
 - [11_adopting-from-a-project.md](11_adopting-from-a-project.md) — the
   30-second adoption path: how a project agent (clew / neurovista /
   scitex-dev / scitex-hub / ripple-wm / scitex-orochi / scitex-agent-
-  container / etc.) writes its tasks to `~/.scitex/todo/tasks.yaml` so
+  container / etc.) writes its tasks to the shared store so
   the operator's live board (http://127.0.0.1:8051/) auto-renders the
   agent's column. Operator-decision blockers + GUI Resolve loop are
   covered here too. **READ THIS FIRST** if your agent doesn't yet
