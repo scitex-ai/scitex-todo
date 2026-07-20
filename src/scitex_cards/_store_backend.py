@@ -43,11 +43,15 @@ can do.
 from __future__ import annotations
 
 
-def write_doc_to_db(doc: dict, store_path) -> dict:
+def write_doc_to_db(doc: dict, store_path, *, deleted_ids=None) -> dict:
     """Commit ``doc`` to SQLite, the only store. RAISES on failure.
 
     ``store_path`` identifies WHICH logical store is addressed, and therefore
     stamps provenance. Nothing is written to that path.
+
+    ``deleted_ids`` are ids a caller intentionally removed (``delete_task``);
+    they are forwarded to the mirror, which drops exactly those rows. The mirror
+    never infers a delete from a card's absence — only these named ids go.
 
     OWNERSHIP IS CHECKED FIRST and a mismatch RAISES rather than returning
     quietly. The destination comes from the ambient environment
@@ -83,7 +87,9 @@ def write_doc_to_db(doc: dict, store_path) -> dict:
     # `mirror_doc_incremental` already raises on failure — no try/except here
     # ON PURPOSE. Adding one could only make this quieter, which is the one
     # direction this function must never move.
-    return mirror_doc_incremental(doc, db_path, store_path=store_path)
+    return mirror_doc_incremental(
+        doc, db_path, store_path=store_path, deleted_ids=deleted_ids
+    )
 
 
 __all__ = [

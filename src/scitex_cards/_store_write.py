@@ -241,7 +241,11 @@ def _save_tasks_unlocked(tasks: list[dict], path: Path) -> None:
 
 
 def _save_doc_unlocked(
-    doc: dict, path: Path, *, tasks: list[dict] | None = None
+    doc: dict,
+    path: Path,
+    *,
+    tasks: list[dict] | None = None,
+    deleted_ids: list[str] | None = None,
 ) -> None:
     """Validate-and-write an ALREADY-PARSED full doc WITHOUT the store lock.
 
@@ -252,6 +256,11 @@ def _save_doc_unlocked(
     read survive the rewrite without a redundant second read. When ``tasks``
     is passed it replaces ``doc["tasks"]`` (the CRUD verbs may rebind the
     list, e.g. ``keep = [...]`` in delete).
+
+    ``deleted_ids`` names cards a verb INTENTIONALLY removed (``delete_task``):
+    the pruned ``tasks`` no longer lists them, but SQLite is upsert-only and the
+    mirror never infers a delete from absence, so the ids are forwarded
+    explicitly and the mirror drops exactly those rows. Omit on ordinary writes.
 
     Direct callers must already hold `_store_lock(path)`.
     """
@@ -284,7 +293,7 @@ def _save_doc_unlocked(
     # of the board — which is the exact defect this cutover exists to remove.
     from ._store_backend import write_doc_to_db
 
-    write_doc_to_db(doc, path)
+    write_doc_to_db(doc, path, deleted_ids=deleted_ids)
 
 
 def _git_autocommit_store(path: Path) -> None:
