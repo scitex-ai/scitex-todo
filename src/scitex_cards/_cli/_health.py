@@ -39,23 +39,16 @@ def register(main: click.Group) -> None:
     ),
 )
 @click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Path to tasks.yaml (default: project -> user -> bundled example, "
-    "or $SCITEX_TODO_TASKS_YAML_SHARED).",
-)
-@click.option(
     "--json",
     "as_json",
     is_flag=True,
     help="Emit the raw standard-shape JSON report.",
 )
-def health_cmd(tasks_path: str | None, as_json: bool) -> None:
+def health_cmd(as_json: bool) -> None:
     """Print the health report (human or JSON) and exit non-zero if unhealthy."""
     from .._health import health
 
-    report = health(store=tasks_path)
+    report = health(store=None)
     if as_json:
         click.echo(json.dumps(report))
         raise SystemExit(0 if report["ok"] else 1)

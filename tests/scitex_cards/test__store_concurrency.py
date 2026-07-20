@@ -15,12 +15,15 @@ it was based on. Two primitives close it:
 from __future__ import annotations
 
 import contextlib
+import os
 
 import pytest
+from conftest import seed_db_from_doc
 
 from scitex_cards._model import (
     StaleStoreError,
     edit_tasks,
+    load_doc,
     load_tasks,
     save_tasks,
     store_generation,
@@ -28,22 +31,32 @@ from scitex_cards._model import (
 
 
 def _seed(tmp_path, n=2):
-    p = tmp_path / "tasks.yaml"
-    rows = "\n".join(
-        f"  - {{id: t{i}, title: T{i}, status: deferred}}" for i in range(n)
-    )
-    p.write_text(f"tasks:\n{rows}\n")
-    return p
+    """Seed the canonical DB with ``n`` deferred rows; return the STORE path.
+
+    Store is SQLite now: ``load_tasks`` / ``save_tasks`` read and write the
+    canonical database and the ``path`` argument only names which logical store
+    is addressed. So seed the DB, then hand back the PINNED store-identity path
+    (``SCITEX_CARDS_TASKS_YAML_SHARED``), NOT the DB path — a write stamped with
+    any other path is refused by the next read (THE STORE-PATH RULE)."""
+    doc = {
+        "tasks": [
+            {"id": f"t{i}", "title": f"T{i}", "status": "deferred"} for i in range(n)
+        ]
+    }
+    seed_db_from_doc(doc, os.environ["SCITEX_CARDS_DB"])
+    return os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
 
 
 def _seed_with_users(tmp_path):
-    """A store carrying BOTH a ``users:`` registry and a ``tasks:`` list."""
-    p = tmp_path / "tasks.yaml"
-    p.write_text(
-        "users:\n  - {id: u1, name: someone}\ntasks:\n"
-        "  - {id: t0, title: T, status: deferred}\n"
-    )
-    return p
+    """A store carrying BOTH a ``users:`` registry and a ``tasks:`` list.
+
+    Seeds the canonical DB (SQLite store) and returns the pinned STORE path."""
+    doc = {
+        "users": [{"id": "u1", "kind": "agent", "name": "someone"}],
+        "tasks": [{"id": "t0", "title": "T", "status": "deferred"}],
+    }
+    seed_db_from_doc(doc, os.environ["SCITEX_CARDS_DB"])
+    return os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
 
 
 #: The lost-update race, staged: writer A reads the world (taking a generation
@@ -106,10 +119,13 @@ class TestOptimisticConcurrency:
         assert load_tasks(store)[0]["priority"] == 3
 
     def test_generation_of_missing_store(self, tmp_path):
-        # Arrange
-        absent = tmp_path / "nope.yaml"
+        # Arrange — the store IS the canonical DB now, and store_generation
+        # hashes THAT (ignoring the path arg), so the "store absent" case the
+        # sentinel is for is a missing DB. Remove it; the pinned store path
+        # never was a real file under SQLite.
+        os.remove(os.environ["SCITEX_CARDS_DB"])
         # Act
-        generation = store_generation(absent)
+        generation = store_generation(os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"])
         # Assert — a stable sentinel, not a raise.
         assert generation == "absent"
 
@@ -139,15 +155,17 @@ class TestEditTasks:
     def test_nothing_written_on_exception(self, tmp_path):
         # Arrange
         store = _seed(tmp_path)
-        before = store_generation(store)
+        # Act — an edit that raises mid-cycle must persist nothing.
         with contextlib.suppress(RuntimeError):
             with edit_tasks(store) as tasks:
                 tasks[0]["priority"] = 9
                 raise RuntimeError("boom")
-        # Act
-        after = store_generation(store)
-        # Assert — the half-done mutation never reached disk.
-        assert after == before
+        # Assert — the half-done mutation never reached the store. Read the
+        # persisted DATA back rather than compare store_generation() before and
+        # after: the store is SQLite in WAL mode, where even a read rewrites the
+        # main DB file, so the content token is not read-stable and cannot
+        # witness "unchanged" — the rows can, and are the actual subject.
+        assert load_tasks(store)[0].get("priority") is None
 
     def test_preserves_non_tasks_sections(self, tmp_path):
         # Arrange
@@ -155,8 +173,10 @@ class TestEditTasks:
         # Act
         with edit_tasks(store) as tasks:
             tasks[0]["priority"] = 1
-        # Assert — the users: registry survives a tasks-only edit.
-        assert "u1" in store.read_text()
+        # Assert — the users: registry survives a tasks-only edit. Store is
+        # SQLite: read the users section back from the canonical DB instead of a
+        # YAML file's text — the rule is unchanged, only its serialization is gone.
+        assert any(u.get("id") == "u1" for u in load_doc(store).get("users", []))
 
     def test_tasks_only_edit_still_persists_the_mutation(self, tmp_path):
         # Arrange

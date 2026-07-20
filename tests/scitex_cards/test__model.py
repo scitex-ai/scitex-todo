@@ -5,19 +5,33 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import warnings
 
 import pytest
 
 from scitex_cards import TaskValidationError
 from scitex_cards._model import load_tasks, save_tasks
+from scitex_cards._validate import _validate_tasks
 
 
 def _write(tmp_path, text):
-    """Write a tasks.yaml under tmp_path and return its path."""
-    path = tmp_path / "tasks.yaml"
-    path.write_text(text, encoding="utf-8")
-    return path
+    """Seed the canonical DB from a YAML-text document; return the STORE path.
+
+    The store is SQLite now: ``load_tasks`` / ``save_tasks`` read and write the
+    canonical database and IGNORE the path argument (it survives only as a
+    label in error text). Tests still author their fixtures as readable YAML
+    text, so parse it, seed the DB, and return the STORE IDENTITY path — NOT
+    the DB path (see the migration playbook's STORE-PATH RULE) so that a
+    read-after-write round-trips instead of tripping the provenance stamp.
+    """
+    from conftest import seed_db_from_doc
+
+    from scitex_cards._yaml import safe_load
+
+    doc = safe_load(text) or {}
+    seed_db_from_doc(doc, os.environ["SCITEX_CARDS_DB"])
+    return os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
 
 
 def test_load_tasks_returns_validated_list_in_order(tmp_path):
@@ -43,19 +57,18 @@ def test_load_tasks_accepts_goal_status(tmp_path):
     assert tasks[0]["status"] == "goal"
 
 
-def test_load_tasks_raises_on_duplicate_id(tmp_path):
-    # Arrange
-    store = _write(
-        tmp_path,
-        "tasks:\n"
-        "  - {id: dup, title: One, status: done}\n"
-        "  - {id: dup, title: Two, status: done}\n",
-    )
+def test_load_tasks_raises_on_duplicate_id():
+    # Arrange — the DB dedups a duplicate id (INSERT OR REPLACE), so the fault
+    # cannot be seeded; assert the same rule via the validator load_tasks uses.
+    tasks = [
+        {"id": "dup", "title": "One", "status": "done"},
+        {"id": "dup", "title": "Two", "status": "done"},
+    ]
     # Act
     ctx = pytest.raises(TaskValidationError)
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
 #: WHY the two `bad_status` tests below are split but share this rationale:
@@ -89,44 +102,34 @@ def test_load_tasks_still_returns_the_row_with_its_unknown_status(tmp_path):
     assert tasks[0]["status"] == "wibble"
 
 
-def test_load_tasks_raises_on_missing_title(tmp_path):
-    # Arrange
-    store = _write(tmp_path, "tasks:\n  - {id: notitle, status: pending}\n")
+def test_load_tasks_raises_on_missing_title():
+    # Arrange — a NOT-NULL title cannot be seeded; test the validator directly.
+    tasks = [{"id": "notitle", "status": "pending"}]
     # Act
     ctx = pytest.raises(TaskValidationError)
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
-def test_load_tasks_raises_on_missing_id(tmp_path):
+def test_load_tasks_raises_on_missing_id():
     # Arrange
-    store = _write(tmp_path, "tasks:\n  - {title: No Id, status: pending}\n")
+    tasks = [{"title": "No Id", "status": "pending"}]
     # Act
     ctx = pytest.raises(TaskValidationError)
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
-def test_load_tasks_raises_when_tasks_not_a_list(tmp_path):
-    # Arrange
-    store = _write(tmp_path, "tasks: not-a-list\n")
+def test_load_tasks_raises_when_tasks_not_a_list():
+    # Arrange — pass the non-list value directly, exactly what `tasks: not-a-list`
+    # would have yielded as `data["tasks"]`.
     # Act
     ctx = pytest.raises(TaskValidationError)
     # Assert
     with ctx:
-        load_tasks(store)
-
-
-def test_load_tasks_raises_on_missing_file(tmp_path):
-    # Arrange
-    missing = tmp_path / "nope.yaml"
-    # Act
-    ctx = pytest.raises(FileNotFoundError)
-    # Assert
-    with ctx:
-        load_tasks(missing)
+        _validate_tasks("not-a-list", source="x", strict=False)
 
 
 def test_load_tasks_accepts_integer_priority(tmp_path):
@@ -141,30 +144,24 @@ def test_load_tasks_accepts_integer_priority(tmp_path):
     assert tasks[0]["priority"] == 3
 
 
-def test_load_tasks_raises_on_non_integer_priority(tmp_path):
+def test_load_tasks_raises_on_non_integer_priority():
     # Arrange
-    store = _write(
-        tmp_path,
-        "tasks:\n  - {id: a, title: First, status: done, priority: high}\n",
-    )
+    tasks = [{"id": "a", "title": "First", "status": "done", "priority": "high"}]
     # Act
     ctx = pytest.raises(TaskValidationError)
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
-def test_load_tasks_rejects_boolean_priority(tmp_path):
+def test_load_tasks_rejects_boolean_priority():
     # Arrange
-    store = _write(
-        tmp_path,
-        "tasks:\n  - {id: a, title: First, status: done, priority: true}\n",
-    )
+    tasks = [{"id": "a", "title": "First", "status": "done", "priority": True}]
     # Act
     ctx = pytest.raises(TaskValidationError)
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
 def test_save_tasks_round_trip_preserves_priority(tmp_path):
@@ -187,44 +184,21 @@ def test_save_tasks_round_trips_data_across_rewrite(tmp_path):
     # slow ruamel round-trip (which preserved hand-written comments) for a
     # fast safe dump. Comments are INTENTIONALLY dropped — the store is
     # machine-managed. What MUST survive is the task DATA. This pins that.
-    # Arrange
-    path = tmp_path / "tasks.yaml"
-    path.write_text(
-        "# top-of-file comment (intentionally NOT preserved)\n"
-        "tasks:\n"
-        "  - id: a  # inline task comment (intentionally NOT preserved)\n"
-        "    title: First\n"
-        "    status: done\n",
-        encoding="utf-8",
+    # Arrange — seed the canonical DB, then mutate + rewrite via the STORE path.
+    from conftest import seed_db_from_doc
+
+    seed_db_from_doc(
+        {"tasks": [{"id": "a", "title": "First", "status": "done"}]},
+        os.environ["SCITEX_CARDS_DB"],
     )
-    tasks = load_tasks(path)
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
+    tasks = load_tasks(store)
     tasks[0]["priority"] = 1
     # Act
-    save_tasks(tasks, path)
-    reloaded = load_tasks(path)
+    save_tasks(tasks, store)
+    reloaded = load_tasks(store)
     # Assert — the mutated data round-trips exactly.
     assert reloaded == [{"id": "a", "title": "First", "status": "done", "priority": 1}]
-
-
-def test_save_tasks_drops_comments_by_design(tmp_path):
-    # Documents the accepted trade-off: the fast write does NOT keep the
-    # hand-written comments the old ruamel round-trip preserved.
-    # Arrange
-    path = tmp_path / "tasks.yaml"
-    path.write_text(
-        "tasks:\n"
-        "  - id: a  # inline task comment\n"
-        "    title: First\n"
-        "    status: done\n",
-        encoding="utf-8",
-    )
-    tasks = load_tasks(path)
-    tasks[0]["priority"] = 2
-    # Act
-    save_tasks(tasks, path)
-    rewritten = path.read_text(encoding="utf-8")
-    # Assert — comment is gone (accepted); block-style + key order kept.
-    assert "# inline task comment" not in rewritten
 
 
 def test_save_tasks_raises_on_bad_priority_type(tmp_path):
@@ -243,24 +217,30 @@ def test_save_tasks_does_not_write_when_validation_fails(tmp_path):
     # Arrange
     # STRUCTURAL fault (missing title) still fails loud and writes nothing.
     # (A bad status VALUE now warns-and-writes — operator ruling 2026-07-10.)
-    store = _write(tmp_path, "tasks:\n  - {id: a, title: First, status: done}\n")
-    before = store.read_text(encoding="utf-8")
+    from conftest import seed_db_from_doc
+
+    seed_db_from_doc(
+        {"tasks": [{"id": "a", "title": "First", "status": "done"}]},
+        os.environ["SCITEX_CARDS_DB"],
+    )
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     bad = [{"id": "a", "status": "done"}]
     with contextlib.suppress(TaskValidationError):
         save_tasks(bad, store)
     # Act
-    after = store.read_text(encoding="utf-8")
-    # Assert
-    assert after == before
+    reloaded = load_tasks(store)
+    # Assert — the failed save wrote nothing; the good doc is intact.
+    assert reloaded == [{"id": "a", "title": "First", "status": "done"}]
 
 
 def test_save_tasks_writes_fresh_store_when_absent(tmp_path):
-    # Arrange
-    target = tmp_path / "nested" / "new.yaml"
+    # Arrange — the canonical DB is bootstrapped empty; the first write
+    # populates it (there is no file to pre-create).
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     tasks = [{"id": "a", "title": "First", "status": "pending", "priority": 1}]
     # Act
-    save_tasks(tasks, target)
-    reloaded = load_tasks(target)
+    save_tasks(tasks, store)
+    reloaded = load_tasks(store)
     # Assert
     assert reloaded[0]["id"] == "a"
 
@@ -303,31 +283,25 @@ def test_load_tasks_treats_missing_parent_as_optional(tmp_path):
     assert "parent" not in tasks[0]
 
 
-def test_load_tasks_raises_on_non_string_parent(tmp_path):
+def test_load_tasks_raises_on_non_string_parent():
     # Arrange — a non-string parent (here: an int) is a structural fault.
-    store = _write(
-        tmp_path,
-        "tasks:\n  - {id: a, title: First, status: done, parent: 7}\n",
-    )
+    tasks = [{"id": "a", "title": "First", "status": "done", "parent": 7}]
     # Act
     ctx = pytest.raises(TaskValidationError)
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
-def test_load_tasks_raises_on_empty_string_parent(tmp_path):
+def test_load_tasks_raises_on_empty_string_parent():
     # Arrange — explicit empty-string parent is ambiguous; reject so the
     # operator sees the typo rather than getting a silently top-level node.
-    store = _write(
-        tmp_path,
-        'tasks:\n  - {id: a, title: First, status: done, parent: ""}\n',
-    )
+    tasks = [{"id": "a", "title": "First", "status": "done", "parent": ""}]
     # Act
     ctx = pytest.raises(TaskValidationError)
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
 def test_save_tasks_round_trip_preserves_parent(tmp_path):
@@ -379,35 +353,31 @@ def test_load_tasks_accepts_valid_comments(tmp_path):
     assert tasks[0]["comments"][0]["text"] == "hi"
 
 
-def test_load_tasks_raises_on_non_list_comments(tmp_path):
+def test_load_tasks_raises_on_non_list_comments():
     # Arrange — comments must be a list, not a scalar.
-    store = _write(
-        tmp_path,
-        "tasks:\n  - {id: a, title: First, status: done, comments: nope}\n",
-    )
+    tasks = [{"id": "a", "title": "First", "status": "done", "comments": "nope"}]
     # Act
     ctx = pytest.raises(TaskValidationError)
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
-def test_load_tasks_raises_on_comment_missing_text(tmp_path):
+def test_load_tasks_raises_on_comment_missing_text():
     # Arrange — each comment needs a non-empty string `text`.
-    store = _write(
-        tmp_path,
-        "tasks:\n"
-        "  - id: a\n"
-        "    title: First\n"
-        "    status: done\n"
-        "    comments:\n"
-        "      - {author: alice}\n",
-    )
+    tasks = [
+        {
+            "id": "a",
+            "title": "First",
+            "status": "done",
+            "comments": [{"author": "alice"}],
+        }
+    ]
     # Act
     ctx = pytest.raises(TaskValidationError)
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
 # --------------------------------------------------------------------------- #
@@ -447,30 +417,24 @@ def test_load_accepts_assignee(tmp_path):
     assert tasks[0]["assignee"] == "agent:lead"
 
 
-def test_load_rejects_non_string_scope(tmp_path):
+def test_load_rejects_non_string_scope():
     # Arrange
-    store = _write(
-        tmp_path,
-        "tasks:\n  - {id: a, title: A, status: pending, scope: 42}\n",
-    )
+    tasks = [{"id": "a", "title": "A", "status": "pending", "scope": 42}]
     # Act
     ctx = pytest.raises(TaskValidationError, match="non-string scope")
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
-def test_load_rejects_empty_string_assignee(tmp_path):
+def test_load_rejects_empty_string_assignee():
     # Arrange
-    store = _write(
-        tmp_path,
-        'tasks:\n  - {id: a, title: A, status: pending, assignee: ""}\n',
-    )
+    tasks = [{"id": "a", "title": "A", "status": "pending", "assignee": ""}]
     # Act
     ctx = pytest.raises(TaskValidationError, match="assignee")
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
 def test_load_accepts_log_meta_mapping(tmp_path):
@@ -491,17 +455,14 @@ def test_load_accepts_log_meta_mapping(tmp_path):
     assert tasks[0]["_log_meta"]["completed_by"] == "agent:test"
 
 
-def test_load_rejects_non_mapping_log_meta(tmp_path):
+def test_load_rejects_non_mapping_log_meta():
     # Arrange
-    store = _write(
-        tmp_path,
-        "tasks:\n  - {id: a, title: A, status: done, _log_meta: 'oops'}\n",
-    )
+    tasks = [{"id": "a", "title": "A", "status": "done", "_log_meta": "oops"}]
     # Act
     ctx = pytest.raises(TaskValidationError, match="_log_meta")
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
 def test_save_tasks_round_trip_preserves_log_meta_completed_by(tmp_path):
@@ -630,21 +591,18 @@ def test_load_tasks_kind_compute_persists_started_at(tmp_path):
     assert tasks[0]["started_at"] == "2026-06-06T03:14:00Z"
 
 
-def test_load_tasks_raises_on_unknown_kind(tmp_path):
+def test_load_tasks_raises_on_unknown_kind():
     """`comput` typo (or any value not in VALID_KINDS) is fail-loud."""
     # Arrange
-    store = _write(
-        tmp_path,
-        "tasks:\n  - {id: x, title: X, status: pending, kind: comput}\n",
-    )
+    tasks = [{"id": "x", "title": "X", "status": "pending", "kind": "comput"}]
     # Act — match folds the raise + message-content check into one assertion.
     ctx = pytest.raises(TaskValidationError, match=r"comput.*compute|compute.*comput")
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
-def test_load_tasks_raises_on_compute_metadata_without_kind(tmp_path):
+def test_load_tasks_raises_on_compute_metadata_without_kind():
     """Setting job_id/host/etc. on a non-compute row is a config error.
 
     The lead's `kind` discriminator is what tells the writer-side watcher
@@ -652,18 +610,15 @@ def test_load_tasks_raises_on_compute_metadata_without_kind(tmp_path):
     would silently break that contract — fail-loud instead.
     """
     # Arrange
-    store = _write(
-        tmp_path,
-        "tasks:\n  - {id: x, title: X, status: pending, job_id: '12345'}\n",
-    )
+    tasks = [{"id": "x", "title": "X", "status": "pending", "job_id": "12345"}]
     # Act
     ctx = pytest.raises(TaskValidationError, match=r"job_id.*kind: compute")
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
-def test_load_tasks_raises_on_compute_metadata_with_kind_task(tmp_path):
+def test_load_tasks_raises_on_compute_metadata_with_kind_task():
     """`job_id` (a TRUE compute-only field) on a kind=task row fails-loud.
 
     Note: pre-PR-#57, `host` was also in the compute-only fence and was
@@ -671,15 +626,14 @@ def test_load_tasks_raises_on_compute_metadata_with_kind_task(tmp_path):
     now a generic field allowed on any row.
     """
     # Arrange
-    store = _write(
-        tmp_path,
-        "tasks:\n  - {id: x, title: X, status: pending, kind: task, job_id: '42'}\n",
-    )
+    tasks = [
+        {"id": "x", "title": "X", "status": "pending", "kind": "task", "job_id": "42"}
+    ]
     # Act
     ctx = pytest.raises(TaskValidationError, match="job_id")
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
 def test_load_tasks_allows_host_on_kind_task_row(tmp_path):
@@ -695,24 +649,24 @@ def test_load_tasks_allows_host_on_kind_task_row(tmp_path):
     assert tasks[0]["host"] == "ywata-note-win"
 
 
-def test_load_tasks_raises_on_non_string_compute_field(tmp_path):
-    # Arrange
-    store = _write(
-        tmp_path,
-        "tasks:\n"
-        "  - id: bad\n"
-        "    title: bad\n"
-        "    status: pending\n"
-        "    kind: compute\n"
-        "    job_id: 25754194\n",  # int, not string
-    )
+def test_load_tasks_raises_on_non_string_compute_field():
+    # Arrange — job_id as an int (not a string) on a compute row.
+    tasks = [
+        {
+            "id": "bad",
+            "title": "bad",
+            "status": "pending",
+            "kind": "compute",
+            "job_id": 25754194,
+        }
+    ]
     # Act
     ctx = pytest.raises(
         TaskValidationError, match=r"job_id.*non-string|non-string.*job_id"
     )
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
 _COMPUTE_ROUND_TRIP_SETUP_YAML = (
@@ -765,17 +719,6 @@ def test_save_tasks_round_trip_writes_finished_at(tmp_path):
     reloaded = load_tasks(store)[0]
     # Assert
     assert reloaded["finished_at"] == "2026-06-06T13:30:00Z"
-
-
-def test_save_tasks_round_trip_drops_header_comment(tmp_path):
-    # Contract CHANGE (fix/fast-store-write): the fast safe dump does NOT
-    # preserve hand-written header comments; the store is machine-managed.
-    # Arrange
-    store, tasks = _prepare_compute_store(tmp_path)
-    # Act
-    save_tasks(tasks, store)
-    # Assert — comment dropped (accepted trade-off for the ~15x speedup).
-    assert "# preserved header" not in store.read_text()
 
 
 # ---------------------------------------------------------------------------
@@ -856,13 +799,10 @@ def test_load_tasks_accepts_all_four_blocker_variants(tmp_path):
     ]
 
 
-def test_load_tasks_raises_on_unknown_blocker(tmp_path):
+def test_load_tasks_raises_on_unknown_blocker():
     """A typo (or any value not in VALID_BLOCKERS) is fail-loud."""
     # Arrange
-    store = _write(
-        tmp_path,
-        "tasks:\n  - {id: x, title: X, status: blocked, blocker: oprator}\n",
-    )
+    tasks = [{"id": "x", "title": "X", "status": "blocked", "blocker": "oprator"}]
     # Act
     ctx = pytest.raises(
         TaskValidationError,
@@ -870,24 +810,27 @@ def test_load_tasks_raises_on_unknown_blocker(tmp_path):
     )
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
-def test_load_tasks_raises_on_blocker_with_non_blocked_status(tmp_path):
+def test_load_tasks_raises_on_blocker_with_non_blocked_status():
     """Naming a blocker on a non-blocked task is a config error."""
     # Arrange
-    store = _write(
-        tmp_path,
-        "tasks:\n"
-        "  - {id: x, title: X, status: in_progress, blocker: operator-decision}\n",
-    )
+    tasks = [
+        {
+            "id": "x",
+            "title": "X",
+            "status": "in_progress",
+            "blocker": "operator-decision",
+        }
+    ]
     # Act
     ctx = pytest.raises(
         TaskValidationError, match=r"blocker.*status: blocked|status: blocked.*blocker"
     )
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
 def test_load_tasks_blocker_absent_on_blocked_is_acceptable(tmp_path):
@@ -981,16 +924,6 @@ def test_save_tasks_round_trip_decision_preserves_kind(tmp_path):
     reloaded = load_tasks(store)[0]
     # Assert
     assert reloaded["kind"] == "decision"
-
-
-def test_save_tasks_round_trip_decision_drops_header_comment(tmp_path):
-    # Contract CHANGE (fix/fast-store-write): fast safe dump drops comments.
-    # Arrange
-    store, tasks = _prepare_decision_store(tmp_path)
-    # Act
-    save_tasks(tasks, store)
-    # Assert — header comment gone (accepted for machine-managed store).
-    assert "# preserved" not in store.read_text()
 
 
 # ===========================================================================
@@ -1334,46 +1267,37 @@ def test_load_tasks_accepts_new_operator_field_host(tmp_path):
     assert t["host"] == "ywata-note-win"
 
 
-def test_load_tasks_raises_on_non_string_task_field(tmp_path):
+def test_load_tasks_raises_on_non_string_task_field():
     """`task: 123` (int) fails-loud with a message naming the bad field."""
     # Arrange
-    store = _write(
-        tmp_path,
-        "tasks:\n  - {id: x, title: X, status: pending, task: 123}\n",
-    )
+    tasks = [{"id": "x", "title": "X", "status": "pending", "task": 123}]
     # Act
     ctx = pytest.raises(TaskValidationError, match=r"task.*non-string")
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
-def test_load_tasks_raises_on_non_string_pr_url(tmp_path):
+def test_load_tasks_raises_on_non_string_pr_url():
     """`pr_url: 12345` (int) fails-loud — URL must be a string."""
     # Arrange
-    store = _write(
-        tmp_path,
-        "tasks:\n  - {id: x, title: X, status: pending, pr_url: 12345}\n",
-    )
+    tasks = [{"id": "x", "title": "X", "status": "pending", "pr_url": 12345}]
     # Act
     ctx = pytest.raises(TaskValidationError, match="pr_url")
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
-def test_load_tasks_raises_on_empty_goal_string(tmp_path):
+def test_load_tasks_raises_on_empty_goal_string():
     """`goal: ""` (empty string) fails-loud — non-empty rule."""
     # Arrange
-    store = _write(
-        tmp_path,
-        'tasks:\n  - {id: x, title: X, status: pending, goal: ""}\n',
-    )
+    tasks = [{"id": "x", "title": "X", "status": "pending", "goal": ""}]
     # Act
     ctx = pytest.raises(TaskValidationError, match="goal")
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
 # ---------------------------------------------------------------------------
@@ -1415,23 +1339,23 @@ def test_load_tasks_kind_status_requires_no_compute_fields(tmp_path):
     assert "job_id" not in tasks[0]
 
 
-def test_load_tasks_kind_status_rejects_compute_fields(tmp_path):
+def test_load_tasks_kind_status_rejects_compute_fields():
     """A `kind: status` row with a compute-only field fails-loud."""
     # Arrange — job_id is compute-only; pairing it with kind=status is a typo.
-    store = _write(
-        tmp_path,
-        "tasks:\n"
-        "  - id: q-ml\n"
-        "    title: 'q-ml status'\n"
-        "    status: pending\n"
-        "    kind: status\n"
-        "    job_id: '42'\n",
-    )
+    tasks = [
+        {
+            "id": "q-ml",
+            "title": "q-ml status",
+            "status": "pending",
+            "kind": "status",
+            "job_id": "42",
+        }
+    ]
     # Act
     ctx = pytest.raises(TaskValidationError, match=r"job_id.*kind: compute")
     # Assert
     with ctx:
-        load_tasks(store)
+        _validate_tasks(tasks, source="x", strict=False)
 
 
 def test_save_tasks_round_trip_preserves_kind_status(tmp_path):

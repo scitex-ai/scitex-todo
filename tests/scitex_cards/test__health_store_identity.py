@@ -16,11 +16,8 @@ process write".
 
 from __future__ import annotations
 
-import pathlib
-
 import pytest
 
-from scitex_cards._db_bootstrap import import_from_yaml
 from scitex_cards._health import health
 
 _SEED = "tasks:\n- id: t\n  title: T\n  status: done\n  assignee: x\n  created_by: x\n"
@@ -30,18 +27,47 @@ def _check(report: dict, name: str) -> dict:
     return {c["name"]: c for c in report["checks"]}[name]
 
 
+def _seed_and_stamp(db_path, store_path) -> None:
+    """Seed the canonical DB from ``_SEED`` and stamp its provenance for ``store_path``.
+
+    Replaces the deleted ``import_from_yaml(tasks_path=store)``. That entry point
+    built the DB from the YAML at ``store`` AND recorded ``store`` in the DB's
+    provenance stamp (``KEY_YAML_PATH``). SQLite is now the only store and the
+    importer is gone, so both halves are done explicitly: seed the DB from the
+    same in-memory doc via ``seed_db_from_doc`` (the surviving rebuild
+    primitive), then stamp ``KEY_YAML_PATH`` with ``store_path`` so the
+    ``store_identity`` check has a stamped identity to agree or disagree with.
+    """
+    from conftest import seed_db_from_doc
+
+    from scitex_cards._db import connect
+    from scitex_cards._db_freshness import stamp_yaml_provenance
+    from scitex_cards._yaml import safe_load
+
+    doc = safe_load(_SEED) or {}
+    seed_db_from_doc(doc, str(db_path))
+    conn = connect(str(db_path))
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        stamp_yaml_provenance(conn, store_path, len(doc.get("tasks", [])))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 @pytest.fixture()
 def two_stores(tmp_path, env):
-    """Two real stores and a DB bootstrapped from the FIRST of them."""
+    """Two real stores and a DB seeded + stamped for the FIRST of them."""
     a = tmp_path / "a" / "tasks.yaml"
     a.parent.mkdir()
     a.write_text(_SEED)
     b = tmp_path / "b" / "tasks.yaml"
     b.parent.mkdir()
     b.write_text(_SEED)
-    env.set("SCITEX_CARDS_DB", str(tmp_path / "cards.db"))
-    env.set("SCITEX_TODO_DB", str(tmp_path / "cards.db"))
-    import_from_yaml(tasks_path=str(a))
+    db = tmp_path / "cards.db"
+    env.set("SCITEX_CARDS_DB", str(db))
+    env.set("SCITEX_TODO_DB", str(db))
+    _seed_and_stamp(db, a)
     return a, b
 
 

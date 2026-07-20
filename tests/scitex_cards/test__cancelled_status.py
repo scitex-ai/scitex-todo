@@ -17,6 +17,7 @@ real list-of-dicts inputs, a plain list-recorder ``enqueue``, a real
 from __future__ import annotations
 
 import datetime as _dt
+import os
 import warnings
 
 import pytest
@@ -49,9 +50,20 @@ NOW = _utc(2026, 6, 30, 12, 0, 0)
 
 
 def _write_store(tmp_path, text):
-    store = tmp_path / "tasks.yaml"
-    store.write_text(text, encoding="utf-8")
-    return store
+    """Seed the canonical DB from a YAML-text document; return the STORE path.
+
+    The store is SQLite now; ``load_tasks`` reads the canonical DB and ignores
+    the path (which survives only as the store IDENTITY a write is stamped for).
+    Tests still author fixtures as readable YAML text: parse it, seed the DB,
+    and return the pinned STORE-identity path (NOT the DB path).
+    """
+    from conftest import seed_db_from_doc
+
+    from scitex_cards._yaml import safe_load
+
+    doc = safe_load(text) or {}
+    seed_db_from_doc(doc, os.environ["SCITEX_CARDS_DB"])
+    return os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
 
 
 # --------------------------------------------------------------------------- #

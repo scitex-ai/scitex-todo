@@ -74,16 +74,13 @@ def _reason_for(verdict: dict) -> str:
     default=None,
     help="Agent to check (default: $SCITEX_CARDS_AGENT_ID / $SCITEX_TODO_AGENT_ID).",
 )
-@click.option(
-    "--tasks", "tasks_path", default=None, help="Store override (default: resolved)."
-)
-def stop_hook_cmd(agent, tasks_path):
+def stop_hook_cmd(agent):
     """Emit Claude Code Stop-hook JSON: block while runnable work remains."""
     try:
         from .._may_stop import may_stop
         from .._store import _default_agent
 
-        verdict = may_stop(_default_agent(agent), tasks_path)
+        verdict = may_stop(_default_agent(agent), None)
         if verdict.get("runnable"):
             click.echo(
                 json.dumps({"decision": "block", "reason": _reason_for(verdict)})

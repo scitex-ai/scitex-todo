@@ -72,13 +72,44 @@ _BACKEND_ENV_VARS = (
 def _pin_to_scratch() -> Path:
     """Point every store-selecting variable at a throwaway directory."""
     scratch = Path(tempfile.mkdtemp(prefix="scitex-cards-tests-"))
+    _point_env_at(scratch)
+    for name in _BACKEND_ENV_VARS:
+        os.environ.pop(name, None)
+    return scratch
+
+
+def _point_env_at(scratch: Path) -> None:
+    """Aim every store-selecting variable at ``scratch``."""
     os.environ["SCITEX_CARDS_DB"] = str(scratch / "cards.db")
     os.environ["SCITEX_TODO_DB"] = str(scratch / "cards.db")
     os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"] = str(scratch / "tasks.yaml")
     os.environ["SCITEX_TODO_TASKS_YAML_SHARED"] = str(scratch / "tasks.yaml")
-    for name in _BACKEND_ENV_VARS:
-        os.environ.pop(name, None)
-    return scratch
+
+
+def _bootstrap_empty_db(db_path: Path) -> None:
+    """Create an EMPTY, schema-complete database at ``db_path``.
+
+    SQLite is the store now, so a test that writes a card needs a database the
+    way it used to need a ``tasks.yaml``. Pinning the variable was enough when
+    the DB was a mirror that could be absent; against the real store an absent
+    file is a hard, correct refusal ("canonical store ... does not exist"), and
+    every write test would fail on configuration rather than on behaviour.
+
+    Imported INSIDE the function on purpose: this module is imported before any
+    test touches ``scitex_cards``, and importing the package at conftest import
+    time would run ``_env_compat.mirror_env()`` before :func:`_pin_to_scratch`
+    has aimed the variables — reading the developer's real environment instead
+    of the scratch one.
+    """
+    from scitex_cards._db import connect, init_schema
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = connect(db_path)
+    try:
+        init_schema(conn)
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # Executed at IMPORT of this conftest — before collection, therefore before any
@@ -94,18 +125,37 @@ def scratch_store_root() -> Path:
 
 
 @pytest.fixture(autouse=True)
-def _store_env_stays_pinned() -> None:
-    """Re-assert the pin between tests.
+def _store_env_stays_pinned(tmp_path_factory) -> None:
+    """Give every test its OWN empty database, and re-assert the pin.
 
-    A test that deletes rather than overrides one of these (``monkeypatch.delenv``,
-    or a stray ``os.environ.pop``) would silently hand the NEXT test the
-    user-canonical default — the live board. Restoring it every test keeps the
-    guarantee for the whole session rather than only for the first test.
+    TWO JOBS, both load-bearing.
+
+    (1) RE-ASSERT THE PIN. A test that deletes rather than overrides one of
+    these (``monkeypatch.delenv``, or a stray ``os.environ.pop``) would
+    silently hand the NEXT test the user-canonical default — the live board.
+    Restoring it every test keeps the guarantee for the whole session rather
+    than only for the first test.
+
+    (2) A FRESH DATABASE PER TEST, which is new and is what the cutover
+    requires. A single session-wide database cannot serve this suite: the store
+    carries an identity, and a test that passes its own ``tmp_path`` store is
+    refused by a database already stamped for a different one — correctly, since
+    writing store A into store B's database replaces B's rows with A's. Sharing
+    one database between tests would therefore either break them or force the
+    ownership guard off, and the guard is the thing that stopped this suite
+    rebuilding the fleet's production database three times on 2026-07-19.
+
+    Per-test isolation removes the collision instead of arbitrating it, and it
+    buys real isolation as a side effect: no test can observe another's rows.
+
+    Still ``os.environ`` rather than ``monkeypatch``: the concurrency tests pass
+    ``env=os.environ.copy()`` to real child processes, and those children must
+    inherit this test's database. That inheritance is precisely how the first
+    wipe happened, so it is not incidental.
     """
-    for name in _STORE_ENV_VARS:
-        if not os.environ.get(name):
-            _pin_to_scratch()
-            break
+    scratch = tmp_path_factory.mktemp("store")
+    _point_env_at(scratch)
+    _bootstrap_empty_db(scratch / "cards.db")
 
 
 # EOF

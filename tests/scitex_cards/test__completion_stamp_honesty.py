@@ -15,9 +15,12 @@ catch exactly this (`_check_terminal_state_honest`) reported ok on all five,
 because it knew about `closed_at` and had never been told about `completed_at`.
 """
 
-import yaml
+import os
+
+from conftest import seed_db_from_doc
 
 from scitex_cards._health import _CLOSURE_MARKERS, _check_terminal_state_honest
+from scitex_cards._model import load_tasks
 from scitex_cards._store_lifecycle import (
     COMPLETION_STAMP_KEYS,
     clear_completion_stamp,
@@ -27,15 +30,21 @@ from scitex_cards._store_lifecycle import (
 
 
 def _store(tmp_path, tasks):
-    tmp_path.mkdir(parents=True, exist_ok=True)
-    p = tmp_path / "tasks.yaml"
-    p.write_text(yaml.safe_dump({"tasks": tasks}, sort_keys=False))
-    return p
+    """Seed the canonical DB from an in-memory task list; return the STORE path.
+
+    The store is SQLite now: complete/reopen and the health check read+write the
+    canonical DB and IGNORE the path (it survives only as the store IDENTITY).
+    Seed the DB and return the pinned STORE path (NOT the DB path — a write
+    stamped with any other path is refused on the next read). ``tmp_path`` is
+    kept in the signature for the callers that pass a per-marker subdir, but the
+    canonical DB is the single store now, so it is not used for a file."""
+    seed_db_from_doc({"tasks": tasks}, os.environ["SCITEX_CARDS_DB"])
+    return os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
 
 
 def _meta(store, task_id):
-    doc = yaml.safe_load(store.read_text())
-    task = next(t for t in doc["tasks"] if t["id"] == task_id)
+    tasks = load_tasks(store)
+    task = next(t for t in tasks if t["id"] == task_id)
     return task, (task.get("_log_meta") or {})
 
 

@@ -31,10 +31,12 @@ CORRECTNESS NOTES — the two ways this could quietly corrupt the mirror:
    :data:`_db_bootstrap._DOC_CLEAR_ORDER` excludes it and so must we. A table must
    be owned by exactly the file that produces it.
 
-2. A card that DISAPPEARS from the doc must disappear from the mirror. An
-   upsert-only mirror silently keeps deleted cards forever, and the DB drifts in a
-   direction no equivalence check on *present* cards would ever notice. Removals
-   are handled explicitly.
+2. A card leaves the mirror ONLY when a caller NAMES it (the explicit
+   ``deleted_ids`` handed down from ``delete_task``) — NEVER by inferring deletion
+   from a card's mere absence in the doc. Inference-from-absence is precisely what
+   let a stale document wipe live cards on 2026-07-20; it is deleted, not guarded
+   (see the reconcile loop below). The explicit path is a deliberate single-card
+   verb with ``restore_task`` as its Undo, so it cannot mass-wipe from a stale read.
 
 The hashes live in their own table (``mirror_hashes``), created on demand. If it
 is missing or empty — a fresh DB, or one bootstrapped by the old full-rebuild
@@ -138,6 +140,7 @@ def mirror_doc_incremental(
     *,
     conn: sqlite3.Connection | None = None,
     store_path: str | Path | None = None,
+    deleted_ids: list[str] | None = None,
 ) -> dict:
     """Mirror ``doc`` by writing ONLY what changed. Raises on failure.
 
@@ -151,6 +154,12 @@ def mirror_doc_incremental(
     from" can never disagree. WITHOUT it the mirror is unstamped, and the S2 read
     guard REFUSES an unstamped DB rather than assume it is current: a mirror that
     cannot say which store it reflects is a photograph with no date on it.
+
+    ``deleted_ids`` are ids a caller (``delete_task``) INTENTIONALLY removed and
+    wants gone from the mirror. Reconcile never infers a delete from a card's
+    absence — that inference is the wipe class this module refuses (see the loop
+    below) — so an explicit single-card verb names what it removed and the mirror
+    drops exactly those rows. ``None``/empty on every ordinary write.
 
     Raises deliberately, like :func:`_db_bootstrap.mirror_doc` — the POLICY for a
     failed mirror (never break the user's write, never be silent) lives in
@@ -206,7 +215,9 @@ def mirror_doc_incremental(
 
         changed = [i for i, h in now_hashes.items() if prior.get(i) != h]
 
-        # RECONCILE INSERTS AND UPDATES. IT NEVER DELETES.
+        # RECONCILE INSERTS AND UPDATES. IT NEVER *INFERS* A DELETE FROM ABSENCE.
+        # (Explicit, caller-named deletes are a separate, deliberate path — see
+        # the `deleted_ids` loop after the changed-writes below.)
         #
         # This loop used to end with:
         #
@@ -246,6 +257,16 @@ def mirror_doc_incremental(
                 [(tid, now_hashes[tid]) for tid in changed],
             )
 
+        # EXPLICIT, CALLER-NAMED deletes — the ONE way a row leaves the mirror.
+        # `delete_task` passes the id it intentionally removed and the mirror
+        # drops exactly that row. This is categorically NOT the absence-inference
+        # the ruling above forbids: the id is named by a deliberate single-card
+        # verb (Undo = restore_task), not guessed from a document that merely
+        # lacks it, so it cannot mass-wipe from a stale read.
+        removed = [tid for tid in (deleted_ids or []) if tid in prior]
+        for tid in deleted_ids or []:
+            _delete_card(conn, tid)
+
         # Non-card sections: one hash each, rebuilt only when they actually move.
         _sync_sections(conn, doc)
 
@@ -258,9 +279,9 @@ def mirror_doc_incremental(
         conn.commit()
         return {
             "changed": len(changed),
-            # ALWAYS 0. The key is kept so the summary's shape does not change
-            # for callers that read it; reconcile no longer removes anything.
-            "removed": 0,
+            # Reconcile still never INFERS a delete; this counts only the
+            # explicit, caller-named removals (0 on an ordinary write).
+            "removed": len(removed),
             "unchanged": len(cards) - len(changed),
             "full": False,
         }

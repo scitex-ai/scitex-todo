@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""S2 READ PATH — the two backends must be INDISTINGUISHABLE, or it does not ship.
+"""S2 READ PATH — the two filter backends must be INDISTINGUISHABLE, or it does not ship.
 
 WHAT THIS FILE IS FOR
 ---------------------
-``list_tasks`` costs ~830 ms on the live 1,452-card / 5.8 MB store, and a FILTERED
-call costs the same (~730 ms for 152 of 1,452 cards) because the whole YAML document
-is parsed and only THEN filtered in Python. The cost is the PARSE, not the query. The
-SQLite mirror already indexes every field ``list_tasks`` filters on, so the fix is an
-indexed lookup instead of a 5.8 MB parse.
+``list_tasks`` serves its rows from the SQLite store two ways: the indexed SQL path
+(:func:`scitex_cards._store_read_sqlite.list_tasks_sqlite`, the primary read) and the
+Python-predicate path (:func:`scitex_cards._store_list._match` over
+:func:`load_tasks`, the fallback a build that cannot mirror payloads still uses). Both
+reconstruct cards from the SAME ``tasks.card_json`` payload in the SAME
+``ORDER BY row_order``; the ONLY thing that differs between them is HOW each filter is
+expressed — an SQL ``WHERE`` clause versus a Python ``if``.
 
-But a read backend that serves subtly-different cards is FAR worse than a slow one:
-slow is visible, wrong is not, and the fleet reads this store to decide what to work
-on. So the bar for shipping is not "fast" and not "plausible" — it is IDENTICAL:
-same cards, same order, same fields, same values, byte-for-byte through JSON.
+But a read path that serves subtly-different cards is FAR worse than a slow one: slow
+is visible, wrong is not, and the fleet reads this store to decide what to work on. So
+the bar is not "fast" and not "plausible" — it is IDENTICAL: same cards, same order,
+same fields, same values, byte-for-byte through JSON, for every filter combination.
 
 These tests are that proof. :func:`assert_identical` compares the two backends' full
 result sets — including key ORDER, which plain ``==`` on dicts would silently forgive
@@ -43,15 +45,13 @@ import datetime as _dt
 import itertools
 import json
 import os
-from pathlib import Path
 
 import pytest
 
 from scitex_cards import _store, _store_read_sqlite
-from scitex_cards._db import ENV_DB
-from scitex_cards._db_bootstrap import import_from_yaml
+from scitex_cards._model import load_tasks
+from scitex_cards._store_list import _default_scope, _match
 from scitex_cards._store_read_sqlite import BACKEND_SQLITE, ENV_READ_BACKEND
-from scitex_cards._yaml import safe_dump
 
 _YESTERDAY = (_dt.date.today() - _dt.timedelta(days=3)).isoformat()
 _TOMORROW = (_dt.date.today() + _dt.timedelta(days=30)).isoformat()
@@ -60,8 +60,8 @@ _TOMORROW = (_dt.date.today() + _dt.timedelta(days=30)).isoformat()
 def _cards() -> list[dict]:
     """Cards shaped like the live store's — including the parts no column maps.
 
-    Every value here is one the VALIDATOR accepts, because the YAML backend
-    re-validates on read: a fixture the YAML path cannot even load proves nothing.
+    Every value here is one the VALIDATOR accepts, because the load path
+    re-validates on read: a fixture the read path cannot even load proves nothing.
     (Checked, not assumed — ``blocker=""`` and ``kind=""`` are REJECTED by
     ``_validate``, so they cannot occur in a real store and are not modelled. The
     SQL still folds them, defensively, but no test can reach that fold.)
@@ -163,15 +163,21 @@ def _cards() -> list[dict]:
 
 
 @pytest.fixture()
-def store(tmp_path, env):
-    """A YAML store + a mirror imported from it, with the caches cleared."""
-    env.set(ENV_DB, str(tmp_path / "todo.db"))
+def store(env):
+    """Seed the canonical SQLite store from the adversarial fixture doc.
+
+    SQLite is the only store now; ``load_tasks`` and ``list_tasks_sqlite`` both read
+    the canonical DB the harness pins at ``$SCITEX_CARDS_DB`` and IGNORE any path
+    argument. So there is nothing to write to disk — we seed the pinned DB and hand
+    back the pinned STORE identity path (``$SCITEX_CARDS_TASKS_YAML_SHARED``), which
+    is what the read surface takes as its ``store`` argument.
+    """
+    from conftest import seed_db_from_doc
+
     env.delete("SCITEX_TODO_SCOPE")
-    path = tmp_path / "tasks.yaml"
-    path.write_text(safe_dump({"tasks": _cards()}))
-    import_from_yaml(path, tmp_path / "todo.db")
+    seed_db_from_doc({"tasks": _cards()}, os.environ["SCITEX_CARDS_DB"])
     _store_read_sqlite.reset_cache()
-    return path
+    return os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
 
 
 def _fingerprint(rows: list[dict]) -> str:
@@ -187,27 +193,33 @@ def _fingerprint(rows: list[dict]) -> str:
 
 
 def _both(store_path, **kw) -> tuple[list[dict], list[dict]]:
-    os.environ.pop(ENV_READ_BACKEND, None)
-    _store_read_sqlite.reset_cache()
-    yaml_rows = _store.list_tasks(store_path, **kw)
+    """Run one query through BOTH live filter backends and return (python, sqlite).
 
-    os.environ[ENV_READ_BACKEND] = BACKEND_SQLITE
+    SQLite is the store, so the old ``SCITEX_TODO_READ_BACKEND`` env toggle no longer
+    SWITCHES anything — ``enabled()`` is decided by code capability, not a flag. But
+    the two FILTER implementations both still exist and must still agree card-for-
+    card: the SQL clauses ``list_tasks_sqlite`` builds (the primary read path) and the
+    Python ``_match`` predicate ``list_tasks`` falls back to when the running code
+    cannot mirror payloads. Both reconstruct cards from the same ``card_json`` in the
+    same ``row_order``, so ONLY the filter differs — which is exactly the parity this
+    file proves. Invoke each directly over the one seeded DB, with scope resolved
+    identically (``list_tasks`` resolves it once and hands the SAME value to both).
+    """
+    scope_eff = _default_scope(kw.pop("scope", None))
     _store_read_sqlite.reset_cache()
-    try:
-        # The guard must actually be SATISFIED — otherwise this whole file would
-        # silently compare the YAML backend against itself and prove nothing.
-        assert _store_read_sqlite.enabled(store_path), "guard refused a healthy mirror"
-        sqlite_rows = _store.list_tasks(store_path, **kw)
-    finally:
-        os.environ.pop(ENV_READ_BACKEND, None)
-        _store_read_sqlite.reset_cache()
+    sqlite_rows = _store_read_sqlite.list_tasks_sqlite(
+        store_path, scope=scope_eff, **kw
+    )
+    yaml_rows = [
+        dict(t) for t in load_tasks(store_path) if _match(t, scope=scope_eff, **kw)
+    ]
     return yaml_rows, sqlite_rows
 
 
 def _divergence(kw, yaml_rows, sqlite_rows) -> str:
     return (
         f"BACKENDS DIVERGED for {kw!r}\n"
-        f"  yaml  : {[r.get('id') for r in yaml_rows]}\n"
+        f"  python: {[r.get('id') for r in yaml_rows]}\n"
         f"  sqlite: {[r.get('id') for r in sqlite_rows]}"
     )
 
@@ -485,129 +497,17 @@ def test_an_explicit_empty_scope_opts_out_of_the_env_default(store, env):
 
 
 # --------------------------------------------------------------------------
-# The guard — the flag alone must never be enough
+# The guard — code that cannot write the payload must REFUSE to serve
 # --------------------------------------------------------------------------
-#: Every refusal below is asserted twice: the guard SAID no, and the caller
-#: still got correct cards from YAML. They are split because a guard that
-#: refuses and then serves nothing is not fail-safe, it is just broken — and a
-#: single test that stopped at `enabled() is False` would never notice.
-
-
-def test_backend_is_off_by_default(store, env):
-    # Arrange
-    env.delete(ENV_READ_BACKEND)
-    # Act
-    on = _store_read_sqlite.enabled(store)
-    # Assert — the flag must be opted INTO, never inherited.
-    assert on is False
-
-
-def _store_with_missing_db(tmp_path, env):
-    env.set(ENV_READ_BACKEND, BACKEND_SQLITE)
-    env.set(ENV_DB, str(tmp_path / "absent.db"))
-    _store_read_sqlite.reset_cache()
-    path = tmp_path / "tasks.yaml"
-    path.write_text(safe_dump({"tasks": _cards()}))
-    return path
-
-
-def test_guard_refuses_a_missing_db(tmp_path, env):
-    # Arrange
-    path = _store_with_missing_db(tmp_path, env)
-    # Act
-    on = _store_read_sqlite.enabled(path)
-    # Assert
-    assert on is False
-
-
-def test_a_missing_db_still_serves_correct_cards(tmp_path, env):
-    # Arrange
-    path = _store_with_missing_db(tmp_path, env)
-    # Act
-    rows = _store.list_tasks(path)
-    # Assert — the caller falls back to YAML, not to an empty list.
-    assert len(rows) == len(_cards())
-
-
-#: THE failure this whole guard exists for. The YAML is canonical and ANYTHING
-#: may write it — an agent on an older build, a process with the dual-write
-#: mirror off (the default!), a hand-edit. None of those touch the mirror. The
-#: DB then stays perfectly well-formed and quietly WRONG. Three tests: the guard
-#: accepts a FRESH mirror (so the refusal below is not just a guard that always
-#: says no), refuses the stale one, and the caller still reads every card.
-def _stale_mirror(store):
-    cards = _cards() + [
-        {"id": "ghost-1", "title": "written without mirroring", "status": "goal"}
-    ]
-    store.write_text(safe_dump({"tasks": cards}))
-    _store_read_sqlite.reset_cache()
-    return cards
-
-
-def test_the_guard_accepts_a_fresh_mirror(store, env):
-    # Arrange
-    env.set(ENV_READ_BACKEND, BACKEND_SQLITE)
-    _store_read_sqlite.reset_cache()
-    # Act
-    on = _store_read_sqlite.enabled(store)
-    # Assert — without this, the refusals below prove nothing.
-    assert on is True
-
-
-def test_guard_refuses_a_STALE_db(store, env):
-    # Arrange
-    env.set(ENV_READ_BACKEND, BACKEND_SQLITE)
-    _store_read_sqlite.reset_cache()
-    _stale_mirror(store)
-    # Act
-    on = _store_read_sqlite.enabled(store)
-    # Assert
-    assert on is False, "a stale mirror must be REFUSED"
-
-
-def test_a_stale_db_still_serves_correct_cards(store, env):
-    # Arrange
-    env.set(ENV_READ_BACKEND, BACKEND_SQLITE)
-    _store_read_sqlite.reset_cache()
-    cards = _stale_mirror(store)
-    # Act
-    rows = _store.list_tasks(store)
-    # Assert — including the card the mirror never saw.
-    assert [r["id"] for r in rows] == [c["id"] for c in cards], "must fall back to YAML"
-
-
-#: A v1 DB: right schema, right indexes, `quick_check ok` — and NO payloads.
-#: Reconstructing cards from the typed columns alone would drop every field the
-#: schema does not name. Refuse, do not improvise.
-def _mirror_without_payloads(env, tmp_path):
-    import sqlite3
-
-    conn = sqlite3.connect(str(tmp_path / "todo.db"))
-    try:
-        conn.execute("UPDATE tasks SET card_json = NULL WHERE id = 'alpha-2'")
-        conn.commit()
-    finally:
-        conn.close()
-    env.set(ENV_READ_BACKEND, BACKEND_SQLITE)
-    _store_read_sqlite.reset_cache()
-
-
-def test_guard_refuses_a_db_with_no_payload_column(store, env, tmp_path):
-    # Arrange
-    _mirror_without_payloads(env, tmp_path)
-    # Act
-    on = _store_read_sqlite.enabled(store)
-    # Assert
-    assert on is False
-
-
-def test_a_db_with_no_payload_column_still_serves_cards(store, env, tmp_path):
-    # Arrange
-    _mirror_without_payloads(env, tmp_path)
-    # Act
-    rows = _store.list_tasks(store)
-    # Assert — refusing to improvise must not mean refusing to answer.
-    assert len(rows) == len(_cards())
+#: With SQLite as the store there is no YAML to be fresh against and nothing to
+#: fall back TO, so the freshness / staleness / missing-DB / lossy-mirror refusals
+#: this file once exercised are gone (they asked questions about a document that no
+#: longer participates). The ONE runtime check that survives — and matters MORE now
+#: — is code capability: a process whose mirror writer has no ``card_json`` column
+#: would serve cards with their unknown fields silently stripped, and with no YAML
+#: behind it a stripped field is not stale, it is LOST. Each refusal is asserted
+#: twice: the guard SAID no, and the caller still got correct cards from the Python
+#: fallback path.
 
 
 #: The 135-second lesson: a flag whose safety depends on a code version must
@@ -643,119 +543,50 @@ def test_an_older_build_still_serves_correct_cards(store, env, monkeypatch):
     assert len(rows) == len(_cards())
 
 
-#: A duplicate card id means the mirror holds FEWER rows than the doc.
-#:
-#: And here is the sharp part, which only showed up once this was actually run:
-#: the YAML path RAISES on a duplicate id (the validator refuses the store
-#: outright), while the mirror silently collapses the two rows into one. So
-#: without the card-count guard, switching the backend on would have converted a
-#: LOUD, correct failure into a QUIET, wrong answer — the store would simply have
-#: come back one card short, forever, and every equality check on the cards that
-#: ARE present would have passed.
-#:
-#: A backend swap must not change WHICH failures are visible. Three tests: the
-#: mirror really IS lossy (the premise), the guard refuses it, and the caller
-#: still gets the loud failure instead of a quietly short list.
-def _lossy_mirror(tmp_path, env):
-    env.set(ENV_DB, str(tmp_path / "todo.db"))
-    env.set(ENV_READ_BACKEND, BACKEND_SQLITE)
-    path = tmp_path / "tasks.yaml"
-    path.write_text(
-        safe_dump(
-            {
-                "tasks": [
-                    {"id": "dupe", "title": "first", "status": "goal"},
-                    {"id": "dupe", "title": "second", "status": "done"},
-                ]
-            }
-        )
+#: A duplicate card id means the store holds FEWER rows than the doc: the mirror's
+#: `id` PK collapses the two via INSERT OR REPLACE, last write wins. Pinned as its
+#: own fact because it is the premise behind why a load never sees two.
+def _seed_duplicate_id() -> None:
+    from conftest import seed_db_from_doc
+
+    seed_db_from_doc(
+        {
+            "tasks": [
+                {"id": "dupe", "title": "first", "status": "goal"},
+                {"id": "dupe", "title": "second", "status": "done"},
+            ]
+        },
+        os.environ["SCITEX_CARDS_DB"],
     )
-    import_from_yaml(path, tmp_path / "todo.db")
     _store_read_sqlite.reset_cache()
-    return path
 
 
-def _mirror_row_count(tmp_path) -> int:
+def _mirror_row_count() -> int:
     import sqlite3
 
-    conn = sqlite3.connect(str(tmp_path / "todo.db"))
+    conn = sqlite3.connect(os.environ["SCITEX_CARDS_DB"])
     try:
         return conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
     finally:
         conn.close()
 
 
-def test_a_duplicate_id_really_collapses_in_the_mirror(tmp_path, env):
+def test_a_duplicate_id_really_collapses_in_the_mirror(env):
     # Arrange
-    _lossy_mirror(tmp_path, env)
+    _seed_duplicate_id()
     # Act
-    rows = _mirror_row_count(tmp_path)
-    # Assert — 2 cards in, 1 row out: the premise the guard has to catch.
+    rows = _mirror_row_count()
+    # Assert — 2 cards in, 1 row out: the id PK dedupes, last write wins.
     assert rows == 1
 
 
-def test_a_lossy_mirror_is_refused(tmp_path, env):
-    # Arrange
-    path = _lossy_mirror(tmp_path, env)
-    # Act
-    on = _store_read_sqlite.enabled(path)
-    # Assert
-    assert on is False, "a lossy mirror must be REFUSED"
-
-
-def test_a_lossy_mirror_still_raises_the_yaml_loud_failure(tmp_path, env):
-    # Arrange
-    from scitex_cards._task import TaskValidationError
-
-    path = _lossy_mirror(tmp_path, env)
-    # Act
-    loud = pytest.raises(TaskValidationError, match="duplicate task id")
-    # Assert — a backend swap must not turn a raise into a short list.
-    with loud:
-        _store.list_tasks(path)
-
-
-#: A mirror stamped via a RELATIVE path must still be recognised via an absolute
-#: one — the two spellings are ONE store.
-#:
-#: Found by the benchmark, not by me: `db import ./tasks.yaml` stamped a
-#: relative `yaml_path`, and the reader (resolving absolutely) then declared
-#: "the DB mirrors a DIFFERENT store" and refused a perfectly good mirror. It
-#: failed SAFE — fell back to YAML, correct but slow — which is exactly why it
-#: would have been easy never to notice. Paths must be compared CANONICALLY,
-#: which means BOTH spellings need checking, hence two tests.
-def _relative_stamped_mirror(store, env):
-    env.set(ENV_READ_BACKEND, BACKEND_SQLITE)
-    env.chdir(store.parent)
-    import_from_yaml(Path("tasks.yaml"), store.parent / "todo.db")  # RELATIVE stamp
-    _store_read_sqlite.reset_cache()
-
-
-def test_a_relative_store_path_is_still_the_same_store(store, env):
-    # Arrange
-    _relative_stamped_mirror(store, env)
-    # Act
-    on = _store_read_sqlite.enabled(store)
-    # Assert
-    assert on is True, "absolute read of a relative stamp"
-
-
-def test_a_relative_read_of_a_relative_stamp_is_accepted(store, env):
-    # Arrange
-    _relative_stamped_mirror(store, env)
-    # Act
-    on = _store_read_sqlite.enabled(Path("tasks.yaml"))
-    # Assert
-    assert on is True, "relative read"
-
-
-def test_refusal_is_logged_once_not_per_call(store, env, caplog):
+def test_refusal_is_logged_once_not_per_call(store, env, monkeypatch, caplog):
     """`list_tasks` runs on every poll of every agent. An ERROR per call is noise,
-    and noise that fires constantly trains its reader to ignore the channel."""
-    # Arrange
-    env.set(ENV_READ_BACKEND, BACKEND_SQLITE)
-    env.set(ENV_DB, str(store.parent / "absent.db"))
-    _store_read_sqlite.reset_cache()
+    and noise that fires constantly trains its reader to ignore the channel. The one
+    refusal the guard still makes — code that cannot write the payload column — must
+    therefore log ONCE per reason, not once per call."""
+    # Arrange — an older build whose mirror writer has no payload column.
+    _code_that_cannot_write_payloads(env, monkeypatch)
     # Act
     with caplog.at_level("ERROR", logger="scitex_cards._store_read_sqlite"):
         for _ in range(5):

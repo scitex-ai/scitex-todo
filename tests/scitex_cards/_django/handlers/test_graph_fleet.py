@@ -31,15 +31,18 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import os
 
 import pytest
 
 pytest.importorskip("django")
 
+from conftest import seed_db_from_doc  # noqa: E402
 from django.test import RequestFactory  # noqa: E402
 
 from scitex_cards._django import views  # noqa: E402
 from scitex_cards._django.services import _reset_cache  # noqa: E402
+from scitex_cards._yaml import safe_load  # noqa: E402
 
 
 def _ago_iso(seconds: float) -> str:
@@ -118,10 +121,9 @@ def _store_text() -> str:
 
 @pytest.fixture
 def store(tmp_path):
-    path = tmp_path / "tasks.yaml"
-    path.write_text(_store_text(), encoding="utf-8")
+    seed_db_from_doc(safe_load(_store_text()) or {}, os.environ["SCITEX_CARDS_DB"])
     _reset_cache()
-    yield str(path)
+    yield os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _reset_cache()
 
 
@@ -357,10 +359,9 @@ _OVERDUE_FIXTURE = (
 
 @pytest.fixture
 def overdue_store(tmp_path):
-    path = tmp_path / "tasks.yaml"
-    path.write_text(_OVERDUE_FIXTURE, encoding="utf-8")
+    seed_db_from_doc(safe_load(_OVERDUE_FIXTURE) or {}, os.environ["SCITEX_CARDS_DB"])
     _reset_cache()
-    yield str(path)
+    yield os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _reset_cache()
 
 
@@ -411,10 +412,9 @@ _BLOCKING_FIXTURE = (
 
 @pytest.fixture
 def blocking_store(tmp_path):
-    path = tmp_path / "tasks.yaml"
-    path.write_text(_BLOCKING_FIXTURE, encoding="utf-8")
+    seed_db_from_doc(safe_load(_BLOCKING_FIXTURE) or {}, os.environ["SCITEX_CARDS_DB"])
     _reset_cache()
-    yield str(path)
+    yield os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _reset_cache()
 
 

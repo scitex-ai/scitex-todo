@@ -550,12 +550,25 @@ class TestSubscriberFanOut:
 
 
 def _write_store(path, tasks, *, agents=None) -> None:
-    """Write a minimal real tasks.yaml the watcher can load_doc()."""
+    """Seed the canonical DB with `tasks` AND write a physical store file.
+
+    The store is SQLite now: ``run_watcher_once`` reads task data via
+    ``load_doc``, which reads the canonical DB and IGNORES the path. So the
+    task data the watcher sees must be SEEDED into the DB, not written to a
+    YAML file. But ``run_watcher_once`` still ``stat()``s the passed path for
+    its mtime short-circuit, so a real file must also exist at ``path`` with a
+    mtime the test can pin/bump. This helper therefore does BOTH: seed the DB
+    (the data source) and write a physical YAML file (the mtime handle).
+    """
+    import os
+
     import yaml
+    from conftest import seed_db_from_doc
 
     doc: dict = {"tasks": tasks}
     if agents is not None:
         doc["agents"] = agents
+    seed_db_from_doc(doc, os.environ["SCITEX_CARDS_DB"])
     with open(path, "w", encoding="utf-8") as handle:
         yaml.safe_dump(doc, handle, sort_keys=False)
 
@@ -659,10 +672,10 @@ class TestNoChangeTick:
 
     def test_unchanged_mtime_short_circuits_before_parse(self, tmp_path):
         # The mtime short-circuit must fire so a quiet board costs one
-        # stat(), not a full parse. Rewrite the store CONTENT (add task b)
-        # but reset the mtime back to the seeded value: if the tick parsed
-        # content it would wake on b; because it keys off mtime it must
-        # short-circuit and return [].
+        # stat(), not a full DB re-read. Re-seed the DB with task b (via
+        # _write_store) but reset the file mtime back to the seeded value:
+        # if the tick re-read the store it would wake on b; because it keys
+        # off mtime it must short-circuit and return [].
         # Arrange
         import os as _os
 

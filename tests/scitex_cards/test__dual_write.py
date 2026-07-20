@@ -19,8 +19,8 @@ import sqlite3
 
 import pytest
 
-from scitex_cards import _dual_write, _store
-from scitex_cards._db import ENV_DB, resolve_db_path
+from scitex_cards import _dual_write, _store, _store_backend
+from scitex_cards._db import ENV_DB
 from scitex_cards._paths import ENV_TASKS
 
 
@@ -44,17 +44,8 @@ def _db_ids(db_path) -> set[str]:
         conn.close()
 
 
-def _break_the_mirror(monkeypatch) -> None:
-    """Make the incremental mirror raise, exactly as a disk I/O error would."""
-
-    def boom(doc, db_path=None):
-        raise sqlite3.OperationalError("disk I/O error")
-
-    monkeypatch.setattr("scitex_cards._db_mirror.mirror_doc_incremental", boom)
-
-
 # --------------------------------------------------------------------------
-# RULE 1 — the mirror is OFF unless explicitly switched on.
+# RULE 1 (residual) — the mirror flag is OFF unless explicitly switched on.
 # --------------------------------------------------------------------------
 
 
@@ -70,133 +61,15 @@ def test_mirror_is_off_by_default(monkeypatch, tmp_path):
     assert on is False
 
 
-def test_a_card_write_with_the_mirror_off_touches_no_db(monkeypatch, tmp_path):
-    # Arrange
-    monkeypatch.delenv(_dual_write.ENV_DUAL_WRITE, raising=False)
-    store = tmp_path / "tasks.yaml"
-
-    # Act
-    _store.add_task(store, id="a", title="A", assignee="tester")
-
-    # Assert
-    assert not resolve_db_path().exists()
-
-
 # --------------------------------------------------------------------------
-# RULE 2 — with the mirror ON, the DB tracks the YAML.
-# --------------------------------------------------------------------------
-
-
-def test_mirror_writes_the_card_into_sqlite(monkeypatch, tmp_path):
-    # Arrange
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
-    store = tmp_path / "tasks.yaml"
-
-    # Act
-    _store.add_task(store, id="a", title="A", assignee="tester")
-
-    # Assert
-    assert _db_ids(resolve_db_path()) == {"a"}
-
-
-def test_reconcile_keeps_a_row_the_document_no_longer_lists(monkeypatch, tmp_path):
-    """A row that leaves the document SURVIVES in the database.
-
-    THIS ASSERTION IS INVERTED FROM WHAT IT USED TO BE, deliberately. It read:
-
-        assert _db_ids(resolve_db_path()) == {"b"}   # 'a' was dropped
-
-    and it pinned the behaviour that destroyed live data twice on 2026-07-20 —
-    the same 16 cards, twenty minutes apart, every card created that day and
-    nothing older. A writer holding a document read BEFORE those cards existed
-    wrote it back, the reconcile diff called them "removed", and they were
-    deleted. The second loss happened with no test suite running.
-
-    Operator ruling: once something has entered the database, better never to
-    delete it. Absence from a document is not evidence of deletion — far more
-    often it is evidence of a stale read, and reconcile cannot tell the two
-    apart. So it no longer tries.
-
-    The delete VERB is unaffected and still removes the row from the caller's
-    document; what changed is that reconcile no longer infers a deletion from
-    a document that merely lacks a card.
-    """
-    # Arrange
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
-    store = tmp_path / "tasks.yaml"
-    _store.add_task(store, id="a", title="A", assignee="tester")
-    _store.add_task(store, id="b", title="B", assignee="tester")
-
-    # Act
-    _store.delete_task(store, "a")
-
-    # Assert — 'a' is still in the database. That is the point.
-    assert _db_ids(resolve_db_path()) == {"a", "b"}
-
-
-def test_mirror_leaves_no_failures_on_the_happy_path(monkeypatch, tmp_path):
-    # Arrange
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
-    store = tmp_path / "tasks.yaml"
-
-    # Act
-    _store.add_task(store, id="a", title="A", assignee="tester")
-
-    # Assert
-    assert _dual_write.failure_count() == 0
-
-
-# --------------------------------------------------------------------------
-# RULE 3 — a mirror failure NEVER costs the user their card, and NEVER hides.
+# RULE 3 (residual) — mirror-DIVERGENCE HEALTH still reports on `_failures`.
 #
-# This is the load-bearing pair. The YAML is canonical: by the time the mirror
-# runs, the card is already durably on disk. Raising there would turn a cosmetic
-# problem into DATA LOSS. But swallowing it quietly would let the DB rot out of
-# sync while every check reports green — and S2 would then cut the fleet over to
-# a store that is confidently wrong.
+# The flag-gated mirror-on-write path (`mirror_after_save`) is gone with the
+# YAML->SQLite cutover: SQLite is now canonical and a write RAISES rather than
+# being counted-and-swallowed (see `_store_backend.write_doc_to_db`). What
+# SURVIVES is `check_mirror_healthy`, still wired into `scitex-cards health`, so
+# the divergence-health tests below keep their subject and stay.
 # --------------------------------------------------------------------------
-
-
-def test_a_mirror_failure_does_not_fail_the_card_write(monkeypatch, tmp_path):
-    """The card MUST still be written. The user's data is not the mirror's hostage."""
-    # Arrange
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
-    store = tmp_path / "tasks.yaml"
-    _break_the_mirror(monkeypatch)
-
-    # Act — must NOT raise.
-    _store.add_task(store, id="a", title="A", assignee="tester")
-
-    # Assert
-    assert [t["id"] for t in _store.list_tasks(store)] == ["a"]
-
-
-def test_a_mirror_failure_is_counted_not_swallowed(monkeypatch, tmp_path):
-    # Arrange
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
-    store = tmp_path / "tasks.yaml"
-    _break_the_mirror(monkeypatch)
-
-    # Act
-    _store.add_task(store, id="a", title="A", assignee="tester")
-
-    # Assert
-    assert _dual_write.failure_count() == 1
-
-
-def test_a_mirror_failure_is_logged_loud(monkeypatch, tmp_path, caplog):
-    """Silence is the failure mode this whole codebase spent two days digging out of."""
-    # Arrange
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
-    store = tmp_path / "tasks.yaml"
-    _break_the_mirror(monkeypatch)
-
-    # Act
-    with caplog.at_level("ERROR"):
-        _store.add_task(store, id="a", title="A", assignee="tester")
-
-    # Assert
-    assert "DUAL-WRITE MIRROR FAILED" in caplog.text
 
 
 # A single failure means the DB no longer matches the YAML. There is no partial
@@ -251,22 +124,29 @@ def test_health_is_ok_when_the_mirror_is_off(monkeypatch):
 # --------------------------------------------------------------------------
 
 
-def test_the_mirror_does_not_touch_the_messages_table(monkeypatch, tmp_path):
+def test_a_card_write_does_not_touch_the_messages_table(monkeypatch, tmp_path):
     """DM threads MUST survive a card write.
 
-    My first design rebuilt EVERY table from the doc — including `messages`, which
-    is derived from the threads.yaml SIDECAR and not from the doc at all. That
-    would have DELETED EVERY DM THREAD ON EVERY CARD WRITE.
-
-    Caught while writing it, and pinned here because it is exactly the kind of
-    thing that gets "helpfully" reintroduced by someone tidying up the clear-list.
-    A table must be owned by exactly the file that produces it.
+    `mirror_doc_incremental` is now the SOLE canonical write primitive, and the
+    near-miss it guards is unchanged by the cutover: the doc carries `tasks`
+    (and the doc-owned sections), never `messages`, which is derived from the
+    threads.yaml SIDECAR. A write that rebuilt `messages` from the doc would
+    DELETE EVERY DM THREAD ON EVERY CARD WRITE — exactly the kind of thing that
+    gets "helpfully" reintroduced by someone tidying up the clear-list. A table
+    must be owned by exactly the file that produces it.
     """
-    # Arrange — a card write builds the DB, then a DM lands in `messages`.
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
+    # Arrange — one canonical write builds the DB, then a DM lands in `messages`.
     store = tmp_path / "tasks.yaml"
-    _store.add_task(store, id="a", title="A", assignee="tester")
-    db = resolve_db_path()
+    db = tmp_path / "own.db"
+    monkeypatch.setenv(ENV_DB, str(db))
+    _store_backend.write_doc_to_db(
+        {
+            "tasks": [
+                {"id": "a", "title": "A", "status": "deferred", "assignee": "tester"}
+            ]
+        },
+        store,
+    )
     conn = sqlite3.connect(str(db))
     conn.execute(
         "INSERT INTO messages(id, thread_key, sender, recipient, body, ts, read) "
@@ -275,8 +155,16 @@ def test_the_mirror_does_not_touch_the_messages_table(monkeypatch, tmp_path):
     conn.commit()
     conn.close()
 
-    # Act — a card write now runs the mirror again.
-    _store.add_task(store, id="b", title="B", assignee="tester")
+    # Act — a second canonical write runs the same mirror primitive again.
+    _store_backend.write_doc_to_db(
+        {
+            "tasks": [
+                {"id": "a", "title": "A", "status": "deferred", "assignee": "tester"},
+                {"id": "b", "title": "B", "status": "deferred", "assignee": "tester"},
+            ]
+        },
+        store,
+    )
 
     # Assert
     conn = sqlite3.connect(str(db))
@@ -284,7 +172,7 @@ def test_the_mirror_does_not_touch_the_messages_table(monkeypatch, tmp_path):
         surviving = conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
     finally:
         conn.close()
-    assert surviving == 1, "the mirror DELETED a DM thread on a card write"
+    assert surviving == 1, "the write DELETED a DM thread on a card write"
 
 
 # --------------------------------------------------------------------------- #
@@ -435,13 +323,31 @@ def test_every_repeated_call_still_refuses_the_flag(monkeypatch, caplog):
 
 
 def _mirror_of_store_a(monkeypatch, tmp_path):
-    """Build a DB that is store A's mirror, holding A's single card."""
+    """Build a DB that is store A's mirror, holding A's single card.
+
+    Uses the canonical write door directly: `write_doc_to_db(doc, store_a)`
+    adopts the fresh DB resolved from ``$SCITEX_CARDS_DB`` and STAMPS its
+    provenance for store A — the same primitive the production write path runs.
+    (The old add_task+dual-write route cannot build this: with SQLite canonical,
+    add_task is a read-modify-write that RAISES on a not-yet-existing DB.)
+    """
     store_a = tmp_path / "a" / "tasks.yaml"
     store_a.parent.mkdir()
     db = tmp_path / "mirror-of-a.db"
     monkeypatch.setenv(ENV_DB, str(db))
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
-    _store.add_task(store_a, id="a-only", title="A", assignee="agent:test-suite")
+    _store_backend.write_doc_to_db(
+        {
+            "tasks": [
+                {
+                    "id": "a-only",
+                    "title": "A",
+                    "status": "deferred",
+                    "assignee": "agent:test-suite",
+                }
+            ]
+        },
+        store_a,
+    )
     return db
 
 
@@ -457,14 +363,21 @@ def test_the_mirror_of_store_a_really_holds_store_as_card(monkeypatch, tmp_path)
 def test_a_write_to_a_foreign_store_does_not_clobber_another_stores_mirror(
     monkeypatch, tmp_path
 ):
-    """The incident, in miniature: store B must not overwrite store A's mirror."""
+    """The incident, in miniature: store B must not overwrite store A's mirror.
+
+    The public card verb is protected, not only the low-level primitive: store B
+    is the resolved store, but the DB it resolves is stamped for store A, so the
+    read door of `add_task` RAISES before any row is touched.
+    """
     # Arrange — a DB that is store A's mirror, holding A's card.
     db = _mirror_of_store_a(monkeypatch, tmp_path)
 
-    # Act — a DIFFERENT store writes while the same DB is resolved from env.
+    # Act — store B is the resolved store, but the same DB (store A's) is on env.
     store_b = tmp_path / "b" / "tasks.yaml"
     store_b.parent.mkdir()
-    _store.add_task(store_b, id="b-only", title="B", assignee="agent:test-suite")
+    monkeypatch.setenv(ENV_TASKS, str(store_b))
+    with pytest.raises(RuntimeError):
+        _store.add_task(store_b, id="b-only", title="B", assignee="agent:test-suite")
 
     # Assert — A's mirror is untouched; B never entered it.
     assert _db_ids(db) == {"a-only"}, (
@@ -481,10 +394,21 @@ def test_an_unstamped_db_is_adoptable_so_a_fresh_mirror_still_bootstraps(
     store = tmp_path / "tasks.yaml"
     db = tmp_path / "fresh.db"
     monkeypatch.setenv(ENV_DB, str(db))
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
 
-    # Act
-    _store.add_task(store, id="first", title="first", assignee="agent:test-suite")
+    # Act — the first canonical write to an un-adopted DB must claim it.
+    _store_backend.write_doc_to_db(
+        {
+            "tasks": [
+                {
+                    "id": "first",
+                    "title": "first",
+                    "status": "deferred",
+                    "assignee": "agent:test-suite",
+                }
+            ]
+        },
+        store,
+    )
 
     # Assert
     assert "first" in _db_ids(db), (
@@ -494,15 +418,44 @@ def test_an_unstamped_db_is_adoptable_so_a_fresh_mirror_still_bootstraps(
 
 def test_a_store_writing_to_its_own_mirror_is_not_refused(monkeypatch, tmp_path):
     """Control: the normal case — repeated writes to one's own mirror keep working."""
-    # Arrange
+    # Arrange — first write adopts the DB and stamps it for `store`.
     store = tmp_path / "tasks.yaml"
     db = tmp_path / "own.db"
     monkeypatch.setenv(ENV_DB, str(db))
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
-    _store.add_task(store, id="one", title="one", assignee="agent:test-suite")
+    _store_backend.write_doc_to_db(
+        {
+            "tasks": [
+                {
+                    "id": "one",
+                    "title": "one",
+                    "status": "deferred",
+                    "assignee": "agent:test-suite",
+                }
+            ]
+        },
+        store,
+    )
 
-    # Act
-    _store.add_task(store, id="two", title="two", assignee="agent:test-suite")
+    # Act — a second write to that same store's own mirror must NOT be refused.
+    _store_backend.write_doc_to_db(
+        {
+            "tasks": [
+                {
+                    "id": "one",
+                    "title": "one",
+                    "status": "deferred",
+                    "assignee": "agent:test-suite",
+                },
+                {
+                    "id": "two",
+                    "title": "two",
+                    "status": "deferred",
+                    "assignee": "agent:test-suite",
+                },
+            ]
+        },
+        store,
+    )
 
     # Assert
     assert _db_ids(db) == {"one", "two"}, (
@@ -521,7 +474,6 @@ def test_canonical_write_to_a_foreign_db_RAISES_rather_than_clobbering(
     monkeypatch, tmp_path
 ):
     # Arrange — a DB that belongs to store A.
-    from scitex_cards import _store_backend
 
     db = _mirror_of_store_a(monkeypatch, tmp_path)
     store_b = tmp_path / "b" / "tasks.yaml"
@@ -536,7 +488,6 @@ def test_a_refused_canonical_write_leaves_the_foreign_rows_untouched(
     monkeypatch, tmp_path
 ):
     # Arrange — a DB that belongs to store A.
-    from scitex_cards import _store_backend
 
     db = _mirror_of_store_a(monkeypatch, tmp_path)
     store_b = tmp_path / "b" / "tasks.yaml"
@@ -617,44 +568,3 @@ def test_a_missing_canonical_db_RAISES_instead_of_reading_an_empty_store(
     # Assert
     with pytest.raises(RuntimeError, match="does not exist"):
         _read_canonical_db_or_raise()
-
-
-def test_restoring_from_a_snapshot_keeps_the_stores_own_identity(monkeypatch, tmp_path):
-    """A RESTORE must not re-label the database as the backup it read.
-
-    The provenance stamp is the DB's IDENTITY — the ownership guards refuse a
-    write whose store does not match it. Stamping it with the imported FILE is
-    right for a bootstrap and wrong for a restore: recovering the live board
-    from snapshots/tasks.yaml made the DB claim to be the snapshot's, and every
-    ordinary write was then correctly-but-uselessly refused. That was patched by
-    hand with an UPDATE on schema_meta during the 2026-07-19 recovery; this pins
-    the supported way.
-    """
-    # Arrange — data lives in a snapshot; the DB serves a different (logical) store
-    import sqlite3
-
-    from scitex_cards._db_bootstrap import import_from_yaml
-
-    snap = tmp_path / "snapshots" / "tasks.yaml"
-    snap.parent.mkdir()
-    snap.write_text(
-        "tasks:\n- id: a\n  title: A\n  status: done\n  assignee: x\n  created_by: x\n"
-    )
-    live = tmp_path / "cards" / "tasks.yaml"
-    live.parent.mkdir()
-    db = tmp_path / "cards" / "cards.db"
-    monkeypatch.setenv(ENV_DB, str(db))
-
-    # Act
-    import_from_yaml(tasks_path=str(snap), as_store=str(live))
-
-    # Assert
-    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-    try:
-        stamped = dict(conn.execute("SELECT key, value FROM schema_meta"))["yaml_path"]
-    finally:
-        conn.close()
-    assert stamped == str(live), (
-        "the DB must keep the identity of the store it SERVES, not adopt the "
-        "identity of the backup it was restored FROM"
-    )

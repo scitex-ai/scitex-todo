@@ -15,7 +15,7 @@ the node payload MUST emit those fields. This covers the wire contract:
     null-checks
   * ``agent`` (the assignee in user terms) keeps being emitted
 
-Real ``RequestFactory`` GET against a tmp ``tasks.yaml`` — no mocks
+Real ``RequestFactory`` GET against the canonical SQLite store — no mocks
 (STX-NM / PA-306). Mirrors the pattern in ``test_graph_fleet.py``.
 One assertion per test (STX-TQ007).
 """
@@ -23,15 +23,18 @@ One assertion per test (STX-TQ007).
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
 pytest.importorskip("django")
 
+from conftest import seed_db_from_doc  # noqa: E402
 from django.test import RequestFactory  # noqa: E402
 
 from scitex_cards._django import views  # noqa: E402
 from scitex_cards._django.services import _reset_cache  # noqa: E402
+from scitex_cards._yaml import safe_load  # noqa: E402
 
 
 def _store_text() -> str:
@@ -55,11 +58,18 @@ def _store_text() -> str:
 
 
 @pytest.fixture
-def store(tmp_path):
-    path = tmp_path / "tasks.yaml"
-    path.write_text(_store_text(), encoding="utf-8")
+def store():
+    # SQLite store: seed the two cards into the canonical DB and hand the graph
+    # view the PINNED store-identity path (never a tmp_path YAML — a write
+    # stamped with a tmp path would fail the next read's ownership check). The
+    # DB is authoritative for content; the view ignores the path except as a
+    # provenance label. The board/services layer (get_board -> load_groups)
+    # stat()s the identity file, which the _django autouse fixture already
+    # creates at the pinned path.
+    seed_db_from_doc(safe_load(_store_text()) or {}, os.environ["SCITEX_CARDS_DB"])
+    store_path = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _reset_cache()
-    yield str(path)
+    yield store_path
     _reset_cache()
 
 

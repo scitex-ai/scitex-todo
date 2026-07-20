@@ -11,6 +11,8 @@ NOT disturb the `tasks:` payload living in the same file.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from scitex_cards import _model, _store, _users
@@ -152,7 +154,7 @@ def test_register_user_string_names_coerced_to_list(tmp_path):
 def store_with_two_tasks(tmp_path):
     """A store carrying two tasks, plus the task payload as it stood BEFORE
     any user write touched the same file."""
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _store.add_task(
         store, id="t1", title="Task one", status="pending", assignee="agent:test-suite"
     )
@@ -188,7 +190,7 @@ def test_user_write_leaves_the_users_section_readable(store_with_two_tasks):
 def test_task_write_after_user_write_keeps_users(tmp_path):
     """The user survives a subsequent task write (round-trip preserves it)."""
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     user = _users.register_user(kind="agent", names=["owner-1"], store=store)
     # Act
     _store.add_task(
@@ -200,7 +202,7 @@ def test_task_write_after_user_write_keeps_users(tmp_path):
 
 def test_task_write_after_user_write_records_the_task(tmp_path):
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _users.register_user(kind="agent", names=["owner-1"], store=store)
     # Act
     _store.add_task(
@@ -574,7 +576,7 @@ def test_list_users_returns_all(tmp_path):
 def test_list_users_empty_when_no_section(tmp_path):
     """Tasks but no users: an absent section reads as [], never a KeyError."""
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _store.add_task(store, id="t1", title="Task one", assignee="agent:test-suite")
     # Act
     users = _users.list_users(store=store)
@@ -860,7 +862,7 @@ def test_touch_user_writes_the_last_seen_stamp(touched_user):
 def test_store_action_stamps_last_seen_on_actor(tmp_path, env):
     """A store action (comment) by a REGISTERED actor stamps its last_seen."""
     # Arrange
-    store = tmp_path / "tasks.yaml"
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _users.register_user(kind="agent", names=["actor-1"], store=store)
     env.set("SCITEX_TODO_AGENT_ID", "actor-1")
     _store.add_task(store, id="t1", title="T", assignee="actor-1", created_by="actor-1")

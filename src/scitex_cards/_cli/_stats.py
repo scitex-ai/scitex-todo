@@ -22,8 +22,6 @@ import json
 
 import click
 
-from ._compat import spec_command_kwargs
-
 from .._model import load_tasks
 from .._paths import resolve_tasks_path
 from .._throughput import (
@@ -31,7 +29,7 @@ from .._throughput import (
     aggregate,
     build_notify_body,
 )
-
+from ._compat import spec_command_kwargs
 
 # --------------------------------------------------------------------------- #
 # stats                                                                       #
@@ -48,7 +46,7 @@ def _format_text(rows: list[GroupStats]) -> str:
         body.append(
             f"{r.name[:30]:30}  {r.open_count:5d}  {r.stale_count:5d}  "
             f"{r.completed:5d}  {r.created:7d}  {r.delta:+6d}  "
-            f"{r.ratio*100:5.1f}%  {r.velocity_per_day:8.2f}"
+            f"{r.ratio * 100:5.1f}%  {r.velocity_per_day:8.2f}"
         )
     return "\n".join([header] + body)
 
@@ -132,8 +130,14 @@ def _rollup(path, by, since, fmt):
         examples=(
             ("{prog} print-stats --by agent --since 2026-06-01", "Windowed stats."),
             ("{prog} print-stats --by agent --notify", "Push per-agent summaries."),
-            ("{prog} print-stats --by agent --notify --nudge-quiet", "Also nudge stalled agents."),
-            ("{prog} print-stats --by project --format json", "Machine-readable, by project."),
+            (
+                "{prog} print-stats --by agent --notify --nudge-quiet",
+                "Also nudge stalled agents.",
+            ),
+            (
+                "{prog} print-stats --by project --format json",
+                "Machine-readable, by project.",
+            ),
         ),
     ),
 )
@@ -179,15 +183,12 @@ def _rollup(path, by, since, fmt):
         "the quiet nudge piggybacks on the same wire."
     ),
 )
-@click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Path to tasks.yaml (default: project -> user -> bundled example, or $SCITEX_TODO_TASKS_YAML_SHARED).",
-)
 def stats_cmd(
-    by: str, since: str | None, fmt: str, notify: bool,
-    nudge_quiet: bool, tasks_path: str | None,
+    by: str,
+    since: str | None,
+    fmt: str,
+    notify: bool,
+    nudge_quiet: bool,
 ) -> None:
     """Print throughput stats (per-agent / project / host).
 
@@ -204,7 +205,7 @@ def stats_cmd(
       $ scitex-todo print-stats --by agent --notify --nudge-quiet
       $ scitex-todo print-stats --by project --format json
     """
-    path = resolve_tasks_path(tasks_path)
+    path = resolve_tasks_path(None)
 
     if (notify or nudge_quiet) and by == "agent":
         # SIDE-EFFECTING notify/cron path (the */10 entry). Acquire the
@@ -218,7 +219,7 @@ def stats_cmd(
         # 20260708 (analogue of #344 wake-watcher spiral / #345 drain spin).
         from .._singleflight import notify_lock_path, single_instance
 
-        with single_instance(notify_lock_path(tasks_path)) as acquired:
+        with single_instance(notify_lock_path(None)) as acquired:
             if not acquired:
                 click.echo(
                     "print-stats --notify: a prior run still holds the lock, "
@@ -240,7 +241,7 @@ def stats_cmd(
                     click.echo(f"  {wire:>6}  {r.name}  ({len(body)} chars)")
             if nudge_quiet:
                 click.echo("")
-                click.echo(f"# Quiet-nudge sweep (SCITEX_TODO_NUDGE_QUIET_MIN)")
+                click.echo("# Quiet-nudge sweep (SCITEX_TODO_NUDGE_QUIET_MIN)")
                 _emit_quiet_nudges(tasks, rows)
                 click.echo("")
                 click.echo(
@@ -294,6 +295,7 @@ def _emit_quiet_nudges(tasks: list[dict], rows: list) -> None:
             by_agent.setdefault(a, []).append(t)
 
     import datetime as _dt
+
     now = _dt.datetime.now(tz=_dt.timezone.utc)
 
     def _quiet_age_s(t: dict) -> float | None:
@@ -325,7 +327,7 @@ def _emit_quiet_nudges(tasks: list[dict], rows: list) -> None:
         result = deliver(agent, body, kind="quiet-nudge")
         ok_label = "✓" if result.get("ok") else "✗"
         click.echo(
-            f"  {ok_label}  {agent:30}  quiet {int(worst_age//60)}m  "
+            f"  {ok_label}  {agent:30}  quiet {int(worst_age // 60)}m  "
             f"wire={result.get('wire')}  reason={result.get('reason')}"
         )
         if result.get("ok"):

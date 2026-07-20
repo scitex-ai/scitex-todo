@@ -14,9 +14,9 @@ fixtures below.
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
-import yaml
 
 pytest.importorskip("django")
 
@@ -36,11 +36,15 @@ _STORE_TEXT = (
 
 
 @pytest.fixture
-def store(tmp_path):
-    path = tmp_path / "tasks.yaml"
-    path.write_text(_STORE_TEXT, encoding="utf-8")
+def store():
+    from conftest import seed_db_from_doc
+
+    from scitex_cards._yaml import safe_load
+
+    doc = safe_load(_STORE_TEXT) or {}
+    seed_db_from_doc(doc, os.environ["SCITEX_CARDS_DB"])
     _reset_cache()
-    yield str(path)
+    yield os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _reset_cache()
 
 
@@ -60,9 +64,9 @@ def _post(endpoint, store_path, body):
 
 
 def _load(store_path):
-    with open(store_path, encoding="utf-8") as handle:
-        data = yaml.safe_load(handle)
-    return {t["id"]: t for t in data["tasks"]}
+    from scitex_cards._model import load_tasks
+
+    return {t["id"]: t for t in load_tasks(store_path)}
 
 
 def _created_task(store_path, body):
@@ -432,14 +436,21 @@ def test_comment_unknown_id_returns_404(store):
 # tmp store, real comment_task/emit, real poll_inbox.
 def _store_with_agent(tmp_path):
     """A store whose card is OWNED by 'owner-agent' so the comment is queued."""
-    path = tmp_path / "tasks.yaml"
-    path.write_text(
-        "tasks:\n"
-        "  - {id: owned, title: Owned, status: in_progress, agent: owner-agent}\n",
-        encoding="utf-8",
-    )
+    from conftest import seed_db_from_doc
+
+    doc = {
+        "tasks": [
+            {
+                "id": "owned",
+                "title": "Owned",
+                "status": "in_progress",
+                "agent": "owner-agent",
+            }
+        ]
+    }
+    seed_db_from_doc(doc, os.environ["SCITEX_CARDS_DB"])
     _reset_cache()
-    return str(path)
+    return os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
 
 
 def _comment_relay(tmp_path, text="ping"):

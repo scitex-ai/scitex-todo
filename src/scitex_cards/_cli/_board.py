@@ -22,8 +22,6 @@ from __future__ import annotations
 
 import click
 
-from ._compat import spec_command_kwargs, spec_group_kwargs
-
 # Process/pidfile helpers live in the sibling ``_board_proc`` module
 # (extracted to keep this file under the 512-line cap). Re-imported here
 # so existing call sites + tests keep importing them from ``_board``.
@@ -37,6 +35,8 @@ from scitex_cards._cli._board_proc import (
     _board_resolve_pid,
     _board_write_pid,
 )
+
+from ._compat import spec_command_kwargs, spec_group_kwargs
 
 
 def register(main: click.Group) -> None:
@@ -110,9 +110,7 @@ def _board_run_server(
             "`restart` / `status` work reliably from any terminal. "
             "`board start --help` documents the web extra it requires."
         ),
-        command_categories=(
-            ("Core", ("start", "stop", "restart", "status")),
-        ),
+        command_categories=(("Core", ("start", "stop", "restart", "status")),),
     ),
 )
 @click.pass_context
@@ -164,13 +162,6 @@ def board_group(ctx: click.Context) -> None:
     ),
 )
 @click.option(
-    "--tasks",
-    "tasks_path",
-    default=None,
-    help="Path to tasks.yaml (default: project -> user -> bundled, "
-    "or $SCITEX_TODO_TASKS_YAML_SHARED).",
-)
-@click.option(
     "--port",
     type=int,
     default=8051,
@@ -185,7 +176,7 @@ def board_group(ctx: click.Context) -> None:
 @click.option(
     "--dry-run",
     is_flag=True,
-    help="Print the planned launch (port + tasks + browser flag) "
+    help="Print the planned launch (port + browser flag) "
     "without starting the server. Required by SciTeX §2 audit on "
     "mutating verbs.",
 )
@@ -198,7 +189,6 @@ def board_group(ctx: click.Context) -> None:
     "non-interactive). Accepted per SciTeX §2 audit on mutating verbs.",
 )
 def board_start_cmd(
-    tasks_path: str | None,
     port: int,
     no_browser: bool,
     dry_run: bool,
@@ -221,12 +211,12 @@ def board_start_cmd(
     if dry_run:
         click.echo(
             f"# dry-run: would start board on port {port}, "
-            f"tasks={tasks_path or '<default-resolution>'}, "
             f"no-browser={bool(no_browser)} "
             f"(pidfile: {_board_pidfile()})",
         )
         return
-    _board_run_server(tasks_path, port, no_browser)
+    # First positional slot is the store path; it is always ambient now.
+    _board_run_server(None, port, no_browser)
 
 
 @board_group.command(
@@ -271,9 +261,7 @@ def board_start_cmd(
     help="Skip the interactive confirmation (no-op today; `stop` is "
     "non-interactive). Accepted per SciTeX §2 audit on mutating verbs.",
 )
-def board_stop_cmd(
-    port: int, timeout: float, dry_run: bool, assume_yes: bool
-) -> None:
+def board_stop_cmd(port: int, timeout: float, dry_run: bool, assume_yes: bool) -> None:
     """SIGTERM the board: pidfile if valid, else the port-found board.
 
     When the pidfile pid is dead/missing but a verified board is serving
@@ -360,7 +348,6 @@ def board_stop_cmd(
         examples=(("{prog} board restart", "Reload the board."),),
     ),
 )
-@click.option("--tasks", "tasks_path", default=None, help="Path to tasks.yaml.")
 @click.option("--port", type=int, default=8051, show_default=True, help="Server port.")
 @click.option("--no-browser", is_flag=True, help="Don't open a browser automatically.")
 @click.option(
@@ -380,7 +367,6 @@ def board_stop_cmd(
 @click.pass_context
 def board_restart_cmd(
     ctx: click.Context,
-    tasks_path: str | None,
     port: int,
     no_browser: bool,
     dry_run: bool,
@@ -403,19 +389,15 @@ def board_restart_cmd(
         click.echo(
             f"# dry-run: would stop (currently {prefix}) then start "
             f"on port {port}, "
-            f"tasks={tasks_path or '<default-resolution>'}, "
             f"no-browser={bool(no_browser)}",
         )
         return
     # `stop` is a no-op if nothing's running — that's fine. Pass --port so
     # the stop step can fall back to a port-found board when the pidfile
     # is stale (the stale-pidfile incident this hardening targets).
-    ctx.invoke(
-        board_stop_cmd, port=port, timeout=5.0, dry_run=False, assume_yes=True
-    )
+    ctx.invoke(board_stop_cmd, port=port, timeout=5.0, dry_run=False, assume_yes=True)
     ctx.invoke(
         board_start_cmd,
-        tasks_path=tasks_path,
         port=port,
         no_browser=no_browser,
         dry_run=False,

@@ -25,19 +25,33 @@ import time
 from pathlib import Path
 
 import pytest
+from conftest import seed_db_from_doc
 
 from scitex_cards._django import services
+from scitex_cards._model import load_tasks
 
 
 @pytest.fixture()
-def store(tmp_path, env):
-    path = tmp_path / "tasks.yaml"
-    path.write_text(
-        "tasks:\n"
-        "  - id: a\n    title: a\n    status: in_progress\n"
-        "  - id: b\n    title: b\n    status: done\n",
-        encoding="utf-8",
+def store(env):
+    # SQLite cutover: card DATA lives in the canonical DB (a path-independent
+    # read), so the two seeded cards are put THERE. But the board cache — the
+    # subject of this whole file — still keys its invalidation on the resolved
+    # store PATH's stat (mtime_ns, size, inode via ``_stat_sig``) and opens
+    # that path through ``load_groups``. So the store is the PINNED identity
+    # path, a real marker FILE (created empty by the _django conftest autouse
+    # fixture); the helpers below mutate the DB for card content AND move the
+    # marker file's stat so the cache observes the change, exactly as a write
+    # to the old single YAML store moved both at once.
+    seed_db_from_doc(
+        {
+            "tasks": [
+                {"id": "a", "title": "a", "status": "in_progress"},
+                {"id": "b", "title": "b", "status": "done"},
+            ]
+        },
+        os.environ["SCITEX_CARDS_DB"],
     )
+    path = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     services._board_cache.clear()
     services._refreshing.clear()
     # No per-project lanes in the fixture — keep the unit about the cache.
@@ -85,8 +99,19 @@ def _bump_mtime(store) -> None:
 
 
 def _append_card(store, cid: str, status: str = "deferred") -> None:
+    """Add one card, moving BOTH halves a board read consults.
+
+    Card data lives in the canonical DB now, so the new card is seeded there
+    (a rebuild reads it back). The board's cache invalidation keys on the
+    marker file's stat, so the file is also grown — by a comment line, which
+    moves its size + mtime without turning it into a non-mapping that the
+    group loader (``load_groups`` -> ``safe_load``) would choke on.
+    """
+    tasks = list(load_tasks(store))
+    tasks.append({"id": cid, "title": cid, "status": status})
+    seed_db_from_doc({"tasks": tasks}, os.environ["SCITEX_CARDS_DB"])
     with open(store, "a", encoding="utf-8") as fh:
-        fh.write(f"  - id: {cid}\n    title: {cid}\n    status: {status}\n")
+        fh.write(f"# {cid}\n")
 
 
 def _break_the_rebuild(monkeypatch) -> None:
@@ -99,13 +124,22 @@ def _break_the_rebuild(monkeypatch) -> None:
 
 
 def _rewrite_same_length(store, before) -> None:
-    """Rewrite atomically with the SAME byte length and the SAME timestamp.
+    """Mutate a card so ONLY the inode betrays it — same length, same timestamp.
 
-    ``in_progress`` -> ``done`` is not equal-length, so swap a title instead:
-    ``"a"`` -> ``"A"`` keeps the length. Every write to this store goes through
-    atomic ``os.replace``, which allocates a new inode, so only the inode moves.
+    Card side: title ``"a"`` -> ``"A"`` is an equal-length edit, applied to the
+    DB where card data now lives. File side: the marker file is rewritten
+    through atomic ``os.replace``, which allocates a new inode, then its
+    original length and stamp are restored — so neither ``st_size`` nor
+    ``st_mtime_ns`` moves and only ``st_ino`` does. That is the case
+    ``(mtime_ns, size)`` alone cannot catch, which is why the inode is in the
+    cache key.
     """
-    text = Path(store).read_text(encoding="utf-8").replace("title: a\n", "title: A\n")
+    tasks = list(load_tasks(store))
+    for task in tasks:
+        if task.get("id") == "a":
+            task["title"] = "A"
+    seed_db_from_doc({"tasks": tasks}, os.environ["SCITEX_CARDS_DB"])
+    text = Path(store).read_text(encoding="utf-8")
     tmp = Path(str(store) + ".tmp")
     tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, store)

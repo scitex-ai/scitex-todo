@@ -24,15 +24,37 @@ from __future__ import annotations
 import os
 
 from scitex_cards._db import ENV_DB
-from scitex_cards._db_bootstrap import import_from_yaml
 from scitex_cards._dual_write import _db_mirrors_this_store
 
 
 def _stamped_db(tmp_path, monkeypatch, store):
-    """A database stamped as the mirror of ``store``."""
+    """A database stamped as the mirror of ``store``.
+
+    Seeds a fresh DB from the store's doc and stamps its provenance for
+    ``store`` — the explicit form of the deleted
+    ``import_from_yaml(tasks_path=store, as_store=store)``. SQLite is the only
+    store and the importer is gone, so both halves are done by hand: seed via
+    ``seed_db_from_doc`` (the surviving rebuild primitive), then stamp
+    ``KEY_YAML_PATH`` with ``store`` — which is exactly what
+    ``_db_mirrors_this_store`` reads, so the identity assertions are unchanged.
+    """
+    from conftest import seed_db_from_doc
+
+    from scitex_cards._db import connect
+    from scitex_cards._db_freshness import stamp_yaml_provenance
+    from scitex_cards._yaml import safe_load
+
     db = tmp_path / "cards.db"
     monkeypatch.setenv(ENV_DB, str(db))
-    import_from_yaml(tasks_path=str(store), as_store=str(store))
+    doc = safe_load(store.read_text(encoding="utf-8")) or {}
+    seed_db_from_doc(doc, str(db))
+    conn = connect(str(db))
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        stamp_yaml_provenance(conn, store, len(doc.get("tasks", [])))
+        conn.commit()
+    finally:
+        conn.close()
     return db
 
 

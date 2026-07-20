@@ -74,11 +74,18 @@ def test_no_agent_yields_empty():
 
 
 def _store(tmp_path, tasks):
-    import yaml
+    # Store is SQLite now; load_tasks reads the canonical DB and treats the path
+    # as a label only. Seed the pinned canonical DB from the in-memory doc and
+    # return the STORE-identity path (NOT the DB path — see the migration
+    # playbook's store-path rule) for callers to pass as ``store=`` / the store
+    # env var. ``tmp_path`` is retained for the call signature; nothing is
+    # written under it any more.
+    import os
 
-    p = tmp_path / "tasks.yaml"
-    p.write_text(yaml.safe_dump({"tasks": tasks}), encoding="utf-8")
-    return p
+    from conftest import seed_db_from_doc
+
+    seed_db_from_doc({"tasks": tasks}, os.environ["SCITEX_CARDS_DB"])
+    return os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
 
 
 def test_evaluate_blocks_on_stale_in_progress(tmp_path):
@@ -218,9 +225,13 @@ def test_main_no_agent_allows(tmp_path, monkeypatch):
 
 
 def test_main_failsoft_allows_on_error(env, monkeypatch):
-    # A broken store path makes load_tasks raise; the guard must NOT trap (exit 0).
+    # A broken store makes the load raise; the guard must NOT trap (exit 0).
+    # Under the SQLite store the failure mode is a MISSING canonical DB, not a
+    # missing YAML file — the store path is a label now and a broken path is read
+    # as the (empty) DB — so point $SCITEX_CARDS_DB at a database that does not
+    # exist; the canonical read raises RuntimeError, which the guard fails soft on.
     # Arrange
-    env.set("SCITEX_TODO_TASKS_YAML_SHARED", "/no/such/dir/tasks.yaml")
+    env.set("SCITEX_CARDS_DB", "/no/such/dir/cards.db")
     _silence_stdin(monkeypatch)
     # Act
     rc = _idle_guard.main(["--agent", "alice"])

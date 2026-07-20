@@ -10,6 +10,7 @@ Uses Django's RequestFactory against a real tmp_path task store passed via the
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
@@ -29,12 +30,23 @@ _STORE_TEXT = (
 
 
 @pytest.fixture
-def store(tmp_path):
-    """Write a real tmp task store and reset the board cache around the test."""
-    path = tmp_path / "tasks.yaml"
-    path.write_text(_STORE_TEXT, encoding="utf-8")
+def store():
+    """Seed the canonical DB and reset the board cache around the test.
+
+    The store is SQLite now; the handlers read the canonical DB and treat the
+    ``?store=`` path as a provenance label only. We still author the fixture as
+    readable YAML text, parse it, seed the DB, and hand back the PINNED store
+    identity path (never a tmp_path yaml — that trips the "stamped for a
+    DIFFERENT store" refusal).
+    """
+    from conftest import seed_db_from_doc
+
+    from scitex_cards._yaml import safe_load
+
+    doc = safe_load(_STORE_TEXT) or {}
+    seed_db_from_doc(doc, os.environ["SCITEX_CARDS_DB"])
     _reset_cache()
-    yield str(path)
+    yield os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _reset_cache()
 
 
@@ -227,12 +239,20 @@ _NESTED_STORE_TEXT = (
 
 
 @pytest.fixture
-def nested_store(tmp_path):
-    """Tmp store with a parent + two children + an unrelated top-level node."""
-    path = tmp_path / "tasks-nested.yaml"
-    path.write_text(_NESTED_STORE_TEXT, encoding="utf-8")
+def nested_store():
+    """Seed the DB with a parent + two children + an unrelated top-level node.
+
+    Same SQLite-cutover shape as the ``store`` fixture: parse the YAML text,
+    seed the canonical DB, and yield the pinned store identity path.
+    """
+    from conftest import seed_db_from_doc
+
+    from scitex_cards._yaml import safe_load
+
+    doc = safe_load(_NESTED_STORE_TEXT) or {}
+    seed_db_from_doc(doc, os.environ["SCITEX_CARDS_DB"])
     _reset_cache()
-    yield str(path)
+    yield os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _reset_cache()
 
 

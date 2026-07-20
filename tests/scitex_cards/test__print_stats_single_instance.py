@@ -20,29 +20,23 @@ AAA structure.
 from __future__ import annotations
 
 import pytest
-import yaml
 from click.testing import CliRunner
 
 import scitex_cards._cli._stats as _stats
 import scitex_cards._push as _push
 from scitex_cards._cli._main import main
 from scitex_cards._singleflight import notify_lock_path, single_instance
+from scitex_cards._store import add_task
 
 
-def _write_store(path) -> None:
-    """Minimal real tasks.yaml with one owned card ``load_tasks`` accepts."""
-    doc = {
-        "tasks": [
-            {
-                "id": "t1",
-                "title": "Task one",
-                "status": "in_progress",
-                "agent": "proj-x",
-            }
-        ]
-    }
-    with open(path, "w", encoding="utf-8") as handle:
-        yaml.safe_dump(doc, handle, sort_keys=False)
+def _seed_store() -> None:
+    """One owned card in the store ``load_tasks`` reads.
+
+    The store itself is provisioned per-test by ``tests/conftest.py``; the
+    seed goes through the real write API, so this test never has to say WHERE
+    the store is (the CLI under test resolves it the same way).
+    """
+    add_task(id="t1", title="Task one", status="in_progress", agent="proj-x")
 
 
 def _deliver_spy(monkeypatch):
@@ -100,16 +94,13 @@ def _load_tasks_spy(monkeypatch):
 #: nothing wrong. Only the store-parse claim catches it, which is exactly why
 #: it must not sit behind five earlier asserts.
 @pytest.fixture()
-def notify_run_while_lock_held(tmp_path, monkeypatch):
+def notify_run_while_lock_held(monkeypatch):
     """Run the cron path while a prior run's flock is still held."""
-    store = tmp_path / "tasks.yaml"
-    _write_store(store)
+    _seed_store()
     calls = _deliver_spy(monkeypatch)
     loads = _load_tasks_spy(monkeypatch)
-    with single_instance(notify_lock_path(str(store))) as acquired:
-        result = CliRunner().invoke(
-            main, ["print-stats", "--by", "agent", "--notify", "--tasks", str(store)]
-        )
+    with single_instance(notify_lock_path(None)) as acquired:
+        result = CliRunner().invoke(main, ["print-stats", "--by", "agent", "--notify"])
     return {"acquired": acquired, "result": result, "calls": calls, "loads": loads}
 
 
@@ -179,16 +170,13 @@ def test_notify_skip_never_parses_the_store(notify_run_while_lock_held):
 #: push for the agent, and actually parse the store. A guard that always skips
 #: would pass the whole lock-held group and fail only here.
 @pytest.fixture()
-def notify_run_with_lock_free(tmp_path, monkeypatch):
+def notify_run_with_lock_free(monkeypatch):
     """Run the cron path with no prior holder."""
-    store = tmp_path / "tasks.yaml"
-    _write_store(store)
+    _seed_store()
     calls = _deliver_spy(monkeypatch)
     loads = _load_tasks_spy(monkeypatch)
 
-    result = CliRunner().invoke(
-        main, ["print-stats", "--by", "agent", "--notify", "--tasks", str(store)]
-    )
+    result = CliRunner().invoke(main, ["print-stats", "--by", "agent", "--notify"])
     return {"result": result, "calls": calls, "loads": loads}
 
 
@@ -239,17 +227,14 @@ def test_notify_run_parses_the_store(notify_run_with_lock_free):
 #: perform no push. Scoping a lock too widely is the classic over-fix, and it
 #: shows up as exactly one of these claims flipping.
 @pytest.fixture()
-def plain_read_while_lock_held(tmp_path, monkeypatch):
+def plain_read_while_lock_held(monkeypatch):
     """Hold the notify lock, then run a PLAIN print-stats (no --notify)."""
-    store = tmp_path / "tasks.yaml"
-    _write_store(store)
+    _seed_store()
     calls = _deliver_spy(monkeypatch)
     loads = _load_tasks_spy(monkeypatch)
 
-    with single_instance(notify_lock_path(str(store))) as acquired:
-        result = CliRunner().invoke(
-            main, ["print-stats", "--by", "agent", "--tasks", str(store)]
-        )
+    with single_instance(notify_lock_path(None)) as acquired:
+        result = CliRunner().invoke(main, ["print-stats", "--by", "agent"])
     return {"acquired": acquired, "result": result, "calls": calls, "loads": loads}
 
 
@@ -327,19 +312,14 @@ def test_plain_read_still_parses_the_store(plain_read_while_lock_held):
 #: --notify acquires cleanly (runs the push, prints no skip line), and the
 #: test can itself take the flock afterwards.
 @pytest.fixture()
-def two_notify_runs_then_a_manual_lock(tmp_path, monkeypatch):
+def two_notify_runs_then_a_manual_lock(monkeypatch):
     """Run --notify twice, then try to take the flock from the test itself."""
-    store = tmp_path / "tasks.yaml"
-    _write_store(store)
+    _seed_store()
     _deliver_spy(monkeypatch)
 
-    first = CliRunner().invoke(
-        main, ["print-stats", "--by", "agent", "--notify", "--tasks", str(store)]
-    )
-    second = CliRunner().invoke(
-        main, ["print-stats", "--by", "agent", "--notify", "--tasks", str(store)]
-    )
-    with single_instance(notify_lock_path(str(store))) as acquired:
+    first = CliRunner().invoke(main, ["print-stats", "--by", "agent", "--notify"])
+    second = CliRunner().invoke(main, ["print-stats", "--by", "agent", "--notify"])
+    with single_instance(notify_lock_path(None)) as acquired:
         pass
     return {"first": first, "second": second, "acquired": acquired}
 
