@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
+import os
 
 import pytest
 
@@ -237,9 +238,7 @@ def test_add_task_defaults_created_by_from_env(tmp_path, env):
     store = str(tmp_path / "tasks.yaml")
     env.set("SCITEX_TODO_AGENT_ID", "agent:fromenv")
     # Act
-    add = asyncio.run(
-        _call_tool(add_task, id="a", title="A", assignee="agent:x")
-    )
+    add = asyncio.run(_call_tool(add_task, id="a", title="A", assignee="agent:x"))
     # Assert
     assert json.loads(add)["created_by"] == "agent:fromenv"
 
@@ -270,9 +269,7 @@ def test_scope_filter_excludes_other_scope(tmp_path):
     from scitex_cards._mcp_server import add_task, list_tasks
 
     store = str(tmp_path / "tasks.yaml")
-    asyncio.run(
-        _call_tool(add_task, id="a", title="A", scope="agent:lead")
-    )
+    asyncio.run(_call_tool(add_task, id="a", title="A", scope="agent:lead"))
     asyncio.run(
         _call_tool(
             add_task,
@@ -282,9 +279,7 @@ def test_scope_filter_excludes_other_scope(tmp_path):
         )
     )
     # Act
-    listed = asyncio.run(
-        _call_tool(list_tasks, scope="agent:proj-scitex-todo")
-    )
+    listed = asyncio.run(_call_tool(list_tasks, scope="agent:proj-scitex-todo"))
     # Assert
     assert {r["id"] for r in json.loads(listed)} == {"b"}
 
@@ -294,16 +289,10 @@ def test_list_tasks_filter_by_agent(tmp_path):
     from scitex_cards._mcp_server import add_task, list_tasks
 
     store = str(tmp_path / "tasks.yaml")
-    asyncio.run(
-        _call_tool(add_task, id="a", title="A", agent="proj-x")
-    )
-    asyncio.run(
-        _call_tool(add_task, id="b", title="B", agent="proj-y")
-    )
+    asyncio.run(_call_tool(add_task, id="a", title="A", agent="proj-x"))
+    asyncio.run(_call_tool(add_task, id="b", title="B", agent="proj-y"))
     # Act
-    listed = asyncio.run(
-        _call_tool(list_tasks, scope="", agent="proj-x")
-    )
+    listed = asyncio.run(_call_tool(list_tasks, scope="", agent="proj-x"))
     # Assert
     assert {r["id"] for r in json.loads(listed)} == {"a"}
 
@@ -324,9 +313,7 @@ def test_list_tasks_filter_blocking_me(tmp_path):
         )
     )
     # Act
-    listed = asyncio.run(
-        _call_tool(list_tasks, scope="", blocking_me=True)
-    )
+    listed = asyncio.run(_call_tool(list_tasks, scope="", blocking_me=True))
     # Assert
     assert {r["id"] for r in json.loads(listed)} == {"b"}
 
@@ -414,9 +401,7 @@ def test_update_task_with_deadline_sets_deadline_field(tmp_path):
     from scitex_cards._mcp_server import add_task, list_tasks, update_task
 
     store = str(tmp_path / "tasks.yaml")
-    asyncio.run(
-        _call_tool(add_task, id="a", title="A", assignee="agent:x")
-    )
+    asyncio.run(_call_tool(add_task, id="a", title="A", assignee="agent:x"))
     asyncio.run(
         _call_tool(
             update_task,
@@ -464,9 +449,7 @@ def test_complete_sets_status_done(tmp_path, env):
     store = str(tmp_path / "tasks.yaml")
     asyncio.run(_call_tool(add_task, id="a", title="A"))
     # Act
-    out = json.loads(
-        asyncio.run(_call_tool(complete_task, task_id="a"))
-    )
+    out = json.loads(asyncio.run(_call_tool(complete_task, task_id="a")))
     # Assert
     assert out["status"] == "done"
 
@@ -482,9 +465,7 @@ def test_complete_stamps_completed_by(tmp_path, env):
     store = str(tmp_path / "tasks.yaml")
     asyncio.run(_call_tool(add_task, id="a", title="A"))
     # Act
-    out = json.loads(
-        asyncio.run(_call_tool(complete_task, task_id="a"))
-    )
+    out = json.loads(asyncio.run(_call_tool(complete_task, task_id="a")))
     # Assert
     assert out["_log_meta"]["completed_by"] == "agent:mcp-test"
 
@@ -500,9 +481,7 @@ def test_complete_stamps_completed_at_z_suffix(tmp_path, env):
     store = str(tmp_path / "tasks.yaml")
     asyncio.run(_call_tool(add_task, id="a", title="A"))
     # Act
-    out = json.loads(
-        asyncio.run(_call_tool(complete_task, task_id="a"))
-    )
+    out = json.loads(asyncio.run(_call_tool(complete_task, task_id="a")))
     # Assert
     assert out["_log_meta"]["completed_at"].endswith("Z")
 
@@ -616,9 +595,7 @@ def test_summary_returns_total(tmp_path):
 
     store = str(tmp_path / "tasks.yaml")
     asyncio.run(_call_tool(add_task, id="a", title="A"))
-    asyncio.run(
-        _call_tool(add_task, id="b", title="B", status="done")
-    )
+    asyncio.run(_call_tool(add_task, id="b", title="B", status="done"))
     # Act
     info = json.loads(asyncio.run(_call_tool(summarize_tasks)))
     # Assert
@@ -631,9 +608,7 @@ def test_summary_returns_done_count(tmp_path):
 
     store = str(tmp_path / "tasks.yaml")
     asyncio.run(_call_tool(add_task, id="a", title="A"))
-    asyncio.run(
-        _call_tool(add_task, id="b", title="B", status="done")
-    )
+    asyncio.run(_call_tool(add_task, id="b", title="B", status="done"))
     # Act
     info = json.loads(asyncio.run(_call_tool(summarize_tasks)))
     # Assert
@@ -646,9 +621,7 @@ def test_summary_returns_deferred_count(tmp_path):
 
     store = str(tmp_path / "tasks.yaml")
     asyncio.run(_call_tool(add_task, id="a", title="A"))
-    asyncio.run(
-        _call_tool(add_task, id="b", title="B", status="done")
-    )
+    asyncio.run(_call_tool(add_task, id="b", title="B", status="done"))
     # Act
     info = json.loads(asyncio.run(_call_tool(summarize_tasks)))
     # Assert
@@ -659,7 +632,7 @@ def test_where_returns_resolved_path(tmp_path):
     # Arrange
     from scitex_cards._mcp_server import resolve_store
 
-    store = str(tmp_path / "tasks.yaml")
+    store = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     # Act
     info = json.loads(asyncio.run(_call_tool(resolve_store)))
     # Assert
@@ -770,9 +743,7 @@ def reassigned_through_to_thread(tmp_path):
     from scitex_cards._mcp_skills import reassign_task
 
     store = str(tmp_path / "tasks.yaml")
-    asyncio.run(
-        _call_tool(add_task, id="a", title="A", agent="proj-x")
-    )
+    asyncio.run(_call_tool(add_task, id="a", title="A", agent="proj-x"))
     return json.loads(
         asyncio.run(
             _call_tool(
@@ -837,8 +808,7 @@ def slow_store_handler_run(tmp_path, monkeypatch):
     from scitex_cards import _store
     from scitex_cards._mcp_server import get_task
 
-    store = str(tmp_path / "tasks.yaml")
-    _store.add_task(store, id="a", title="A", assignee="agent:test")
+    _store.add_task(None, id="a", title="A", assignee="agent:test")
 
     real_get_task = _store.get_task
 
