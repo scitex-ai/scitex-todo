@@ -139,12 +139,21 @@ reads window.ChatDiff. Line-limit discipline: template <1024 lines, js
   }
 </style>
 </head>
-<body>
+{% comment %}
+Mount-aware API base (same contract as board_v3.html's API_BASE const):
+`api_base` is the include root chat_page derived from request.path ("/"
+standalone, "/apps/cards/" on the hub). chat.js reads this marker, strips
+trailing slashes (so a root mount yields "" and the calls stay
+"/dm/…"-shaped) and THROWS when the attribute is absent — a missing marker
+is an integration bug, never a silently-guessed root mount. This attribute
+must therefore ALWAYS be rendered.
+{% endcomment %}
+<body data-api-base="{{ api_base }}">
 <header>
   <button id="menu-btn" aria-label="Toggle agent list">&#9776;</button>
   <h1>Direct messages</h1>
   <span class="ver">scitex-todo v{{ scitex_cards_version }}</span>
-  <a class="board-link" href="/">&larr; board</a>
+  <a class="board-link" href="{{ api_base }}">&larr; board</a>
 </header>
 <div id="error-bar"></div>
 <div id="layout">

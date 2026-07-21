@@ -168,9 +168,23 @@ def chat_page(request):
         from scitex_cards import __version__ as _version
     except Exception:  # noqa: BLE001
         _version = "?"
+
+    # Mount-aware API base — same contract as board_v3_page (see there for the
+    # full story). The chat page is served at "<include-root>chat", so stripping
+    # its own trailing segment off request.path recovers the include root the
+    # /dm/* fetches must be prefixed with ("/apps/cards/" on the hub, "/"
+    # standalone). chat.html ALWAYS sets window.API_BASE from this; chat.js
+    # refuses to run without it (a missing marker is an integration bug, never
+    # a silent root-mount guess).
+    api_base = request.path
+    for _alias in ("chat/", "chat"):
+        if api_base.endswith(_alias):
+            api_base = api_base[: -len(_alias)]
+            break
+
     html = render_to_string(
         "scitex_cards/chat.html",
-        {"scitex_cards_version": _version},
+        {"scitex_cards_version": _version, "api_base": api_base},
         request=request,
     )
     return HttpResponse(html)

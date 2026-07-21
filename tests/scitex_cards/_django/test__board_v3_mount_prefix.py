@@ -42,6 +42,7 @@ _STORE_TEXT = (
 _DJANGO_DIR = Path(views.__file__).resolve().parent
 _TEMPLATE = _DJANGO_DIR / "templates" / "scitex_cards" / "board_v3.html"
 _BOARD_V3_STATIC = _DJANGO_DIR / "static" / "scitex_cards" / "board_v3"
+_CHAT_STATIC = _DJANGO_DIR / "static" / "scitex_cards" / "chat"
 
 
 @pytest.fixture
@@ -140,6 +141,74 @@ def test_board_v3_static_js_has_no_root_absolute_fetch(js_name):
     source = js_path.read_text(encoding="utf-8")
     # Assert
     assert 'fetch("/' not in source, js_name
+
+
+@pytest.mark.parametrize(
+    "js_name", sorted(p.name for p in _CHAT_STATIC.glob("*.js"))
+)
+def test_chat_static_js_has_no_root_absolute_fetch(js_name):
+    """The chat page's static JS must not hardcode root-absolute fetch paths
+    either — chat.js reads the include root off <body data-api-base> (set by
+    chat.html) and prefixes every /dm/* call with it."""
+    # Arrange
+    js_path = _CHAT_STATIC / js_name
+    # Act
+    source = js_path.read_text(encoding="utf-8")
+    # Assert
+    assert 'fetch("/' not in source, js_name
+
+
+@pytest.mark.parametrize(
+    "js_name", sorted(p.name for p in _CHAT_STATIC.glob("*.js"))
+)
+def test_chat_static_js_has_no_root_absolute_getjson(js_name):
+    """chat.js routes its GETs through the local getJSON helper — a
+    root-absolute literal there escapes the mount exactly like a bare
+    fetch, so it is linted the same way."""
+    # Arrange
+    js_path = _CHAT_STATIC / js_name
+    # Act
+    source = js_path.read_text(encoding="utf-8")
+    # Assert
+    assert 'getJSON("/' not in source, js_name
+
+
+# --- render: the chat page carries the mount root on its DOM marker ---------
+
+
+def test_chat_page_api_base_marker_carries_subpath_mount():
+    """At a sub-path mount the chat page's <body data-api-base> carries the
+    include root chat.js prefixes every /dm/* call with. The marker must
+    ALWAYS be rendered — chat.js throws when it is absent (a missing marker
+    is an integration bug, never a silently-guessed root mount)."""
+    # Arrange — the hub serves the DM page at <include-root>chat.
+    request = RequestFactory().get("/apps/cards/chat")
+    # Act
+    body = views.chat_page(request).content.decode("utf-8")
+    # Assert
+    assert 'data-api-base="/apps/cards/"' in body
+
+
+def test_chat_page_api_base_marker_is_root_at_root_mount():
+    """A root mount renders data-api-base "/" — "" after chat.js's
+    trailing-slash strip — so calls keep their "/dm/…" shape standalone."""
+    # Arrange
+    request = RequestFactory().get("/chat")
+    # Act
+    body = views.chat_page(request).content.decode("utf-8")
+    # Assert
+    assert 'data-api-base="/"' in body
+
+
+def test_chat_page_board_link_targets_include_root():
+    """The "← board" header link must stay inside the mount, not escape to
+    the site root (on the hub "/" is the hub's landing page, not the board)."""
+    # Arrange
+    request = RequestFactory().get("/apps/cards/chat")
+    # Act
+    body = views.chat_page(request).content.decode("utf-8")
+    # Assert
+    assert 'class="board-link" href="/apps/cards/"' in body
 
 
 # EOF

@@ -17,6 +17,28 @@
 (function () {
   "use strict";
 
+  /* Mount-aware API base (same contract as board_v3.html's API_BASE const).
+   * The hub mounts this app under a sub-path (e.g. /apps/cards/), where
+   * root-absolute fetches escape the mount and 404. chat.html ALWAYS renders
+   * the include root on <body data-api-base> ("/" standalone, "/apps/cards/"
+   * on the hub); trailing slashes are stripped so a root mount yields "" and
+   * every call below stays "/dm/…"-shaped. A missing marker is an
+   * INTEGRATION BUG (a template that forgot to set it), so it throws loudly
+   * instead of silently guessing a root mount that would 404 on the hub. */
+  var apiBaseRaw = document.body
+    ? document.body.getAttribute("data-api-base")
+    : null;
+  if (apiBaseRaw === null) {
+    throw new Error(
+      'chat.js: <body data-api-base="…"> is missing — the page template ' +
+        'must always set it ("/" at a root mount); refusing to guess the ' +
+        "mount root.",
+    );
+  }
+  var API_BASE = apiBaseRaw.replace(/\/+$/, "");
+  /* Mirror onto window for parity with board_v3 (external scripts read it). */
+  window.API_BASE = API_BASE;
+
   var THREAD_POLL_MS = 5000;
   var LIST_POLL_MS = 10000;
 
@@ -89,7 +111,10 @@
     for (var i = 0; i < name.length; i++) {
       hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
     }
-    var words = name.replace(/^scitex-/, "").split(/[-_]+/).filter(Boolean);
+    var words = name
+      .replace(/^scitex-/, "")
+      .split(/[-_]+/)
+      .filter(Boolean);
     var initials = words
       .slice(0, 2)
       .map(function (w) {
@@ -136,7 +161,7 @@
   }
 
   function refreshAgents() {
-    getJSON("/dm/threads")
+    getJSON(API_BASE + "/dm/threads")
       .then(function (data) {
         clearError();
         renderAgents(data.agents || []);
@@ -195,7 +220,8 @@
     } else {
       // append: the pane may still hold a hint ("Loading…" on open, or the
       // empty-thread hint before the first message lands).
-      if (state.emptyShown || !state.rendered.length) $messages.textContent = "";
+      if (state.emptyShown || !state.rendered.length)
+        $messages.textContent = "";
       plan.added.forEach(function (m) {
         $messages.appendChild(messageNode(m));
       });
@@ -217,7 +243,9 @@
   function refreshThread() {
     if (!state.peer) return;
     var peer = state.peer;
-    getJSON("/dm/thread/" + encodeURIComponent(peer) + "?mark_read=1")
+    getJSON(
+      API_BASE + "/dm/thread/" + encodeURIComponent(peer) + "?mark_read=1",
+    )
       .then(function (data) {
         if (state.peer !== peer) return; // switched away mid-flight
         clearError();
@@ -259,7 +287,7 @@
     var text = $body.value.trim();
     if (!text) return;
     $send.disabled = true;
-    fetch("/dm/thread/" + encodeURIComponent(state.peer), {
+    fetch(API_BASE + "/dm/thread/" + encodeURIComponent(state.peer), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ body: text }),
