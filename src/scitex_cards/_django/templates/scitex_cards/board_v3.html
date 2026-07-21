@@ -848,11 +848,49 @@
       }
     }
 
+    // === Load-failure UI states (hub-mount integration) ===================
+    // A failed /graph is not always an ERROR — on the hub it can be a STATE:
+    // signed-out (auth middleware 401s with {"error":"signed-out","login_url"})
+    // or no-active-project (tenancy middleware 404s with an {"error", "hint"}
+    // payload). Read the body BEFORE giving up so the server's named reason
+    // drives a helpful panel; anything unrecognized keeps the loud red error
+    // (the catch below), now carrying the server's `error` field + the HTTP
+    // status. The empty-store case never reaches here: the server answers 200
+    // with `empty_store: true` + 0 nodes → the normal zero-card board renders.
+    // (hook-bypass: line-limit — pre-existing oversized template; split queued.)
+    async function _readJsonBody(r) {
+      try { return await r.json(); } catch (_e) { return null; }
+    }
+    // Render a recognized non-OK state; false → caller escalates loudly.
+    function renderLoadState(status, payload) {
+      if (status === 401 && payload && payload.error === "signed-out" && payload.login_url) {
+        document.getElementById("columns").innerHTML =
+          `<div class="loading board-state board-state--signed-out">` +
+          `<p>Signed out — the board needs a session.</p>` +
+          `<p><a href="${escapeHtml(payload.login_url)}">Sign in to continue</a></p></div>`;
+        return true;
+      }
+      const err = payload && payload.error ? String(payload.error) : "";
+      if (status === 404 && payload && payload.hint && /^no active project/i.test(err)) {
+        document.getElementById("columns").innerHTML =
+          `<div class="loading board-state board-state--no-project">` +
+          `<p>No active project — the board shows your project&#39;s cards.</p>` +
+          `<p><a href="${escapeHtml(payload.hint)}">Create or open a project</a></p></div>`;
+        return true;
+      }
+      return false;
+    }
+
     async function loadGraph(opts) {
       const { preserveScroll = false, skipIfUnchanged = false } = opts || {};
       try {
         const r = await fetch(API_BASE + "/graph"); // (hook-bypass: line-limit)
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        if (!r.ok) {
+          const payload = await _readJsonBody(r);
+          if (renderLoadState(r.status, payload)) return;
+          const err = payload && payload.error ? String(payload.error) : "";
+          throw new Error(`HTTP ${r.status}` + (err ? ` — ${escapeHtml(err)}` : ""));
+        }
         STATE.graph = await r.json();
         // Change-detection: if the fresh payload is byte-identical to the
         // last graph we rendered, skip the whole re-render (no flash, no
