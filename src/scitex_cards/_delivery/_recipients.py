@@ -13,9 +13,7 @@ maps each user to the channels they should be delivered on::
 
 ``address`` is OPTIONAL (the ``log`` channel needs none). A missing file
 yields an empty recipient set (no crash) — delivery simply has nothing to
-do. A pre-JSON legacy sidecar is converted to JSON ONCE on first access
-(see :mod:`scitex_cards._legacy_yaml_migration`), after which the read is
-JSON-only. Resolution follows the same store precedence via
+do. Resolution follows the same store precedence via
 :func:`scitex_cards._inbox._resolved_store`.
 
 Policy lives HERE, never inside a channel: :func:`should_deliver_now` is the
@@ -59,16 +57,11 @@ def recipients_path(store: str | Path | None = None) -> Path:
 def _load_recipients_doc(store: str | Path | None) -> dict:
     """Load the raw recipients mapping from ``recipients.json``.
 
-    A one-time migration converts a pre-JSON legacy sidecar to JSON
-    on first access; after that the read is JSON-only. Absent/unreadable/
-    malformed → ``{}``.
+    Absent/unreadable/malformed → ``{}``.
     """
     import json
 
-    from .._legacy_yaml_migration import migrate_legacy_sidecar
-
     path = recipients_path(store)
-    migrate_legacy_sidecar(path)  # one-time legacy sidecar -> .json
     if not path.exists():
         return {}
     try:
@@ -110,8 +103,8 @@ def _parse_channels(raw: object) -> list[ChannelConfig]:
 def load_recipients(store: str | Path | None = None) -> list[Recipient]:
     """Return every configured recipient (missing file → ``[]``).
 
-    Reads ``recipients.json`` (a legacy sidecar migrates in ONCE if present). A
-    missing file, an absent/non-mapping ``users:`` key, or a user with no usable
+    Reads ``recipients.json``. A missing file, an absent/non-mapping
+    ``users:`` key, or a user with no usable
     channels all degrade gracefully — a user with zero channels is dropped
     (nothing to deliver), never an error. Deterministic order: users are
     returned sorted by id so a delivery run is reproducible.

@@ -170,9 +170,6 @@ def load_notify_config(store: str | Path | None = None) -> NotifyConfig:
     }
     sidecar = notify_sidecar_path(store)
     if sidecar is not None:
-        from .._legacy_yaml_migration import migrate_legacy_sidecar
-
-        migrate_legacy_sidecar(sidecar)  # one-time legacy sidecar -> .json
         if sidecar.exists():
             for event_type, roles in _read_sidecar(sidecar).items():
                 merged[event_type] = roles

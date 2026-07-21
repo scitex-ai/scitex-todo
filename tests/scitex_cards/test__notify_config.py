@@ -3,7 +3,7 @@
 """End-to-end tests for the C3 notify config + pure recipient resolver.
 
 Real round-trips: real users via ``register_user`` in a ``tmp_path`` store,
-real cards as plain dicts, real ``notify.yaml`` sidecars on disk. No mocks
+real cards as plain dicts, real ``notify.json`` sidecars on disk. No mocks
 (STX-NM / PA-306). AAA pattern.
 
 Coverage mirrors the C3 card's test checklist:
@@ -14,14 +14,13 @@ Coverage mirrors the C3 card's test checklist:
 * per-card ``events`` override / ``add`` force-include / ``mute``
   force-exclude (card beats user/global),
 * precedence end-to-end (global < user < card),
-* ``notify.yaml`` sidecar override honored; malformed sidecar fails loud;
+* ``notify.json`` sidecar override honored; malformed sidecar fails loud;
   absent sidecar → built-in defaults.
 """
 
 from __future__ import annotations
 
 import pytest
-import yaml
 
 from scitex_cards._events import Event, EventType
 from scitex_cards._notify import (
@@ -173,20 +172,19 @@ def test_empty_sidecar_yields_built_in_defaults(tmp_path):
     assert cfg.rules == DEFAULT_NOTIFY_RULES
 
 
-def test_a_legacy_yaml_sidecar_is_migrated_to_json_on_first_load(tmp_path):
-    """A pre-JSON notify.yaml is converted to notify.json ONCE on first load."""
-    # Arrange — only the legacy YAML sidecar exists.
-    (tmp_path / "notify.yaml").write_text(
-        yaml.safe_dump({"rules": {"commented": ["subscribers"]}}),
+def test_a_lone_pre_json_sidecar_is_not_read(tmp_path):
+    """A pre-JSON notify sidecar has no import path any more — it is ignored."""
+    # Arrange — only a stray pre-JSON sidecar exists; no notify.json.
+    (tmp_path / "notify.pre-json").write_text(
+        '{"rules": {"commented": ["subscribers"]}}\n',
         encoding="utf-8",
     )
     # Act
     cfg = load_notify_config(store=_store(tmp_path))
-    # Assert — value read, and the legacy file was converted + renamed away.
-    assert cfg.roles_for("commented") == ["subscribers"]
-    assert (tmp_path / "notify.json").exists()
-    assert (tmp_path / "notify.yaml.migrated").exists()
-    assert not (tmp_path / "notify.yaml").exists()
+    # Assert — nothing read from it; built-ins apply, file left untouched.
+    assert cfg.rules == DEFAULT_NOTIFY_RULES
+    assert not (tmp_path / "notify.json").exists()
+    assert (tmp_path / "notify.pre-json").exists()
 
 
 # --------------------------------------------------------------------------- #
