@@ -1,16 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""S1 dual-write: mirror every card write into SQLite, YAML still canonical.
+"""STORE OWNERSHIP GUARD — the mirror that survived, and the toggle that didn't.
 
-THE NUMBER THAT JUSTIFIES ALL OF THIS (measured on the live store, 1,257 cards):
+This file used to be the S1 dual-write mirror's test suite: a whole feature
+that mirrored every card write into SQLite while YAML stayed canonical, gated
+by ``SCITEX_TODO_DUAL_WRITE``. That feature is DELETED — not defaulted off —
+per the operator's 2026-07-21 ruling: 「データベースしか書く場所なんてありえ
+ない。デュアルライトっていうオプションがあること自体がおかしい」. Root cause:
+``cards.db`` carried a stale ``schema_meta`` row pointing at an old YAML file,
+and an agent whose env still carried the dual-write flag had every write
+silently routed there instead of the canonical database — every call
+returned SUCCESS and ``health`` stayed green while a whole session of card
+writes vanished. Deleting the toggle makes that class of bug unrepresentable:
+there is no environment variable left to read that could send a write
+anywhere but ``$SCITEX_CARDS_DB``.
 
-    full YAML rewrite  : 11,176 ms   <- the cost of EVERY card write, today
-    full SQLite rebuild:  1,243 ms   <- what the mirror adds (+11%)
-    ONE row update     :      4.71 ms  <- what S2 buys (2,375x)
-
-Every card write takes ELEVEN SECONDS while holding a fleet-wide lock. That is the
-convoy, entire. These tests pin the three rules that make the migration to fix it
-safe to run under real traffic.
+What SURVIVES, and is tested below, is the OWNERSHIP GUARD
+(``_dual_write._db_mirrors_this_store`` / ``_same_file``): the invariant that
+a database belongs to exactly ONE store, checked at the write chokepoint
+(:func:`scitex_cards._store_backend.write_doc_to_db`), which RAISES rather
+than returning quietly on a mismatch — a write that cannot reach the
+canonical DB must NEVER report success.
 """
 
 from __future__ import annotations
@@ -23,16 +33,66 @@ from scitex_cards import _dual_write, _store, _store_backend
 from scitex_cards._db import ENV_DB
 
 
-@pytest.fixture(autouse=True)
-def _clean(monkeypatch, tmp_path):
-    """Each test gets its own store + DB, and a clean failure counter.
+def test_the_dual_write_module_now_exposes_only_the_ownership_guard():
+    """The deletion, pinned at the module boundary.
 
-    The env var is ``SCITEX_TODO_DB`` (``_db.ENV_DB``) — checked, not assumed.
+    ``_dual_write`` used to export a toggle (``enabled``,
+    ``mirror_after_save``, ``ENV_DUAL_WRITE``, ``check_mirror_healthy``, the
+    failure counter) alongside the ownership guard. The toggle is DELETED;
+    only the guard survives.
     """
-    _dual_write.reset_failures()
-    monkeypatch.setenv(ENV_DB, str(tmp_path / "todo.db"))
-    yield
-    _dual_write.reset_failures()
+    # Arrange
+    # Act
+    # Assert
+    assert set(_dual_write.__all__) == {"_db_mirrors_this_store", "_same_file"}
+    for gone in (
+        "enabled",
+        "ENV_DUAL_WRITE",
+        "mirror_after_save",
+        "check_mirror_healthy",
+        "failure_count",
+        "failures",
+        "reset_failures",
+        "_has_incremental_mirror",
+        "_refusal_logged",
+        "_failures",
+    ):
+        assert not hasattr(_dual_write, gone), (
+            f"_dual_write.{gone} must not exist — the dual-write toggle was "
+            f"DELETED as a feature, not defaulted off"
+        )
+
+
+def test_a_write_reaches_the_db_even_with_the_legacy_flag_set(monkeypatch, tmp_path):
+    """The incident, closed: the flag has ZERO effect on where a write lands.
+
+    2026-07-21 root cause: an agent env carrying ``SCITEX_CARDS_DUAL_WRITE=1``
+    had every write silently routed to a dead YAML file instead of the
+    canonical database. The toggle that made that possible is deleted, so
+    setting the EXACT env vars from the incident must have no effect at all —
+    the write still lands in ``$SCITEX_CARDS_DB``, or the caller sees a
+    real error. There is no silent third outcome.
+    """
+    # Arrange — bootstrap a real (empty) canonical DB first; `add_task` itself
+    # refuses to manufacture a store that does not exist yet (a separate,
+    # deliberate guard — see `_store._read_canonical_db_or_raise`), so the
+    # legacy flags are set BEFORE that bootstrap too, to prove they influence
+    # neither step.
+    monkeypatch.setenv("SCITEX_CARDS_DUAL_WRITE", "1")
+    monkeypatch.setenv("SCITEX_TODO_DUAL_WRITE", "1")
+    store = tmp_path / "tasks.yaml"
+    db = tmp_path / "cards.db"
+    monkeypatch.setenv(ENV_DB, str(db))
+    _store_backend.write_doc_to_db({"tasks": []}, store)
+
+    # Act — the legacy dual-write env vars stay set for the actual write too.
+    _store.add_task(store, id="a", title="A", assignee="agent:test-suite")
+
+    # Assert
+    assert _db_ids(db) == {"a"}, (
+        "a write with the legacy dual-write env vars set must still reach "
+        "the canonical database — there is no other place left for it to go"
+    )
 
 
 def _db_ids(db_path) -> set[str]:
@@ -41,81 +101,6 @@ def _db_ids(db_path) -> set[str]:
         return {r[0] for r in conn.execute("SELECT id FROM tasks")}
     finally:
         conn.close()
-
-
-# --------------------------------------------------------------------------
-# RULE 1 (residual) — the mirror flag is OFF unless explicitly switched on.
-# --------------------------------------------------------------------------
-
-
-def test_mirror_is_off_by_default(monkeypatch, tmp_path):
-    """The write path of the fleet's critical store does not get a flag day."""
-    # Arrange
-    monkeypatch.delenv(_dual_write.ENV_DUAL_WRITE, raising=False)
-
-    # Act
-    on = _dual_write.enabled()
-
-    # Assert
-    assert on is False
-
-
-# --------------------------------------------------------------------------
-# RULE 3 (residual) — mirror-DIVERGENCE HEALTH still reports on `_failures`.
-#
-# The flag-gated mirror-on-write path (`mirror_after_save`) is gone with the
-# YAML->SQLite cutover: SQLite is now canonical and a write RAISES rather than
-# being counted-and-swallowed (see `_store_backend.write_doc_to_db`). What
-# SURVIVES is `check_mirror_healthy`, still wired into `scitex-cards health`, so
-# the divergence-health tests below keep their subject and stay.
-# --------------------------------------------------------------------------
-
-
-# A single failure means the DB no longer matches the YAML. There is no partial
-# credit for a store that is only mostly right — and a health check that shrugs at
-# divergence is how S2 ends up cutting over to a store that is confidently wrong.
-def _health_after_one_recorded_failure(monkeypatch):
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
-    _dual_write._failures.append("sqlite3.OperationalError: disk I/O error")
-    return _dual_write.check_mirror_healthy()
-
-
-def test_health_reports_a_diverged_mirror_as_not_ok(monkeypatch):
-    # Arrange
-    # Act
-    res = _health_after_one_recorded_failure(monkeypatch)
-
-    # Assert
-    assert res["ok"] is False
-
-
-def test_health_names_the_divergence_in_its_detail(monkeypatch):
-    # Arrange
-    # Act
-    res = _health_after_one_recorded_failure(monkeypatch)
-
-    # Assert
-    assert "DIVERGED" in res["detail"]
-
-
-def test_health_hints_the_actual_repair_command(monkeypatch):
-    # Arrange
-    # Act
-    res = _health_after_one_recorded_failure(monkeypatch)
-
-    # Assert — names the actual repair, not a vague "check the logs".
-    assert "db import" in (res["hint"] or "")
-
-
-def test_health_is_ok_when_the_mirror_is_off(monkeypatch):
-    # Arrange
-    monkeypatch.delenv(_dual_write.ENV_DUAL_WRITE, raising=False)
-
-    # Act
-    res = _dual_write.check_mirror_healthy()
-
-    # Assert
-    assert res["ok"] is True
 
 
 # --------------------------------------------------------------------------
@@ -172,142 +157,6 @@ def test_a_card_write_does_not_touch_the_messages_table(monkeypatch, tmp_path):
     finally:
         conn.close()
     assert surviving == 1, "the write DELETED a DM thread on a card write"
-
-
-# --------------------------------------------------------------------------- #
-# VERSION GUARD: the flag must REFUSE code that cannot honour it              #
-# --------------------------------------------------------------------------- #
-# This guard exists because the flag alone cost 135 SECONDS PER CARD WRITE.
-#
-# MEASURED on the live 1,449-card board, in the configuration the fleet was really
-# running (2026-07-13):
-#     scitex-todo 0.9.4, dual-write ON  : add_task()    = 135.2 s
-#     scitex-todo 0.9.4, dual-write OFF : delete_task() =   3.8 s      -> 35x
-#
-# The flag was switched on because the incremental mirror had shipped — and it had, on
-# PyPI. But the fleet runs a wheel BAKED INTO A CONTAINER IMAGE, still on 0.9.4. So the
-# flag did not enable the incremental mirror; it enabled the FULL REBUILD that the
-# incremental mirror had replaced.
-#
-# The precondition was real, agreed, and written down — in a MESSAGE BETWEEN TWO AGENTS.
-# A precondition that lives only in a message is not a precondition; it is a hope. It
-# lives in the code now, and these tests are what keep it there.
-def _flag_on_without_an_incremental_mirror(monkeypatch) -> None:
-    """Env var ON, but the code cannot honour it."""
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
-    monkeypatch.setattr(_dual_write, "_has_incremental_mirror", lambda: False)
-    monkeypatch.setattr(_dual_write, "_refusal_logged", False)
-
-
-def test_flag_is_REFUSED_when_the_code_has_no_incremental_mirror(monkeypatch, caplog):
-    # Arrange
-    _flag_on_without_an_incremental_mirror(monkeypatch)
-
-    # Act
-    with caplog.at_level("ERROR"):
-        on = _dual_write.enabled()
-
-    # Assert
-    assert on is False, (
-        "dual-write MUST refuse to run on code without the incremental mirror — "
-        "honouring it there falls back to the full rebuild: 135 s per card write"
-    )
-
-
-def test_the_refusal_names_itself_in_the_log(monkeypatch, caplog):
-    """It must not fail in silence: a refusal nobody sees is a 35x slowdown nobody debugs."""
-    # Arrange
-    _flag_on_without_an_incremental_mirror(monkeypatch)
-
-    # Act
-    with caplog.at_level("ERROR"):
-        _dual_write.enabled()
-
-    # Assert
-    assert "REFUSING TO DUAL-WRITE" in caplog.text
-
-
-def test_the_refusal_log_hints_how_to_recover_the_mirror(monkeypatch, caplog):
-    # Arrange
-    _flag_on_without_an_incremental_mirror(monkeypatch)
-
-    # Act
-    with caplog.at_level("ERROR"):
-        _dual_write.enabled()
-
-    # Assert
-    assert "db import" in caplog.text, "the hint must say how to recover the mirror"
-
-
-def test_flag_is_HONOURED_when_the_code_does_have_the_incremental_mirror(monkeypatch):
-    """The guard must not be a blanket off-switch — real code must still dual-write."""
-    # Arrange
-    monkeypatch.setenv(_dual_write.ENV_DUAL_WRITE, "1")
-    monkeypatch.setattr(_dual_write, "_has_incremental_mirror", lambda: True)
-
-    # Act
-    on = _dual_write.enabled()
-
-    # Assert
-    assert on is True
-
-
-# The probe imports the FUNCTION. It must never trust a version string: a version
-# string is metadata, and metadata lies — an orphaned .dist-info, a stale wheel, a
-# container image baked months ago all report a version that outlived the code beside
-# them. This repo has been bitten by exactly that. The only honest question is "is the
-# function here?", so the probe answers it by importing it.
-def test_the_guard_probe_finds_the_shipped_incremental_mirror():
-    # Arrange
-    # Act
-    found = _dual_write._has_incremental_mirror()
-
-    # Assert
-    assert found is True, (
-        "the shipped code HAS _db_mirror.mirror_doc_incremental, so the probe must find it"
-    )
-
-
-def test_the_guard_asks_for_a_SYMBOL_not_a_version_string():
-    # Arrange
-    import scitex_cards._db_mirror as m
-
-    # Act
-    symbol = m.mirror_doc_incremental
-
-    # Assert — a real, importable callable, not a version claim about one.
-    assert callable(symbol)
-
-
-def test_the_refusal_is_logged_ONCE_not_once_per_write(monkeypatch, caplog):
-    """A 135 s bug deserves a loud message. The same message on every write is noise.
-
-    An alert that fires constantly on something the reader cannot act on teaches them to
-    ignore the channel — which is how the next real failure goes unread.
-    """
-    # Arrange
-    _flag_on_without_an_incremental_mirror(monkeypatch)
-
-    # Act
-    with caplog.at_level("ERROR"):
-        for _ in range(5):
-            _dual_write.enabled()
-
-    # Assert
-    assert caplog.text.count("REFUSING TO DUAL-WRITE") == 1
-
-
-def test_every_repeated_call_still_refuses_the_flag(monkeypatch, caplog):
-    """Logging once must not mean RELENTING once — every call still refuses."""
-    # Arrange
-    _flag_on_without_an_incremental_mirror(monkeypatch)
-
-    # Act
-    with caplog.at_level("ERROR"):
-        results = [_dual_write.enabled() for _ in range(5)]
-
-    # Assert
-    assert results == [False] * 5
 
 
 # --------------------------------------------------------------------------- #
