@@ -2,8 +2,29 @@
 # -*- coding: utf-8 -*-
 """STORE OWNERSHIP GUARD — does this database belong to the store we resolved?
 
-SQLite IS the canonical store (the YAML-mirror era ended with the cutover). What
-survives here, and is load-bearing, is the OWNERSHIP GUARD that keeps one
+SQLite is the ONLY write target (operator ruling 2026-07-21): 「データベースし
+か書く場所なんてありえない。デュアルライトっていうオプションがあること自体が
+おかしい」 — there is no such thing as a second place to write; the mere
+EXISTENCE of a dual-write option is the bug. What used to live in this module
+alongside the guard below — an env-gated mirror-to-YAML path
+(``SCITEX_TODO_DUAL_WRITE`` / ``ENV_DUAL_WRITE``, ``enabled()``,
+``mirror_after_save()``, the failure counter, ``check_mirror_healthy()``) — is
+DELETED, not defaulted off. A toggle that can be flipped is a second write
+target that merely happens to be switched off today; deleting the code that
+reads the flag is the only way to make "which store did this write actually
+reach?" stop being a live question.
+
+THE INCIDENT THIS ANSWERS (root cause, diagnosed 2026-07-21). ``cards.db``
+carried a stale ``schema_meta`` row (``yaml_path`` pointing at an old
+``~/.scitex/todo/tasks.yaml``). An agent whose environment still carried the
+dual-write flag had every MCP/CLI write silently routed to that YAML instead
+of the canonical database: every call returned SUCCESS, ``health`` stayed
+green, and an entire session of card writes never reached the board. The flag
+made that possible; removing it makes it unrepresentable — there is no
+environment variable left to read that could send a write anywhere but the
+database at ``$SCITEX_CARDS_DB``.
+
+WHAT SURVIVES HERE, and is load-bearing, is the OWNERSHIP GUARD that keeps one
 database from being written with another store's rows.
 
 THE INVARIANT
@@ -19,6 +40,9 @@ So :func:`_db_mirrors_this_store` refuses a write whose resolved store disagrees
 with the database's own provenance stamp (:data:`scitex_cards._db_freshness.KEY_STORE_PATH`).
 An UNSTAMPED database is adoptable — a fresh one, or a populated board being
 adopted at deploy — and the first write claims it by stamping its identity.
+The store's ONE write chokepoint, :func:`scitex_cards._store_backend.write_doc_to_db`,
+calls this guard and RAISES rather than returning quietly on a mismatch: a
+write that cannot reach the canonical DB must NEVER report success.
 
 WHY IDENTITY IS COMPARED BY INODE, NOT BY STRING
 ------------------------------------------------
@@ -27,11 +51,6 @@ directory is reached by two names that ``realpath`` resolves DIFFERENTLY
 (``/home/agent/.scitex/cards`` vs ``/home/ywatanabe/.scitex/cards``, a bind
 mount). A string compare called them different stores and refused every write
 from whichever population did not match the stamp — measured live on 2026-07-20.
-
-The historical ``SCITEX_TODO_DUAL_WRITE`` mirror gate and its ``mirror_after_save``
-path remain below for the health check that reports mirror failures; they are no
-longer on the write path (the store's ONE write chokepoint is
-:func:`scitex_cards._store_backend.write_doc_to_db`).
 """
 
 from __future__ import annotations
@@ -41,112 +60,6 @@ import os
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
-
-#: Gate for the S1 mirror. OFF by default: this touches the write path of the
-#: fleet's critical store, so it is proven on one agent under real traffic before
-#: it becomes the default for everyone. "1"/"true"/"yes"/"on" enable it.
-ENV_DUAL_WRITE = "SCITEX_TODO_DUAL_WRITE"
-
-#: Process-local failure counter. Read by ``health`` so a silently-rotting mirror
-#: cannot hide: a nonzero count means the DB has DIVERGED from the YAML and S2
-#: must not cut over until it is explained.
-_failures: list[str] = []
-
-#: The version-guard refusal is logged ONCE per process, not once per write. A 135 s
-#: bug deserves a loud message; the same message on every card write is just noise that
-#: teaches the reader to skip the channel.
-_refusal_logged = False
-
-
-def _has_incremental_mirror() -> bool:
-    """Can the code ACTUALLY RUNNING honour this flag? Ask for the SYMBOL.
-
-    NOT a version check. A version string is metadata and metadata lies — an orphaned
-    ``.dist-info``, a stale wheel, a SIF image baked months ago all report a version
-    that outlived the code beside them. This repo has been bitten by exactly that.
-
-    The only honest question is: IS THE FUNCTION HERE? If
-    :func:`scitex_cards._db_mirror.mirror_doc_incremental` cannot be imported, then this
-    process physically cannot do an incremental mirror, no matter what any string claims.
-    """
-    try:
-        from ._db_mirror import mirror_doc_incremental  # noqa: F401
-    except Exception:  # noqa: BLE001 — absent, broken, or unimportable: all mean "no"
-        return False
-    return True
-
-
-def enabled() -> bool:
-    """True when the S1 mirror is switched on AND this code can actually honour it.
-
-    *** THIS GUARD EXISTS BECAUSE THE FLAG ALONE COST 135 SECONDS PER CARD WRITE. ***
-
-    MEASURED on the live 1,449-card board, in the configuration the fleet was really
-    running (2026-07-13)::
-
-        scitex-todo 0.9.4, dual-write ON  : add_task()    = 135.2 s
-        scitex-todo 0.9.4, dual-write OFF : delete_task() =   3.8 s     35x
-
-    WHAT HAPPENED: the flag was switched on because the incremental mirror had shipped —
-    and it HAD, on PyPI. But the fleet's agents do not run PyPI; they run a wheel BAKED
-    INTO A CONTAINER IMAGE, and that image was still on 0.9.4. So the flag did not enable
-    the incremental mirror. IT ENABLED THE FULL REBUILD THAT THE INCREMENTAL MIRROR HAD
-    REPLACED — an O(n) rewrite of every row on every write, which grows with the board.
-
-    The precondition ("only turn this on once the mirror is incremental") was real,
-    agreed, and written down — IN A CONVERSATION BETWEEN TWO AGENTS. A precondition that
-    lives only in a message is not a precondition; it is a hope. So it now lives here, in
-    the code, where it cannot be forgotten, misremembered, or outrun by a stale deploy:
-
-        A FLAG WHOSE SAFETY DEPENDS ON A CODE VERSION MUST VERIFY THAT CODE AT RUNTIME.
-        IT MUST NOT TRUST THAT A DEPLOY HAPPENED.
-
-    So: the env var is necessary but NOT sufficient. If the running code has no
-    incremental mirror, the flag is REFUSED — loudly, once — and the write path stays on
-    the fast, YAML-only route rather than silently paying 35x. Failing safe here means
-    NOT mirroring; a missing mirror is a recoverable inconvenience (``db import`` rebuilds
-    it), while a 135-second card write is an outage every agent feels.
-    """
-    raw = os.environ.get(ENV_DUAL_WRITE, "")
-    if raw.strip().lower() not in {"1", "true", "yes", "on"}:
-        return False
-
-    if not _has_incremental_mirror():
-        global _refusal_logged
-        if not _refusal_logged:
-            _refusal_logged = True
-            logger.error(
-                "!! %s IS SET, BUT THIS CODE HAS NO INCREMENTAL MIRROR "
-                "(scitex_cards._db_mirror.mirror_doc_incremental is not importable) — "
-                "REFUSING TO DUAL-WRITE. Honouring the flag here would fall back to the "
-                "OLD FULL REBUILD, which rewrites every row of every table on every card "
-                "write: MEASURED AT 135 SECONDS PER WRITE on a 1,449-card board (vs 3.8 s "
-                "with the flag off). Your writes are proceeding NORMALLY and your cards "
-                "are safe — only the SQLite mirror is skipped, and `scitex-todo db import` "
-                "rebuilds it. FIX: upgrade this process to scitex-todo >= 0.9.5 (the "
-                "release that made the mirror incremental) and restart it. If you are in a "
-                "container, the wheel is baked into the IMAGE — a restart alone will not "
-                "update it; the image must be rebuilt.",
-                ENV_DUAL_WRITE,
-            )
-        return False
-
-    return True
-
-
-def failure_count() -> int:
-    """How many mirror writes have failed in this process."""
-    return len(_failures)
-
-
-def failures() -> list[str]:
-    """The recorded mirror failures (most recent last)."""
-    return list(_failures)
-
-
-def reset_failures() -> None:
-    """Clear the counter (tests; and after a successful re-bootstrap)."""
-    _failures.clear()
 
 
 def _same_file(a: str | Path, b: str | Path) -> bool:
@@ -189,10 +102,10 @@ def _db_mirrors_this_store(db_path: str | Path, store_path: str | Path) -> bool:
     exactly ONE store. Writing store A into the DB that mirrors store B does not
     merge them, it REPLACES B's contents with A's.
 
-    It went unenforced because :func:`mirror_after_save` resolved the
-    destination with a bare ``resolve_db_path()`` — no argument — so the DB came
-    from the AMBIENT ENVIRONMENT while the source came from the CALLER. Nothing
-    checked that the two referred to the same pairing.
+    It went unenforced because the (now-deleted) mirror-to-YAML write path
+    resolved the destination with a bare ``resolve_db_path()`` — no argument —
+    so the DB came from the AMBIENT ENVIRONMENT while the source came from the
+    CALLER. Nothing checked that the two referred to the same pairing.
 
     Not theoretical. On 2026-07-19 this package's own concurrency test — which
     copies ``os.environ`` into two writer subprocesses, so they inherit
@@ -249,101 +162,9 @@ def _db_mirrors_this_store(db_path: str | Path, store_path: str | Path) -> bool:
     return False
 
 
-def mirror_after_save(doc: dict, store_path: str | Path) -> bool:
-    """Mirror ``doc`` into the shadow DB. NEVER raises. Returns True on success.
+__all__ = [
+    "_db_mirrors_this_store",
+    "_same_file",
+]
 
-    Called from the store's ONE write chokepoint, AFTER the canonical YAML write
-    has succeeded and while the store lock is STILL HELD — so the mirror cannot
-    interleave with another writer and needs no lock of its own.
-
-    A failure here is NOT the user's problem: their card is already durably on
-    disk. So we swallow the exception rather than turning a mirror hiccup into a
-    failed card write.
-
-    But we do NOT swallow it QUIETLY. It is logged at ERROR with the exception,
-    counted, and exposed through ``health`` — because a mirror that fails in
-    silence lets the DB rot out of sync while every check reports green, and S2
-    would then cut the fleet over to a store that is confidently wrong.
-    """
-    if not enabled():
-        return False
-
-    try:
-        from ._db import resolve_db_path
-        from ._db_mirror import mirror_doc_incremental
-
-        # The destination comes from the ambient environment while the source
-        # comes from the caller; they are only safe together when the DB is
-        # THIS store's mirror. Checked before we write, never after.
-        db_path = resolve_db_path()
-        if not _db_mirrors_this_store(db_path, store_path):
-            return False
-
-        # INCREMENTAL: touch only the cards that actually changed.
-        #
-        # This used to call `_db_bootstrap.mirror_doc`, which DELETEs and
-        # re-inserts every table on every write. MEASURED on the live board:
-        # that full rebuild was 8.69 s of a 16.31 s card write — MORE THAN HALF.
-        # It also grows with the board (1.24 s in the morning, 8.69 s by the
-        # evening), and because it runs inside the store lock it doubled the
-        # critical section, and so the convoy, for every other writer.
-        #
-        # A typical write changes ONE card. Now it writes one card.
-        #
-        # `store_path` is passed so the mirror can stamp WHICH store it reflects
-        # (path + mtime + size + card count) in the same transaction as the rows.
-        # We are called AFTER the canonical write and still under the store lock,
-        # so the file on disk is exactly the doc in hand — the one moment at which
-        # that stamp is truthful. The S2 read guard refuses an unstamped DB.
-        mirror_doc_incremental(doc, db_path, store_path=store_path)
-        return True
-    except Exception as exc:  # noqa: BLE001 - a mirror must never break the write
-        msg = f"{type(exc).__name__}: {exc}"
-        _failures.append(msg)
-        logger.error(
-            "!! DUAL-WRITE MIRROR FAILED (%d failure(s) this process) — the YAML "
-            "write SUCCEEDED and your card is safe, but the SQLite mirror is now "
-            "OUT OF SYNC with it: %s. The DB must be re-bootstrapped "
-            "(`scitex-todo db import`) before S2 cutover; do NOT trust it until "
-            "then. Store: %s",
-            len(_failures),
-            msg,
-            store_path,
-        )
-        return False
-
-
-def check_mirror_healthy() -> dict[str, object]:
-    """Health-doctor check: has the mirror stayed in sync with the canonical YAML?
-
-    ``ok`` is False as soon as ONE mirror write has failed — because a single
-    failure means the DB no longer matches the YAML, and there is no partial
-    credit for a store that is only mostly right.
-    """
-    if not enabled():
-        return {
-            "ok": True,
-            "detail": f"dual-write mirror is OFF ({ENV_DUAL_WRITE} unset)",
-            "hint": None,
-        }
-    n = failure_count()
-    if n == 0:
-        return {
-            "ok": True,
-            "detail": "dual-write mirror ON; every write mirrored successfully",
-            "hint": None,
-        }
-    return {
-        "ok": False,
-        "detail": (
-            f"dual-write mirror ON but {n} write(s) FAILED to mirror — the SQLite "
-            f"DB has DIVERGED from the canonical YAML. Last: {_failures[-1]}"
-        ),
-        "hint": (
-            "Your cards are safe (the YAML write is canonical and succeeded). But "
-            "the DB is now unreliable and MUST NOT be cut over to. Re-bootstrap it "
-            "from the YAML: `scitex-todo db import`. Then investigate why the "
-            "mirror failed — a mirror that fails under real traffic is exactly the "
-            "thing S1 exists to discover BEFORE S2 trusts the DB."
-        ),
-    }
+# EOF
