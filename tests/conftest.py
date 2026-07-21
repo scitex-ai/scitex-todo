@@ -68,7 +68,6 @@ _BACKEND_ENV_VARS = (
     "SCITEX_TODO_READ_BACKEND",
 )
 
-# hook-bypass: branch-guard (mid-rebase conflict resolution; HEAD detached)
 #: ``$SCITEX_DIR`` is the BASE DIRECTORY under ``resolve_db_path``'s tier-4
 #: fallback (``scitex_config._ecosystem.local_state.user_path``), which reads
 #: ``os.environ.get("SCITEX_DIR", str(Path.home() / ".scitex"))`` on EVERY
