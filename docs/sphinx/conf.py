@@ -8,12 +8,13 @@ sys.path.insert(0, os.path.abspath("../../src"))
 # A docs build is not an invocation: autodoc imports `scitex_cards._mcp_server`
 # (hence `fastmcp` in `autodoc_mock_imports` below) module-level, which runs
 # the CURRENCY gate (`scitex_cards._currency.check_currency`, wired 2026-07-21)
-# at import time. Both knobs, same reasoning as `tests/conftest.py`: NO_
-# CURRENCY_GATE downgrades a raise to a WARN (still prints); CURRENCY_
-# SEVERITY=silent additionally suppresses the print. `setdefault` so a caller
-# that deliberately wants the real gate (e.g. to smoke-test it) can still set
-# either var beforehand and win.
-os.environ.setdefault("SCITEX_DEV_NO_CURRENCY_GATE", "1")
+# at import time. ONLY the severity knob, same reasoning as `tests/
+# conftest.py`: `SCITEX_DEV_NO_CURRENCY_GATE=1` wins over the severity knob
+# in scitex-dev's own ladder AND unconditionally prints a "GATE BYPASSED"
+# warning regardless of severity (a scitex-dev bug, not ours to patch) —
+# `silent` alone runs the check, raises nothing, prints nothing. `setdefault`
+# so a caller that deliberately wants the real gate (e.g. to smoke-test it)
+# can still set the var beforehand and win.
 os.environ.setdefault("SCITEX_DEV_CURRENCY_SEVERITY", "silent")
 
 # -- Project information -----------------------------------------------------

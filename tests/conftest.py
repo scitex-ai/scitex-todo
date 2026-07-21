@@ -92,19 +92,16 @@ _STORE_ENV_VARS = _STORE_ENV_VARS + ("SCITEX_DIR",)
 # would otherwise fail on a condition that has nothing to do with the code
 # under test — CI incident 2026-07-21, PR #550.
 #
-# TWO KNOBS, because they answer different questions:
-#   - `SCITEX_DEV_NO_CURRENCY_GATE=1` — downgrades a would-be raise to a WARN
-#     (documented in `ensure_current`'s own error text). By itself this still
-#     PRINTS, which broke a second test asserting the CLI's `--json` output
-#     is pure JSON (the warn landed on stdout ahead of the JSON payload).
-#   - `SCITEX_DEV_CURRENCY_SEVERITY=silent` — the severity ladder (explicit
-#     call-site arg > this env var > scitex-dev's own default knob); silent
-#     means the check still runs but neither raises nor prints anything.
-# Both are pinned so the suite is silent regardless of which one scitex-dev
-# ends up honoring for a given call path; neither weakens the gate outside
-# the test harness — a real CLI/MCP invocation (these vars unset) still
-# errors loudly on a stale/broken install exactly as designed.
-os.environ["SCITEX_DEV_NO_CURRENCY_GATE"] = "1"
+# ONLY `SCITEX_DEV_CURRENCY_SEVERITY=silent` — NOT `SCITEX_DEV_NO_CURRENCY_
+# GATE=1`. The bypass var was tried first and made things WORSE: it wins
+# over the severity knob in scitex-dev's own ladder, and it unconditionally
+# prints a "CURRENCY GATE BYPASSED" warning to stdout regardless of severity
+# (a known scitex-dev bug, not ours to patch) — which then broke a SECOND
+# test asserting the CLI's `--json` output is pure JSON (the warn landed on
+# stdout ahead of the JSON payload). `silent` alone runs the check, raises
+# nothing, and prints nothing, so stdout stays clean. Unset (as in any real
+# invocation outside this harness), the gate still errors loudly on a
+# stale/broken install exactly as designed.
 os.environ["SCITEX_DEV_CURRENCY_SEVERITY"] = "silent"
 
 
@@ -288,7 +285,6 @@ def _store_env_stays_pinned(tmp_path_factory) -> None:
     _bootstrap_empty_db(scratch / "cards.db")
     # Re-assert the CURRENCY gate suppression too (same "a stray pop/delenv
     # must not leak into the next test" reasoning as the store vars above).
-    os.environ["SCITEX_DEV_NO_CURRENCY_GATE"] = "1"
     os.environ["SCITEX_DEV_CURRENCY_SEVERITY"] = "silent"
 
 
