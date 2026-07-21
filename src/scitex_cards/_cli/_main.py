@@ -14,6 +14,7 @@ import sys
 import click
 
 from .. import __version__
+from .._db import resolve_db_path
 from .._diagram import build_mermaid, render
 from .._model import load_tasks
 from .._paths import resolve_tasks_path
@@ -197,7 +198,7 @@ def render_graph_cmd(output: str, print_mermaid: bool) -> None:
         return
 
     engine = render(mermaid_src, output)
-    click.echo(f"{output}  (rendered via {engine}; source: {resolved})")
+    click.echo(f"{output}  (rendered via {engine}; source: {resolve_db_path(None)})")
 
 
 # --------------------------------------------------------------------------- #
@@ -376,7 +377,11 @@ def list_tasks_cmd(
     if as_json:
         click.echo(json.dumps(tasks))
         return
-    click.echo(f"# {resolved}  ({len(tasks)} tasks)")
+    # Header names the STORE (the SQLite database) — NOT `resolved`, which is
+    # the non-task sidecar container `load_tasks` takes only for naming in
+    # error text (see `_paths.resolve_tasks_path`). Printing that sidecar
+    # here mislabeled the header with a path the data never lived at.
+    click.echo(f"# {resolve_db_path(None)}  ({len(tasks)} tasks)")
     for task in tasks:
         click.echo(f"{task['id']:<24} {task['status']:<12} {task['title']}")
 
@@ -420,7 +425,7 @@ _gui.register(main)
 _index.register(main)
 # inbox <verb> — inbox storage-backend lifecycle (migrate-to-sqlite / info).
 # Phase 1 of the store SQLite migration: moves the per-recipient inbox off the
-# monolithic tasks.yaml so a 5 s digest-poll no longer re-parses all cards.
+# monolithic task document so a 5 s digest-poll no longer re-parses all cards.
 _inbox.register(main)
 # migration <verb> — directory-card enforcement migration (plan / apply).
 # Extracted to _migration_cli.py alongside the board split.
