@@ -38,6 +38,75 @@ _SHRINK_REFUSAL_RATIO = 0.5
 _SNAPSHOT_SUBJECT_RE = re.compile(r"snapshot:\s*(\d+)\s+tasks")
 
 
+def _live_task_fingerprint(db_path: str | None) -> tuple[int, str | None]:
+    """``(row count, newest last_activity)`` read from the DB's TYPED columns.
+
+    Deliberately bypasses ``card_json`` — the export (``_db_export.export_json``)
+    reconstructs every task EXCLUSIVELY from the verbatim ``card_json`` payload
+    (the S2 exactness contract), never from the typed columns. Every healthy
+    write populates both from the same call, so in a healthy DB this and the
+    export's own report always agree; a live probe of the typed columns is
+    therefore an INDEPENDENT ground truth to check the export against.
+    """
+    from .._db import open_db
+
+    conn = open_db(db_path)
+    try:
+        row = conn.execute("SELECT COUNT(*), MAX(last_activity) FROM tasks").fetchone()
+        return int(row[0]), row[1]
+    finally:
+        conn.close()
+
+
+def _assert_export_reflects_live_db(db_path: str | None, report: dict) -> None:
+    """RAISE if the export just produced does not match the DB's LIVE state.
+
+    THE 2026-07-21 FALSE-GREEN INCIDENT this exists to catch: the hourly
+    snapshot timer exported, committed "snapshot: 2168 tasks", and pushed
+    off-site — every signal green — while the exported CONTENT was stale.
+    Proof at the time: the 11:00 export showed a card as ``deferred`` that
+    the DB had already marked ``done`` at 10:47, and a card created at 10:47
+    was absent entirely. The shrink-refusal guard below does not catch this
+    shape: the card COUNT can match while the CONTENT lags — shrink and
+    staleness are separate failure modes.
+
+    This probes the DB's typed ``last_activity`` / row-count directly
+    (:func:`_live_task_fingerprint`, bypassing ``card_json`` — the export's
+    own source) and compares against what the export actually reported. Any
+    disagreement means the export does not reflect the DB's current state —
+    whatever the cause (a lagging mirror, a wrong resolved path, a partial
+    write) — and the snapshot must not be committed or pushed as if current.
+    """
+    live_count, live_newest = _live_task_fingerprint(db_path)
+    exported_count = int(report.get("tasks") or 0)
+    exported_newest = report.get("newest_last_activity")
+
+    if live_count != exported_count:
+        raise click.ClickException(
+            f"REFUSING to snapshot: STALE EXPORT. The DB's tasks table has "
+            f"{live_count} rows right now, but the export just produced "
+            f"{exported_count}. The export does not reflect the DB's current "
+            f"state — do not trust or push this snapshot.\n"
+            f"Re-run `db snapshot`. If this keeps happening, the export is "
+            f"reading the wrong database (check --db / $SCITEX_CARDS_DB) or "
+            f"is racing against concurrent writes."
+        )
+    if exported_newest != live_newest:
+        raise click.ClickException(
+            f"REFUSING to snapshot: STALE EXPORT. The DB's newest "
+            f"last_activity (typed column, live) is {live_newest!r}, but the "
+            f"export's newest last_activity (from card_json) is "
+            f"{exported_newest!r} — they disagree, so the export does not "
+            f"reflect the DB's current state. Do not trust or push this "
+            f"snapshot.\n"
+            f"This is the shape of the 2026-07-21 false-green incident (an "
+            f"11:00 export showed a card still `deferred` that the DB had "
+            f"marked `done` 13 minutes earlier). Investigate why card_json "
+            f"and the typed columns disagree — a partial write, a stale "
+            f"mirror, or the wrong resolved DB — before re-running."
+        )
+
+
 def _previous_snapshot_count(git) -> int | None:
     """Cards recorded by the most recent snapshot commit, or ``None``.
 
@@ -261,6 +330,17 @@ def db_snapshot_cmd(
         out=root / "tasks.json",
         threads_out=root / "threads.json",
     )
+
+    # A BACKUP MUST NOT RECORD A LIE, EITHER.
+    #
+    # The shrink guard further below catches a collapsed CARD COUNT
+    # (2026-07-19). It does not catch a snapshot whose count matches but
+    # whose CONTENT lags — the 2026-07-21 false-green: "snapshot: 2168
+    # tasks" committed and pushed clean, while the export showed a card as
+    # `deferred` that the DB had marked `done` 13 minutes earlier, and was
+    # missing a card created in that same window. Shrink and staleness are
+    # separate failure modes; this checks the one the other cannot see.
+    _assert_export_reflects_live_db(db_path, report)
 
     def _git(*args: str) -> subprocess.CompletedProcess:
         return subprocess.run(

@@ -114,6 +114,21 @@ def export_doc(db_path: str | Path | None = None) -> tuple[dict, dict]:
     return doc, threads
 
 
+def _newest_last_activity(tasks: list) -> str | None:
+    """The lexically-latest ``last_activity`` among ``tasks``, or ``None``.
+
+    ``last_activity`` is always an ISO-8601 UTC timestamp with the ``Z``
+    suffix (see ``_db._utc_now_iso``), so a plain lexical max sorts correctly
+    without parsing. Exposed on the export report so a caller (``db
+    snapshot``'s freshness guard) can compare it against a LIVE query of the
+    DB's typed ``last_activity`` column — the export is built exclusively
+    from ``card_json`` (never the typed columns), so the two values agree in
+    a healthy DB and diverge exactly when the export has gone stale.
+    """
+    values = [t.get("last_activity") for t in tasks if t.get("last_activity")]
+    return max(values) if values else None
+
+
 def _atomic_write(path: Path, text: str) -> None:
     """tmp → flush+fsync → rename; a crash never leaves a torn export."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -169,6 +184,7 @@ def export_json(
         "notifications": sum(len(v) for v in doc.get("inboxes", {}).values()),
         "threads": len(threads),
         "messages": sum(len(v) for v in threads.values()),
+        "newest_last_activity": _newest_last_activity(doc.get("tasks", [])),
     }
 
 
