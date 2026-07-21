@@ -20,13 +20,31 @@ silent-wrong-board class found in production on 2026-07-21.
 - **The dead legacy-sidecar import module is deleted** (#546), and CLI headers
   now name the real store instead of a legacy path.
 
+- **The bundled-example resolver is deleted** (#554). No code path can resolve
+  a packaged fixture as the store; an unresolvable store raises. (An
+  env-lost agent resolving the example was the vector of the fourth wipe.)
+
 ### Added
 
 - **`min_client_version` floor** (#548). The store can carry a minimum client
   version; an older client errors at DB-open — reads and writes both — with
   the exact upgrade command. Set only via the deliberate
   `db set-min-client-version` verb, which refuses a floor above its own
-  version. Complemented by scitex-dev's upcoming currency gate.
+  version. Complemented by scitex-dev's currency gate.
+- **The append-only invariant** (#552). A written card never physically
+  disappears: the write chokepoint refuses any net row decrease,
+  `delete_task` tombstones instead of deleting, and no flag opts out.
+  (Operator ruling after the third wipe.)
+- **The CURRENCY gate** (#550). Invoking the CLI or starting the MCP server
+  on a stale or payload-broken install errors with the exact upgrade command
+  (via `scitex_dev.staleness.ensure_current`, `scitex-dev>=0.34.0` as an
+  optional extra; a no-op when scitex-dev is absent). Imports stay
+  side-effect-free — the gate runs at invocation, never at import.
+- **Forced test isolation** (#551). The test suite pins every
+  store-influencing variable (including `SCITEX_DIR`, the leak that wiped the
+  board) to a tmp store, and an end-of-session assert fails the run loudly if
+  the real board's mtime changed. Full-suite runs mechanically cannot touch a
+  live board.
 - **Snapshot staleness guard** (#544). The hourly snapshot refuses to commit
   an export that does not reflect the DB's live state (count + newest
   last_activity), closing the false-green backup found the same day. Sits
