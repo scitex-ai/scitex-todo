@@ -113,6 +113,19 @@ def board_v3_page(request):
     # WARN once per process even if board_v3_page is hit many times.
     _maybe_announce_missing_turn_urls(request)
 
+    # Mount-aware API base (P1, scitex-hub): the hub mounts this board under
+    # a sub-path (e.g. /apps/cards/), where the template's former root-absolute
+    # fetches 404'd — https://scitex.ai/graph → 404 while
+    # https://scitex.ai/apps/cards/graph → 200. ``request.path`` is the board
+    # page's own URL; for the "" (root) route that IS the include root. The
+    # /board-v3 alias serves the same view one path segment deeper, so strip
+    # that trailing segment to recover the include root there too.
+    api_base = request.path
+    for _alias in ("board-v3/", "board-v3"):
+        if api_base.endswith(_alias):
+            api_base = api_base[: -len(_alias)]
+            break
+
     try:
         html = render_to_string(
             "scitex_cards/board_v3.html",
@@ -120,6 +133,10 @@ def board_v3_page(request):
                 "app_name": "scitex-todo",
                 "app_label": label,
                 "scitex_cards_version": _version,
+                # Include-root prefix for every board fetch (see above). The
+                # template strips trailing slashes, so a root mount renders
+                # API_BASE == "" and calls stay "/graph"-shaped.
+                "api_base": api_base,
                 # Per-status SSOT colors for first-paint CSS vars (board_v3
                 # <head> renders a `:root{--status-fill-<s>...}` block from
                 # this so cards/timeline/mermaid never collapse 7→4 colors).

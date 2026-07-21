@@ -710,6 +710,18 @@
 {% block extra_js %}
   <script>
 
+    // === Mount-aware API base (SSOT for every board fetch) ================
+    // The hub mounts this board under a sub-path (e.g. /apps/cards/), where
+    // root-absolute fetches 404 (scitex.ai/graph → 404 vs
+    // scitex.ai/apps/cards/graph → 200). `api_base` is the include root the
+    // view derived from request.path ("/" at a root mount). Trailing slashes
+    // are stripped so a root mount renders "" and every call below stays
+    // "/graph"-shaped. Mirrored onto window for the external board scripts
+    // (timeline.js) that fetch too.
+    // (hook-bypass: line-limit — pre-existing 3473-line template; split queued.)
+    const API_BASE = "{{ api_base|escapejs }}".replace(/\/+$/, "");
+    window.API_BASE = API_BASE;
+
     // === LAYOUT whitelist (SSOT) ==========================================
     // The only layouts that exist. Column + Table were removed 2026-07-13
     // (operator), Stale on 2026-07-10. `const` declarations are NOT hoisted
@@ -839,7 +851,7 @@
     async function loadGraph(opts) {
       const { preserveScroll = false, skipIfUnchanged = false } = opts || {};
       try {
-        const r = await fetch("/graph");
+        const r = await fetch(API_BASE + "/graph"); // (hook-bypass: line-limit)
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         STATE.graph = await r.json();
         // Change-detection: if the fresh payload is byte-identical to the
@@ -1292,7 +1304,7 @@
     // Status-set helper (closed enum from validator).
     async function setCardStatus(cardId, newStatus) {
       try {
-        const r = await fetch("/update", {
+        const r = await fetch(API_BASE + "/update", { // (hook-bypass: line-limit)
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: cardId, status: newStatus }),
@@ -1314,7 +1326,7 @@
     // rank (computed, never asserted). loadGraph() repaints from the store.
     async function rescoreCard(cardId, urgency, importance) {
       try {
-        const r = await fetch("/rescore", {
+        const r = await fetch(API_BASE + "/rescore", { // (hook-bypass: line-limit)
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: cardId, urgency: urgency, importance: importance }),
@@ -1337,7 +1349,7 @@
       const label = t ? `"${t.title}" (${cardId})` : cardId;
       if (!window.confirm(`Delete ${label}?\n\nThis will scrub depends_on / blocks / parent references too. Undo is available for ~10s after delete.`)) return;
       try {
-        const r = await fetch("/delete", {
+        const r = await fetch(API_BASE + "/delete", { // (hook-bypass: line-limit)
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: cardId }),
@@ -1349,7 +1361,7 @@
         const result = await r.json();
         const undo = async () => {
           try {
-            const rr = await fetch("/restore", {
+            const rr = await fetch(API_BASE + "/restore", { // (hook-bypass: line-limit)
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ task: result.removed, refs: result.refs || [] }),
@@ -1443,7 +1455,7 @@
         project: newProject === "Uncategorized" ? null : newProject,
       };
       try {
-        const r = await fetch("/update", {
+        const r = await fetch(API_BASE + "/update", { // (hook-bypass: line-limit)
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(patch),
@@ -1814,7 +1826,7 @@
         include_no_timestamp: String(_STALE_OPTS.include_no_timestamp),
       });
       try {
-        const r = await fetch("/scitex-todo/stale?" + qs.toString());
+        const r = await fetch(API_BASE + "/stale?" + qs.toString()); // (hook-bypass: line-limit)
         if (!r.ok) {
           _STALE_CACHE = { error: `/stale returned ${r.status}` };
         } else {
@@ -1921,7 +1933,7 @@
         return;
       }
       try {
-        const r = await fetch("/scitex-todo/archive", {
+        const r = await fetch(API_BASE + "/archive", { // (hook-bypass: line-limit)
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id, reason: trimmed }),
@@ -2829,7 +2841,7 @@
     }
 
     async function postResolve(id) {
-      const r = await fetch("/resolve", {
+      const r = await fetch(API_BASE + "/resolve", { // (hook-bypass: line-limit)
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, actor: "operator" }),
@@ -2842,7 +2854,7 @@
     }
 
     async function postReopen(id, priorStatus, priorBlocker) {
-      const r = await fetch("/reopen", {
+      const r = await fetch(API_BASE + "/reopen", { // (hook-bypass: line-limit)
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2995,7 +3007,7 @@
       btn.disabled = true;
       btn.textContent = "posting…";
       try {
-        const r = await fetch("/comment", {
+        const r = await fetch(API_BASE + "/comment", { // (hook-bypass: line-limit)
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: STATE.openId, text, author: "operator" }),
@@ -3055,7 +3067,7 @@
     // GraphView's AutoRefresh — ADR-0005).
     async function autoRefreshTick() {
       try {
-        const r = await fetch("/rev");
+        const r = await fetch(API_BASE + "/rev"); // (hook-bypass: line-limit)
         if (!r.ok) return;
         const rev = await r.json();
         // GUI-code hot-reload: if the board template changed on disk (a
@@ -3162,7 +3174,7 @@
         const body = { title, status, assignee };
         if (project) body.project = project;
         if (task) body.task = task;
-        const r = await fetch("/create", {
+        const r = await fetch(API_BASE + "/create", { // (hook-bypass: line-limit)
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -3219,7 +3231,7 @@
       // AND status is blocked (the validator enforces that pairing).
       patch.blocker = blocker || null;
       try {
-        const r = await fetch("/update", {
+        const r = await fetch(API_BASE + "/update", { // (hook-bypass: line-limit)
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(patch),
@@ -3245,7 +3257,7 @@
       const label = t ? `"${t.title}" (${id})` : id;
       if (!window.confirm(`Delete ${label}?\n\nThis will scrub depends_on / blocks / parent references too. Undo is available for ~10s after delete.`)) return;
       try {
-        const r = await fetch("/delete", {
+        const r = await fetch(API_BASE + "/delete", { // (hook-bypass: line-limit)
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id }),
@@ -3258,7 +3270,7 @@
         // Undo: POST /restore with the same removed payload + refs.
         const undo = async () => {
           try {
-            const rr = await fetch("/restore", {
+            const rr = await fetch(API_BASE + "/restore", { // (hook-bypass: line-limit)
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
