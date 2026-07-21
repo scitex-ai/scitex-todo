@@ -84,19 +84,29 @@ _BACKEND_ENV_VARS = (
 _STORE_ENV_VARS = _STORE_ENV_VARS + ("SCITEX_DIR",)
 
 # CURRENCY gate suppression (scitex_cards._currency.check_currency, wired at
-# the CLI group callback + MCP server import). scitex-dev's own
-# `ensure_current` honors `SCITEX_DEV_NO_CURRENCY_GATE=1` — documented in its
-# own error text — to skip the freshness+integrity check. The test suite
-# needs it: `pytest-matrix` CI checks out a PR merge ref into an EDITABLE
-# install, so `ensure_current` sees this checkout as "N commits behind its
+# the CLI group callback + MCP server import). The test suite needs it:
+# `pytest-matrix` CI checks out a PR merge ref into an EDITABLE install, so
+# scitex-dev's `ensure_current` sees this checkout as "N commits behind its
 # own remote" (true, and harmless — the runner just hasn't fast-forwarded a
-# ref it will never push to) and raises. Every test that invokes the CLI
-# (`CliRunner` -> `main()`) or imports `_mcp_server` would otherwise fail on
-# a condition that has nothing to do with the code under test — CI incident
-# 2026-07-21, PR #550. This suppresses the check for the suite ONLY; a real
-# `scitex-cards` CLI/MCP invocation outside the test harness (this var unset)
-# still errors on a stale/broken install exactly as designed.
+# ref it will never push to) and, without suppression, raises. Every test
+# that invokes the CLI (`CliRunner` -> `main()`) or imports `_mcp_server`
+# would otherwise fail on a condition that has nothing to do with the code
+# under test — CI incident 2026-07-21, PR #550.
+#
+# TWO KNOBS, because they answer different questions:
+#   - `SCITEX_DEV_NO_CURRENCY_GATE=1` — downgrades a would-be raise to a WARN
+#     (documented in `ensure_current`'s own error text). By itself this still
+#     PRINTS, which broke a second test asserting the CLI's `--json` output
+#     is pure JSON (the warn landed on stdout ahead of the JSON payload).
+#   - `SCITEX_DEV_CURRENCY_SEVERITY=silent` — the severity ladder (explicit
+#     call-site arg > this env var > scitex-dev's own default knob); silent
+#     means the check still runs but neither raises nor prints anything.
+# Both are pinned so the suite is silent regardless of which one scitex-dev
+# ends up honoring for a given call path; neither weakens the gate outside
+# the test harness — a real CLI/MCP invocation (these vars unset) still
+# errors loudly on a stale/broken install exactly as designed.
 os.environ["SCITEX_DEV_NO_CURRENCY_GATE"] = "1"
+os.environ["SCITEX_DEV_CURRENCY_SEVERITY"] = "silent"
 
 
 def _pin_to_scratch() -> Path:
@@ -280,6 +290,7 @@ def _store_env_stays_pinned(tmp_path_factory) -> None:
     # Re-assert the CURRENCY gate suppression too (same "a stray pop/delenv
     # must not leak into the next test" reasoning as the store vars above).
     os.environ["SCITEX_DEV_NO_CURRENCY_GATE"] = "1"
+    os.environ["SCITEX_DEV_CURRENCY_SEVERITY"] = "silent"
 
 
 # EOF
