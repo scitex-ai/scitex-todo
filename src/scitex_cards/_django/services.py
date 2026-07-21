@@ -223,36 +223,22 @@ def _kick_board_refresh(key, resolved, effective_mtime, effective_sig) -> None:
 
 
 def _load_global_tasks(path: Path) -> list:
-    """Global store rows — from the SQLite mirror when it is provably fresh.
+    """Global store rows — from the ONE canonical SQLite database.
 
-    THE BOARD'S HOT READ. The canonical YAML is ~9 MB and parses in **4.6 s**
-    on the live store (0.01 s once cached) — and the cache is invalidated by
-    every store write, so during ordinary fleet activity nearly every board
-    request pays the full parse. That is what the operator experiences as a
-    30-second board (measured 2026-07-18: ``/graph`` 19.3 s under write
-    pressure vs 0.40 s warm). The mirror serves the same rows from indexed
-    storage instead.
-
-    The guard is :func:`scitex_cards._store_read_sqlite.enabled`, which FAILS
-    CLOSED — an absent, stale, or incapable mirror falls back to the canonical
-    YAML rather than showing the fleet cards that are quietly wrong. Rows come
-    back from the verbatim ``card_json`` payload in document order, so the two
-    paths are row-identical; a divergence would be a mirror bug, not a
-    projection difference, and the freshness stamp exists to catch exactly
-    that.
+    SQLite is the store; there is no other backend and no mirror to prefer over
+    it (see :mod:`scitex_cards._store_backend`). This used to also try a
+    SQLite-INDEXED accelerator (``_store_read_sqlite`` — S2) ahead of
+    :func:`load_tasks`, guarded by a freshness check comparing the database's
+    provenance stamp against a YAML file. That accelerator is DELETED
+    (2026-07-21 incident): once SQLite became canonical the YAML the stamp
+    compared against stopped existing, so the guard refused unconditionally and
+    fell back to a YAML chain that resolved to an empty bundled example —
+    silently serving a blank board. ``path`` is accepted for the caller's
+    identity/cache-invalidation bookkeeping; :func:`load_tasks` itself ignores
+    it and reads the resolved canonical database.
     """
     from scitex_cards._model import load_tasks
 
-    try:
-        from scitex_cards import _store_read_sqlite as _sq
-
-        if _sq.enabled(path):
-            return _sq.list_tasks_sqlite(path)
-    except Exception:  # noqa: BLE001 — the board must never fail to render
-        logger.warning(
-            "[scitex-todo] sqlite board read failed; falling back to YAML",
-            exc_info=True,
-        )
     return load_tasks(path)
 
 
