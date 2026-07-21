@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """``scitex-todo print-stats`` CLI verb.
 
-Compute per-(agent | project | host) throughput from the canonical
-tasks.yaml: created / completed / delta / ratio / velocity. Optionally
+Compute per-(agent | project | host) throughput from the canonical task
+store: created / completed / delta / ratio / velocity. Optionally
 pushes per-agent notify bodies via scitex-todo's self-contained HTTP
 push wire (:func:`scitex_cards._push.deliver`) — operator's standing
 direction that "agents see their own numbers every hour and
@@ -91,7 +91,7 @@ def _push_notify(agent: str, body: str) -> str:
 def _rollup(path, by, since, fmt):
     """Parse the store + compute the per-group rollup + formatted output.
 
-    THIS is the expensive path: parses the ~9 MB / ~930-card ``tasks.yaml``
+    THIS is the expensive path: parses the ~9 MB / ~930-card store document
     and aggregates every card. It MUST NOT run before the single-instance
     lock is confirmed acquired in notify/cron mode — the 0.7.47 bug (#346)
     computed the rollup ABOVE the guard (the lock only wrapped the push at

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """SQLite table population from an in-memory document.
 
-The import entry points that used to live here (``import_from_yaml`` /
+The import entry points that used to live here (the sidecar importer /
 ``mirror_doc`` / ``_load_source``) are DELETED: SQLite is the only store, so
 there is no external document to read and no second representation to project from.
 What remains is the low-level table-writing machinery — the column maps, the
@@ -126,8 +126,8 @@ def _dedupe_last_wins(tasks: list) -> list[tuple[int, dict]]:
         logger.error(
             "!! DUPLICATE CARD ID(S) IN THE CANONICAL STORE: %s. The mirror keeps "
             "the LAST occurrence of each (the same row `INSERT OR REPLACE` would "
-            "have kept), but the YAML itself is inconsistent and should be "
-            "repaired — two cards cannot share an id.",
+            "have kept), but the source document itself is inconsistent and "
+            "should be repaired — two cards cannot share an id.",
             ", ".join(sorted(set(dupes))),
         )
     ordered.extend(by_id.values())
@@ -179,8 +179,8 @@ def _insert_tasks(
         values.append(_json_or_none(row.get("_log_meta")))
         values.append(order)
         # The VERBATIM card — the payload an S2 read reconstructs from, exactly as
-        # it appeared in the YAML (unknown keys, key order, types and all). The
-        # typed columns above are only the INDEX. See :mod:`_db_payload`.
+        # it appeared in the source document (unknown keys, key order, types and
+        # all). The typed columns above are only the INDEX. See :mod:`_db_payload`.
         values.append(card_payload_json(row))
         conn.execute(insert_sql, values)
         counts["tasks"] += 1
@@ -277,7 +277,7 @@ def _rebuild_from_doc(
     Caller owns the transaction boundary and the connection.
 
     THIS DELETEs before it inserts, which is why it is FENCED: reached only on
-    first run against a database that has nothing to delete. The YAML-import
+    first run against a database that has nothing to delete. The sidecar-import
     caller that used to reach it on a populated database has been removed — do
     not add another caller that runs this against a live board.
     """

@@ -45,7 +45,7 @@ def attach_install_verbs(mcp_group: click.Group) -> None:
                 ),
                 (
                     "{prog} mcp install --apply --to to_home/.mcp.json "
-                    "--env-tasks-path /home/agent/.scitex/todo/tasks.yaml -y",
+                    "--env-tasks-path /home/agent/.scitex/cards/cards.db -y",
                     "Fleet host-store pin (P3a).",
                 ),
             ),
@@ -214,7 +214,7 @@ def attach_install_verbs(mcp_group: click.Group) -> None:
                 (
                     "{prog} mcp install-fleet "
                     "--agents-dir ~/.dotfiles/src/.scitex/agent-container/agents "
-                    "--env-tasks-path /home/agent/.scitex/todo/tasks.yaml -y",
+                    "--env-tasks-path /home/agent/.scitex/cards/cards.db -y",
                     "Sweep every agent's to_home/.mcp.json.",
                 ),
             ),
