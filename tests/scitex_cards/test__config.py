@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Layered config.yaml — user base + project override, knob resolution.
+"""Layered config.json — user base + project override, knob resolution.
 
 Real files in ``tmp_path``, no mocks: we point ``config_paths`` at concrete
 temp files and assert the merge + the interval-resolution precedence.
@@ -130,7 +130,7 @@ def test_bool_is_not_a_valid_interval_number(tmp_path, monkeypatch):
     assert interval == _config.DEFAULT_INTERVAL_MINUTES
 
 
-# === JSON format + one-time legacy YAML migration ==========================
+# === JSON format; there is no legacy-sidecar import path any more =========
 
 
 def test_a_json_config_is_read(tmp_path, monkeypatch):
@@ -146,11 +146,14 @@ def test_a_json_config_is_read(tmp_path, monkeypatch):
     assert _config.reminders_config() == {"interval_minutes": 7}
 
 
-def test_json_config_wins_over_a_sibling_legacy_yaml(tmp_path, monkeypatch):
-    # Arrange — both files present at the same scope; JSON must win.
+def test_json_config_is_read_while_a_sibling_pre_json_file_is_ignored(
+    tmp_path, monkeypatch
+):
+    # Arrange — a stray pre-JSON sidecar sits next to the real config; only
+    # the JSON file is ever consulted.
     import json
 
-    (tmp_path / "config.yaml").write_text(
+    (tmp_path / "config.pre-json").write_text(
         "reminders:\n  interval_minutes: 99\n", encoding="utf-8"
     )
     (tmp_path / "config.json").write_text(
@@ -161,19 +164,20 @@ def test_json_config_wins_over_a_sibling_legacy_yaml(tmp_path, monkeypatch):
     assert _config.reminders_config() == {"interval_minutes": 7}
 
 
-def test_a_legacy_yaml_config_is_migrated_on_first_access(tmp_path, monkeypatch):
-    # Arrange — only the pre-JSON YAML exists; it is migrated to JSON on read.
-    (tmp_path / "config.yaml").write_text(
+def test_a_lone_pre_json_sidecar_is_not_read(tmp_path, monkeypatch):
+    # Arrange — no JSON config exists, only a pre-JSON sidecar. There is no
+    # import path for it any more (the one-time sidecar migration was removed
+    # once the fleet's stores moved off it) — the reader sees "no config".
+    (tmp_path / "config.pre-json").write_text(
         "reminders:\n  interval_minutes: 3\n", encoding="utf-8"
     )
     _paths(monkeypatch, tmp_path / "config.json")
     # Act
     result = _config.reminders_config()
-    # Assert — value read, and the legacy file was converted + renamed away.
-    assert result == {"interval_minutes": 3}
-    assert (tmp_path / "config.json").exists()
-    assert (tmp_path / "config.yaml.migrated").exists()
-    assert not (tmp_path / "config.yaml").exists()
+    # Assert — nothing read, nothing converted, the sidecar left untouched.
+    assert result == {}
+    assert not (tmp_path / "config.json").exists()
+    assert (tmp_path / "config.pre-json").exists()
 
 
 # EOF

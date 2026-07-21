@@ -24,7 +24,7 @@ import json
 
 import click
 
-from .._paths import resolve_tasks_path
+from .._db import resolve_db_path
 from ._compat import spec_command_kwargs
 
 
@@ -80,7 +80,7 @@ def list_tasks_filtered(
     if as_json:
         click.echo(json.dumps(rows))
         return
-    resolved = resolve_tasks_path(tasks_path)
+    resolved = resolve_db_path(tasks_path)
     click.echo(f"# {resolved}  ({len(rows)} tasks)")
     for task in rows:
         sc = task.get("scope") or "-"
@@ -104,7 +104,7 @@ def list_blocking_operator(tasks_path: str | None, as_json: bool) -> None:
     if as_json:
         click.echo(json.dumps(rows))
         return
-    resolved = resolve_tasks_path(tasks_path)
+    resolved = resolve_db_path(tasks_path)
     if not rows:
         click.echo("✓ Nothing is waiting on the operator (0 operator-decision blocks).")
         click.echo(f"# {resolved}")
@@ -214,7 +214,7 @@ def init_store_cmd(scope_choice, dry_run, yes) -> None:
     _ = yes  # accepted for §2 compliance
     from pathlib import Path
 
-    from .._db import connect, init_schema, resolve_db_path
+    from .._db import connect, init_schema
     from .._paths import _find_git_root
 
     if scope_choice == "project":
