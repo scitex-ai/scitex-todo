@@ -48,24 +48,6 @@ def _find_git_root(start: Path) -> Path | None:
     return None
 
 
-def bundled_example() -> Path:
-    """REMOVED — no task-store fixture ships inside the wheel any more.
-
-    This used to return a packaged ``examples`` store that
-    :func:`resolve_tasks_path` fell back to as a last resort, which made a demo
-    fixture eligible to become the fleet's board — and on 2026-07-19, with the
-    canonical store archived by the SQLite cutover, resolution walked past every
-    real candidate and settled here. A fallback that can silently promote demo
-    data to production data is a trap, so it was ruled out entirely. Kept as a
-    raising stub so an external caller gets a stated reason, not an ImportError.
-    """
-    raise RuntimeError(
-        "there is no bundled example task store any more (removed 2026-07-19). "
-        "The store is the SQLite database; set $SCITEX_CARDS_DB, or bootstrap "
-        "explicitly with `scitex-cards db import`."
-    )
-
-
 def resolve_tasks_path(explicit: str | Path | None = None) -> Path:
     """Resolve the non-task YAML CONTAINER path — NOT the store identity.
 
