@@ -14,6 +14,7 @@ import sys
 import click
 
 from .. import __version__
+from .._currency import check_currency
 from .._db import resolve_db_path
 from .._diagram import build_mermaid, render
 from .._model import load_tasks
@@ -146,6 +147,17 @@ def _emit_help_recursive(ctx, as_json):
 @click.pass_context
 def main(ctx: click.Context, help_recursive: bool, as_json: bool) -> None:
     """scitex-cards CLI entry point."""
+    # CURRENCY gate (operator directive: stale or broken installs ERROR, never
+    # warn) — every CLI invocation is gated here, before any subcommand runs.
+    # `check_currency()` is a no-op when scitex-dev is absent; when present it
+    # raises with the exact remedy command, which we surface as a clean
+    # ClickException rather than a raw traceback. See `_currency.py`.
+    try:
+        check_currency()
+    except click.ClickException:
+        raise
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
     if help_recursive or as_json:
         _emit_help_recursive(ctx, as_json=as_json)
         ctx.exit(0)

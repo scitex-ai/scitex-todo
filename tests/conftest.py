@@ -82,6 +82,28 @@ _BACKEND_ENV_VARS = (
 #: by every future test remembering it independently.
 _STORE_ENV_VARS = _STORE_ENV_VARS + ("SCITEX_DIR",)
 
+# CURRENCY gate suppression (scitex_cards._currency.check_currency, wired at
+# the CLI group callback + MCP server import). The test suite needs it:
+# `pytest-matrix` CI checks out a PR merge ref into an EDITABLE install, so
+# scitex-dev's `ensure_current` sees this checkout as "N commits behind its
+# own remote" (true, and harmless — the runner just hasn't fast-forwarded a
+# ref it will never push to) and, without suppression, raises. Every test
+# that invokes the CLI (`CliRunner` -> `main()`) or imports `_mcp_server`
+# would otherwise fail on a condition that has nothing to do with the code
+# under test — CI incident 2026-07-21, PR #550.
+#
+# ONLY `SCITEX_DEV_CURRENCY_SEVERITY=silent` — NOT `SCITEX_DEV_NO_CURRENCY_
+# GATE=1`. The bypass var was tried first and made things WORSE: it wins
+# over the severity knob in scitex-dev's own ladder, and it unconditionally
+# prints a "CURRENCY GATE BYPASSED" warning to stdout regardless of severity
+# (a known scitex-dev bug, not ours to patch) — which then broke a SECOND
+# test asserting the CLI's `--json` output is pure JSON (the warn landed on
+# stdout ahead of the JSON payload). `silent` alone runs the check, raises
+# nothing, and prints nothing, so stdout stays clean. Unset (as in any real
+# invocation outside this harness), the gate still errors loudly on a
+# stale/broken install exactly as designed.
+os.environ["SCITEX_DEV_CURRENCY_SEVERITY"] = "silent"
+
 
 def _pin_to_scratch() -> Path:
     """Point every store-selecting variable at a throwaway directory."""
@@ -261,6 +283,9 @@ def _store_env_stays_pinned(tmp_path_factory) -> None:
     scratch = tmp_path_factory.mktemp("store")
     _point_env_at(scratch)
     _bootstrap_empty_db(scratch / "cards.db")
+    # Re-assert the CURRENCY gate suppression too (same "a stray pop/delenv
+    # must not leak into the next test" reasoning as the store vars above).
+    os.environ["SCITEX_DEV_CURRENCY_SEVERITY"] = "silent"
 
 
 # EOF
