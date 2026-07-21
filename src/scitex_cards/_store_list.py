@@ -35,6 +35,7 @@ from pathlib import Path
 
 from ._model import VALID_STATUSES, load_tasks
 from ._paths import resolve_tasks_path
+from ._task import _is_tombstoned
 
 #: Env var an agent sets to scope its default `list_tasks` / `summary` view. The
 #: CLI's `--scope` flag overrides this; pass `scope=""` in the Python API to see
@@ -102,8 +103,15 @@ def _match(
       - ``blocking_me`` is the BLOCKING-YOU predicate (board-v3 panel):
         ``status == "blocked" AND blocker == "operator-decision"``.
         Composes with the other filters via AND.
+      - a TOMBSTONED row (see :func:`scitex_cards._task._is_tombstoned`)
+        never matches, regardless of any other filter — see the 2026-07-21
+        tombstone change: ``delete_task`` keeps the row on disk forever, so
+        board reads must keep excluding it exactly as when it was
+        physically removed.
 
     """
+    if _is_tombstoned(task):
+        return False
     if scope is not None and task.get("scope") != scope:
         return False
     if assignee is not None and task.get("assignee") != assignee:
