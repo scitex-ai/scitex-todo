@@ -57,13 +57,20 @@ raise `RenderError`.
 
 ### `resolve_tasks_path(explicit=None) -> Path`
 
-Returns the first existing store in precedence order (explicit →
-`$SCITEX_TODO_TASKS_YAML_SHARED` → user). There is **no bundled fallback**: as of
-2026-07-19 no YAML store ships in the wheel, because a packaged demo file at the
-end of the chain could be — and once was — resolved as the fleet's live board. An
-unresolvable store raises `FileNotFoundError` rather than silently standing in.
-`bundled_example()` remains only as a raising stub so an external caller gets a
-stated reason instead of an `AttributeError`.
+The store IDENTITY is `$SCITEX_CARDS_DB` (the SQLite database; see
+`_db.resolve_db_path`). `resolve_tasks_path` does NOT return that identity —
+it returns the non-task YAML CONTAINER beside it (`<db_dir>/tasks.yaml`) that
+still holds the `users:` / `groups:` sections, plus doubles as the store
+directory (`.parent`) for pidfiles, the delivery ledger and reminder state.
+Resolution: an explicit path wins outright; otherwise it is
+`resolve_db_path(None).parent / "tasks.yaml"` — deterministic, following
+`resolve_db_path`'s own explicit → `$SCITEX_CARDS_DB` → deprecated-env →
+ecosystem-default chain. There is **no bundled fallback and no `bundled_example()`**:
+as of 2026-07-19 no YAML store ships in the wheel, because a packaged demo
+file at the end of the old chain could be — and once was — resolved as the
+fleet's live board. `bundled_example()` was later deleted outright (it had
+become an unreachable raising stub — no branch of the resolution chain above
+ever calls it).
 
 ## Constants and exceptions
 

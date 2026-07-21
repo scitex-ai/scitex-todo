@@ -7,6 +7,12 @@ The store IDENTITY is the SQLite database ``$SCITEX_CARDS_DB``
 the YAML CONTAINER beside that database (``<db_dir>/tasks.yaml``) that still
 holds the non-task sections (users/groups/inboxes) — NOT the identity, and no
 separate YAML-named store variable, no project-scope layer, no bundled fallback.
+
+There is no ``bundled_example()`` any more (deleted — it was a raising stub for
+a packaged demo store removed 2026-07-19). Nothing in :func:`resolve_tasks_path`
+ever called it; the resolution chain below is exhaustive proof of that: every
+branch bottoms out at an explicit path or ``resolve_db_path``'s own
+deterministic chain, never a packaged fixture.
 """
 
 from __future__ import annotations
@@ -25,7 +31,6 @@ from scitex_cards._paths import (
     PKG_SHORT,
     _find_git_root,
     _user_root,
-    bundled_example,
     resolve_tasks_path,
 )
 
@@ -120,11 +125,20 @@ def test_explicit_path_string_is_expanded(tmp_path, clean_store_env):
     assert resolved == target
 
 
-def test_bundled_example_raises_because_no_store_ships_in_the_wheel():
-    """Calling it is a stated error, not an AttributeError."""
+def test_bundled_example_is_deleted_not_merely_raising():
+    """``bundled_example`` no longer exists at all — no raising stub either.
+
+    It used to be a fallback :func:`resolve_tasks_path` could reach (a
+    packaged demo store), then a raising stub kept only so an external
+    caller got a stated reason instead of an ``AttributeError``. Both are
+    gone: the resolution chain above proves no branch ever needs it, so the
+    stub itself was deleted. Re-adding it — even as "just a raise" — is the
+    residue this test guards against.
+    """
     # Act / Assert
-    with pytest.raises(RuntimeError, match="no bundled example"):
-        bundled_example()
+    import scitex_cards._paths as _paths_module
+
+    assert not hasattr(_paths_module, "bundled_example")
 
 
 def test_pkg_short_names_the_cards_directory():

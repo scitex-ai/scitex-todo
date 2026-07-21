@@ -295,12 +295,29 @@ def connect(path: str | Path) -> sqlite3.Connection:
     Does NOT create the schema — call :func:`init_schema` (or the combined
     :func:`open_db`) for that. ``row_factory`` is :class:`sqlite3.Row` so
     callers get name-addressable rows.
+
+    THE MIN-CLIENT-VERSION GATE lives here, not in :func:`open_db`, because
+    this is the one function BOTH the read path (``_store_read_sqlite``
+    calls ``connect`` directly) and the write path (``open_db`` -> this
+    function, then :func:`init_schema`) open every connection through. See
+    :mod:`scitex_cards._min_client_version` for the full incident this
+    answers: an outdated client must ERROR the moment it opens the store,
+    not merely warn. A brand-new file (no ``schema_meta`` table yet) has no
+    floor stamped, so the gate is a no-op and :func:`init_schema` still runs
+    normally afterwards.
     """
     p = Path(path).expanduser()
     p.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(p))
     conn.row_factory = sqlite3.Row
     _apply_pragmas(conn)
+    from ._min_client_version import enforce_min_client_version
+
+    try:
+        enforce_min_client_version(conn)
+    except Exception:
+        conn.close()
+        raise
     return conn
 
 

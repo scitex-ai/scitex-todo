@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 # package is `scitex_cards`; `scitex_todo` ships as a deprecated re-export
 # shim for one transition window so un-cutover consumers keep working.
 name = "scitex-cards"
-version = "0.17.4"
+version = "0.17.5"
 description = "Canonical task-card store with pluggable adapters (mermaid dependency graphs)"
 readme = "README.md"
 license = "AGPL-3.0-only"
@@ -74,8 +74,17 @@ mcp = [
     # this extra installed.
     "fastmcp>=2.0",
 ]
+currency = [
+    # CURRENCY gate (operator directive: stale or broken installs ERROR, not
+    # warn). `scitex_cards._currency.check_currency()` imports
+    # `scitex_dev.staleness.ensure_current` — >=0.34.0 is the first release
+    # that ships it. OPTIONAL, not a hard dependency: `check_currency()` is
+    # a no-op when scitex-dev is absent, so a standalone scitex-cards install
+    # keeps working without this extra (decoupling rule).
+    "scitex-dev>=0.34.0",
+]
 all = [
-    "scitex-cards[dev,docs,mcp,web]",
+    "scitex-cards[dev,docs,mcp,web,currency]",
 ]
 
 # BOTH console scripts resolve to the canonical `scitex_cards` CLI. The legacy

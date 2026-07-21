@@ -4,7 +4,7 @@
 
 Real round-trips, NO mocks (STX-NM / PA-306): a real ``tmp_path`` store,
 real notifications seeded via :func:`scitex_cards._inbox.enqueue`, a real
-``recipients.yaml`` written into the store dir, and REAL fake channels
+``recipients.json`` written into the store dir, and REAL fake channels
 (``RecorderChannel`` / ``FlakyChannel``) injected through the
 ``channels=`` / ``extra_providers=`` seams.
 
@@ -23,8 +23,7 @@ helpers below so every split test carries the exact arrange it needs.
 from __future__ import annotations
 
 import datetime as _dt
-
-import yaml
+import json
 
 from scitex_cards._delivery import _recipients
 from scitex_cards._delivery._ledger import BASE_BACKOFF_SEC, MAX_ATTEMPTS, Ledger
@@ -42,9 +41,9 @@ def _store(tmp_path):
 
 
 def _write_recipients(tmp_path, mapping: dict) -> None:
-    """Write ``recipients.yaml`` next to the store with ``{users: mapping}``."""
-    path = tmp_path / "recipients.yaml"
-    path.write_text(yaml.safe_dump({"users": mapping}), encoding="utf-8")
+    """Write ``recipients.json`` next to the store with ``{users: mapping}``."""
+    path = tmp_path / "recipients.json"
+    path.write_text(json.dumps({"users": mapping}), encoding="utf-8")
 
 
 def _seed(store, recipient: str, *, card_id="c1", ts="2026-06-27T10:00:00Z"):
@@ -594,11 +593,11 @@ def test_loop_leaves_the_same_notifications_unseen(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# missing recipients.yaml → no recipients, no crash                          #
+# missing recipients.json → no recipients, no crash                          #
 # --------------------------------------------------------------------------- #
 def test_missing_recipients_file_yields_an_empty_summary(tmp_path):
     # Arrange
-    # a notification exists, but no recipients.yaml.
+    # a notification exists, but no recipients.json.
     store = _store(tmp_path)
     _seed(store, "u_eve")
     recorder = RecorderChannel(name="log")
@@ -629,7 +628,7 @@ def test_missing_recipients_file_never_touches_the_channel(tmp_path):
 # load_recipients parsing (address optional, malformed dropped)              #
 # --------------------------------------------------------------------------- #
 def _arrange_recipients_fixture(tmp_path):
-    """A recipients.yaml exercising the drop rules; returns the parsed list."""
+    """A recipients.json exercising the drop rules; returns the parsed list."""
     store = _store(tmp_path)
     # Touch the store so the parent dir resolves to tmp_path.
     enqueue(
@@ -694,11 +693,9 @@ def test_load_recipients_parses_an_explicit_channel_address(tmp_path):
     assert recips[0].channels[1].address == "12345"
 
 
-def test_load_recipients_prefers_json_over_a_legacy_yaml(tmp_path):
-    """recipients.json is authoritative; a legacy recipients.yaml is the fallback
-    only when no JSON exists (no auto-write, so a hand-edited YAML is never lost —
-    but once JSON exists it wins)."""
-    import json
+def test_load_recipients_ignores_a_stray_legacy_yaml_sidecar(tmp_path):
+    """recipients.json is the only format read — a stray recipients.yaml
+    sibling is not a fallback; there is no import path for it any more."""
 
     # Arrange — touch the store so the dir resolves, then write BOTH files.
     store = _store(tmp_path)
@@ -711,14 +708,17 @@ def test_load_recipients_prefers_json_over_a_legacy_yaml(tmp_path):
         ts="2026-06-27T10:00:00Z",
         store=store,
     )
-    _write_recipients(tmp_path, {"u_stale": {"channels": [{"kind": "log"}]}})
+    (tmp_path / "recipients.yaml").write_text(
+        "users:\n  u_stale:\n    channels:\n      - kind: log\n",
+        encoding="utf-8",
+    )
     (tmp_path / "recipients.json").write_text(
         json.dumps({"users": {"u_json": {"channels": [{"kind": "log"}]}}}),
         encoding="utf-8",
     )
     # Act
     recips = _recipients.load_recipients(store)
-    # Assert — the JSON wins; the legacy YAML is ignored.
+    # Assert — only the JSON is read; the legacy YAML sidecar is invisible.
     assert [r.user for r in recips] == ["u_json"]
 
 

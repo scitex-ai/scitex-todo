@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import _inbox
-from ._dual_write import check_mirror_healthy
+from ._health_write_target import check_single_write_target
 from ._install_probe import check_install_honest
 from ._mcp_channel import recipient_keys, resolve_agent_id
 
@@ -441,12 +441,12 @@ def health(
         # detector off. Verified BY CONTENT, never by the version alone.
         # (Incident 2026-07-12: metadata said 0.7.26 while the code ran 0.8.7.)
         _run_check("install_honest", check_install_honest),
-        # S1 DUAL-WRITE: has the SQLite mirror stayed in sync with the canonical
-        # YAML? A mirror that fails SILENTLY lets the DB rot out of sync while
-        # every other check reports green — and S2 would then cut the fleet over
-        # to a store that is confidently wrong. One failure is enough to fail this
-        # check: there is no partial credit for a store that is only mostly right.
-        _run_check("dual_write_mirror", check_mirror_healthy),
+        # SQLite is the ONLY write target (the dual-write mirror toggle was
+        # DELETED 2026-07-21, not defaulted off — see `_health_write_target`).
+        # This replaces the old `dual_write_mirror` sync-check: there is no
+        # mirror left to fall out of sync, so the question is now "did the
+        # deletion hold" rather than "did the mirror keep up".
+        _run_check("single_write_target", check_single_write_target),
         # Is any card CLOSED and OPEN at the same time? A card carrying
         # _log_meta.closed_at that still sits in `deferred` is a ZOMBIE: finished
         # work that nags its owner in every digest, forever, and is invisible

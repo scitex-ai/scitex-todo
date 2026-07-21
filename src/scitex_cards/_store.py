@@ -76,6 +76,7 @@ from pathlib import Path
 
 from ._model import (  # noqa: F401  (see the re-export note below)
     VALID_STATUSES,
+    StoreShrinkRefusedError,
     TaskValidationError,
     _save_doc_unlocked,
     _save_tasks_unlocked,
@@ -402,8 +403,13 @@ def get_task(
     natural "read one" verb every CRUD surface expects but the Python
     API was missing (PR #56 audit gap). The MCP wrapper exposes this as
     ``get_task`` per Convention A.
+
+    A TOMBSTONED row (see :func:`scitex_cards._task._is_tombstoned`) is
+    treated as NOT FOUND — the 2026-07-21 tombstone change keeps a
+    deleted card's row on disk forever, but this read must behave exactly
+    as it did when ``delete_task`` physically removed it.
     """
-    from . import _model
+    from . import _model, _task
 
     tasks_path = _resolved_store(store)
     if not task_id:
@@ -411,7 +417,7 @@ def get_task(
     with _model._store_lock(tasks_path):
         tasks = _model.load_tasks(tasks_path)
         for t in tasks:
-            if t.get("id") == task_id:
+            if t.get("id") == task_id and not _task._is_tombstoned(t):
                 return dict(t)
     raise TaskNotFoundError(f"task id {task_id!r} not found in {tasks_path}")
 
@@ -456,6 +462,7 @@ from ._store_rescore import rescore_task  # noqa: E402,F401  (re-export)
 __all__ = [
     "ENV_AGENT",
     "ENV_SCOPE",
+    "StoreShrinkRefusedError",
     "TaskNotFoundError",
     "TaskValidationError",
     "add_task",

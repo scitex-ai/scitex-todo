@@ -14,6 +14,8 @@ import sys
 import click
 
 from .. import __version__
+from .._currency import check_currency
+from .._db import resolve_db_path
 from .._diagram import build_mermaid, render
 from .._model import load_tasks
 from .._paths import resolve_tasks_path
@@ -145,6 +147,17 @@ def _emit_help_recursive(ctx, as_json):
 @click.pass_context
 def main(ctx: click.Context, help_recursive: bool, as_json: bool) -> None:
     """scitex-cards CLI entry point."""
+    # CURRENCY gate (operator directive: stale or broken installs ERROR, never
+    # warn) — every CLI invocation is gated here, before any subcommand runs.
+    # `check_currency()` is a no-op when scitex-dev is absent; when present it
+    # raises with the exact remedy command, which we surface as a clean
+    # ClickException rather than a raw traceback. See `_currency.py`.
+    try:
+        check_currency()
+    except click.ClickException:
+        raise
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
     if help_recursive or as_json:
         _emit_help_recursive(ctx, as_json=as_json)
         ctx.exit(0)
@@ -197,7 +210,7 @@ def render_graph_cmd(output: str, print_mermaid: bool) -> None:
         return
 
     engine = render(mermaid_src, output)
-    click.echo(f"{output}  (rendered via {engine}; source: {resolved})")
+    click.echo(f"{output}  (rendered via {engine}; source: {resolve_db_path(None)})")
 
 
 # --------------------------------------------------------------------------- #
@@ -376,7 +389,11 @@ def list_tasks_cmd(
     if as_json:
         click.echo(json.dumps(tasks))
         return
-    click.echo(f"# {resolved}  ({len(tasks)} tasks)")
+    # Header names the STORE (the SQLite database) — NOT `resolved`, which is
+    # the non-task sidecar container `load_tasks` takes only for naming in
+    # error text (see `_paths.resolve_tasks_path`). Printing that sidecar
+    # here mislabeled the header with a path the data never lived at.
+    click.echo(f"# {resolve_db_path(None)}  ({len(tasks)} tasks)")
     for task in tasks:
         click.echo(f"{task['id']:<24} {task['status']:<12} {task['title']}")
 
@@ -420,7 +437,7 @@ _gui.register(main)
 _index.register(main)
 # inbox <verb> — inbox storage-backend lifecycle (migrate-to-sqlite / info).
 # Phase 1 of the store SQLite migration: moves the per-recipient inbox off the
-# monolithic tasks.yaml so a 5 s digest-poll no longer re-parses all cards.
+# monolithic task document so a 5 s digest-poll no longer re-parses all cards.
 _inbox.register(main)
 # migration <verb> — directory-card enforcement migration (plan / apply).
 # Extracted to _migration_cli.py alongside the board split.

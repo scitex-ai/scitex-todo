@@ -26,6 +26,7 @@ from . import _help_wait as _help_wait_cli
 from . import _hub as _hub_cli
 from . import _install_stop_hook as _install_stop_hook_cli
 from . import _may_stop as _may_stop_cli
+from . import _min_client_version as _min_client_version_cli
 from . import _serve as _serve_cli
 from . import _stop_hook as _stop_hook_cli
 from ._main import main
@@ -38,6 +39,11 @@ _health_cli.register(main)
 # `db` — the shadow-SQLite operability noun group (SQLite migration S0,
 # RFC #348). Wired here (like health / help-wait) to keep _main.py untouched.
 _db_cli.register(main)
+# `db set-min-client-version` — attaches itself onto `db_group` via a
+# decorator at import time (see the module docstring); `register()` here is
+# a no-op kept for this package's convention, since `db_group` is already
+# wired onto `main` by `_db_cli.register` above.
+_min_client_version_cli.register(main)
 # `serve` — the hub RPC surface (remote-hub PR-2). Same thin-root wiring.
 _serve_cli.register(main)
 # `hub` — provisioning + doctor for the remote rail (remote-hub PR-4).

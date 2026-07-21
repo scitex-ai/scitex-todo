@@ -71,7 +71,7 @@ def board_v3_page(request):
 
     Parallel to ``board_page`` (per lead a2a `62094366` — isolable, screen-
     shottable, A/B-comparable against the static :8052 prototype). Renders
-    a self-contained HTML page that fetches ``/graph`` for real tasks.yaml
+    a self-contained HTML page that fetches ``/graph`` for real task-store
     data + renders the operator-co-designed layout (project columns +
     BLOCKING YOU panel + Resolve→``/resolve`` button per ADR-0006/0007).
 
@@ -166,7 +166,7 @@ def _maybe_announce_missing_turn_urls(request) -> None:
     """Boot-time WARN listing agents without a configured turn URL.
 
     Fires once per process (the module-level guard). The agent set is
-    read from the live tasks.yaml via :func:`get_board` so the warning
+    read from the live store via :func:`get_board` so the warning
     reflects whatever store the request resolves to.
     """
     global _TURN_URL_ANNOUNCED

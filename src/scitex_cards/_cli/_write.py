@@ -30,6 +30,7 @@ import json
 import click
 
 from .. import _store
+from .._db import resolve_db_path
 from .._model import VALID_BLOCKERS, VALID_KINDS, VALID_STATUSES
 from ._compat import spec_command_kwargs
 
@@ -417,7 +418,10 @@ def summary_cmd(scope, assignee, as_json) -> None:
     if as_json:
         click.echo(json.dumps(info))
         return
-    click.echo(f"# {info['store']}  ({info['total']} tasks)")
+    # `info["store"]` names the non-task sidecar container (see
+    # `_paths.resolve_tasks_path`), not the store identity — the header
+    # names the real store (the SQLite database) instead.
+    click.echo(f"# {resolve_db_path(None)}  ({info['total']} tasks)")
     click.echo("by_status:")
     for s, n in info["by_status"].items():
         click.echo(f"  {s:<12} {n}")
