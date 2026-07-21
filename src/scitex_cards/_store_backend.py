@@ -8,9 +8,14 @@ THE ORDER (operator, 2026-07-20): 「例外を用意しないでください。�
 switch hard, leave nothing ambiguous, and carry exactly ONE way in the source.
 
 WHAT THIS MODULE USED TO DO, and why that is gone. It exported
-``db_is_canonical()``, reading ``$SCITEX_CARDS_STORE_BACKEND`` to decide whether
-SQLite was the store or merely a mirror of a YAML file. That switch is deleted,
-along with both env names, because a selectable backend is precisely the defect:
+``db_is_canonical()``, reading a now-deleted ``*_STORE_BACKEND`` environment
+variable to decide whether SQLite was the store or merely a mirror of a YAML
+file. That switch — function, env var, and its sibling read-side toggle alike
+— is deleted outright, not merely defaulted off, and its exact former name is
+deliberately not repeated here: a string a maintainer can copy back into an
+``export`` is a string that can be copied back. See ``git log -p`` on this
+file / PR #545 for the literal deleted names. Because a selectable backend is
+precisely the defect:
 
     「今の問題はワイエムLとデータベース両方使えてしまってるところで壊れると思う
       んですよ」 — the problem is that BOTH can be used, and THAT is where it breaks.
