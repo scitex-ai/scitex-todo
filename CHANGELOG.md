@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.17.5] - 2026-07-21
+
+One write target, one read path, loud failure everywhere else. Closes the
+silent-wrong-board class found in production on 2026-07-21.
+
+### Removed
+
+- **The dual-write mirror is deleted as a feature** (#545). A stale provenance
+  stamp plus the mirror env flag had routed a session's writes into a side file
+  while every call reported success. SQLite is the only write target; a write
+  that cannot reach the canonical DB raises. A sentinel test fails if the
+  toggle is ever reintroduced.
+- **The S2 read accelerator is deleted** (#547). On containers with the
+  deprecated read-backend env set, it refused the unstamped DB and fell through
+  to an empty bundled-example board while claiming reads were correct. The DB
+  is canonical unconditionally; the backend env knobs are gone; an
+  unresolvable store raises.
+- **The dead legacy-sidecar import module is deleted** (#546), and CLI headers
+  now name the real store instead of a legacy path.
+
+### Added
+
+- **`min_client_version` floor** (#548). The store can carry a minimum client
+  version; an older client errors at DB-open — reads and writes both — with
+  the exact upgrade command. Set only via the deliberate
+  `db set-min-client-version` verb, which refuses a floor above its own
+  version. Complemented by scitex-dev's upcoming currency gate.
+- **Snapshot staleness guard** (#544). The hourly snapshot refuses to commit
+  an export that does not reflect the DB's live state (count + newest
+  last_activity), closing the false-green backup found the same day. Sits
+  beside the existing shrink-refusal guard.
+
 ## [0.17.4] - 2026-07-21
 
 The YAML-to-SQLite cutover release. SQLite is the store; YAML is gone from the
