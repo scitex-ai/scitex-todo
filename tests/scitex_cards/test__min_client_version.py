@@ -9,10 +9,17 @@ the warnings were read. The operator's ruling: an outdated client must
 ERROR the moment it opens the store, never merely warn.
 
 ``schema_meta.min_client_version`` is the floor; :func:`scitex_cards._db.connect`
-is the ONE chokepoint both the read path (``_store_read_sqlite.list_tasks_sqlite``
-calls ``connect`` directly) and the write path (``_db_mirror.mirror_doc_incremental``
-opens via ``_db.open_db``, which is ``connect`` + ``init_schema``) funnel through
-— so gating it there gates both without touching either module.
+is the ONE chokepoint both the read path (``_store.list_tasks`` -> ``_model.load_tasks``
+-> ``_store._read_canonical_db_or_raise`` -> ``_db_export.export_doc`` -> ``_db.open_db``,
+which is ``connect`` + ``init_schema``) and the write path
+(``_db_mirror.mirror_doc_incremental`` opens the same way) funnel through — so gating it
+there gates both without touching either module.
+
+The S2 SQLite read accelerator (``_store_read_sqlite.list_tasks_sqlite``) this file
+originally exercised as "the read path" is DELETED (2026-07-21, a separate incident:
+its own freshness guard could never again pass once SQLite became canonical, so it
+refused unconditionally and fell back to an empty YAML/example chain). ``list_tasks``
+now has exactly one read path, and it is the one exercised below.
 
 Every test gets its OWN scratch, schema-complete, floor-UNSET database via the
 suite-wide ``_store_env_stays_pinned`` autouse fixture (``tests/conftest.py``);
@@ -27,7 +34,7 @@ from pathlib import Path
 
 import pytest
 
-from scitex_cards import _db, _db_mirror
+from scitex_cards import _db, _db_mirror, _store
 from scitex_cards._min_client_version import (
     ClientTooOldError,
     parse_version_tuple,
@@ -35,7 +42,6 @@ from scitex_cards._min_client_version import (
     resolve_running_version,
     stamp_floor,
 )
-from scitex_cards._store_read_sqlite import list_tasks_sqlite
 
 
 def _db_path() -> str:
@@ -305,10 +311,14 @@ def test_the_write_path_is_gated_the_same_as_connect():
 
 
 def test_the_read_path_is_gated_the_same_as_connect():
-    """`_store_read_sqlite.list_tasks_sqlite` opens via `_db.connect`
-    directly — the read chokepoint inherits the same floor check. The floor
-    is stamped only AFTER a card is mirrored, so the read path is exercised
-    against a genuinely populated, schema-complete database."""
+    """`_store.list_tasks` -> `_model.load_tasks` ->
+    `_store._read_canonical_db_or_raise` -> `_db_export.export_doc` ->
+    `_db.open_db` opens via `_db.connect` — the read chokepoint inherits the
+    same floor check. (The S2 SQLite read accelerator this test used to call
+    directly, `_store_read_sqlite.list_tasks_sqlite`, is deleted; `list_tasks`
+    is the one read path now.) The floor is stamped only AFTER a card is
+    mirrored, so the read path is exercised against a genuinely populated,
+    schema-complete database."""
     # Arrange — write one card while the floor is still unset.
     doc = {"tasks": [{"id": "t1", "title": "T", "status": "deferred"}]}
     _db_mirror.mirror_doc_incremental(doc, _db_path(), store_path=_db_path())
@@ -316,7 +326,7 @@ def test_the_read_path_is_gated_the_same_as_connect():
 
     # Act / Assert
     with pytest.raises(ClientTooOldError):
-        list_tasks_sqlite(_db_path(), _db_path())
+        _store.list_tasks(scope="")
 
 
 def test_the_read_path_still_works_once_the_floor_is_cleared_again():
@@ -328,11 +338,11 @@ def test_the_read_path_still_works_once_the_floor_is_cleared_again():
     _db_mirror.mirror_doc_incremental(doc, _db_path(), store_path=_db_path())
     _set_floor("9999.0.0")
     with pytest.raises(ClientTooOldError):
-        list_tasks_sqlite(_db_path(), _db_path())
+        _store.list_tasks(scope="")
 
     # Act
     _set_floor("0.0.1")
-    cards = list_tasks_sqlite(_db_path(), _db_path())
+    cards = _store.list_tasks(scope="")
 
     # Assert
     assert [c["id"] for c in cards] == ["t1"]
