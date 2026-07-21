@@ -39,6 +39,16 @@ import anyio
 from . import _store  # resolve_store only — every verb routes via the seam
 from ._backend import get_backend
 
+# CURRENCY gate (operator directive: stale or broken installs ERROR, never
+# warn) — runs ONCE, here at server-module import, not per tool call. This is
+# the SECOND of the two gate sites (the first is the `scitex-cards` CLI group
+# callback in `_cli/_main.py`): a client that launches this MCP server
+# directly (e.g. `fastmcp run scitex_cards._mcp_server:mcp`, the `_SERVER_PATH`
+# target in `_cli/_mcp.py`) never goes through that CLI callback, so the gate
+# must also live here to cover that path. No-op when scitex-dev is absent
+# (decoupling rule) — see `_currency.py`.
+from ._currency import check_currency
+
 # `mcp` and `_ENUM_FIELDS` now live in `_mcp_app`, a LEAF module — it imports
 # nothing that imports it back. They are re-exported here because 8 modules and
 # the CLI already do `from ._mcp_server import mcp`, and that surface must not
@@ -53,6 +63,8 @@ from ._backend import get_backend
 # breaks it — see `_mcp_app`'s docstring for why a lazy re-export would have
 # silently unregistered two tools instead.
 from ._mcp_app import _ENUM_FIELDS, mcp  # noqa: F401  (re-export)
+
+check_currency()
 
 # --------------------------------------------------------------------------- #
 # Task-store tools — Convention A (tool name == Python API name).             #
