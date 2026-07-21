@@ -39,16 +39,6 @@ import anyio
 from . import _store  # resolve_store only — every verb routes via the seam
 from ._backend import get_backend
 
-# CURRENCY gate (operator directive: stale or broken installs ERROR, never
-# warn) — runs ONCE, here at server-module import, not per tool call. This is
-# the SECOND of the two gate sites (the first is the `scitex-cards` CLI group
-# callback in `_cli/_main.py`): a client that launches this MCP server
-# directly (e.g. `fastmcp run scitex_cards._mcp_server:mcp`, the `_SERVER_PATH`
-# target in `_cli/_mcp.py`) never goes through that CLI callback, so the gate
-# must also live here to cover that path. No-op when scitex-dev is absent
-# (decoupling rule) — see `_currency.py`.
-from ._currency import check_currency
-
 # `mcp` and `_ENUM_FIELDS` now live in `_mcp_app`, a LEAF module — it imports
 # nothing that imports it back. They are re-exported here because 8 modules and
 # the CLI already do `from ._mcp_server import mcp`, and that surface must not
@@ -64,7 +54,25 @@ from ._currency import check_currency
 # silently unregistered two tools instead.
 from ._mcp_app import _ENUM_FIELDS, mcp  # noqa: F401  (re-export)
 
-check_currency()
+# NOTE on the CURRENCY gate (scitex_cards._currency.check_currency): it does
+# NOT live here at module level. It used to (2026-07-21), and
+# `tests/scitex_cards/test__import_order.py` correctly caught that as a bug:
+# `import scitex_cards._mcp_server` raised a real StalenessError in a fresh
+# subprocess whose env carries none of the test suite's suppression pins.
+# Importing a module must be side-effect-free — same principle that exempts a
+# docs build. The gate now lives at the actual SERVER-START call site instead:
+# see `_attach_unified_start`'s `start()` handler in `_cli/_mcp.py`, which
+# covers `scitex-cards mcp start` (both the stdio-unified and `--http`
+# branches). A client that launches this module directly, bypassing that CLI
+# (e.g. `fastmcp run scitex_cards._mcp_server:mcp`), is NOT gated — FastMCP
+# does offer a `lifespan=` hook on `FastMCP(...)`, but wiring it here is
+# unsafe: `_mcp_channel._run()` drives `mcp._mcp_server` (the low-level
+# server) by hand for the stdio-unified path, entering `server.lifespan(server)`
+# directly rather than through `FastMCP.run()`/`_lifespan_manager()`, and a
+# non-default `lifespan=` in that shape raises `RuntimeError("... no lifespan
+# result is set ...")` — i.e. it would break the DEFAULT `mcp start` command
+# it was meant to protect. Left as a known, honestly-disclosed gap rather than
+# a half-fixed lifespan wiring.
 
 # --------------------------------------------------------------------------- #
 # Task-store tools — Convention A (tool name == Python API name).             #
