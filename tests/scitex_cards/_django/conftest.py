@@ -50,14 +50,14 @@ seed_db_from_doc = _mod.seed_db_from_doc
 def _django_store_identity_file_exists():
     """Ensure the pinned store-identity file EXISTS for the board's group loader.
 
-    The store is the canonical DB, but the board's ``get_board`` ->
-    ``load_groups(resolved)`` still OPENS the resolved store PATH and raises
-    FileNotFoundError when it is absent (swallowed into a 400, so the handler is
-    never reached). Under the cutover the DB — not this file — holds the cards;
-    an empty marker file at the pinned path satisfies the group loader while
-    every card read/write goes to the DB. Runs AFTER the top-level
-    ``_store_env_stays_pinned`` (higher conftest → earlier autouse), so it reads
-    the already-repointed pinned path for this test.
+    Under the cutover the DB — not this file — holds the cards; an empty marker
+    file at the pinned path keeps the board in its normal "store exists" state
+    (``get_board`` treats an ABSENT identity file as the honest empty-store
+    state: 0 tasks, ``empty_store=True`` — see services.BoardState). Most
+    _django tests seed cards into the DB and assert on them, so they need the
+    marker present; the empty-store tests delete it deliberately. Runs AFTER
+    the top-level ``_store_env_stays_pinned`` (higher conftest → earlier
+    autouse), so it reads the already-repointed pinned path for this test.
     """
     import os
 

@@ -1,5 +1,47 @@
 # Changelog
 
+## [Unreleased]
+
+Hub-mount integration follow-ups to #556 (board mount-awareness), completing
+hub card `hub-cards-board-data-404`.
+
+### Fixed
+
+- **The chat page is mount-aware.** `chat.js` fetched root-absolute `/dm/*`
+  paths, so the DM page's data calls escaped a sub-path mount (the hub's
+  `/apps/cards/`) exactly like the board's did before #556. `chat_page` now
+  derives the include root from `request.path`, `chat.html` always renders it
+  on `<body data-api-base>` (plus the "← board" header link now targets the
+  include root, not the site root), and `chat.js` reads the marker — throwing
+  loudly when it is absent, never silently guessing a root mount. Regression
+  lint extended to `static/scitex_cards/chat/*.js`.
+- **Honest empty state — an absent store renders 0 cards, not an error
+  banner** (adapted from unpushed `9db9146b` to the SQLite-era `get_board`).
+  A fresh workspace resolves to a store-identity path that does not exist
+  yet; `load_groups` on that absent file was the one leftover raise that
+  turned the new tenant's board into a 400 "No task store found." (and
+  `/timeline` into a 500). Reads now return 200 with 0 rows and an
+  `empty_store: true` flag on the `/graph`, `/tasks` and `/timeline`
+  payloads; loud paths (unknown endpoint 404, handler exceptions 500, the
+  FileNotFoundError → 400 backstop for mid-load raises) are unchanged.
+
+### Added
+
+- **Load-failure UI states on board_v3.** A failed `/graph` now reads the
+  response body before giving up: the hub's signed-out 401
+  (`{"error": "signed-out", "login_url"}`) renders a sign-in panel, the hub
+  tenancy middleware's no-active-project 404 (`{"error", "hint"}`) renders a
+  "No active project" panel linking the hint, `empty_store: true` renders the
+  normal zero-card board, and anything unrecognized keeps the loud red error
+  — now carrying the server's `error` field and the HTTP status.
+
+### Changed
+
+- `handlers/graph.py` line-limit split: the fleet-liveness builder
+  (`_build_fleet` + helpers) moved verbatim to `handlers/graph_fleet.py`
+  (its mirrored test file already existed under that name); `handlers.graph`
+  re-exports, so dotted references keep resolving.
+
 ## [0.17.5] - 2026-07-21
 
 One write target, one read path, loud failure everywhere else. Closes the
