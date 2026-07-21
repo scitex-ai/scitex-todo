@@ -10,9 +10,9 @@ Uses click's ``CliRunner`` against the real root group — no mocks. Covers:
 
 from __future__ import annotations
 
+import json
 import subprocess
 
-import yaml
 from click.testing import CliRunner
 
 from scitex_cards._cli._main import main
@@ -36,14 +36,14 @@ def _run_notifyd_once():
 
     The store is provisioned per-test by ``tests/conftest.py``; both the seed
     and the daemon resolve it the same way, so nothing here names a path.
-    ``recipients.yaml`` is a sibling of the resolved store by contract
+    ``recipients.json`` is a sibling of the resolved store by contract
     (``_delivery._recipients.recipients_path``).
     """
     _seed()
     store_dir = resolve_tasks_path(None).parent
     store_dir.mkdir(parents=True, exist_ok=True)
-    (store_dir / "recipients.yaml").write_text(
-        yaml.safe_dump({"users": {"u_cli": {"channels": [{"kind": "log"}]}}}),
+    (store_dir / "recipients.json").write_text(
+        json.dumps({"users": {"u_cli": {"channels": [{"kind": "log"}]}}}),
         encoding="utf-8",
     )
     runner = CliRunner()

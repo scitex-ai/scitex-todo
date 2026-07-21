@@ -18,8 +18,7 @@ once per test and each test checks a single property of the result.
 from __future__ import annotations
 
 import datetime as _dt
-
-import yaml
+import json
 
 from scitex_cards._delivery import _daemon
 from scitex_cards._delivery._sweeps import (
@@ -37,8 +36,8 @@ T0 = _dt.datetime(2026, 7, 11, 10, 0, 0, tzinfo=_dt.timezone.utc)
 
 
 def _write_recipients(tmp_path, mapping: dict) -> None:
-    (tmp_path / "recipients.yaml").write_text(
-        yaml.safe_dump({"users": mapping}), encoding="utf-8"
+    (tmp_path / "recipients.json").write_text(
+        json.dumps({"users": mapping}), encoding="utf-8"
     )
 
 

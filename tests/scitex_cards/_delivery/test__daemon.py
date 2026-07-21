@@ -4,7 +4,7 @@
 
 Real round-trips, NO mocks (STX-NM / PA-306): a real ``tmp_path`` store, real
 notifications seeded via :func:`scitex_cards._inbox.enqueue`, a real
-``recipients.yaml``, REAL fake channels, and a REAL ``threading.Event`` stop
+``recipients.json``, REAL fake channels, and a REAL ``threading.Event`` stop
 seam + injected no-op ``sleep`` + injected ``now_fn`` so the loop never sleeps
 for real and never depends on wall-clock.
 
@@ -24,11 +24,10 @@ Covers the spec's required cases:
 from __future__ import annotations
 
 import datetime as _dt
+import json
 import logging
 import os
 import threading
-
-import yaml
 
 from scitex_cards._delivery._daemon import (
     DaemonAlreadyRunning,
@@ -60,8 +59,8 @@ def _store(tmp_path):
 
 
 def _write_recipients(tmp_path, mapping: dict) -> None:
-    path = tmp_path / "recipients.yaml"
-    path.write_text(yaml.safe_dump({"users": mapping}), encoding="utf-8")
+    path = tmp_path / "recipients.json"
+    path.write_text(json.dumps({"users": mapping}), encoding="utf-8")
 
 
 def _seed(store, recipient: str, *, card_id="c1", ts="2026-06-27T10:00:00Z"):
