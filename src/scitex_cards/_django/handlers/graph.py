@@ -196,6 +196,12 @@ def _build_graph(board) -> dict:
         "mermaid": build_mermaid(board.tasks),
         "store_path": str(board.store_path),
         "task_count": len(board.tasks),
+        # HONEST EMPTY STATE (hub card hub-cards-board-data-404): True when
+        # the resolved store-identity file did not exist at load time — a
+        # brand-new workspace's legitimate 0-card board, not an error. The
+        # frontend renders the normal zero-card board on this instead of the
+        # red load-error banner.
+        "empty_store": board.empty_store,
         # Fleet liveness — per-agent at-a-glance summary the operator can
         # scan from the board header to answer "who is alive + working on
         # what + blocked on me" without leaving the board (ADR-0008 design,
@@ -271,7 +277,14 @@ def handle_graph(request, board):
 def handle_tasks(request, board):
     """GET tasks -> the raw validated task list (for grids / debugging)."""
     return JsonResponse(
-        {"tasks": list(board.tasks), "store_path": str(board.store_path)}
+        {
+            "tasks": list(board.tasks),
+            "store_path": str(board.store_path),
+            # Same honest-empty-state flag as the /graph payload: a resolved
+            # store file that does not exist yet is a fresh workspace, not an
+            # error (see BoardState.empty_store).
+            "empty_store": board.empty_store,
+        }
     )
 
 
