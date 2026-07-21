@@ -5,6 +5,13 @@ import sys
 
 sys.path.insert(0, os.path.abspath("../../src"))
 
+# A docs build is not an invocation: autodoc imports `scitex_cards._mcp_server`
+# (hence `fastmcp` in `autodoc_mock_imports` below) module-level, which runs
+# the CURRENCY gate (`scitex_cards._currency.check_currency`, wired 2026-07-21)
+# at import time. `setdefault` so a caller that deliberately wants the real
+# gate (e.g. to smoke-test it) can still set the var beforehand and win.
+os.environ.setdefault("SCITEX_DEV_NO_CURRENCY_GATE", "1")
+
 # -- Project information -----------------------------------------------------
 
 project = "scitex-todo"
