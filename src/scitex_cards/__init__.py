@@ -49,7 +49,7 @@ except ImportError:  # pragma: no cover — only on ancient Pythons
 #:     from scitex_cards._diagram  import render, render_with_kroki, render_with_mmdc, find_chromium, RenderError
 #:     from scitex_cards._diagram import build_mermaid, STATUS_STYLE
 #:     from scitex_cards._model   import load_tasks, save_tasks, VALID_STATUSES, TaskValidationError
-#:     from scitex_cards._paths   import resolve_tasks_path, bundled_example
+#:     from scitex_cards._paths   import resolve_tasks_path
 
 # PEP 562 lazy attribute resolution — keeps `import scitex_cards` cold-start
 # well under the audit-cli §10 budget (500 ms) by deferring every submodule
