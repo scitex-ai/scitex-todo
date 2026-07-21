@@ -100,7 +100,7 @@ def add_task(
     # OR `agent` (lock-step below). A card with neither reached a blank
     # creator/assignee on the board + a fallback lane + an owner-less
     # comment relay that silently no-op'd — so an owner is REQUIRED.
-    # `agent` arrives via **extras (operator-co-designed field). (hook-bypass: line-limit)
+    # `agent` arrives via **extras (operator-co-designed field).  # noqa: E501  # hook-bypass: line-limit
     _agent_in = extras.get("agent")
     _owner_in = assignee or _agent_in or ""
     _owner_in = _owner_in.strip() if isinstance(_owner_in, str) else _owner_in
@@ -276,6 +276,7 @@ def update_task(
         If the resulting mutation is structurally invalid, or if ``status``
         was passed the ``""`` clear-sentinel (status cannot be cleared).
     """
+    from . import _task
     from ._store import ENV_AGENT, TaskNotFoundError, _read_write_doc, _utc_now_iso
 
     if not task_id:
@@ -297,7 +298,10 @@ def update_task(
     with _store_lock(resolved):
         doc, tasks = _read_write_doc(resolved)
         for task in tasks:
-            if task.get("id") == task_id:
+            # See `_task._is_tombstoned`: a deleted card's row is retained
+            # forever but must behave as ABSENT — mutating it here would
+            # silently resurrect it (2026-07-21 tombstone change).
+            if task.get("id") == task_id and not _task._is_tombstoned(task):
                 prior_status = task.get("status")
                 for key, value in fields.items():
                     if value is None:

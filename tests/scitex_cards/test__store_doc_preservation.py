@@ -147,13 +147,33 @@ class TestSectionPreservationAcrossCRUD:
         # Assert
         assert doc["users"] == expected
 
-    def test_delete_task_still_removes_the_row(self):
-        # Arrange
-        expected_ids = {"b"}
+    def test_delete_task_tombstones_the_row_in_place(self):
+        # Arrange — 2026-07-21 P0 tombstone conversion: delete_task no
+        # longer physically removes the row (一度書いたものは消えない, "a
+        # written card never disappears"); it marks it in place instead. So
+        # BOTH ids are still present in the raw doc — "b" untouched, "a"
+        # tombstoned — preservation must not come at the cost of the write.
+        expected_ids = {"a", "b"}
         # Act
         doc = _doc_after_delete()
         # Assert
         assert {t["id"] for t in doc["tasks"]} == expected_ids
+
+    def test_delete_task_marks_the_row_cancelled(self):
+        # Arrange
+        # Act
+        doc = _doc_after_delete()
+        # Assert
+        deleted = next(t for t in doc["tasks"] if t["id"] == "a")
+        assert deleted["status"] == "cancelled"
+
+    def test_delete_task_stamps_deleted_at(self):
+        # Arrange
+        # Act
+        doc = _doc_after_delete()
+        # Assert
+        deleted = next(t for t in doc["tasks"] if t["id"] == "a")
+        assert deleted.get("_log_meta", {}).get("deleted_at")
 
     def test_users_survives_comment_task(self):
         # Arrange

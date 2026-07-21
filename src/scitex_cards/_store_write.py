@@ -303,7 +303,7 @@ def _save_doc_unlocked(
     # of the board — which is the exact defect this cutover exists to remove.
     from ._store_backend import write_doc_to_db
 
-    write_doc_to_db(doc, path, deleted_ids=deleted_ids)
+    write_doc_to_db(doc, path, deleted_ids=deleted_ids, allow_shrink=allow_shrink)
 
 
 def _git_autocommit_store(path: Path) -> None:
