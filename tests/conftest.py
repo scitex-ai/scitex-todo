@@ -68,6 +68,20 @@ _BACKEND_ENV_VARS = (
     "SCITEX_TODO_READ_BACKEND",
 )
 
+#: ``$SCITEX_DIR`` is the BASE DIRECTORY under ``resolve_db_path``'s tier-4
+#: fallback (``scitex_config._ecosystem.local_state.user_path``), which reads
+#: ``os.environ.get("SCITEX_DIR", str(Path.home() / ".scitex"))`` on EVERY
+#: call — not just at import. It is pinned for the same reason the four vars
+#: above are: a test that legitimately clears BOTH ``SCITEX_CARDS_DB`` and
+#: ``SCITEX_TODO_DB`` to exercise that fallback (see
+#: ``tests/scitex_cards/test__paths.py``'s ``clean_store_env`` fixture, which
+#: pops only the two DB vars) falls straight through to ``Path.home()`` — the
+#: REAL home — unless something ALSO names ``$SCITEX_DIR``. Every test that
+#: deliberately wants the fallback today happens to set ``$SCITEX_DIR``
+#: itself too; this pin exists so that stays true by construction rather than
+#: by every future test remembering it independently.
+_STORE_ENV_VARS = _STORE_ENV_VARS + ("SCITEX_DIR",)
+
 
 def _pin_to_scratch() -> Path:
     """Point every store-selecting variable at a throwaway directory."""
@@ -84,6 +98,11 @@ def _point_env_at(scratch: Path) -> None:
     os.environ["SCITEX_TODO_DB"] = str(scratch / "cards.db")
     os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"] = str(scratch / "tasks.yaml")
     os.environ["SCITEX_TODO_TASKS_YAML_SHARED"] = str(scratch / "tasks.yaml")
+    # Same scratch tree, own subdir — no separate tempfile.mkdtemp() call
+    # needed, and it means a test's own $SCITEX_DIR override (every one that
+    # wants the tier-4 fallback sets this explicitly) still wins for the
+    # duration of that test; this only supplies the default.
+    os.environ["SCITEX_DIR"] = str(scratch / "scitex-dir-fallback")
 
 
 def _bootstrap_empty_db(db_path: Path) -> None:
@@ -122,6 +141,92 @@ _SCRATCH = _pin_to_scratch()
 def scratch_store_root() -> Path:
     """The throwaway store directory this run is pinned to (for assertions)."""
     return _SCRATCH
+
+
+# --------------------------------------------------------------------------- #
+# Belt-and-braces: the real store must not move AT ALL, session-wide.        #
+# --------------------------------------------------------------------------- #
+#
+# Everything above this line makes it mechanically hard for a test to RESOLVE
+# a real store path. It assumes that guard has a hole somewhere it hasn't been
+# found yet — proven true on 2026-07-21 (2,170 cards -> 18; THIRD such wipe,
+# two days after the 2026-07-19 fix above), so this layer checks the only
+# fact that actually matters: did a real file on disk change, regardless of
+# which env var or code path let a write through.
+#
+# Both real homes this fleet's agents run under. Checked BY NAME, not by
+# reading $HOME/$SCITEX_DIR — the whole point is to catch a leak that reached
+# the store via one of those variables, so asking the same variable "were you
+# bypassed" would beg the question.
+_REAL_STORE_CANDIDATES: tuple[Path, ...] = (
+    Path("/home/agent/.scitex/cards/cards.db"),
+    Path("/home/ywatanabe/.scitex/cards/cards.db"),
+    # Pre-rename dirname (package renamed scitex-todo -> scitex-cards,
+    # 2026-07-16); this path held 2,117 real cards as recently as the rename
+    # itself (see _env_compat.py's incident writeup) and may still exist.
+    Path("/home/agent/.scitex/todo/cards.db"),
+    Path("/home/ywatanabe/.scitex/todo/cards.db"),
+)
+
+
+def _stat_or_none(path: Path) -> tuple[int, int] | None:
+    """``(mtime_ns, size)`` for ``path``, or ``None`` when it doesn't exist.
+
+    Never raises. A permission hiccup or a benign race here is not evidence
+    of the thing this function exists to detect (a WRITE), so it must not
+    itself blow up test collection/teardown.
+    """
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
+# Captured at IMPORT — same reasoning as ``_SCRATCH`` above: nothing this
+# suite does can happen before this module finishes importing, so this is the
+# earliest possible "before" snapshot.
+_REAL_STORE_BEFORE: dict[Path, tuple[int, int] | None] = {
+    p: _stat_or_none(p) for p in _REAL_STORE_CANDIDATES
+}
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _assert_real_store_untouched_by_session():
+    """FAIL LOUD if any real store candidate changed during this session.
+
+    This is a DETECTOR, not a preventer — the prevention is the pinning above
+    and in ``tests/scitex_cards/conftest.py``. If this fires, do not go
+    hunting for the one leaking test as a condition of fixing THIS card: per
+    the incident runbook, report the failing state (which candidate path
+    moved, and its before/after ``(mtime_ns, size)``) and treat it as a
+    signal that the pinning fixtures need a wider audit — finding the exact
+    leaking test is legitimate follow-up work, not a blocker on having this
+    guard at all.
+    """
+    yield
+    changed = [
+        (path, _REAL_STORE_BEFORE[path], _stat_or_none(path))
+        for path in _REAL_STORE_CANDIDATES
+        if _REAL_STORE_BEFORE[path] != _stat_or_none(path)
+    ]
+    if not changed:
+        return
+    details = "\n".join(
+        f"  {path}\n    before (mtime_ns, size) = {before}\n"
+        f"    after  (mtime_ns, size) = {after}"
+        for path, before, after in changed
+    )
+    pytest.fail(
+        "REAL TASK STORE MUTATED DURING THIS TEST SESSION.\n"
+        "Every pinning fixture in this file and in "
+        "tests/scitex_cards/conftest.py is supposed to make this "
+        "impossible; one of them has a hole. Do NOT chase the individual "
+        "leaking test as a condition of triage — report this failure "
+        "verbatim; finding the exact leak is follow-up work.\n"
+        f"{details}",
+        pytrace=False,
+    )
 
 
 @pytest.fixture(autouse=True)
