@@ -48,7 +48,75 @@ can do.
 from __future__ import annotations
 
 
-def write_doc_to_db(doc: dict, store_path, *, deleted_ids=None) -> dict:
+def _current_stored_ids(db_path) -> set[str]:
+    """The ids the ``tasks`` table ALREADY has, read fresh from SQLite.
+
+    Ground truth for :func:`_assert_no_shrink` — deliberately a live query,
+    not a value threaded through from an earlier read, so the check is
+    correct even when ``doc`` was built from a stale snapshot (the exact
+    shape of the 2170->18 collapse).
+    """
+    from ._db import open_db
+
+    conn = open_db(db_path)
+    try:
+        rows = conn.execute("SELECT id FROM tasks").fetchall()
+        return {str(r[0]) for r in rows}
+    finally:
+        conn.close()
+
+
+def _assert_no_shrink(
+    doc: dict,
+    db_path,
+    *,
+    deleted_ids: list[str] | None = None,
+    allow_shrink: bool = False,
+) -> None:
+    """RAISE :class:`StoreShrinkRefusedError` if ``doc`` is missing rows.
+
+    THE PRIMARY INVARIANT (operator ruling, P0 2026-07-21 third board
+    wipe): a written card never disappears. Not "not too many" — NONE,
+    unless the write NAMES what it intentionally removed
+    (``deleted_ids``, the one legitimate single-card path — see
+    :mod:`scitex_cards._db_mirror`) or the caller explicitly opts out
+    via ``allow_shrink=True``. No ratio, no threshold: growing a store
+    from zero never removes anything, so this never fires on a fresh
+    store — there is nothing to exempt by size.
+    """
+    if allow_shrink:
+        return
+    stored_ids = _current_stored_ids(db_path)
+    if not stored_ids:
+        return
+    incoming_ids = {
+        str(c["id"])
+        for c in (doc.get("tasks") or [])
+        if isinstance(c, dict) and c.get("id")
+    }
+    excused = {str(x) for x in (deleted_ids or [])}
+    missing = stored_ids - incoming_ids - excused
+    if not missing:
+        return
+    ordered = sorted(missing)
+    sample = ", ".join(ordered[:20])
+    more = "" if len(ordered) <= 20 else f" (+{len(ordered) - 20} more)"
+    from ._task import StoreShrinkRefusedError
+
+    raise StoreShrinkRefusedError(
+        f"refusing to persist: this write is missing {len(missing)} id(s) "
+        f"the store already has ({sample}{more}) out of {len(stored_ids)} "
+        f"currently stored. A written card must never disappear — this is "
+        f"exactly the shape of the 2170->18 collapse (a stale/replacement "
+        f"document overwriting the live store). If this shrink is genuinely "
+        f"intentional (a deliberate bulk archive), re-run with "
+        f"allow_shrink=True."
+    )
+
+
+def write_doc_to_db(
+    doc: dict, store_path, *, deleted_ids=None, allow_shrink: bool = False
+) -> dict:
     """Commit ``doc`` to SQLite, the only store. RAISES on failure.
 
     ``store_path`` identifies WHICH logical store is addressed, and therefore
@@ -57,6 +125,12 @@ def write_doc_to_db(doc: dict, store_path, *, deleted_ids=None) -> dict:
     ``deleted_ids`` are ids a caller intentionally removed (``delete_task``);
     they are forwarded to the mirror, which drops exactly those rows. The mirror
     never infers a delete from a card's absence — only these named ids go.
+
+    ``allow_shrink`` overrides :func:`_assert_no_shrink`'s refusal — the
+    escape hatch for a genuinely deliberate bulk removal (never set by an
+    ordinary card write; see that function's docstring). Keyword-only, not
+    an env var: an env var leaks ambiently across every write in the
+    process, an explicit call-site argument cannot.
 
     OWNERSHIP IS CHECKED FIRST and a mismatch RAISES rather than returning
     quietly. The destination comes from the ambient environment
@@ -95,6 +169,12 @@ def write_doc_to_db(doc: dict, store_path, *, deleted_ids=None) -> dict:
             f"database, and writing it would replace that store's rows with "
             f"this one's. Point $SCITEX_CARDS_DB at this store's own database."
         )
+
+    # WRITE-SIDE SHRINK GUARD (P0, 2026-07-21 third board wipe). Checked
+    # AFTER ownership (a write to the wrong store is a worse bug than a
+    # shrink, and should raise as that first) but BEFORE the mirror ever
+    # touches a row. See `_assert_no_shrink` for the invariant.
+    _assert_no_shrink(doc, db_path, deleted_ids=deleted_ids, allow_shrink=allow_shrink)
 
     # `mirror_doc_incremental` already raises on failure — no try/except here
     # ON PURPOSE. Adding one could only make this quieter, which is the one

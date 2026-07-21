@@ -247,6 +247,7 @@ def _save_doc_unlocked(
     *,
     tasks: list[dict] | None = None,
     deleted_ids: list[str] | None = None,
+    allow_shrink: bool = False,
 ) -> None:
     """Validate-and-write an ALREADY-PARSED full doc WITHOUT the store lock.
 
@@ -262,6 +263,14 @@ def _save_doc_unlocked(
     the pruned ``tasks`` no longer lists them, but SQLite is upsert-only and the
     mirror never infers a delete from absence, so the ids are forwarded
     explicitly and the mirror drops exactly those rows. Omit on ordinary writes.
+    NOTE: as of the 2026-07-21 tombstone change, ``delete_task`` itself no
+    longer passes this — it keeps the row (see ``_store_lifecycle``) — so in
+    practice this stays empty on every call reachable from the public API.
+
+    ``allow_shrink`` forwards to :func:`scitex_cards._store_backend.write_doc_to_db`'s
+    shrink guard (P0, third board wipe): a write missing rows the store
+    already has is refused UNLESS this is ``True``. Keyword-only, never an
+    env var — see that function's docstring. Omit on ordinary writes.
 
     Direct callers must already hold `_store_lock(path)`.
     """

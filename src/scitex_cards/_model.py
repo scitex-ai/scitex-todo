@@ -154,6 +154,7 @@ from ._task import (  # noqa: E402,F401
     VALID_BLOCKERS,
     VALID_KINDS,
     StaleStoreError,
+    StoreShrinkRefusedError,
     Task,
 )
 from ._validate import (  # noqa: E402,F401
