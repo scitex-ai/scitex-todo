@@ -21,7 +21,7 @@ module the SCRIPT reached for, and no version string can express that.
 
 from __future__ import annotations
 
-from scitex_cards._install_probe import check_console_scripts_not_shadowed
+from scitex_cards._console_script_probe import check_console_scripts_not_shadowed
 
 #: The shape of a healthy console script (308 bytes as installed).
 GOOD_SCRIPT = """#!/usr/bin/env python3
@@ -155,6 +155,77 @@ def test_a_shadowed_alias_is_caught_beside_a_healthy_primary(tmp_path, monkeypat
     # Assert
     assert result["ok"] is False
     assert "scitex-todo" in result["detail"]
+
+
+# --------------------------------------------------------------------------- #
+# The check must not narrow its own scope in silence.                          #
+# --------------------------------------------------------------------------- #
+#
+# Both tests below cover a defect I shipped in the first draft, found by the
+# `dotfiles` agent noticing the SAME defect in their own divergence checker:
+# it skipped every file with no counterpart on the live surface, then printed
+# a confident total that read as complete coverage — 1,145 files across 24
+# hooks uncounted and unmentioned. Their words: a check that quietly narrows
+# its own scope and then prints a number is worse than no check, because the
+# number gets repeated.
+
+
+def test_a_shadowed_copy_behind_a_healthy_one_is_reported(tmp_path, monkeypatch):
+    """`shutil.which` returns the winner. The loser is the loaded gun.
+
+    A healthy script first on PATH with a shadowed copy behind it is one PATH
+    change away from the incident, and the first draft reported it as simply
+    "verified" — it never looked past the winner, and never said so.
+    """
+    # Arrange — healthy first, shadowed second
+    first, second = tmp_path / "a", tmp_path / "b"
+    for d, body in ((first, GOOD_SCRIPT), (second, SHADOWED_SCRIPT)):
+        d.mkdir()
+        script = d / "scitex-cards"
+        script.write_text(body, encoding="utf-8")
+        script.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{first}:{second}")
+    # Act
+    result = check_console_scripts_not_shadowed()
+    # Assert
+    assert result["ok"] is False, "the shadowed copy behind the winner was ignored"
+    assert str(second) in result["detail"], "the shadowed copy is not named"
+    assert "scitex_todo" in result["detail"]
+
+
+def test_names_not_found_are_named_as_unexamined(tmp_path, monkeypatch):
+    """Reporting only on what was examined reads as complete coverage.
+
+    With `scitex-cards` present and `scitex-todo` absent, a report mentioning
+    only the former implies both were checked.
+    """
+    # Arrange — only the primary exists
+    _install_fake_script(tmp_path, monkeypatch, "scitex-cards", GOOD_SCRIPT)
+    # Act
+    result = check_console_scripts_not_shadowed()
+    # Assert
+    assert result["ok"] is True
+    assert "scitex-todo" in result["detail"], "the unexamined name is not disclosed"
+    assert "unexamined" in result["detail"]
+
+
+def test_the_same_file_reached_twice_is_counted_once(tmp_path, monkeypatch):
+    """A duplicated PATH entry is a benign layout, not drift.
+
+    Inflating the copy count would make an ordinary environment look damaged —
+    the false-positive side of the same coin.
+    """
+    # Arrange
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    script = bin_dir / "scitex-cards"
+    script.write_text(GOOD_SCRIPT, encoding="utf-8")
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{bin_dir}")
+    # Act
+    detail = check_console_scripts_not_shadowed()["detail"]
+    # Assert
+    assert detail.count(str(script)) == 1, "one real file reported more than once"
 
 
 # EOF

@@ -44,8 +44,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import _inbox
+from ._console_script_probe import check_console_scripts_not_shadowed
 from ._health_write_target import check_single_write_target
-from ._install_probe import check_console_scripts_not_shadowed, check_install_honest
+from ._install_probe import check_install_honest
 from ._mcp_channel import recipient_keys, resolve_agent_id
 
 #: Unseen-notification backlog above which — combined with ``seen == 0`` (the
