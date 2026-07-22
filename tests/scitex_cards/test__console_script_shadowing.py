@@ -8,8 +8,9 @@ agent. That container had scitex-cards 0.17.5 correctly installed — and
 superseded 0.13.5 distribution, because BOTH distributions declare console
 scripts of the same names and the last install owns the name.
 
-0.13.5 predates the SQLite store, so it ignored ``SCITEX_CARDS_STORE_BACKEND``
-and fell through YAML precedence to the BUNDLED EXAMPLE inside site-packages:
+0.13.5 predates the SQLite store, so it ignored the backend-selection variable
+of the day and fell through YAML precedence to the BUNDLED EXAMPLE inside
+site-packages:
 that agent read 17 fixture rows where the board held 2,308, and its writes
 landed in a package file nothing reads and any reinstall erases.
 

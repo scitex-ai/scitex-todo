@@ -11,8 +11,9 @@ compares metadata against the code beside it and was entirely right. But
 the superseded 0.13.5 distribution, because BOTH distributions declare console
 scripts of the same names and the last install owns the name.
 
-0.13.5 predates the SQLite backend, so it ignored ``SCITEX_CARDS_STORE_BACKEND``
-and fell through YAML precedence to the BUNDLED EXAMPLE inside site-packages:
+0.13.5 predates the SQLite backend, so it ignored the backend-selection
+variable of the day and fell through YAML precedence to the BUNDLED EXAMPLE
+inside site-packages:
 that agent read 17 fixture rows where the board held 2,308, and its writes
 landed in a package file nothing reads and any reinstall erases. It went
 unnoticed until someone noticed the row count was absurd.
@@ -26,6 +27,12 @@ This lives beside ``_install_probe`` rather than inside it because the two
 answer different questions with no shared state: that one reads ``.dist-info``
 to ask "is the version true?", this one reads executables on ``PATH`` to ask
 "is the install being bypassed?". Neither sees the other's failure class.
+
+(The backend-selection variable is described above but deliberately NOT named,
+per ``_store_backend``'s rule: a string a maintainer can paste back into an
+``export`` is a string that can be pasted back. ``test__store_read_sqlite``
+enforces this by scanning src/ for the literal — it caught this module's first
+draft, where the name sat in the incident narrative two paragraphs up.)
 """
 
 from __future__ import annotations
