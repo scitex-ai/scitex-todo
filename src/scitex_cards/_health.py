@@ -45,7 +45,7 @@ from typing import Any, Callable
 
 from . import _inbox
 from ._health_write_target import check_single_write_target
-from ._install_probe import check_install_honest
+from ._install_probe import check_console_scripts_not_shadowed, check_install_honest
 from ._mcp_channel import recipient_keys, resolve_agent_id
 
 #: Unseen-notification backlog above which — combined with ``seen == 0`` (the
@@ -441,6 +441,16 @@ def health(
         # detector off. Verified BY CONTENT, never by the version alone.
         # (Incident 2026-07-12: metadata said 0.7.26 while the code ran 0.8.7.)
         _run_check("install_honest", check_install_honest),
+        # Does the script on $PATH run OUR code? install_honest above compares
+        # metadata against the code beside it and can be entirely right while
+        # this is entirely wrong: both distributions declare console scripts of
+        # the same names, so the last install owns the name. dotfiles' agent
+        # (2026-07-22) had a correct 0.17.5 install and a bin/scitex-cards that
+        # imported the superseded scitex_todo 0.13.5 — code predating the SQLite
+        # store, which ignored the backend and fell through to the BUNDLED
+        # EXAMPLE: 17 fixture rows read where the board had 2,308, writes landing
+        # in a package file nothing reads. Every version check said 0.17.5.
+        _run_check("console_script_ours", check_console_scripts_not_shadowed),
         # SQLite is the ONLY write target (the dual-write mirror toggle was
         # DELETED 2026-07-21, not defaulted off — see `_health_write_target`).
         # This replaces the old `dual_write_mirror` sync-check: there is no
