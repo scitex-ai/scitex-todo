@@ -119,9 +119,18 @@ def load_doc(path: str | Path, *, validate: bool = False) -> dict:
 
     data = _read_canonical_db_or_raise()
     if validate:
+        # NAME THE DATABASE THAT WAS ACTUALLY READ, not ``path``. ``path`` is
+        # the caller's logical store name and is still a ``tasks.yaml`` in most
+        # call sites, so labelling it ``<sqlite:...>`` produced
+        # ``<sqlite:/home/agent/.scitex/cards/tasks.yaml>`` — a file that does
+        # not exist, welded to the identifier of the backend that did not read
+        # it. Every validation warning carried it, so anyone debugging a
+        # resolution problem was handed a path to chase that was never opened.
+        from ._db import resolve_db_path
+
         _validate_tasks(
             data.get("tasks"),
-            source=f"<sqlite:{path}>",
+            source=f"<sqlite:{resolve_db_path(None)}>",
             strict=False,
         )
     return data
