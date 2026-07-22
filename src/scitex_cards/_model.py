@@ -35,7 +35,11 @@ def load_tasks(path: str | Path) -> list[dict]:
     Parameters
     ----------
     path : str or pathlib.Path
-        Names which logical store is addressed; used in error text only.
+        The logical store identity. ACCEPTED AND IGNORED: the database is
+        resolved from the environment, and since the validation label started
+        naming the database actually read, this value reaches no error text
+        either. It survives as the signature every CRUD verb passes through —
+        verified 2026-07-22 that nothing else consumes it.
 
     Returns
     -------
@@ -74,7 +78,11 @@ def load_doc(path: str | Path, *, validate: bool = False) -> dict:
     Parameters
     ----------
     path : str or pathlib.Path
-        Names which logical store is addressed; used in error text only.
+        The logical store identity. ACCEPTED AND IGNORED: the database is
+        resolved from the environment, and since the validation label started
+        naming the database actually read, this value reaches no error text
+        either. It survives as the signature every CRUD verb passes through —
+        verified 2026-07-22 that nothing else consumes it.
     validate : bool, default False
         When True, run :func:`_validate_tasks` on ``data.get("tasks")``
         before returning (the read-time gate :func:`load_tasks` applies).
