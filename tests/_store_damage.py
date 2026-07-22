@@ -13,6 +13,7 @@ the criterion, and for exactly what this layer does and does not catch.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -44,6 +45,39 @@ MONOTONE_TABLES = (
     "notifications",
     "messages",
 )
+
+
+#: The marker ``delete_task`` writes into ``_log_meta``. Mirrors
+#: ``scitex_cards._task.TOMBSTONE_KEY`` — deliberately duplicated rather than
+#: imported, because this module must be able to judge the live board without
+#: importing the package under test.
+_TOMBSTONE_KEY = "deleted_at"
+
+
+def _live_task_ids(conn: sqlite3.Connection) -> frozenset[str]:
+    """The ids of cards that are still VISIBLE, tombstones excluded.
+
+    NOT ``SELECT id FROM tasks``. Since the 2026-07-21 P0, ``delete_task`` no
+    longer removes a row: it marks it in place (``status`` -> ``cancelled``,
+    ``_log_meta.deleted_at`` stamped) and the row is retained forever, per the
+    operator ruling 一度書いたものは消えない. Every read path treats a
+    tombstoned row as ABSENT. So destroying the whole board through the
+    supported delete API changes neither ``count(*)`` NOR the raw id set — a
+    guard watching either sees a pristine store while the board reads empty.
+
+    Mirrors ``scitex_cards._task._is_tombstoned``: PRESENCE of ``deleted_at``,
+    not ``status == 'cancelled'``, is the marker — a card can be legitimately
+    cancelled without ever being deleted.
+    """
+    live = set()
+    for task_id, log_meta_json in conn.execute("SELECT id, log_meta_json FROM tasks"):
+        try:
+            log_meta = json.loads(log_meta_json) if log_meta_json else None
+        except (TypeError, ValueError):
+            log_meta = None
+        if not (isinstance(log_meta, dict) and log_meta.get(_TOMBSTONE_KEY)):
+            live.add(task_id)
+    return frozenset(live)
 
 
 def content_or_none(path: Path) -> dict | None:
@@ -81,7 +115,7 @@ def content_or_none(path: Path) -> dict | None:
             # equal count is invisible to a count check, and "2,286 real cards
             # replaced by 2,286 fixture cards" is a total loss that reads as
             # unchanged.
-            "task_ids": frozenset(r[0] for r in conn.execute("SELECT id FROM tasks")),
+            "live_ids": _live_task_ids(conn),
             "meta": dict(conn.execute("SELECT key, value FROM schema_meta")),
             "integrity": conn.execute("PRAGMA integrity_check").fetchone()[0],
         }
@@ -113,10 +147,29 @@ def damage(before: dict | None, after: dict | None) -> str | None:
     * NO WATCHED TABLE'S ROW COUNT MAY SHRINK — see :data:`MONOTONE_TABLES`
       for why the card table alone is not enough. Every wipe this suite has
       inflicted is this shape: 2136->21, 2138->1, 2138->3, 2170->18.
-    * NO TASK ID MAY DISAPPEAR. Strictly stronger than the count, and the
-      reason the count alone is insufficient: deletes are tombstones by
-      operator ruling ("a written card never disappears"), so a vanished id
-      is always damage, while peers only ever add ids.
+    * NO CARD MAY STOP BEING VISIBLE. This is the load-bearing check, and
+      the counts above are only a cheap backstop to it. TWO separate holes
+      close here, both of which a count comparison has by construction:
+
+      - TOMBSTONES. ``delete_task`` no longer removes rows; it marks them
+        (see :func:`_live_task_ids`). Emptying the entire board through the
+        supported API leaves ``count(*)`` and the raw id set BIT-IDENTICAL.
+        A count check reports a pristine store while the board reads empty.
+      - PEER GROWTH MASKING PARTIAL LOSS. Counts are two absolute samples
+        compared with ``<``. Peers were measured adding ~25 cards/69s, so on
+        a 52-minute run they add well over a thousand; any leak destroying
+        fewer cards than that nets POSITIVE and hides. The repo records a
+        real 16-card partial loss (``_db_mirror.py``, 2026-07-20) — far
+        inside that dead zone.
+
+      A per-id set difference has neither weakness: peers only ADD ids, so
+      their volume is irrelevant, and a card that stops being visible is
+      caught however it stopped.
+
+      ACCEPTED COST, stated rather than hidden: a peer legitimately deleting
+      a card mid-run WILL fire this. That is rare (deletion is rare, and
+      cancelling is not deleting), it names the ids so it is triaged in
+      seconds, and the alternative is a blind spot for total board loss.
     * ``schema_meta`` must be identical — the store's identity, its
       ``min_client_version`` floor and its DO-NOT-MIRROR sentinel. Peers never
       rewrite it, and the 2026-07-21 wipe #5 damaged precisely this.
@@ -160,12 +213,12 @@ def damage(before: dict | None, after: dict | None) -> str | None:
         if a < b:
             return f"{table} row count SHRANK: {b} -> {a}"
 
-    vanished = before["task_ids"] - after["task_ids"]
+    vanished = before["live_ids"] - after["live_ids"]
     if vanished:
         sample = sorted(vanished)[:5]
         return (
-            f"{len(vanished)} task id(s) DISAPPEARED (deletes are tombstones; "
-            f"a card never vanishes). e.g. {sample}"
+            f"{len(vanished)} card(s) stopped being VISIBLE on the board "
+            f"(deleted outright, or tombstoned via delete_task). e.g. {sample}"
         )
 
     if after["meta"] != before["meta"]:

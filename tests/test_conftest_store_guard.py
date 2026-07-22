@@ -34,7 +34,7 @@ from _store_damage import (
 #: A healthy "before" snapshot, shaped like the real board.
 BEFORE = {
     "counts": {t: 100 for t in MONOTONE_TABLES},
-    "task_ids": frozenset({"card-1", "card-2", "card-3"}),
+    "live_ids": frozenset({"card-1", "card-2", "card-3"}),
     "meta": {
         "schema_version": "4",
         "store_path": "/home/agent/.scitex/cards/cards.db",
@@ -100,11 +100,46 @@ def test_detects_delete_then_reinsert_at_equal_count():
     """Total loss that a cardinality check reads as unchanged."""
     # Arrange — every real card replaced by the same NUMBER of fixture cards
     replaced = frozenset({"fixture-a", "fixture-b", "fixture-c"})
-    assert len(replaced) == len(BEFORE["task_ids"])
+    assert len(replaced) == len(BEFORE["live_ids"])
     # Act
-    why = damage(BEFORE, _after(task_ids=replaced))
+    why = damage(BEFORE, _after(live_ids=replaced))
     # Assert
-    assert why is not None and "DISAPPEARED" in why
+    assert why is not None and "stopped being VISIBLE" in why
+
+
+def test_detects_a_mass_tombstone_with_every_row_retained():
+    """The review's second HIGH finding: delete_task does not remove rows.
+
+    Since the 2026-07-21 P0, ``delete_task`` marks in place. Emptying the whole
+    board through the supported API leaves ``count(*)`` AND the raw id set
+    bit-identical, so both a count check and a naive id-set check report a
+    pristine store while every card has vanished from the board.
+    """
+    # Arrange — every card tombstoned; rows all still present
+    # Act
+    why = damage(BEFORE, _after(live_ids=frozenset()))
+    # Assert
+    assert why is not None, "a total tombstone wipe went undetected"
+    assert "stopped being VISIBLE" in why
+
+
+def test_partial_loss_is_not_masked_by_peer_growth():
+    """The review's other HIGH finding: absolute counts have a dead zone.
+
+    Peers add ~25 cards/69s. A leak destroying fewer cards than peers add
+    nets POSITIVE, so a count comparison stays silent. A per-id set difference
+    does not care how much the peers added.
+    """
+    # Arrange — one real card destroyed, 500 peer cards added
+    after_ids = (BEFORE["live_ids"] - {"card-2"}) | {f"peer-{i}" for i in range(500)}
+    # Act
+    why = damage(
+        BEFORE,
+        _after(live_ids=after_ids, counts=_counts(tasks=100 - 1 + 500)),
+    )
+    # Assert
+    assert why is not None, "partial loss hid behind peer growth"
+    assert "card-2" in why
 
 
 def test_detects_a_single_vanished_card():
@@ -113,7 +148,7 @@ def test_detects_a_single_vanished_card():
     why = damage(
         BEFORE,
         _after(
-            task_ids=BEFORE["task_ids"] - {"card-2"},
+            live_ids=BEFORE["live_ids"] - {"card-2"},
             counts=_counts(tasks=99),
         ),
     )
@@ -208,7 +243,7 @@ def test_peer_writes_do_not_fire():
         BEFORE,
         _after(
             counts=_counts(tasks=125),
-            task_ids=BEFORE["task_ids"] | {f"peer-{i}" for i in range(25)},
+            live_ids=BEFORE["live_ids"] | {f"peer-{i}" for i in range(25)},
         ),
     )
     # Assert
@@ -257,6 +292,11 @@ def _make_store(path: Path, *, tasks: int, meta: dict | None = None) -> None:
     conn = sqlite3.connect(path)
     try:
         for table in MONOTONE_TABLES:
+            if table == "tasks":
+                conn.execute(
+                    "CREATE TABLE tasks (id TEXT PRIMARY KEY, log_meta_json TEXT)"
+                )
+                continue
             conn.execute(f"CREATE TABLE {table} (id TEXT PRIMARY KEY)")
         conn.execute("CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT)")
         conn.executemany(
@@ -359,6 +399,29 @@ def test_end_to_end_detects_a_deleted_store(tmp_path):
     # Assert
     damaged = damaged_candidates(before, (db,))
     assert len(damaged) == 1 and "DISAPPEARED" in damaged[0][1]
+
+
+def test_end_to_end_detects_a_real_mass_tombstone(tmp_path):
+    """The supported delete API, for real: rows retained, board emptied."""
+    # Arrange
+    db = tmp_path / "cards.db"
+    _make_store(db, tasks=2261)
+    before = {db: content_or_none(db)}
+    assert len(before[db]["live_ids"]) == 2261
+    # Act — what delete_task does: mark in place, never remove
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "UPDATE tasks SET log_meta_json = ?",
+        ('{"deleted_at": "2026-07-22T06:00:00Z", "deleted_by": "leak"}',),
+    )
+    conn.commit()
+    # Every row is still there — a count check sees nothing wrong
+    assert conn.execute("SELECT count(*) FROM tasks").fetchone()[0] == 2261
+    conn.close()
+    # Assert
+    damaged = damaged_candidates(before, (db,))
+    assert len(damaged) == 1, "mass tombstone went undetected"
+    assert "stopped being VISIBLE" in damaged[0][1]
 
 
 def test_absent_candidate_is_silent_and_creates_nothing(tmp_path):
