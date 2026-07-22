@@ -32,6 +32,9 @@ import ast
 import contextlib
 import importlib
 import importlib.abc
+import importlib.metadata
+import importlib.util
+import logging
 import sys
 from pathlib import Path
 
@@ -76,11 +79,20 @@ def test_no_module_imports_sac_or_telegrammer_anywhere():
     )
 
 
-class _ForbiddenModuleBlocker(importlib.abc.MetaPathFinder):
-    """Make every forbidden root UNIMPORTABLE, as if it were not installed."""
+#: A module that is DEFINITELY importable everywhere this suite runs, used to
+#: prove the blocker mechanism itself works. Pure-stdlib and rarely imported,
+#: so blocking it cannot disturb anything.
+_CANARY_ROOT = "colorsys"
+
+
+class _ModuleBlocker(importlib.abc.MetaPathFinder):
+    """Make the named roots UNIMPORTABLE, as if they were not installed."""
+
+    def __init__(self, roots):
+        self._roots = frozenset(roots)
 
     def find_spec(self, fullname, path=None, target=None):  # noqa: ARG002
-        if fullname.split(".")[0] in FORBIDDEN_ROOTS:
+        if fullname.split(".")[0] in self._roots:
             raise ImportError(
                 f"{fullname} is deliberately unavailable: the decoupling gate "
                 f"removed it to prove scitex-cards runs without it"
@@ -89,18 +101,18 @@ class _ForbiddenModuleBlocker(importlib.abc.MetaPathFinder):
 
 
 @contextlib.contextmanager
-def _forbidden_roots_uninstallable():
-    """Simulate a machine where sac/the telegrammer are simply not present.
+def _roots_uninstallable(roots):
+    """Simulate a machine where ``roots`` are simply not present.
 
     Both halves matter: the finder blocks FUTURE imports, and purging
     ``sys.modules`` defeats the cache so an already-loaded copy cannot satisfy
     one. Everything is restored on exit — other tests share this process.
     """
-    blocker = _ForbiddenModuleBlocker()
+    blocker = _ModuleBlocker(roots)
     stashed = {
         name: mod
         for name, mod in sys.modules.items()
-        if name.split(".")[0] in FORBIDDEN_ROOTS
+        if name.split(".")[0] in set(roots)
     }
     for name in stashed:
         del sys.modules[name]
@@ -110,6 +122,48 @@ def _forbidden_roots_uninstallable():
     finally:
         sys.meta_path.remove(blocker)
         sys.modules.update(stashed)
+
+
+def _forbidden_hook_entry_points():
+    """Entry points in OUR hook groups that resolve into a forbidden package.
+
+    This is the PORT: the other side registers into it, we never name it.
+    Returns the entry points, so a test can tell "the coupling surface exists
+    here and I exercised it" apart from "nothing is installed, so I proved
+    nothing" — a distinction the first version of this gate could not make.
+    """
+    from scitex_cards._hooks._plugins import (
+        ENTRY_POINT_GROUP,
+        LEGACY_ENTRY_POINT_GROUP,
+    )
+
+    eps = importlib.metadata.entry_points()
+    found = []
+    for group in (ENTRY_POINT_GROUP, LEGACY_ENTRY_POINT_GROUP):
+        for ep in eps.select(group=group):
+            if ep.value.split(".")[0].split(":")[0] in FORBIDDEN_ROOTS:
+                found.append(ep)
+    return found
+
+
+def test_the_blocker_actually_blocks():
+    """Prove the MECHANISM, independently of whether sac is installed.
+
+    Without this, the anti-vacuity check inside the absence test is itself
+    vacuous: asserting that importing ``scitex_agent_container`` raises passes
+    identically whether the blocker works or the package simply is not
+    installed — which is the situation on CI. Blocking a module that is
+    UNCONDITIONALLY importable removes that ambiguity: if the finder were
+    broken, this import would succeed and the test would fail.
+    """
+    # Arrange — the canary really is importable right now
+    assert importlib.util.find_spec(_CANARY_ROOT) is not None
+    # Act / Assert
+    with _roots_uninstallable({_CANARY_ROOT}):
+        with pytest.raises(ImportError):
+            importlib.import_module(_CANARY_ROOT)
+    # And the blocker really was removed again
+    assert importlib.import_module(_CANARY_ROOT) is not None
 
 
 def test_crud_surface_survives_absence_of_forbidden_modules(tmp_path, monkeypatch):
@@ -149,13 +203,13 @@ def test_crud_surface_survives_absence_of_forbidden_modules(tmp_path, monkeypatc
 
     # Act + Assert — the cycle itself is the assertion: any hard requirement
     # on a forbidden package surfaces here as an ImportError.
-    with _forbidden_roots_uninstallable():
-        # A gate that cannot fail is not a gate: prove the blocker BITES,
-        # otherwise a broken blocker would make everything below vacuous.
-        for root in sorted(FORBIDDEN_ROOTS):
-            with pytest.raises(ImportError):
-                importlib.import_module(root)
-
+    #
+    # The blocker's own correctness is proved by
+    # ``test_the_blocker_actually_blocks``, NOT by asserting here that the
+    # forbidden roots fail to import: that assertion passes identically when
+    # the packages are merely absent (as on CI), so it could never have caught
+    # a broken blocker.
+    with _roots_uninstallable(FORBIDDEN_ROOTS):
         _store.add_task(store, id="t", title="t", status="deferred", agent="a")
         _store.list_tasks(store)
         _store.comment_task(store, "t", "standalone", by="a")
@@ -164,3 +218,52 @@ def test_crud_surface_survives_absence_of_forbidden_modules(tmp_path, monkeypatc
         # Nothing may have slipped back in through a cached reference.
         leaked = {m.split(".")[0] for m in sys.modules} & FORBIDDEN_ROOTS
         assert not leaked, f"forbidden module(s) loaded despite blocker: {leaked}"
+
+
+def test_port_provider_failure_is_swallowed_by_the_hook_dispatcher(
+    tmp_path, monkeypatch, caplog
+):
+    """Prove the CRUD cycle REALLY reaches the coupling surface and tolerates it.
+
+    Without this, ``test_crud_surface_survives_absence_of_forbidden_modules``
+    is vacuous wherever no forbidden package is installed — nothing registers
+    into our hook group, ``ep.load()`` is never called, and "the cycle
+    completed" says nothing about tolerating a missing provider. That is
+    exactly the situation on CI, where sac is not a dependency.
+
+    So this test asserts the load was ATTEMPTED and the failure SWALLOWED,
+    by reading the warning ``_hooks._plugins`` emits at the ``except`` around
+    ``ep.load()``. It skips loudly, naming the reason, where the port has no
+    provider — a skipped test reports its own reduced power; a silently
+    passing one does not.
+    """
+    # Arrange
+    provided = _forbidden_hook_entry_points()
+    if not provided:
+        pytest.skip(
+            "no forbidden package registers into our hook entry-point group "
+            "here, so the coupling surface this asserts on does not exist in "
+            "this environment (expected on CI, where sac is not installed)"
+        )
+    monkeypatch.setenv("SCITEX_TODO_AGENT_ID", "decoupling-gate-test")
+    monkeypatch.setenv("SCITEX_CARDS_AGENT_ID", "decoupling-gate-test")
+    store = tmp_path / "tasks.yaml"
+    from scitex_cards import _store
+
+    # Act — a write, with the provider's package unimportable
+    with caplog.at_level(logging.WARNING), _roots_uninstallable(FORBIDDEN_ROOTS):
+        _store.add_task(store, id="t", title="t", status="deferred", agent="a")
+
+    # Assert — the dispatcher tried to load it and kept going
+    names = {ep.name for ep in provided}
+    failed = [
+        r.getMessage() for r in caplog.records if "failed to load" in r.getMessage()
+    ]
+    assert failed, (
+        "the write never attempted to load the port provider, so the "
+        "absence-tolerance test above proves nothing here; providers "
+        f"registered: {sorted(names)}"
+    )
+    assert any(name in msg for name in names for msg in failed), (
+        f"a plugin load failed, but not the forbidden one(s) {sorted(names)}: {failed}"
+    )

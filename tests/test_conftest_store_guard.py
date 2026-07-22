@@ -3,16 +3,19 @@
 """The live-store damage detector must still bite after being made precise.
 
 ``tests/conftest.py``'s session guard was changed on 2026-07-22 from "did the
-real store file change (mtime/size)" to "is the real store still intact
-(count/schema_meta/integrity)". The old criterion fired on every run longer
-than a few seconds, because peer fleet agents write to this shared board
-continuously — noise that trains people to ignore the one gate that caught
-three production wipes.
+real store file change (mtime/size)" to "is the real store still intact". The
+old criterion fired on every run longer than a few seconds, because peer fleet
+agents write to this shared board continuously. Measured, the old criterion
+firing on a peer's in-place card update::
+
+    before (mtime_ns, size) = (1784700394236217844, 34537472)
+    after  (mtime_ns, size) = (1784701251174118319, 34537472)
 
 Making a gate quieter is exactly how a gate gets accidentally disabled, so
 this file pins the trade explicitly: every damage shape this suite has
-actually inflicted on production must still be detected, and the specific
-thing that made it noisy must not be.
+actually inflicted on production must still be detected, plus the shapes an
+adversarial review found the first version had stopped detecting, and the
+specific thing that made it noisy must not fire.
 """
 
 from __future__ import annotations
@@ -21,11 +24,17 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-from _store_damage import content_or_none, damage, damaged_candidates
+from _store_damage import (
+    MONOTONE_TABLES,
+    content_or_none,
+    damage,
+    damaged_candidates,
+)
 
 #: A healthy "before" snapshot, shaped like the real board.
 BEFORE = {
-    "count": 2261,
+    "counts": {t: 100 for t in MONOTONE_TABLES},
+    "task_ids": frozenset({"card-1", "card-2", "card-3"}),
     "meta": {
         "schema_version": "4",
         "store_path": "/home/agent/.scitex/cards/cards.db",
@@ -41,6 +50,11 @@ def _after(**overrides):
     return {**BEFORE, **overrides}
 
 
+def _counts(**overrides):
+    """The healthy per-table counts with ``overrides`` applied."""
+    return {**BEFORE["counts"], **overrides}
+
+
 # --------------------------------------------------------------------------- #
 # MUST DETECT — every shape that has actually destroyed data.                  #
 # --------------------------------------------------------------------------- #
@@ -53,19 +67,61 @@ def _after(**overrides):
         ("2026-07-19 canonical write path", 1),
         ("2026-07-19 canonical read path", 3),
         ("2026-07-21 third wipe", 18),
-        ("off-by-one — one card silently dropped", 2260),
+        ("off-by-one — one card silently dropped", 99),
     ],
 )
 def test_detects_every_historical_wipe_shape(label, after_count):
     """A count DECREASE is always damage — the store is append-only."""
     # Arrange / Act
-    why = damage(BEFORE, _after(count=after_count))
+    why = damage(BEFORE, _after(counts=_counts(tasks=after_count)))
     # Assert
     assert why is not None, f"{label} went undetected"
     assert "SHRANK" in why
 
 
-def test_detects_schema_metadamage():
+@pytest.mark.parametrize("table", [t for t in MONOTONE_TABLES if t != "tasks"])
+def test_detects_a_wipe_of_any_watched_table_with_cards_intact(table):
+    """The review's HIGH finding: cards intact, another table emptied.
+
+    ``_sync_sections`` DELETEs users/user_names/notifications and re-inserts
+    from the incoming doc's sections; ``_db_sections`` returns early WITHOUT
+    raising when those keys are absent, so the delete commits. Card count,
+    schema_meta and integrity all stay pristine — the first version of this
+    guard watched only ``tasks`` and would have reported nothing.
+    """
+    # Arrange / Act — that table emptied, everything else untouched
+    why = damage(BEFORE, _after(counts=_counts(**{table: 0})))
+    # Assert
+    assert why is not None, f"a wipe of {table} went undetected"
+    assert table in why and "SHRANK" in why
+
+
+def test_detects_delete_then_reinsert_at_equal_count():
+    """Total loss that a cardinality check reads as unchanged."""
+    # Arrange — every real card replaced by the same NUMBER of fixture cards
+    replaced = frozenset({"fixture-a", "fixture-b", "fixture-c"})
+    assert len(replaced) == len(BEFORE["task_ids"])
+    # Act
+    why = damage(BEFORE, _after(task_ids=replaced))
+    # Assert
+    assert why is not None and "DISAPPEARED" in why
+
+
+def test_detects_a_single_vanished_card():
+    """Deletes are tombstones; a card never vanishes."""
+    # Arrange / Act
+    why = damage(
+        BEFORE,
+        _after(
+            task_ids=BEFORE["task_ids"] - {"card-2"},
+            counts=_counts(tasks=99),
+        ),
+    )
+    # Assert
+    assert why is not None
+
+
+def test_detects_schema_meta_damage():
     """wipe #5's shape: the store's identity stamps rewritten."""
     # Arrange
     broken = dict(BEFORE["meta"])
@@ -88,20 +144,56 @@ def test_detects_dropped_version_floor():
     assert why is not None and "schema_meta CHANGED" in why
 
 
-def test_detects_corruption():
-    """A structurally broken database is damage even at the same card count."""
+def test_corruption_during_the_session_is_attributed_to_the_session():
+    """ok -> broken means this run broke it, and may say so."""
     # Arrange / Act
     why = damage(BEFORE, _after(integrity="row 42 missing from index"))
     # Assert
-    assert why is not None and "integrity_check" in why
+    assert why is not None
+    assert "DURING this session" in why
+
+
+def test_pre_existing_corruption_is_reported_without_blaming_the_session():
+    """Broken before we started: still fails, but does not invent a culprit.
+
+    The fixture's banner says "DAMAGED DURING THIS TEST SESSION". If the board
+    was already corrupt at snapshot time that sentence is false, and silently
+    ignoring corruption is worse than a misattribution — so it must report,
+    and must say which happened.
+    """
+    # Arrange
+    already = {**BEFORE, "integrity": "malformed database schema"}
+    # Act
+    why = damage(already, {**already, "integrity": "malformed database schema"})
+    # Assert
+    assert why is not None
+    assert "ALREADY" in why and "NOT caused by this run" in why
 
 
 def test_detects_store_becoming_unreadable():
-    """Readable before, unreadable after — deletion/truncation included."""
+    """Readable before, unreadable after."""
     # Arrange / Act
-    why = damage(BEFORE, None)
+    why = damage(BEFORE, {"unreadable": "disk I/O error"})
     # Assert
     assert why is not None and "UNREADABLE" in why
+
+
+def test_detects_store_disappearing():
+    """It existed when we snapshotted it and does not now."""
+    # Arrange / Act / Assert
+    assert "DISAPPEARED" in (damage(BEFORE, None) or "")
+
+
+def test_reports_a_gate_that_was_never_armed():
+    """Unreadable AT SNAPSHOT TIME must not silently disarm the guard.
+
+    Returning "no damage" because the before-read failed is failing OPEN: the
+    session then runs with no live-store protection at all and says nothing.
+    """
+    # Arrange / Act
+    why = damage({"unreadable": "database is locked"}, _after())
+    # Assert
+    assert why is not None and "never armed" in why
 
 
 # --------------------------------------------------------------------------- #
@@ -110,13 +202,23 @@ def test_detects_store_becoming_unreadable():
 
 
 def test_peer_writes_do_not_fire():
-    """The measured false positive: peers add cards to this shared live board.
+    """Peers add cards to this shared live board throughout any long run."""
+    # Arrange / Act — peers added 25 cards
+    why = damage(
+        BEFORE,
+        _after(
+            counts=_counts(tasks=125),
+            task_ids=BEFORE["task_ids"] | {f"peer-{i}" for i in range(25)},
+        ),
+    )
+    # Assert
+    assert why is None
 
-    2026-07-22: a 69s run tripped the old mtime criterion purely on writes by
-    sac and scitex-ui, with the board provably intact.
-    """
-    # Arrange / Act — peers added 25 cards during the session
-    why = damage(BEFORE, _after(count=2286))
+
+def test_peer_growth_in_every_table_does_not_fire():
+    """Comments, edges, notifications and DMs all grow during a long run."""
+    # Arrange / Act
+    why = damage(BEFORE, _after(counts={t: 250 for t in MONOTONE_TABLES}))
     # Assert
     assert why is None
 
@@ -127,11 +229,22 @@ def test_unchanged_store_does_not_fire():
     assert damage(BEFORE, _after()) is None
 
 
-def test_unreadable_before_is_not_damage():
+def test_absent_before_is_not_damage():
     """A candidate path that never existed cannot have been damaged by us."""
     # Arrange / Act / Assert
     assert damage(None, None) is None
     assert damage(None, _after()) is None
+
+
+def test_table_missing_from_this_schema_is_not_damage():
+    """An unobservable table must not read as a shrink to zero."""
+    # Arrange / Act
+    why = damage(
+        {**BEFORE, "counts": _counts(messages=None)},
+        _after(counts=_counts(messages=None)),
+    )
+    # Assert
+    assert why is None
 
 
 # --------------------------------------------------------------------------- #
@@ -139,15 +252,20 @@ def test_unreadable_before_is_not_damage():
 # --------------------------------------------------------------------------- #
 
 
-def _make_store(path: Path, *, count: int, meta: dict | None = None) -> None:
+def _make_store(path: Path, *, tasks: int, meta: dict | None = None) -> None:
     """Write a minimal store-shaped database at ``path``."""
     conn = sqlite3.connect(path)
     try:
-        conn.execute("CREATE TABLE tasks (id TEXT PRIMARY KEY)")
+        for table in MONOTONE_TABLES:
+            conn.execute(f"CREATE TABLE {table} (id TEXT PRIMARY KEY)")
         conn.execute("CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT)")
         conn.executemany(
             "INSERT INTO tasks (id) VALUES (?)",
-            [(f"card-{i}",) for i in range(count)],
+            [(f"card-{i}",) for i in range(tasks)],
+        )
+        conn.executemany(
+            "INSERT INTO users (id) VALUES (?)",
+            [(f"agent-{i}",) for i in range(8)],
         )
         conn.executemany(
             "INSERT INTO schema_meta (key, value) VALUES (?, ?)",
@@ -162,9 +280,9 @@ def test_end_to_end_detects_a_real_wipe(tmp_path):
     """Snapshot a real DB, really delete its rows, and catch it."""
     # Arrange
     db = tmp_path / "cards.db"
-    _make_store(db, count=2170)
+    _make_store(db, tasks=2170)
     before = {db: content_or_none(db)}
-    assert before[db]["count"] == 2170, "fixture did not read back"
+    assert before[db]["counts"]["tasks"] == 2170, "fixture did not read back"
     # Act — the 2026-07-21 wipe, for real: 2170 -> 18
     conn = sqlite3.connect(db)
     conn.execute("DELETE FROM tasks WHERE id NOT IN (SELECT id FROM tasks LIMIT 18)")
@@ -176,11 +294,28 @@ def test_end_to_end_detects_a_real_wipe(tmp_path):
     assert "SHRANK: 2170 -> 18" in damaged[0][1]
 
 
-def test_end_to_end_ignores_a_real_peer_insert(tmp_path):
-    """The false positive, for real: a peer adds cards and the file changes."""
+def test_end_to_end_detects_the_identity_registry_wipe(tmp_path):
+    """The review's HIGH finding, for real: users emptied, cards untouched."""
     # Arrange
     db = tmp_path / "cards.db"
-    _make_store(db, count=2261)
+    _make_store(db, tasks=2261)
+    before = {db: content_or_none(db)}
+    # Act — exactly what _sync_sections does with a doc lacking a users key
+    conn = sqlite3.connect(db)
+    conn.execute("DELETE FROM users")
+    conn.commit()
+    conn.close()
+    # Assert
+    damaged = damaged_candidates(before, (db,))
+    assert len(damaged) == 1, "identity registry wipe went undetected"
+    assert "users" in damaged[0][1]
+
+
+def test_end_to_end_ignores_a_real_peer_insert(tmp_path):
+    """The measured false positive: a peer adds cards and the file changes."""
+    # Arrange
+    db = tmp_path / "cards.db"
+    _make_store(db, tasks=2261)
     before = {db: content_or_none(db)}
     # Act — a peer writes 25 new cards, exactly as sac/scitex-ui do
     conn = sqlite3.connect(db)
@@ -198,7 +333,7 @@ def test_end_to_end_detects_a_real_stamp_rewrite(tmp_path):
     # Arrange
     db = tmp_path / "cards.db"
     sentinel = "/nonexistent/scitex-cards-canonical-db-DO-NOT-MIRROR/tasks.yaml"
-    _make_store(db, count=10, meta={"yaml_path": sentinel})
+    _make_store(db, tasks=10, meta={"yaml_path": sentinel})
     before = {db: content_or_none(db)}
     # Act
     conn = sqlite3.connect(db)
@@ -214,16 +349,16 @@ def test_end_to_end_detects_a_real_stamp_rewrite(tmp_path):
 
 
 def test_end_to_end_detects_a_deleted_store(tmp_path):
-    """Readable at snapshot time, gone at teardown."""
+    """Existed at snapshot time, gone at teardown."""
     # Arrange
     db = tmp_path / "cards.db"
-    _make_store(db, count=5)
+    _make_store(db, tasks=5)
     before = {db: content_or_none(db)}
     # Act
     db.unlink()
     # Assert
     damaged = damaged_candidates(before, (db,))
-    assert len(damaged) == 1 and "UNREADABLE" in damaged[0][1]
+    assert len(damaged) == 1 and "DISAPPEARED" in damaged[0][1]
 
 
 def test_absent_candidate_is_silent_and_creates_nothing(tmp_path):
@@ -232,6 +367,7 @@ def test_absent_candidate_is_silent_and_creates_nothing(tmp_path):
     missing = tmp_path / "never-existed.db"
     before = {missing: content_or_none(missing)}
     # Act / Assert
+    assert before[missing] is None
     assert damaged_candidates(before, (missing,)) == []
     assert not missing.exists(), "read-only probe must never create the store"
 

@@ -8,7 +8,7 @@ re-point every store env var at a fresh, unbootstrapped scratch directory —
 harmless at session start, hostile in the middle of a run).
 
 See :func:`damage` for why intactness, rather than "did the file change", is
-the criterion.
+the criterion, and for exactly what this layer does and does not catch.
 """
 
 from __future__ import annotations
@@ -16,27 +16,77 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+#: Every table whose row count must never DECREASE.
+#:
+#: NOT just ``tasks``. Watching only the card table was the first version's
+#: defect, and it is the shape of a REAL wipe that leaves cards untouched:
+#: ``_db_mirror._sync_sections`` issues ``DELETE FROM user_names`` +
+#: ``DELETE FROM users`` (and ``DELETE FROM notifications``) whenever a
+#: section hash differs, then re-inserts from the incoming document's
+#: ``users``/``inboxes`` sections — and ``_db_sections`` RETURNS EARLY without
+#: raising when those keys are absent, so a document carrying every task id
+#: but no ``users`` key deletes the fleet's whole identity registry, inserts
+#: nothing, raises nothing, and commits. ``users`` holds each agent's
+#: ``turn_url``/``a2a_port``/``notify_json``; ``messages`` holds every DM.
+#: Card count, ``schema_meta`` and ``integrity_check`` all stay pristine.
+#:
+#: Monotonicity is safe for these the same way it is safe for ``tasks``: no
+#: shipped code path deletes from them except an in-transaction per-card
+#: rewrite, so a legitimate peer write never lowers a count.
+MONOTONE_TABLES = (
+    "tasks",
+    "task_comments",
+    "task_edges",
+    "task_roles",
+    "users",
+    "user_names",
+    "inbox_recipients",
+    "notifications",
+    "messages",
+)
+
 
 def content_or_none(path: Path) -> dict | None:
-    """``{count, meta, integrity}`` for a real store, or ``None`` if unreadable.
+    """Snapshot a real store, or ``None`` when the file is ABSENT.
 
-    Read-only (``mode=ro``, so a missing file is NOT created) and total: any
-    ``sqlite3.Error`` yields ``None``. A hiccup reading the board is not
-    evidence of the thing this exists to detect, so it must not blow up
-    collection or teardown.
+    Returns ``{"counts", "task_ids", "meta", "integrity"}``. A path that does
+    not exist yields ``None`` (nothing to protect). A path that EXISTS but
+    cannot be read yields ``{"unreadable": <reason>}`` rather than ``None`` —
+    those are different facts and conflating them makes the gate fail OPEN,
+    silently disarming itself for the whole session.
+
+    Read-only (``mode=ro``, so a missing file is never created).
     """
-    try:
-        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5.0)
-    except sqlite3.Error:
+    if not path.exists():
         return None
     try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5.0)
+    except sqlite3.Error as exc:
+        return {"unreadable": f"connect failed: {exc}"}
+    try:
+        counts = {}
+        for table in MONOTONE_TABLES:
+            try:
+                counts[table] = conn.execute(
+                    f"SELECT count(*) FROM {table}"  # noqa: S608 — fixed literals
+                ).fetchone()[0]
+            except sqlite3.Error:
+                # Table absent in this schema version. Not damage; just not
+                # observable. Recorded as None so a later snapshot showing a
+                # real number is not mistaken for growth from zero.
+                counts[table] = None
         return {
-            "count": conn.execute("SELECT count(*) FROM tasks").fetchone()[0],
+            "counts": counts,
+            # The ID SET, not just the cardinality: delete-then-reinsert at
+            # equal count is invisible to a count check, and "2,286 real cards
+            # replaced by 2,286 fixture cards" is a total loss that reads as
+            # unchanged.
+            "task_ids": frozenset(r[0] for r in conn.execute("SELECT id FROM tasks")),
             "meta": dict(conn.execute("SELECT key, value FROM schema_meta")),
             "integrity": conn.execute("PRAGMA integrity_check").fetchone()[0],
         }
-    except sqlite3.Error:
-        return None
+    except sqlite3.Error as exc:
+        return {"unreadable": f"read failed: {exc}"}
     finally:
         conn.close()
 
@@ -50,40 +100,89 @@ def damage(before: dict | None, after: dict | None) -> str | None:
     says nothing about whether THIS SUITE wrote. That is not a harmless false
     positive — a gate that cries wolf every run is one people learn to scroll
     past, and this gate is the one that caught three production wipes.
-    Measured 2026-07-22: a 69s single-test run tripped the old criterion
-    purely on peer writes (sac and scitex-ui cards, every timestamp and
-    author accounted for), with the board's own content provably intact.
+    MEASURED 2026-07-22, the old criterion firing on a peer's write::
 
-    So each check below is chosen to be IMPOSSIBLE for a legitimate peer
-    write to trip:
+        before (mtime_ns, size) = (1784700394236217844, 34537472)
+        after  (mtime_ns, size) = (1784701251174118319, 34537472)
 
-    * ``count`` may grow but must never SHRINK. The store is append-only by
-      operator ruling ("a written card never disappears"; deletes are
-      tombstones), so a decrease is always a bug, whoever caused it. Every
-      wipe this suite has inflicted is exactly this shape: 2136->21,
-      2138->1, 2138->3, 2170->18.
-    * ``schema_meta`` must be identical. This is the store's identity, its
-      ``min_client_version`` floor and its DO-NOT-MIRROR sentinel — peers
-      never rewrite it, and the 2026-07-21 wipe #5 damaged precisely this.
-    * ``integrity_check`` must stay ``ok``.
-    * The store must not become UNREADABLE when it was readable.
+    Identical size, mtime moved: a peer updating a card in place, reported as
+    "REAL TASK STORE MUTATED".
 
-    HONEST LIMIT, stated rather than implied: this layer does not catch a leak
-    that only INSERTS a card (count grows, meta intact) — indistinguishable
-    here from a peer write. The primary barrier against that is the env
-    pinning in ``conftest.py``, not this detector; this is the second line,
-    and it bounds the damage class that actually destroyed data.
+    Each check below is chosen so a legitimate peer write cannot trip it:
+
+    * NO WATCHED TABLE'S ROW COUNT MAY SHRINK — see :data:`MONOTONE_TABLES`
+      for why the card table alone is not enough. Every wipe this suite has
+      inflicted is this shape: 2136->21, 2138->1, 2138->3, 2170->18.
+    * NO TASK ID MAY DISAPPEAR. Strictly stronger than the count, and the
+      reason the count alone is insufficient: deletes are tombstones by
+      operator ruling ("a written card never disappears"), so a vanished id
+      is always damage, while peers only ever add ids.
+    * ``schema_meta`` must be identical — the store's identity, its
+      ``min_client_version`` floor and its DO-NOT-MIRROR sentinel. Peers never
+      rewrite it, and the 2026-07-21 wipe #5 damaged precisely this.
+    * ``integrity_check`` must not go from ``ok`` to broken.
+    * A store readable at snapshot time must not become unreadable — and a
+      store that was unreadable WHEN WE SNAPSHOTTED IT is reported too, since
+      that means this gate was never armed.
+
+    WHAT THIS STILL DOES NOT CATCH, stated plainly rather than implied:
+
+    * IN-PLACE MUTATION OF EXISTING CARDS at constant ids — a leaked
+      ``update_task``/``reassign_task``/triage sweep that rewrites bodies,
+      statuses or ownership without adding or removing rows. This is not an
+      oversight that can be closed at this layer: peers legitimately update
+      cards continuously, so any digest over row CONTENT would fire on every
+      run, which is the failure mode this whole change exists to remove.
+    * PURE INSERTS by a leaking test — indistinguishable here from a peer
+      adding a card.
+
+    For both, the barrier is the env pinning in ``conftest.py``, not this
+    detector. This layer bounds the damage classes that actually destroyed
+    data; it does not replace the prevention.
     """
     if before is None:
-        return None  # not readable before — nothing to compare against
+        # Absent when we snapshotted. Creation is not damage.
+        return None
+    if isinstance(before, dict) and "unreadable" in before:
+        return (
+            f"store was UNREADABLE when this session started "
+            f"({before['unreadable']}) — this gate was never armed for it"
+        )
     if after is None:
-        return "store became UNREADABLE during the session"
-    if after["count"] < before["count"]:
-        return f"card count SHRANK: {before['count']} -> {after['count']}"
+        return "store DISAPPEARED during the session (it existed at start)"
+    if "unreadable" in after:
+        return f"store became UNREADABLE during the session ({after['unreadable']})"
+
+    for table in MONOTONE_TABLES:
+        b, a = before["counts"].get(table), after["counts"].get(table)
+        if b is None or a is None:
+            continue
+        if a < b:
+            return f"{table} row count SHRANK: {b} -> {a}"
+
+    vanished = before["task_ids"] - after["task_ids"]
+    if vanished:
+        sample = sorted(vanished)[:5]
+        return (
+            f"{len(vanished)} task id(s) DISAPPEARED (deletes are tombstones; "
+            f"a card never vanishes). e.g. {sample}"
+        )
+
     if after["meta"] != before["meta"]:
         return f"schema_meta CHANGED: {before['meta']} -> {after['meta']}"
+
     if after["integrity"] != "ok":
-        return f"integrity_check is {after['integrity']!r} (was 'ok')"
+        if before["integrity"] == "ok":
+            return (
+                f"integrity_check went 'ok' -> {after['integrity']!r} "
+                f"DURING this session"
+            )
+        # Attribute honestly: we did not break this, but it is still broken.
+        return (
+            f"integrity_check was ALREADY {before['integrity']!r} before this "
+            f"session started (NOT caused by this run — the board still needs "
+            f"attention)"
+        )
     return None
 
 
