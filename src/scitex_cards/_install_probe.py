@@ -84,6 +84,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.metadata as _md
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -456,3 +457,13 @@ def check_install_honest(dist: str = "scitex-cards") -> dict[str, object]:
         "detail": probe.detail,
         "hint": probe.hint,
     }
+
+
+# Console-script shadowing moved to `_console_script_probe` (2026-07-22): that
+# question reads executables on PATH, this module reads .dist-info, and they
+# share no state. Re-exported so existing imports keep resolving.
+from ._console_script_probe import (  # noqa: E402,F401
+    check_console_scripts_not_shadowed,
+)
+
+# EOF
