@@ -27,7 +27,9 @@ control fails loudly instead of the suite going green over an unchecked claim.
 
 from __future__ import annotations
 
+import ast
 import re
+import textwrap
 from pathlib import Path
 
 import click
@@ -62,29 +64,83 @@ def _all_verbs() -> set[str]:
     return walk(main)
 
 
-def _hinted_verbs() -> dict[str, list[str]]:
-    """Backticked ``<program> <verb...>`` invocations in health/probe sources.
+def _string_constants(path: Path) -> list[str]:
+    """Every string literal in ``path``, with concatenation already resolved.
 
-    Returns ``{verb_path: [files]}``. Placeholder arguments (``<id>``, ``--flag``)
-    are dropped, so only the command path is judged — this test is about whether
-    the VERB exists, not about argument validity.
+    PARSED WITH ``ast``, NOT MATCHED WITH A REGEX, and that is the whole point.
+    The first version of this file scanned RAW SOURCE for `` `...` `` with a
+    pattern that forbade newlines. Hint bodies are adjacent string literals
+    inside a parenthesised expression, so where the line happens to wrap decides
+    whether a hint is visible — a factor with nothing to do with correctness.
+
+    It shipped a live example: `scitex-cards db import` in
+    ``_check_store_identity_agrees``, whose backticks straddled two concatenated
+    f-strings. The guard was green while the dead verb it was written to catch
+    was still printing, in the same file, on the total-write-outage path.
+
+    ``ast`` resolves adjacent-literal concatenation before this ever sees the
+    text, so wrapping cannot hide anything. f-strings arrive as ``JoinedStr``;
+    their literal segments are read and the ``{...}`` holes are rendered as a
+    placeholder, which is right for this purpose — a runtime-interpolated value
+    is never part of a command's VERB path.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+    out: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            out.append(node.value)
+        elif isinstance(node, ast.JoinedStr):
+            out.append(
+                "".join(
+                    part.value
+                    if isinstance(part, ast.Constant) and isinstance(part.value, str)
+                    else "\x00"  # an interpolation; never part of a verb path
+                    for part in node.values
+                )
+            )
+    return out
+
+
+def _hint_bearing_files() -> list[Path]:
+    """EVERY source file. Selection by any narrower rule has failed twice.
+
+    v1 filtered on filenames containing "health"/"probe" — that excluded
+    modules whose hints reach the reader through ``health()``'s own report.
+    v2 filtered on the file containing a ``hint`` key — that excluded
+    ``_paths.py``, whose store-refusal RuntimeError told the reader to run
+    ``scitex-cards db import`` and is not a "hint" by any keyword test.
+
+    Both filters were guesses about WHERE advice lives, and advice lives
+    wherever someone writes a message. A backticked ``scitex-cards <verb>``
+    anywhere in this package is a promise to the reader, so scan the package.
+    The cost is a full parse of ~200 files, which is cheap and cannot drift.
+    """
+    return sorted(SRC.rglob("*.py"))
+
+
+def _hinted_verbs() -> dict[str, list[str]]:
+    """``{verb_path: [files]}`` for every backticked command in a hint-bearing file.
+
+    Placeholder arguments (``<id>``, ``--flag``, interpolations) end the verb
+    path, so only the command path is judged — this is about whether the VERB
+    exists, not about argument validity.
     """
     found: dict[str, list[str]] = {}
-    for path in sorted(SRC.rglob("*.py")):
-        if not any(k in path.name for k in ("health", "probe")):
-            continue
-        text = path.read_text(encoding="utf-8", errors="replace")
-        for snippet in re.findall(r"`([^`\n]{4,160})`", text):
-            words = snippet.split()
-            if not words or words[0] not in _PROGRAMS:
-                continue
-            verb: list[str] = []
-            for word in words[1:]:
-                if word.startswith(("-", "<", "$", "{")):
-                    break
-                verb.append(word)
-            if verb:
-                found.setdefault(" ".join(verb), []).append(path.name)
+    for path in _hint_bearing_files():
+        for literal in _string_constants(path):
+            # Backticks now pair WITHIN one resolved string, so a command split
+            # across source lines is a single token here.
+            for snippet in re.findall(r"`([^`]{4,160})`", literal):
+                words = snippet.split()
+                if not words or words[0] not in _PROGRAMS:
+                    continue
+                verb: list[str] = []
+                for word in words[1:]:
+                    if word.startswith(("-", "<", "$", "{")) or "\x00" in word:
+                        break
+                    verb.append(word)
+                if verb:
+                    found.setdefault(" ".join(verb), []).append(path.name)
     return found
 
 
@@ -135,6 +191,62 @@ def test_every_verb_named_in_a_hint_exists():
         + "\n  ".join(offenders)
         + "\n\nA hint must be runnable as printed. Fix the hint, or add the "
         "verb — do not leave the reader to discover it in a failure path."
+    )
+
+
+@pytest.mark.parametrize(
+    ("label", "source"),
+    [
+        (
+            "backticks split across concatenated literals",
+            """
+            def h():
+                return {"hint": (
+                    "re-stamp the database against it (`scitex-cards db "
+                    "import`). If the stamp is right, repoint."
+                )}
+            """,
+        ),
+        (
+            "backticks split across concatenated F-strings",
+            """
+            def h(x):
+                return {"hint": (
+                    f"for {x}, run (`scitex-cards db "
+                    f"import`) and retry."
+                )}
+            """,
+        ),
+        (
+            "verb on one line, ordinary case",
+            """
+            def h():
+                return {"hint": "run `scitex-cards db import` and retry."}
+            """,
+        ),
+    ],
+)
+def test_the_parser_sees_a_verb_however_the_source_wraps(label, source, tmp_path):
+    """PROVE THE PARSER CAN SEE THE THING. This is the test that was missing.
+
+    The original file asserted that dead verbs are absent from the CLI, which
+    never exercised the parser at all — so a parser that extracted NOTHING
+    passed every assertion. That is exactly what happened: `db import` was live
+    in _health.py and the suite was green.
+
+    Each case below is a real shape from this codebase. All three must yield the
+    same verb; if any returns nothing, hints in that shape are unprotected.
+    """
+    # Arrange
+    module = tmp_path / "health_fixture.py"
+    module.write_text(textwrap.dedent(source), encoding="utf-8")
+    # Act
+    literals = _string_constants(module)
+    verbs = {m for lit in literals for m in re.findall(r"`([^`]{4,160})`", lit)}
+    # Assert
+    assert any("db import" in v for v in verbs), (
+        f"{label}: parser did not see the verb. Extracted literals={literals!r}, "
+        f"backticked={verbs!r} — a hint in this shape would ship unchecked."
     )
 
 

@@ -243,10 +243,15 @@ def _check_store_identity_agrees(store: str | Path | None) -> dict[str, Any]:
             f"another's database is how a board gets destroyed)."
         ),
         "hint": (
-            f"decide which is right and make them agree. If {resolved} is the "
-            f"intended store, re-stamp the database against it (`scitex-cards db "
-            f"import`). If the database's {stamped} is right, point "
-            f"$SCITEX_CARDS_DB at that database."
+            f"decide which is right and make them agree, and change the POINTER "
+            f"rather than the stamp unless you are certain: re-stamping tells a "
+            f"database it belongs to a different store, which is the assertion "
+            f"the ownership guard exists to doubt. If {db_path} is the database "
+            f"this agent should use, point $SCITEX_CARDS_DB at {stamped} so the "
+            f"resolved store matches the stamp. If {resolved} is genuinely the "
+            f"intended store, the database for it is a DIFFERENT file — find or "
+            f"create that one rather than re-labelling this database. "
+            f"`scitex-cards db path` prints what currently resolves."
         ),
     }
 
