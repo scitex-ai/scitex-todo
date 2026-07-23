@@ -15,6 +15,8 @@ Real store files, AAA, no mocks (STX-NM).
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from scitex_cards._model import load_tasks
@@ -22,10 +24,13 @@ from scitex_cards._store import add_task, reassign_all, reassign_task
 
 
 @pytest.fixture()
-def store(tmp_path):
-    path = tmp_path / "tasks.yaml"
-    path.write_text("tasks: []\n", encoding="utf-8")
-    return str(path)
+def store():
+    # SQLite cutover: the store is the canonical DB that the conftest
+    # bootstraps empty per-test. Pass the pinned STORE identity path (==
+    # resolve_tasks_path(None)) to the verbs so read-after-write round-trips;
+    # the verbs read+write the DB and IGNORE this path except as the
+    # provenance stamp, which must equal the resolved store.
+    return os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
 
 
 def _card(store, task_id: str, owner: str, created_by: str) -> None:
