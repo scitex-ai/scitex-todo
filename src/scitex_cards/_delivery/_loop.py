@@ -146,7 +146,7 @@ def deliver_pending(
 ) -> dict:
     """Run one delivery pass over every configured recipient.
 
-    For each recipient (from ``recipients.json``), READ their pending
+    For each recipient (from ``recipients.yaml``), READ their pending
     notifications (read-only ``poll_inbox``) and, for every
     (notification, configured-channel) pair, attempt delivery subject to the
     ledger dedup/backoff + the policy gate. One bad channel or recipient

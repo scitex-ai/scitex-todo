@@ -4,7 +4,7 @@
 
 The config half of foundation C3 (see :mod:`scitex_cards._notify`). Holds the
 fail-loud coercion helpers (shared by the sidecar reader AND the per-card
-parser in :mod:`._resolver`), the ``notify.json`` sidecar reader, and
+parser in :mod:`._resolver`), the ``notify.yaml`` sidecar reader, and
 :func:`load_notify_config` which merges the built-in
 :data:`~scitex_cards._notify._rules.DEFAULT_NOTIFY_RULES` with an optional
 sidecar. Fail-loud on a malformed sidecar; zero-config returns the built-ins.
@@ -56,7 +56,7 @@ def validate_roles(value: object, *, where: str) -> list[str]:
 def coerce_rules_mapping(raw: object, *, where: str) -> dict[str, list[str]]:
     """Validate a ``{event_type: [role, ...]}`` mapping, returning a copy.
 
-    Used for both the ``notify.json`` rules section and a per-card ``events``
+    Used for both the ``notify.yaml`` rules section and a per-card ``events``
     override — the shape is identical (event_type → role list).
     """
     if not isinstance(raw, Mapping):
@@ -87,8 +87,10 @@ def coerce_id_list(value: object, *, where: str) -> list[str]:
 
 
 # --------------------------------------------------------------------------- #
-# notify.json sidecar                                                         #
+# notify.yaml sidecar                                                         #
 # --------------------------------------------------------------------------- #
+#: Pre-JSON notify sidecar filename, read as a fallback (see
+#: :func:`load_notify_config`) so a hand-edited YAML config keeps working.
 def _read_sidecar(path: Path) -> dict[str, list[str]]:
     """Read + validate the notify sidecar's JSON rule overrides.
 
@@ -140,8 +142,8 @@ def load_notify_config(store: str | Path | None = None) -> NotifyConfig:
     """Return the GLOBAL notify layer: built-in defaults merged with sidecar.
 
     The built-in :data:`~scitex_cards._notify._rules.DEFAULT_NOTIFY_RULES` is
-    the SSOT baseline. If a ``notify.json`` sidecar exists next to the
-    resolved task store, its ``{event_type: [role, ...]}`` entries
+    the SSOT baseline. If a ``notify.yaml`` sidecar exists next to the
+    resolved ``tasks.yaml`` store, its ``{event_type: [role, ...]}`` entries
     OVERRIDE the built-in entry for those event types (per-event replacement,
     not a deep merge). Events the sidecar does not mention keep their built-in
     default. With no sidecar the built-ins are returned unchanged (zero-config
@@ -162,7 +164,7 @@ def load_notify_config(store: str | Path | None = None) -> NotifyConfig:
     Raises
     ------
     NotifyConfigError
-        If the sidecar exists but is malformed (bad JSON, non-mapping top
+        If the sidecar exists but is malformed (bad YAML, non-mapping top
         level, unknown event type, or invalid role).
     """
     merged: dict[str, list[str]] = {
@@ -172,7 +174,7 @@ def load_notify_config(store: str | Path | None = None) -> NotifyConfig:
     if sidecar is not None:
         from .._legacy_yaml_migration import migrate_legacy_sidecar
 
-        migrate_legacy_sidecar(sidecar)  # one-time legacy sidecar -> .json
+        migrate_legacy_sidecar(sidecar)  # one-time pre-JSON notify.yaml -> .json
         if sidecar.exists():
             for event_type, roles in _read_sidecar(sidecar).items():
                 merged[event_type] = roles

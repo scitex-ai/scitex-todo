@@ -26,7 +26,7 @@ upsert instead of five thousand statements.
 
 CORRECTNESS NOTES — the two ways this could quietly corrupt the mirror:
 
-1. ``messages`` is NOT ours. It is derived from the threads.json SIDECAR, not from
+1. ``messages`` is NOT ours. It is derived from the threads.yaml SIDECAR, not from
    the doc. S1 nearly deleted every DM thread on every card write by rebuilding it;
    :data:`_db_bootstrap._DOC_CLEAR_ORDER` excludes it and so must we. A table must
    be owned by exactly the file that produces it.

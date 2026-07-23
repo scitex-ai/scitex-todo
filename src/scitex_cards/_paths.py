@@ -75,11 +75,10 @@ def resolve_tasks_path(explicit: str | Path | None = None) -> Path:
     stamps and compares THAT path. Card DATA lives in the database.
 
     This function returns the YAML container that BESIDES the database still
-    holds the non-task sections — ``users:``, ``groups:`` — read by
-    :mod:`scitex_cards._users` and :mod:`scitex_cards._groups` (the
-    ``inboxes:`` and ``threads:`` sections have already migrated out, to
-    their own ``inboxes.json`` / ``threads.json`` sidecars). That container
-    is a SIDECAR pending further migration into the database; it is not a
+    holds the non-task sections — ``users:``, ``groups:``, ``inboxes:`` — read by
+    :mod:`scitex_cards._users`, :mod:`scitex_cards._groups` and
+    :mod:`scitex_cards._inbox` (YAML inbox backend). That container is a SIDECAR
+    pending migration into the database (the sidecars→DB/JSON work); it is not a
     second store of record for tasks. Callers also use its ``.parent`` as the
     store directory (pidfiles, the delivery ledger, reminder state live there).
 

@@ -5,36 +5,35 @@ migration; incident card ``store-sqlite-migration-o1-writes-future-20260701``).
 
 Why
 ---
-The legacy task store was a single ~9 MB document holding BOTH the
-``tasks:`` cards AND the ``inboxes:`` per-recipient notification
-records. Every agent's digest-poll loop
-(:func:`scitex_cards._inbox.poll_inbox` every 5 s) re-parsed the ENTIRE
-store just to read ONE recipient's inbox — across ~21 agents the
-fleet's biggest CPU sink; notifyd's per-owner enqueue also rewrote the
-whole file repeatedly (a store-lock convoy).
+The task store ``~/.scitex/todo/tasks.yaml`` is a single ~9 MB YAML document
+holding BOTH the ``tasks:`` cards AND the ``inboxes:`` per-recipient
+notification records. Every agent runs ``scitex-todo mcp start``, whose
+digest-poll loop calls :func:`scitex_cards._inbox.poll_inbox` every 5 s — each
+call ``safe_load``s the ENTIRE store (all ~1000 cards) just to read ONE
+recipient's inbox. Across ~21 agents that is the fleet's biggest CPU sink;
+notifyd's per-owner enqueue also rewrote the whole file repeatedly (a
+store-lock convoy).
 
-This module moves ONLY the inbox read/write path onto SQLite so a poll
-no longer parses all cards. The SciTeX runtime-DB convention places
-package runtime databases at ``<store_dir>/runtime/<pkg-short>.db`` —
-here ``<store_dir>/runtime/todo.db``. WAL mode lets the ~21 concurrent
-pollers read without blocking the writer.
+This module moves ONLY the inbox read/write path onto SQLite so a poll no
+longer parses all cards. The SciTeX runtime-DB convention (constitution)
+places package runtime databases at
+``<store_dir>/runtime/<pkg-short>.db`` — here ``<store_dir>/runtime/todo.db``.
+WAL mode lets the ~21 concurrent pollers read without blocking the writer.
 
 Scope
 -----
-INBOXES ONLY. This is now the DEFAULT backend (see
-:mod:`scitex_cards._inbox`'s ``_use_sqlite``); the file-backed
-break-glass backend (``SCITEX_TODO_INBOX_BACKEND=yaml``, its own
-``inboxes.json`` sidecar) is the non-default fallback. Semantics —
-dedup key ``(event_type, card_id, ts, actor)``, ``supersede`` dropping
-UNSEEN ``(event_type, card_id)`` predecessors, ``poll_inbox(unseen_only,
-mark_seen)``, and ``ack`` — are IDENTICAL across both backends so
-callers cannot tell which one is active.
+INBOXES ONLY. Cards / users / the delivery ledger stay on YAML. The YAML inbox
+path in :mod:`scitex_cards._inbox` remains the DEFAULT and is untouched; this
+backend is opt-in via ``SCITEX_TODO_INBOX_BACKEND=sqlite`` (the switch lives in
+:mod:`scitex_cards._inbox`). Semantics — dedup key ``(event_type, card_id, ts,
+actor)``, ``supersede`` dropping UNSEEN ``(event_type, card_id)`` predecessors,
+``poll_inbox(unseen_only, mark_seen)``, and ``ack`` — are IDENTICAL to the YAML
+path so callers cannot tell which backend is active.
 
-Connection / schema conventions mirror :mod:`scitex_cards._index` (the
-existing stdlib-``sqlite3`` module): a ``@contextmanager``
-``open_connection`` opening WAL + ``row_factory = sqlite3.Row``, an
-idempotent ``init_schema``, and a tiny public API. NO ``scitex_db``
-dependency (it is not installed).
+Connection / schema conventions mirror :mod:`scitex_cards._index` (the existing
+stdlib-``sqlite3`` module): a ``@contextmanager`` ``open_connection`` opening
+WAL + ``row_factory = sqlite3.Row``, an idempotent ``init_schema``, and a tiny
+public API. NO ``scitex_db`` dependency (it is not installed).
 """
 
 from __future__ import annotations
@@ -124,7 +123,8 @@ def init_schema(conn: sqlite3.Connection) -> None:
         """
     )
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_inbox_recipient_seen ON inbox(recipient, seen)"
+        "CREATE INDEX IF NOT EXISTS idx_inbox_recipient_seen "
+        "ON inbox(recipient, seen)"
     )
     conn.execute(
         """
@@ -173,14 +173,17 @@ def _is_migrated(conn: sqlite3.Connection) -> bool:
 
 
 def _ensure_ready(conn: sqlite3.Connection, store: str | Path | None) -> None:
-    """Per-connection readiness: ensure the schema, then lazily migrate
-    pre-existing file-backed inbox records into SQLite EXACTLY ONCE.
+    """Per-connection readiness: ensure the schema, then lazily migrate the
+    YAML ``inboxes:`` section into SQLite EXACTLY ONCE.
 
     Guarded by the ``migrated_from_yaml`` meta flag: the first access on a
-    fresh DB performs the one-time copy + sets the flag; every later access
-    is a cheap flag probe. Concurrency-safe across the ~21 agents sharing one
-    ``todo.db`` — idempotent (``INSERT OR IGNORE`` on the ``id`` PK); the
-    flag is set even when there's nothing to copy, so a fresh store converges.
+    fresh DB performs the one-time copy + sets the flag; every later access is
+    a cheap flag probe with NO YAML read and NO write. Concurrency-safe across
+    the ~21 agents sharing one ``todo.db`` — the copy is idempotent
+    (``INSERT OR IGNORE`` on the ``id`` PK) and the flag write is
+    ``INSERT OR IGNORE``, so a double-migrate race is harmless. The flag is set
+    even when the YAML has nothing to copy, so an empty store still converges
+    to the no-YAML steady state.
     """
     init_schema(conn)
     if _is_migrated(conn):
@@ -256,13 +259,8 @@ def enqueue(
             "INSERT INTO inbox(id, recipient, event_type, card_id, body, "
             "actor, ts, seen) VALUES(?, ?, ?, ?, ?, ?, ?, 0)",
             (
-                record["id"],
-                recipient_id,
-                event_type,
-                card_id,
-                body,
-                actor,
-                timestamp,
+                record["id"], recipient_id, event_type, card_id, body,
+                actor, timestamp,
             ),
         )
         conn.commit()
@@ -308,7 +306,8 @@ def poll_inbox(
         _ensure_ready(conn, store)
         if unseen_only:
             rows = conn.execute(
-                "SELECT * FROM inbox WHERE recipient = ? AND seen = 0 ORDER BY rowid",
+                "SELECT * FROM inbox WHERE recipient = ? AND seen = 0 "
+                "ORDER BY rowid",
                 (recipient_id,),
             ).fetchall()
         else:
@@ -321,7 +320,8 @@ def poll_inbox(
         ids = [r["id"] for r in rows]
         placeholders = ",".join("?" for _ in ids)
         conn.execute(
-            f"UPDATE inbox SET seen = 1 WHERE recipient = ? AND id IN ({placeholders})",
+            f"UPDATE inbox SET seen = 1 WHERE recipient = ? "
+            f"AND id IN ({placeholders})",
             (recipient_id, *ids),
         )
         conn.commit()
@@ -374,45 +374,25 @@ def ack(
 
 
 # --------------------------------------------------------------------------- #
-# Migration: legacy embedded inboxes: section -> SQLite                       #
+# Migration: YAML inboxes: section -> SQLite                                  #
 # --------------------------------------------------------------------------- #
-def gather_migratable_inboxes(store: str | Path | None) -> dict[str, list]:
-    """Read + merge every pre-existing file-backed inbox source, per recipient.
-
-    Two sources so a store carries over regardless of which one an operator
-    was using: the pre-cutover LEGACY embedded ``inboxes:`` section, and the
-    break-glass ``inboxes.json`` sidecar. Read-only. Shared by
-    :func:`_migrate_into_conn` and the CLI's ``--dry-run`` preview.
-    """
-    from ._inbox import (
-        _INBOXES_FILENAME,
-        _load_inboxes_section,
-        _read_legacy_embedded_inboxes,
-        _resolved_store,
-    )
-
-    path = _resolved_store(store)
-    inboxes: dict[str, list] = {}
-    for recipient_id, records in _read_legacy_embedded_inboxes(path).items():
-        inboxes.setdefault(recipient_id, []).extend(records)
-    breakglass_path = path.parent / _INBOXES_FILENAME
-    for recipient_id, records in _load_inboxes_section(breakglass_path).items():
-        inboxes.setdefault(recipient_id, []).extend(records)
-    return inboxes
-
-
-def _migrate_into_conn(conn: sqlite3.Connection, store: str | Path | None) -> dict:
-    """Copy pre-existing file-backed inbox records into ``conn``'s ``inbox`` table.
+def _migrate_into_conn(
+    conn: sqlite3.Connection, store: str | Path | None
+) -> dict:
+    """Copy the YAML ``inboxes:`` records into ``conn``'s ``inbox`` table.
 
     The shared body of :func:`migrate_to_sqlite` (explicit CLI verb) and the
-    lazy :func:`_ensure_ready` guard. Dedups on the notification ``id``
-    PRIMARY KEY (``INSERT OR IGNORE``) so it is idempotent, copies BOTH seen +
-    unseen for fidelity, and NEVER touches either source document
-    (reversible). Assumes the schema already exists (caller ran
-    :func:`init_schema`); does NOT commit — the caller owns the transaction.
-    Returns ``{recipients, records, inserted, skipped}``.
+    lazy :func:`_ensure_ready` guard. Dedups on the notification ``id`` PRIMARY
+    KEY (``INSERT OR IGNORE``) so it is idempotent, copies BOTH seen + unseen
+    for fidelity, and NEVER touches the YAML file (reversible). Assumes the
+    schema already exists (caller ran :func:`init_schema`); does NOT commit —
+    the caller owns the transaction. Returns
+    ``{recipients, records, inserted, skipped}``.
     """
-    inboxes = gather_migratable_inboxes(store)
+    from ._inbox import _load_inboxes_section, _resolved_store
+
+    path = _resolved_store(store)
+    inboxes = _load_inboxes_section(path)
     stats = {"recipients": 0, "records": 0, "inserted": 0, "skipped": 0}
     for recipient_id, records in inboxes.items():
         if not recipient_id or not isinstance(records, list):
@@ -427,8 +407,7 @@ def _migrate_into_conn(conn: sqlite3.Connection, store: str | Path | None) -> di
                 # skip it rather than risk a duplicate on the next pass.
                 logger.warning(
                     "[scitex-todo._inbox_sqlite] skipping id-less inbox "
-                    "record for %r during migration",
-                    recipient_id,
+                    "record for %r during migration", recipient_id,
                 )
                 stats["skipped"] += 1
                 continue
@@ -456,15 +435,16 @@ def _migrate_into_conn(conn: sqlite3.Connection, store: str | Path | None) -> di
 
 
 def migrate_to_sqlite(store: str | Path | None = None) -> dict:
-    """Copy the legacy embedded ``inboxes:`` records into the SQLite inbox DB.
+    """Copy the YAML ``inboxes:`` records into the SQLite inbox DB.
 
     Idempotent + reversible: dedups on notification ``id`` (``INSERT OR
-    IGNORE`` on the ``id`` PK) so a re-run inserts nothing new, and NEVER
-    touches the legacy document (a rollback keeps working). All records are
-    copied (seen + unseen) for fidelity. Returns a stats dict
-    ``{recipients, records, inserted, skipped}``; also sets the
-    ``migrated_from_yaml`` flag so a later lazy access treats the DB as
-    already migrated (this verb and the lazy guard share the same flag).
+    IGNORE`` against the ``id`` PRIMARY KEY) so a re-run inserts nothing new,
+    and NEVER deletes the YAML ``inboxes:`` section (a rollback keeps working
+    on the untouched YAML). All records are copied (seen + unseen) for fidelity.
+
+    Returns a stats dict ``{recipients, records, inserted, skipped}``. Also
+    sets the ``migrated_from_yaml`` flag so a later lazy access treats the DB
+    as already migrated (this verb and the lazy guard share the same flag).
     """
     from ._inbox import _utc_now_iso
 
@@ -498,7 +478,6 @@ __all__ = [
     "SCHEMA_VERSION",
     "ack",
     "enqueue",
-    "gather_migratable_inboxes",
     "inbox_db_path",
     "info",
     "init_schema",

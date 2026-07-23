@@ -30,7 +30,7 @@ def register(main: click.Group) -> None:
         "Run ONE notification-delivery pass (cron/loop-runnable).\n\n"
         "Reads each configured recipient's pending notifications "
         "(read-only — never touches their `seen` cursor) and hands them "
-        "to the channels in recipients.json, recording outcomes in the "
+        "to the channels in recipients.yaml, recording outcomes in the "
         "delivery ledger so nothing is double-sent.\n\n"
         "Example:\n"
         "  scitex-todo deliver\n"
@@ -63,7 +63,7 @@ def deliver_cmd(as_json: bool) -> None:
     if summary["failed_terminal"]:
         click.echo(
             f"# WARNING: {summary['failed_terminal']} notification(s) gave up "
-            "after max attempts (comm-miss) — see stderr / delivery_ledger.json"
+            "after max attempts (comm-miss) — see stderr / delivery_ledger.yaml"
         )
     for item in summary["outcomes"]:
         click.echo(

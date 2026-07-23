@@ -2,16 +2,12 @@
 # -*- coding: utf-8 -*-
 """Pin the NEVER-hand-edit mandate in the canonical scitex-todo skill.
 
-The 2026-06-13 corruption episode (the then-canonical file-based store
+The 2026-06-13 corruption episode (canonical `~/.scitex/todo/tasks.yaml`
 truncated mid-string at line ~2784) traced to a hand-edit bypassing the
 API. Lead a2a `02c8a4ae` directed the rule into the canonical skill so
 every fleet agent reads it on boot (via the #161 `skills propagate`
 mechanism). If a future refactor drops the phrase, every agent silently
 loses the read-on-boot guard — pin it here so CI catches the drift.
-
-The store has since moved to SQLite (`$SCITEX_CARDS_DB`); the assertion
-below pins the CURRENT canonical identity, not the retired tasks.yaml
-path — see `_skills/scitex-cards/SKILL.md` § "Store identity".
 
 No mocks (STX-NM / PA-306).
 """
@@ -36,7 +32,7 @@ def test_skill_md_names_the_canonical_path():
     # Act
     text = SKILL_MD.read_text(encoding="utf-8")
     # Assert
-    assert "$SCITEX_CARDS_DB" in text
+    assert "~/.scitex/todo/tasks.yaml" in text
 
 
 def test_skill_md_documents_emergency_repair_exception():

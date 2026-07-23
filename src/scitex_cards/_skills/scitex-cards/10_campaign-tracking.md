@@ -1,8 +1,8 @@
 ---
 description: |
   [TOPIC] Multi-package release/audit campaign tracking — companion tooling
-  [DETAILS] Companion helpers that live under `~/.scitex/cards/` (the user
-  state dir) and consume the shared task store + a flat campaign-status
+  [DETAILS] Companion helpers that live under `~/.scitex/todo/` (the user
+  state dir) and consume the `tasks.yaml` store + a flat campaign-status
   markdown table. Used during the recurring "release wave" and
   "audit sweep" campaigns across the 66-package scitex ecosystem.
   Covers `check_releases.py` (PyPI-vs-pyproject roster) and
@@ -14,7 +14,7 @@ tags: [scitex-todo-campaign-tracking, scitex-todo, release-campaign]
 
 `scitex-todo` is the canonical task store. For multi-package campaigns
 (release waves, audit sweeps), two companion helpers live under the
-user state dir `~/.scitex/cards/` and read the same store plus a
+user state dir `~/.scitex/todo/` and read the same `tasks.yaml` plus a
 flat board file `GITIGNORED/campaign-status.md` in the orchestrating
 repo (typically `scitex-lead`).
 
@@ -66,7 +66,7 @@ snapshot dir resets the diff baseline.
 
 | Surface | Tracks | Update cadence |
 |---|---|---|
-| the task store (this package, see [03_python-api.md](03_python-api.md)) | per-task state machine: NEW → IN-PROGRESS → DONE, plus depends_on/blocks edges | per-task |
+| `tasks.yaml` (this package, see [03_python-api.md](03_python-api.md)) | per-task state machine: NEW → IN-PROGRESS → DONE, plus depends_on/blocks edges | per-task |
 | `campaign-status.md` (board markdown) | per-package × per-phase tabular state (de-mock / release / smoke / e2e / …) | per-campaign-tick |
 | `check_releases.py` output | per-package PyPI-vs-pyproject delta | on demand |
 

@@ -60,7 +60,7 @@ def _gh_merged_prs(since: str) -> list[dict]:
 
 def _project_for_repo(repo: str) -> str:
     """Map a GitHub repo name → board ``project`` field. The default is
-    the repo name verbatim (matches the store's existing convention)."""
+    the repo name verbatim (matches the existing tasks.yaml convention)."""
     # neurovista repo → paper-neurovista project (operator's title-prefix
     # convention puts "paper-" on cohort papers).
     overrides = {"neurovista": "paper-neurovista"}

@@ -111,8 +111,8 @@ def check_fresh(
     board, the exact outage this rename must not re-introduce. Under DB-canonical
     there is no separate document to be stale against, so "unstamped" means
     "not yet claimed", not "wrong"; the first write claims it by stamping
-    :data:`KEY_STORE_PATH`. No pre-cutover key is READ here — the code never
-    touches the legacy identity key; forward migration happens on write.
+    :data:`KEY_STORE_PATH`. No pre-cutover key is READ here — the code stays
+    yaml-free; forward migration happens on write.
 
     A database stamped for a GENUINELY DIFFERENT store is still refused. The
     comparison is by :func:`_same_file` (inode), so the ``/home/agent`` vs

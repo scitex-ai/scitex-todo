@@ -6,13 +6,12 @@ SQLite is the store. These verbs are its operability surface:
 
   * ``db path``     — print the resolved database path.
   * ``db verify``   — open the DB, check user_version + table counts.
-  * ``db export``   — write the store out as JSON text (a backup, never a source).
+  * ``db export``   — write the store out as YAML text (a backup, never a source).
   * ``db snapshot`` — export + git-commit the export off-site.
 
-The legacy-sidecar-import verbs (``db import --from-yaml``, ``db rehearse``,
-and ``db snapshot --refresh``) are DELETED: there is no external sidecar to
-import from any more, and an importer built on the DB read path rebuilt the
-database from itself.
+The YAML-import verbs (``db import --from-yaml``, ``db rehearse``, and
+``db snapshot --refresh``) are DELETED: there is no YAML to import from, and an
+importer built on the DB read path rebuilt the database from itself.
 
 The group token is a NOUN per the SciTeX noun-verb CLI convention. Attached to
 the root group via :func:`register`.
@@ -141,11 +140,11 @@ def db_verify_cmd(db_path: str | None, as_json: bool) -> None:
 def _echo_export_report(report: dict) -> None:
     """Print an export's counts — a silent bulk export leaves no audit trace."""
     click.echo(
-        f"# exported DB -> JSON\n"
+        f"# exported DB -> YAML\n"
         f"  db:      {report['db']}\n"
-        f"  tasks:   {report['tasks_json']}  ({report['tasks']} tasks, "
+        f"  tasks:   {report['tasks_yaml']}  ({report['tasks']} tasks, "
         f"{report['users']} users, {report['notifications']} notifications)\n"
-        f"  threads: {report['threads_json']}  ({report['threads']} threads, "
+        f"  threads: {report['threads_yaml']}  ({report['threads']} threads, "
         f"{report['messages']} messages)"
     )
 
@@ -153,14 +152,14 @@ def _echo_export_report(report: dict) -> None:
 @db_group.command(
     "export",
     help=(
-        "Export the DB to JSON text (ADR-0010 backup/audit rail).\n\n"
+        "Export the DB to YAML text (ADR-0010 backup/audit rail).\n\n"
         "Every record is reconstructed from its VERBATIM json payload "
         "(card_json / record_json) — never from typed columns — so the "
         "export is exact by construction. REFUSES loudly if any row has no "
         "payload.\n\n"
         "Example:\n"
         "  scitex-cards db export\n"
-        "  scitex-cards db export --out /tmp/tasks.json --json"
+        "  scitex-cards db export --out /tmp/tasks.yaml --json"
     ),
 )
 @_DB_OPTION
@@ -168,13 +167,13 @@ def _echo_export_report(report: dict) -> None:
     "--out",
     "out_path",
     default=None,
-    help="tasks.json output path (default: <db_dir>/export/tasks.json).",
+    help="tasks.yaml output path (default: <db_dir>/export/tasks.yaml).",
 )
 @click.option(
     "--threads-out",
     "threads_out",
     default=None,
-    help="threads.json output path (default: beside --out).",
+    help="threads.yaml output path (default: beside --out).",
 )
 @click.option("--json", "as_json", is_flag=True, help="Emit the export report as JSON.")
 def db_export_cmd(
@@ -183,10 +182,10 @@ def db_export_cmd(
     threads_out: str | None,
     as_json: bool,
 ) -> None:
-    """Export the DB to JSON snapshot files."""
-    from .._db_export import export_json
+    """Export the DB to YAML snapshot files."""
+    from .._db_export import export_yaml
 
-    report = export_json(db_path=db_path, out=out_path, threads_out=threads_out)
+    report = export_yaml(db_path=db_path, out=out_path, threads_out=threads_out)
     if as_json:
         click.echo(json.dumps(report))
         return
@@ -247,7 +246,7 @@ def db_snapshot_cmd(
     from pathlib import Path
 
     from .._db import resolve_db_path
-    from .._db_export import export_json
+    from .._db_export import export_yaml
 
     root = (
         Path(snap_dir).expanduser()
@@ -256,10 +255,10 @@ def db_snapshot_cmd(
     )
     root.mkdir(parents=True, exist_ok=True)
 
-    report = export_json(
+    report = export_yaml(
         db_path=db_path,
-        out=root / "tasks.json",
-        threads_out=root / "threads.json",
+        out=root / "tasks.yaml",
+        threads_out=root / "threads.yaml",
     )
 
     def _git(*args: str) -> subprocess.CompletedProcess:

@@ -14,6 +14,7 @@ import fcntl
 import os
 from pathlib import Path
 
+from ._yaml import safe_dump, safe_load  # hook-bypass: line-limit
 from ._store_verify import _verify_dumped_tmp  # hook-bypass: line-limit
 
 # Valid task statuses. ``goal`` marks a north-star objective (rendered gold);
@@ -119,7 +120,7 @@ VALID_BLOCKERS: tuple[str, ...] = (
     # (TG 9667, lead a2a `6d9b6073`). ``"dep"`` is the legacy alias from
     # ADR-0004's first cut; the validator accepts BOTH during a
     # deprecation window and normalizes on write (`_normalize_blocker`).
-    # Once existing stores are swept, ``"dep"`` drops out.
+    # Once existing tasks.yaml stores are swept, ``"dep"`` drops out.
     "dependency",
     "dep",
     "operator-decision",
@@ -371,7 +372,7 @@ class Task:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Task":
-        """Construct from a stored task dict.
+        """Construct from a tasks.yaml dict.
 
         - Unknown keys are silently dropped (forward-compat).
         - Missing keys fill with the dataclass default.
@@ -435,3 +436,5 @@ class Task:
                 continue
             result[f.name] = value
         return result
+
+

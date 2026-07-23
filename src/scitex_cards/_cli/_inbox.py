@@ -4,7 +4,7 @@
 
 Phase 1 of the store SQLite migration (incident card
 ``store-sqlite-migration-o1-writes-future-20260701``). The per-recipient
-notification inbox moves off the monolithic legacy sidecar (whose 5 s
+notification inbox moves off the monolithic ``tasks.yaml`` (whose 5 s
 digest-poll re-parsed all ~1000 cards) onto a small SQLite DB at
 ``<store_dir>/runtime/todo.db``.
 
@@ -90,18 +90,15 @@ def inbox_migrate_cmd(
     import json as _json
     import sys as _sys
 
-    from scitex_cards._inbox_sqlite import (
-        gather_migratable_inboxes,
-        inbox_db_path,
-        migrate_to_sqlite,
-    )
+    from scitex_cards._inbox import _load_inboxes_section
+    from scitex_cards._inbox_sqlite import inbox_db_path, migrate_to_sqlite
     from scitex_cards._paths import resolve_tasks_path
 
     store = resolve_tasks_path(None)
     db = inbox_db_path(store)
 
     if dry_run:
-        inboxes = gather_migratable_inboxes(store)
+        inboxes = _load_inboxes_section(store)
         recipients = len(inboxes)
         records = sum(len(v) for v in inboxes.values() if isinstance(v, list))
         if as_json:

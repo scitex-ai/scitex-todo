@@ -89,7 +89,7 @@ CLI verb above.
 ### The wake side (`scitex-todo watch --push`)
 
 The watcher runs once per ~2 seconds on the host that hosts the
-canonical store (`$SCITEX_CARDS_DB`). On each tick:
+canonical store (`~/.scitex/todo/tasks.yaml`). On each tick:
 
 - Diff against the previous snapshot.
 - For every NEW task assigned to an agent, OR every newly-appended
@@ -107,7 +107,7 @@ same):
   "task_id": "todo-pXX-...",
   "task_title": "...",
   "summary": "comment by lead: please pick this up",
-  "store_path": "/scitex-todo/cards.db"
+  "store_path": "/scitex-todo/tasks.yaml"
 }
 ```
 

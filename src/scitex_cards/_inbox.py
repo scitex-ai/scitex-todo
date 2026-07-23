@@ -15,18 +15,28 @@ parallel ACCELERATOR for host-reachable agents — never a dependency.
 
 Storage
 -------
-This module is the (non-default, break-glass) file-backed inbox
-implementation, selected only via ``SCITEX_TODO_INBOX_BACKEND=yaml``
-(the default is SQLite — see :mod:`scitex_cards._inbox_sqlite`).
-Inboxes live in their own ``inboxes.json`` SIDECAR next to the task
-store, keyed by recipient id: ``{"inboxes": {"u_3f9a1c0b7e42": [{"id":
-..., "event_type": ..., "card_id": ..., "body": ..., "actor": ...,
-"ts": ..., "seen": bool}, ...]}}``. A pre-existing legacy embedded
-``inboxes:`` section (from the old monolithic task-store document)
-migrates into ``inboxes.json`` ONCE on first access — see
-:func:`_migrate_legacy_yaml_once`; no permanent YAML fallback. The
-write path uses its own atomic tmp+fsync+reparse-verify dance and its
-own lock (mirrors :mod:`scitex_cards._threads`'s ``threads.json``).
+Inboxes live in the SAME YAML store file as tasks + users, under a
+top-level ``inboxes:`` key (a sibling of ``tasks:`` / ``users:``), a mapping
+keyed by recipient id::
+
+    inboxes:
+      u_3f9a1c0b7e42:
+        - id: n_a1b2c3d4e5f6
+          event_type: reassigned
+          card_id: c1
+          body: "Card c1 reassigned to you (by bob)"
+          actor: bob
+          ts: 2026-06-26T14:10:44Z
+          seen: false
+      dave:                 # raw-name fallback (unregistered owner)
+        - {...}
+
+The write path reuses the task store's
+:func:`scitex_cards._model._store_lock` advisory lock and a ruamel
+round-trip writer, so the hand-written ``tasks:`` payload + its inline
+comments + the ``users:`` section all survive every inbox-side write
+untouched (and vice versa). There is NO separate inbox file — mirrors how
+:mod:`scitex_cards._users._store` persists the ``users:`` section.
 
 Hard standalone constraint
 ---------------------------
@@ -53,31 +63,28 @@ _INBOXES_KEY = "inboxes"
 #: Env var selecting the inbox storage backend. The DEFAULT is now ``sqlite``
 #: (the Phase-1 backend in :mod:`scitex_cards._inbox_sqlite`): a 5 s digest poll
 #: is then an indexed ``(recipient, seen)`` lookup on
-#: ``<store_dir>/runtime/todo.db`` instead of a full sidecar parse. This
-#: module (the file-backed break-glass backend, its own ``inboxes.json``
-#: sidecar — see the module docstring) is selected ONLY by
-#: ``SCITEX_TODO_INBOX_BACKEND=yaml`` (the value is a historical name for
-#: "not sqlite"; the on-disk format itself is JSON — see the module
-#: docstring); unset (or any other value) uses SQLite. There is NO silent
-#: fallback: when the SQLite backend raises, the error PROPAGATES
-#: (constitution: fail fast, fail loud). The SQLite path lazily
-#: auto-migrates legacy embedded ``inboxes:`` records on first access, so
-#: flipping the default never loses unseen notifications. See the incident
-#: card ``store-sqlite-migration-o1-writes-future-20260701``.
+#: ``<store_dir>/runtime/todo.db`` instead of a ``safe_load`` of the whole
+#: ~9 MB task store. ``yaml`` (the legacy monolithic ``inboxes:`` section in
+#: tasks.yaml) is now an explicit BREAK-GLASS value only — selected ONLY by
+#: ``SCITEX_TODO_INBOX_BACKEND=yaml``; unset (or any other value) uses SQLite.
+#: There is NO silent fallback: when the SQLite backend raises, the error
+#: PROPAGATES (constitution: fail fast, fail loud — never silently degrade to
+#: YAML). The SQLite path lazily auto-migrates the YAML ``inboxes:`` records on
+#: first access, so flipping the default never loses unseen notifications. See
+#: the incident card ``store-sqlite-migration-o1-writes-future-20260701``.
 _ENV_INBOX_BACKEND = "SCITEX_TODO_INBOX_BACKEND"
 
 
 def _use_sqlite() -> bool:
-    """True unless the caller EXPLICITLY selected the file-backed break-glass backend.
+    """True unless the caller EXPLICITLY selected the YAML break-glass backend.
 
     Default-ON: an unset ``SCITEX_TODO_INBOX_BACKEND`` (or any value other than
     the literal ``yaml``) routes the inbox onto SQLite. ONLY
-    ``SCITEX_TODO_INBOX_BACKEND=yaml`` selects this module's path. This
+    ``SCITEX_TODO_INBOX_BACKEND=yaml`` selects the legacy YAML path. This
     resolver never suppresses a SQLite error — the public functions delegate
-    directly so any backend failure propagates (no silent fallback).
+    directly so any backend failure propagates (no silent YAML fallback).
     """
     return (os.environ.get(_ENV_INBOX_BACKEND) or "sqlite").strip().lower() != "yaml"
-
 
 #: Stable notification-id prefix (``n_`` + 12 hex chars, 48 bits entropy) —
 #: mirrors the ``u_`` user-id shape so ids are visually distinguishable.
@@ -93,63 +100,6 @@ _NOTIFY_ID_TOKEN_HEX = 12
 def _resolved_store(store: str | Path | None) -> Path:
     """Resolve a store path through the same chain the task/user API uses."""
     return resolve_tasks_path(store) if store is None else Path(store).expanduser()
-
-
-#: Sidecar filename, sibling of the resolved task store.
-_INBOXES_FILENAME = "inboxes.json"
-
-
-def _inboxes_path(store: str | Path | None) -> Path:
-    """Resolve the sidecar path: ``<store_dir>/inboxes.json``.
-
-    Runs the one-time legacy-migration check before returning (see
-    :func:`_migrate_legacy_yaml_once`).
-    """
-    tasks = _resolved_store(store)
-    path = tasks.parent / _INBOXES_FILENAME
-    _migrate_legacy_yaml_once(path, tasks)
-    return path
-
-
-def _read_legacy_embedded_inboxes(path: Path) -> dict[str, list[dict]]:
-    """Read the LEGACY embedded ``inboxes:`` section off the pre-cutover
-    monolithic task-store document (absent / malformed -> {}). Shared by
-    this module's one-time JSON-sidecar migration and
-    :mod:`scitex_cards._inbox_sqlite`'s one-time SQLite migration.
-    """
-    if not path.exists():
-        return {}
-    from ._yaml import safe_load
-
-    with path.open(encoding="utf-8") as handle:
-        data = safe_load(handle) or {}
-    raw = data.get(_INBOXES_KEY) if isinstance(data, dict) else None
-    if not isinstance(raw, dict):
-        return {}
-    out: dict[str, list[dict]] = {}
-    for rid, records in raw.items():
-        if not isinstance(rid, str) or not rid:
-            continue
-        out[rid] = (
-            [r for r in records if isinstance(r, dict)]
-            if isinstance(records, list)
-            else []
-        )
-    return out
-
-
-def _migrate_legacy_yaml_once(json_path: Path, legacy_doc_path: Path) -> None:
-    """Fold a legacy EMBEDDED ``inboxes:`` section into ``inboxes.json``, once.
-
-    No-op unless ``json_path`` is absent AND the legacy document has data.
-    No permanent YAML fallback: once ``inboxes.json`` exists, never fires
-    again.
-    """
-    if json_path.exists():
-        return
-    raw = _read_legacy_embedded_inboxes(legacy_doc_path)
-    if raw:
-        _save_inboxes_unlocked(raw, json_path)
 
 
 def _utc_now_iso() -> str:
@@ -176,18 +126,21 @@ def _generate_notification_id() -> str:
 
 
 def _load_inboxes_section(path: Path) -> dict[str, list[dict]]:
-    """Read the inboxes sidecar off disk (absent / malformed → {}).
+    """Read the raw ``inboxes:`` mapping off disk (absent / malformed → {}).
 
-    Defensive: a missing file, an absent ``inboxes:`` key, or a non-mapping
-    value all yield an empty mapping; per-recipient values that are not
-    lists are coerced to ``[]`` so a malformed row never breaks a poll.
+    Uses the fast safe loader (:func:`scitex_cards._yaml.safe_load`, a read-only
+    snapshot) — the ruamel round-trip is only needed on the WRITE path to
+    preserve comments. Defensive: a
+    missing file, an absent ``inboxes:`` key, or a non-mapping value all
+    yield an empty mapping; per-recipient values that are not lists are
+    coerced to ``[]`` so a malformed row never breaks a poll.
     """
     if not path.exists():
         return {}
-    import json
+    from ._yaml import safe_load
 
     with path.open(encoding="utf-8") as handle:
-        data = json.load(handle) or {}
+        data = safe_load(handle) or {}
     raw = data.get(_INBOXES_KEY)
     if not isinstance(raw, dict):
         return {}
@@ -203,30 +156,56 @@ def _load_inboxes_section(path: Path) -> dict[str, list[dict]]:
 
 
 def _save_inboxes_unlocked(inboxes: dict[str, list[dict]], path: Path) -> None:
-    """Crash-safe write of the whole inboxes sidecar document.
+    """Write the ``inboxes:`` section, preserving ``tasks:`` / ``users:``.
 
-    Mirrors ``_threads._save_threads_unlocked``: dump to a sibling ``.tmp``,
-    fsync, REPARSE the tmp bytes and verify the recipient count matches,
-    then ``os.replace`` (POSIX-atomic) into place. Direct callers MUST
-    already hold ``_store_lock(path)`` (the one-time legacy-migration
-    caller is the sole exception).
+    Reuses the ruamel round-trip writer so the existing ``tasks:`` +
+    ``users:`` payloads, their inline comments, and document key order
+    survive untouched — only the ``inboxes:`` key is replaced. Mirrors the
+    atomic tmp-file + os.replace + reparse-verify dance in
+    ``_users._store._save_users_unlocked`` / ``_model._save_tasks_unlocked``.
+
+    Direct callers MUST already hold ``_store_lock(path)``.
     """
-    import json
+    import os
 
-    doc = {_INBOXES_KEY: inboxes}
+    from ruamel.yaml import YAML
+
+    yaml_rt = YAML()
+    yaml_rt.preserve_quotes = True
+    yaml_rt.indent(mapping=2, sequence=4, offset=2)
+
+    doc = None
+    if path.exists():
+        with path.open(encoding="utf-8") as handle:
+            loaded = yaml_rt.load(handle)
+        if isinstance(loaded, dict):
+            doc = loaded
+    if doc is None:
+        doc = {}
+    doc[_INBOXES_KEY] = inboxes
+    # Keep the document valid for ``_model.load_tasks`` even when this is an
+    # inbox-FIRST write (no task ever added yet): that loader hard-requires a
+    # top-level ``tasks:`` list, so a file carrying only ``inboxes:`` would
+    # make a later ``add_task`` fail-loud. Seed an empty ``tasks:`` list when
+    # absent; never touch an existing one (the round-trip preserves it).
+    if not isinstance(doc.get("tasks"), list):
+        doc["tasks"] = []
+
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.parent / f".{path.name}.tmp"
     try:
         with tmp_path.open("w", encoding="utf-8") as handle:
-            json.dump(doc, handle, ensure_ascii=False, indent=2, sort_keys=False)
+            yaml_rt.dump(doc, handle)
             handle.flush()
             try:
                 os.fsync(handle.fileno())
             except OSError:
                 pass
+        # Reparse-verify the tmp file before promoting it — never replace
+        # the canonical SSOT with bytes that don't round-trip.
         try:
             with tmp_path.open(encoding="utf-8") as verify_handle:
-                verify_doc = json.load(verify_handle)
+                verify_doc = yaml_rt.load(verify_handle)
         except Exception as verify_exc:  # noqa: BLE001 — any parse fail = abort
             raise RuntimeError(
                 f"refusing to replace {path}: tmp file at {tmp_path} did "
@@ -237,7 +216,9 @@ def _save_inboxes_unlocked(inboxes: dict[str, list[dict]], path: Path) -> None:
         verify_inboxes = (
             verify_doc.get(_INBOXES_KEY) if isinstance(verify_doc, dict) else None
         )
-        if not isinstance(verify_inboxes, dict) or len(verify_inboxes) != len(inboxes):
+        if not isinstance(verify_inboxes, dict) or len(verify_inboxes) != len(
+            inboxes
+        ):
             raise RuntimeError(
                 f"refusing to replace {path}: tmp file reparsed with an "
                 f"unexpected inboxes payload. Canonical file left untouched."
@@ -352,7 +333,8 @@ def enqueue(
     if not recipient_id:
         return None
     timestamp = ts if ts is not None else _utc_now_iso()
-    path = _inboxes_path(store)
+    path = _resolved_store(store)
+    path.parent.mkdir(parents=True, exist_ok=True)
     with _store_lock(path):
         inboxes = _load_inboxes_section(path)
         records = inboxes.setdefault(recipient_id, [])
@@ -365,7 +347,8 @@ def enqueue(
                 for r in records
                 if r.get("seen")
                 or not (
-                    r.get("event_type") == event_type and r.get("card_id") == card_id
+                    r.get("event_type") == event_type
+                    and r.get("card_id") == card_id
                 )
             ]
         if _is_duplicate(
@@ -437,11 +420,13 @@ def poll_inbox(
         )
     if not recipient_id:
         return []
-    path = _inboxes_path(store)
+    path = _resolved_store(store)
     if not mark_seen:
         # Read-only fast path — snapshot without locking.
         records = _load_inboxes_section(path).get(recipient_id, [])
-        return [dict(r) for r in records if (not unseen_only or not r.get("seen"))]
+        return [
+            dict(r) for r in records if (not unseen_only or not r.get("seen"))
+        ]
     # mark_seen → read-modify-write under the lock.
     with _store_lock(path):
         inboxes = _load_inboxes_section(path)
@@ -489,7 +474,7 @@ def ack(
     wanted = {nid for nid in (notification_ids or []) if nid}
     if not wanted:
         return []
-    path = _inboxes_path(store)
+    path = _resolved_store(store)
     flipped: list[str] = []
     with _store_lock(path):
         inboxes = _load_inboxes_section(path)

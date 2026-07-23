@@ -80,15 +80,14 @@ ENV_DB_DEPRECATED = "SCITEX_TODO_DB"
 #: CONSTRUCTION, and it cannot rot as new fields are added.
 #: v4 adds ``inbox_recipients`` — the inboxes: MAP KEYS, so a recipient
 #: whose inbox is currently EMPTY (drained) still round-trips through the
-#: JSON export instead of silently vanishing with their zero rows.
+#: yaml export instead of silently vanishing with their zero rows.
 #:
 #: v3 (S4 export rail) extends the same verbatim-payload rule to the NON-CARD
 #: sections: ``users.record_json``, ``notifications.record_json``,
-#: ``messages.record_json`` hold each record EXACTLY as the source document
-#: carried it. Same rationale as ``card_json``: typed columns are the INDEX,
-#: the JSON is the PAYLOAD — a column-based export would silently drop
-#: unknown keys, and the JSON-snapshot backup rail (ADR-0010) must be exact
-#: by construction.
+#: ``messages.record_json`` hold each record EXACTLY as the YAML doc carried
+#: it. Same rationale as ``card_json``: typed columns are the INDEX, the JSON
+#: is the PAYLOAD — a column-based export would silently drop unknown keys,
+#: and the yaml-snapshot backup rail (ADR-0010) must be exact by construction.
 SCHEMA_VERSION = 4
 
 

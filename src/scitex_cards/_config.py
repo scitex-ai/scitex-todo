@@ -10,7 +10,7 @@ local-state convention as the task store (:mod:`scitex_cards._paths`), in a
     1. user scope:     ``$SCITEX_DIR/cards/config.json`` (default ``~/.scitex/cards``)
     2. project scope:  ``<git-root>/.scitex/cards/config.json``
 
-A pre-JSON legacy sidecar at a scope is converted to JSON ONCE on first access
+A pre-JSON ``config.yaml`` at a scope is converted to JSON ONCE on first access
 (see :mod:`scitex_cards._legacy_yaml_migration`), after which reads are JSON-only.
 
 The user file is the BASE; the project file OVERRIDES it key-by-key (a repo
@@ -72,14 +72,14 @@ def config_paths() -> list[Path]:
 def _read_one(path: Path) -> dict:
     """Read one JSON config file → mapping; missing/malformed → ``{}`` (fail-soft).
 
-    A pre-JSON legacy sidecar at the same scope is converted to JSON ONCE on
+    A pre-JSON ``config.yaml`` at the same scope is converted to JSON ONCE on
     first access (see :mod:`scitex_cards._legacy_yaml_migration`).
     """
     import json
 
     from ._legacy_yaml_migration import migrate_legacy_sidecar
 
-    migrate_legacy_sidecar(path)  # one-time legacy sidecar -> .json
+    migrate_legacy_sidecar(path)  # one-time pre-JSON config.yaml -> .json
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:

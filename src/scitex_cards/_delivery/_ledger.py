@@ -87,7 +87,7 @@ def _parse_iso(value: str | None) -> _dt.datetime | None:
 
 
 def ledger_path(store: str | Path | None = None) -> Path:
-    """Resolve the ledger path: ``<store_dir>/runtime/delivery_ledger.json``.
+    """Resolve the ledger path: ``<store_dir>/runtime/delivery_ledger.yaml``.
 
     Lives under the store's ``runtime/`` dir (scitex convention for
     non-git-tracked runtime state), under whichever scope the store resolved to.

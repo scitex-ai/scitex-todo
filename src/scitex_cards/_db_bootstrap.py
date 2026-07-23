@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 """SQLite table population from an in-memory document.
 
-The import entry points that used to live here (``import_from_yaml`` /
+The YAML-import entry points that used to live here (``import_from_yaml`` /
 ``mirror_doc`` / ``_load_source``) are DELETED: SQLite is the only store, so
-there is no external document to read and no second representation to project from.
+there is no YAML document to read and no second representation to project from.
 What remains is the low-level table-writing machinery — the column maps, the
 per-table inserters, and :func:`_rebuild_from_doc` — used by the incremental
 mirror (:mod:`scitex_cards._db_mirror`) to populate a database from a document
@@ -18,7 +18,7 @@ Field mapping (see :mod:`scitex_cards._db` for the schema rationale):
   * ``collaborators`` / ``subscribers`` → ``task_roles``,
   * ``users`` → ``users`` + ``user_names`` (alias fan-out),
   * ``inboxes`` map → ``notifications`` (``recipient_id`` = map key),
-  * ``threads.json`` map → ``messages`` (``thread_key`` = map key).
+  * ``threads.yaml`` map → ``messages`` (``thread_key`` = map key).
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ from ._db_sections import (  # re-exported: _db_mirror imports these from here
 
 logger = logging.getLogger(__name__)
 
-#: (column, doc-key) pairs for the scalar ``tasks`` columns. ``group`` maps to
+#: (column, yaml-key) pairs for the scalar ``tasks`` columns. ``group`` maps to
 #: the ``grp`` column (SQL reserved word); ``deadlines`` / ``_log_meta`` /
 #: ``row_order`` / ``card_json`` are handled separately (JSON / positional).
 _TASK_SCALAR_COLS: tuple[tuple[str, str], ...] = (
@@ -250,8 +250,8 @@ def _insert_roles(conn, task_id, row) -> int:
     return n
 
 
-#: Tables owned by the legacy task-store doc. The ``messages`` table is
-#: DELIBERATELY absent: it is derived from the ``threads.json`` SIDECAR, which the doc-write
+#: Tables owned by the ``tasks.yaml`` doc. The ``messages`` table is DELIBERATELY
+#: absent: it is derived from the ``threads.yaml`` SIDECAR, which the doc-write
 #: path never touches. A doc mirror that cleared ``messages`` would silently
 #: destroy every DM thread on each card write — the tables must be owned by
 #: exactly the file that produces them.

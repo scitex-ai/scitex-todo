@@ -18,10 +18,12 @@ from __future__ import annotations
 import contextlib
 import fcntl
 import os
-from dataclasses import dataclass
 from pathlib import Path
 
+from ._yaml import safe_dump, safe_load  # hook-bypass: line-limit
 from ._store_verify import _verify_dumped_tmp  # hook-bypass: line-limit
+from dataclasses import dataclass
+
 from ._task import TaskValidationError
 
 
@@ -162,6 +164,8 @@ def is_overdue(task: dict, *, now=None) -> bool:
     except (TypeError, ValueError):
         return False
     return nxt_date < today
+
+
 
 
 @dataclass(frozen=True)
@@ -376,3 +380,5 @@ def _parse_iso_date_or_raise(
     """
     dt, _repeater = _parse_deadline_or_raise(value, source=source, tid=tid, label=label)
     return dt
+
+

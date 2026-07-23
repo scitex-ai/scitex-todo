@@ -265,7 +265,7 @@ def summarize_tasks(
     ::
 
         {
-          "store": "/abs/path/to/cards.db",
+          "store": "/abs/path/to/tasks.yaml",
           "total": int,
           "by_status": {<status>: int, ...},  # one key per VALID_STATUSES
           "by_scope": {<scope|"">: int, ...},

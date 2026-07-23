@@ -3,10 +3,9 @@
 """SQLite derived-index for the scitex-todo board (PR-B of the lead-
 approved Stage 2 plan, lead a2a `aa02fb0e` / `e5243003`).
 
-The task store stays authoritative. This SQLite file is a SEPARATE
-read-cache (a derived FTS/search index, not the store itself), never
+YAML stays authoritative. The SQLite file is a read-cache, never
 written to by the writer path. Indexing is idempotent + rebuildable:
-``scitex-todo index rebuild`` drops + repopulates from the store(s)
+``scitex-todo index rebuild`` drops + repopulates from the YAML(s)
 in a single transaction. Schema migrations move the
 ``meta.index_version`` forward; older versions are dropped and
 rebuilt.
@@ -36,15 +35,13 @@ from typing import Dict, Iterable, List, Optional
 logger = logging.getLogger(__name__)
 
 #: Env override for the index file path. Default is sibling to the
-#: global task store: ``~/.scitex/todo/.tasks.index.sqlite``.
+#: global tasks.yaml: ``~/.scitex/todo/.tasks.index.sqlite``.
 ENV_INDEX_PATH = "SCITEX_TODO_INDEX_PATH"
 
 #: Schema version. Bump when the column set or indexes change; the
 #: rebuilder drops + recreates when a stored ``meta.index_version`` is
-#: lower than this. (v2: the source-path/mtime columns were renamed to
-#: drop their format-specific names — the source is the store, not a
-#: particular file format.)
-SCHEMA_VERSION = 2
+#: lower than this.
+SCHEMA_VERSION = 1
 
 
 def index_path() -> Path:
@@ -78,13 +75,13 @@ def init_schema(conn: sqlite3.Connection) -> None:
     """Create the four index tables idempotently.
 
     Schema:
-      - ``tasks`` — the per-task row, sourced from the store.
+      - ``tasks`` — the per-task row, sourced from YAML.
       - ``tasks_fts`` — FTS5 virtual table over title + note for fuzzy
         search. The /graph SQL flip (PR-D) will use this in MATCH.
       - ``tags`` — placeholder for the labels/tags surface operator-12911
-        asked about (no labels: field in the store today; this table lets
+        asked about (no labels: field in YAML today; this table lets
         the DB carry them when the schema adds them, no migration).
-      - ``meta`` — key/value: last_index_at, store_mtime, index_version.
+      - ``meta`` — key/value: last_index_at, yaml_mtime, index_version.
     """
     conn.execute(
         """
@@ -106,13 +103,19 @@ def init_schema(conn: sqlite3.Connection) -> None:
             last_activity TEXT,
             created_at TEXT,
             note TEXT,
-            source_path TEXT NOT NULL
+            source_yaml_path TEXT NOT NULL
         )
         """
     )
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_agent ON tasks(agent)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_agent ON tasks(agent)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)"
+    )
     # FTS5 — virtual table mirrors the (id, title, note) tuple.
     try:
         conn.execute(
@@ -127,8 +130,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
         # FTS5 may be absent on older SQLite builds — degrade
         # gracefully; the rest of the index still works.
         logger.warning(
-            "[scitex-todo._index] FTS5 unavailable, skipping (%s)",
-            e,
+            "[scitex-todo._index] FTS5 unavailable, skipping (%s)", e,
         )
     conn.execute(
         """
@@ -160,8 +162,7 @@ def _set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
 
 def _get_meta(conn: sqlite3.Connection, key: str) -> Optional[str]:
     row = conn.execute(
-        "SELECT value FROM meta WHERE key = ?",
-        (key,),
+        "SELECT value FROM meta WHERE key = ?", (key,),
     ).fetchone()
     return None if row is None else row["value"]
 
@@ -195,7 +196,7 @@ def _flatten_task(task: dict, source: Path) -> dict:
         "last_activity": task.get("last_activity"),
         "created_at": task.get("created_at"),
         "note": task.get("note"),
-        "source_path": str(source),
+        "source_yaml_path": str(source),
     }
 
 
@@ -203,13 +204,15 @@ def _insert_task(conn: sqlite3.Connection, row: dict) -> None:
     columns = list(row.keys())
     placeholders = ",".join("?" for _ in columns)
     conn.execute(
-        f"INSERT OR REPLACE INTO tasks({','.join(columns)}) VALUES({placeholders})",
+        f"INSERT OR REPLACE INTO tasks({','.join(columns)}) "
+        f"VALUES({placeholders})",
         [row[c] for c in columns],
     )
     # Best-effort FTS upsert (skip when FTS5 isn't available).
     try:
         conn.execute(
-            "INSERT OR REPLACE INTO tasks_fts(id, title, note) VALUES(?, ?, ?)",
+            "INSERT OR REPLACE INTO tasks_fts(id, title, note) "
+            "VALUES(?, ?, ?)",
             (row["id"], row["title"] or "", row["note"] or ""),
         )
     except sqlite3.OperationalError:
@@ -239,7 +242,6 @@ def rebuild_index(
         global_path = resolve_tasks_path(None)
     if lane_paths is None:
         from scitex_cards._django.services import _discover_lanes
-
         lane_paths = _discover_lanes()
     lane_list = list(lane_paths)
 
@@ -248,7 +250,6 @@ def rebuild_index(
         ctx = open_connection()
     else:
         from contextlib import nullcontext
-
         ctx = nullcontext(conn)
 
     with ctx as c:
@@ -268,8 +269,7 @@ def rebuild_index(
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "[scitex-todo._index] global store unreadable %s: %s",
-                global_path,
-                exc,
+                global_path, exc,
             )
             global_tasks = []
         for t in global_tasks:
@@ -284,9 +284,7 @@ def rebuild_index(
                 lane_tasks = load_tasks(lp)
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
-                    "[scitex-todo._index] lane %s unreadable: %s",
-                    lp,
-                    exc,
+                    "[scitex-todo._index] lane %s unreadable: %s", lp, exc,
                 )
                 continue
             for t in lane_tasks:
@@ -296,15 +294,14 @@ def rebuild_index(
                 # Detect collision (purely for the log line — the
                 # INSERT OR REPLACE handles the overlay).
                 prior = c.execute(
-                    "SELECT source_path FROM tasks WHERE id = ?",
+                    "SELECT source_yaml_path FROM tasks WHERE id = ?",
                     (t["id"],),
                 ).fetchone()
-                if prior is not None and prior["source_path"] != str(lp):
+                if prior is not None and prior["source_yaml_path"] != str(lp):
                     logger.warning(
-                        "[scitex-todo._index] id %r collision — %s overrides %s",
-                        t["id"],
-                        lp,
-                        prior["source_path"],
+                        "[scitex-todo._index] id %r collision — "
+                        "%s overrides %s",
+                        t["id"], lp, prior["source_yaml_path"],
                     )
                 _insert_task(c, _flatten_task(t, lp))
                 stats["lanes"] += 1
@@ -313,7 +310,7 @@ def rebuild_index(
         # Update meta.
         _set_meta(c, "index_version", str(SCHEMA_VERSION))
         _set_meta(c, "last_index_at", str(time.time()))
-        # store_mtime = MAX across all sources, mirroring PR #137 +
+        # yaml_mtime = MAX across all sources, mirroring PR #137 +
         # PR #136's cache-key contract.
         mtimes: List[float] = []
         if global_path.exists():
@@ -323,7 +320,7 @@ def rebuild_index(
                 mtimes.append(lp.stat().st_mtime)
             except OSError:
                 continue
-        _set_meta(c, "store_mtime", str(max(mtimes)) if mtimes else "0")
+        _set_meta(c, "yaml_mtime", str(max(mtimes)) if mtimes else "0")
         _set_meta(c, "lane_count", str(len(lane_list)))
         c.commit()
 
@@ -335,12 +332,9 @@ def info() -> Dict[str, object]:
     p = index_path()
     if not p.exists():
         return {
-            "path": str(p),
-            "exists": False,
-            "rows": 0,
-            "index_version": None,
-            "last_index_at": None,
-            "store_mtime": None,
+            "path": str(p), "exists": False,
+            "rows": 0, "index_version": None,
+            "last_index_at": None, "yaml_mtime": None,
             "lane_count": 0,
         }
     with open_connection(p) as c:
@@ -352,7 +346,7 @@ def info() -> Dict[str, object]:
             "rows": rows,
             "index_version": _get_meta(c, "index_version"),
             "last_index_at": _get_meta(c, "last_index_at"),
-            "store_mtime": _get_meta(c, "store_mtime"),
+            "yaml_mtime": _get_meta(c, "yaml_mtime"),
             "lane_count": int(_get_meta(c, "lane_count") or 0),
         }
 
@@ -373,14 +367,11 @@ def query_tasks(
     where = []
     params: List = []
     if project is not None:
-        where.append("project = ?")
-        params.append(project)
+        where.append("project = ?"); params.append(project)
     if agent is not None:
-        where.append("agent = ?")
-        params.append(agent)
+        where.append("agent = ?"); params.append(agent)
     if status is not None:
-        where.append("status = ?")
-        params.append(status)
+        where.append("status = ?"); params.append(status)
     sql = "SELECT * FROM tasks"
     if where:
         sql += " WHERE " + " AND ".join(where)
@@ -398,6 +389,5 @@ def query_tasks(
         # same rule the YAML side uses) — keeps a single source of
         # truth for the predicate. PR-D will move this into SQL.
         from scitex_cards._model import is_overdue
-
         out = [r for r in out if is_overdue(r)]
     return out

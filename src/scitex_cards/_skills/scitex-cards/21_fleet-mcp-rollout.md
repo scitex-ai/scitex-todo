@@ -33,7 +33,7 @@ wire is live.
 
 1. **All durable todos go through the scitex-todo MCP.** Every
    every worker agent, the lead, and the operator write to the same
-   shared SQLite store via the wire below. There is **one**
+   `~/.scitex/todo/tasks.yaml` via the wire below. There is **one**
    shared store; there are **no** parallel formats.
 
 2. **No private todo files.** Do not create
@@ -87,7 +87,7 @@ a soft default.
 |---|---|---|---|
 | `SCITEX_TODO_AGENT_ID` | **YES** | `<your-peer-name>` | Stamps every write's `_log_meta.created_by` / `updated_by`. The board's "by agent" lens, throughput stats, and notify routing all key off this. |
 | `SCITEX_TODO_SCOPE` | recommended | `agent:<your-peer-name>` | Default scope for `list_tasks` / `summarize_tasks` so the agent sees its own slice by default. Pass `scope=""` to opt out per-call. |
-| `SCITEX_CARDS_DB` | only if non-default | Absolute path to the SQLite database | Pins the store. Default resolution (explicit → env → user-canonical) usually picks the right one without this. |
+| `SCITEX_TODO_TASKS_YAML_SHARED` | only if non-default | Absolute path to `tasks.yaml` | Pins the store. Default resolution chain (explicit → env → project → user → bundled) usually picks the right one without this. |
 
 For agent-container's `to_home/_base/.mcp.json` rollout, the per-agent
 `SCITEX_TODO_AGENT_ID` value is templated from the agent's name; see the

@@ -2,11 +2,10 @@
 # -*- coding: utf-8 -*-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Canonical task model + loader/validator/writer for scitex-todo.
+"""Canonical task model + YAML loader/validator/writer for scitex-todo.
 
-The task store is the SQLite database; this module models it as a
-top-level ``tasks:`` list for the validation + adapter layers built on
-top. Each task is a mapping with ``id`` + ``title`` + ``status`` (required) and
+The task store is a YAML document with a top-level ``tasks:`` list. Each
+task is a mapping with ``id`` + ``title`` + ``status`` (required) and
 optional ``repo`` / ``depends_on`` / ``blocks`` / ``note`` / ``priority`` /
 ``parent`` fields. ``priority`` is an explicit integer rank (lower = higher
 priority); when absent, document order is the implicit ordering. ``parent``
@@ -54,7 +53,7 @@ def load_tasks(path: str | Path) -> list[dict]:
 
     Examples
     --------
-    >>> tasks = load_tasks()  # doctest: +SKIP
+    >>> tasks = load_tasks("tasks.yaml")  # doctest: +SKIP
     >>> tasks[0]["id"]                     # doctest: +SKIP
     'design'
     """

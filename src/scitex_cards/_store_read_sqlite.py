@@ -4,9 +4,9 @@
 
 WHY — THE MEASUREMENT, WITH ITS DENOMINATOR
 -------------------------------------------
-DENOMINATOR: the live board, copied read-only — 1,452 cards, 5.82 MB legacy store (the
+DENOMINATOR: the live board, copied read-only — 1,452 cards, 5.82 MB tasks.yaml (the
 mirror is 13.45 MB) — on this branch, CPython 3.12.3, in-process, median of 7, warm
-guard. Legacy-store timings on this box drift between ~0.7 s and ~1.3 s under load; the
+guard. YAML timings on this box drift between ~0.7 s and ~1.3 s under load; the
 RATIOS are what survive::
 
     query                       rows      YAML     SQLite   speedup

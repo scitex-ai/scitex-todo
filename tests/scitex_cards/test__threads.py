@@ -7,7 +7,7 @@ Covers the scitex-dev DM convention v1 contract:
   - append → get_thread round-trip with the canonical record shape
     ``{id, thread, from, to, body, ts, read}``.
   - sorted thread key: ``thread_key(a, b) == thread_key(b, a)``.
-  - STORE ISOLATION: threads live in the ``threads.json`` SIDECAR next to
+  - STORE ISOLATION: threads live in the ``threads.yaml`` SIDECAR next to
     the tasks store, never inside ``tasks.yaml``, with their own lockfile.
   - crash-safe write: the sidecar reparses cleanly after writes.
   - mark_read (all-for-reader and id-scoped) + list_threads unread counts.
@@ -19,7 +19,6 @@ Real tmp_path stores throughout; no mocks (STX-NM / PA-306). AAA pattern.
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
@@ -243,7 +242,7 @@ def test_list_threads_on_missing_sidecar_returns_empty(store):
 
 def test_the_threads_sidecar_sits_next_to_tasks_yaml(store, sent_message):
     # Arrange
-    expected = store.parent / "threads.json"
+    expected = store.parent / "threads.yaml"
     # Act
     sidecar = threads_path(store)
     # Assert
@@ -263,7 +262,7 @@ def test_the_sidecar_holds_the_appended_thread(store, sent_message):
     # Arrange
     key = "dm:agent-x::operator"
     # Act
-    doc = json.loads(threads_path(store).read_text(encoding="utf-8"))
+    doc = safe_load(threads_path(store).read_text(encoding="utf-8"))
     # Assert
     assert key in doc["threads"]
 
@@ -280,7 +279,7 @@ def test_tasks_yaml_carries_no_threads_section(store, sent_message):
 
 def test_threads_use_their_own_lockfile(store, sent_message):
     # Arrange — a separate lock sentinel, not the tasks.yaml one.
-    lockfile = store.parent / ".threads.json.lock"
+    lockfile = store.parent / ".threads.yaml.lock"
     # Act
     exists = lockfile.exists()
     # Assert
@@ -306,7 +305,7 @@ def test_sidecar_reparses_cleanly_after_writes(two_written_threads):
     # Arrange
     expected_threads = 2
     # Act
-    doc = json.loads(threads_path(two_written_threads).read_text(encoding="utf-8"))
+    doc = safe_load(threads_path(two_written_threads).read_text(encoding="utf-8"))
     # Assert
     assert len(doc["threads"]) == expected_threads
 
@@ -315,14 +314,14 @@ def test_every_appended_message_survives_the_reparse(two_written_threads):
     # Arrange
     key = "dm:agent-x::operator"
     # Act
-    doc = json.loads(threads_path(two_written_threads).read_text(encoding="utf-8"))
+    doc = safe_load(threads_path(two_written_threads).read_text(encoding="utf-8"))
     # Assert
     assert len(doc["threads"][key]) == 3
 
 
 def test_writes_leave_no_tmp_sidecar_behind(two_written_threads):
     # Arrange
-    tmp_sidecar = two_written_threads.parent / ".threads.json.tmp"
+    tmp_sidecar = two_written_threads.parent / ".threads.yaml.tmp"
     # Act
     exists = tmp_sidecar.exists()
     # Assert

@@ -5,9 +5,7 @@
 The fleet dashboard reads its watched-repo list from
 ``~/.scitex/cards/dashboard.json`` under the key path
 ``fleet.ci_status.repos`` (a list of ``owner/name`` GitHub slugs). A pre-JSON
-legacy sidecar at the same location is migrated in place ONCE (see
-:func:`scitex_cards._legacy_yaml_migration.migrate_legacy_sidecar`) — no
-permanent fallback; after migration only the ``.json`` file is read.
+``dashboard.yaml`` at the same location is read as a fallback (no auto-write).
 The env var ``SCITEX_TODO_FLEET_CI_REPOS=slug1,slug2`` is the override hook
 (handy for CI tests and for the operator to flip the set without editing
 a file).
@@ -158,9 +156,8 @@ def fleet_config_load() -> dict[str, Any]:
 
     Resolution order (later overrides earlier):
 
-    1. ``~/.scitex/cards/dashboard.json`` if present (a legacy
-       sidecar migrates in ONCE; otherwise empty config,
-       NOT an error)
+    1. ``~/.scitex/todo/dashboard.yaml`` if present (otherwise empty
+       config, NOT an error)
     2. ``SCITEX_TODO_FLEET_CI_REPOS`` env var — when set, replaces
        ``fleet.ci_status.repos`` regardless of file contents
     3. ``fleet.ci_status.ecosystem: true`` (or env
@@ -177,7 +174,7 @@ def fleet_config_load() -> dict[str, Any]:
     path = _config_path()
     from scitex_cards._legacy_yaml_migration import migrate_legacy_sidecar
 
-    migrate_legacy_sidecar(path)  # one-time legacy sidecar -> .json
+    migrate_legacy_sidecar(path)  # one-time pre-JSON dashboard.yaml -> .json
     if path.is_file():
         data = _load_config(path)
     else:

@@ -474,7 +474,7 @@ _reconcile.register(
 # deliver (slice 1 of the standalone notification-DELIVERY rail). One-shot
 # delivery pass — reads each recipient's pending notifications (read-only,
 # never touches the user's `seen` cursor) and hands them to the channels in
-# recipients.json, recording outcomes in the delivery ledger. cron/loop-
+# recipients.yaml, recording outcomes in the delivery ledger. cron/loop-
 # runnable; the daemon + systemd unit are a LATER slice. See
 # src/scitex_cards/_delivery/.
 _deliver.register(main)
