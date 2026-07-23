@@ -146,7 +146,7 @@
   function loadTimeline() {
     var hrs = WINDOWS[TL.windowKey] || 24;
     var laneBy = TL.view === "project" ? "project" : "agent";
-    fetch("/timeline?window_hours=" + hrs + "&lane_by=" + laneBy)
+    fetch((window.API_BASE || "") + "/timeline?window_hours=" + hrs + "&lane_by=" + laneBy)
       .then(function (r) {
         if (!r.ok)
           return r

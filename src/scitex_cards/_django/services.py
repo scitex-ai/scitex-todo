@@ -93,6 +93,14 @@ class BoardState:
     #: are unioned. Kept (always empty) for the BoardState wire shape callers
     #: still read.
     lane_paths: List[Path] = field(default_factory=list)
+    #: HONEST EMPTY STATE (hub card hub-cards-board-data-404, second half;
+    #: adapted from unpushed 9db9146b): True when the RESOLVED store-identity
+    #: file did not exist at load time — a brand-new workspace whose store has
+    #: not been materialized yet. That is a legitimate 0-card state, not an
+    #: error; the read handlers forward this flag so the frontend can render
+    #: the normal zero-card board instead of an error banner. Snapshot-stamped
+    #: here (not re-stat'd per request) so it stays consistent with ``tasks``.
+    empty_store: bool = False
 
 
 def _discover_lanes() -> List[Path]:
@@ -195,9 +203,16 @@ def _kick_board_refresh(key, resolved, effective_mtime, effective_sig) -> None:
         from scitex_cards._groups import load_groups
 
         try:
-            tasks = _load_global_tasks(resolved) if resolved.exists() else []
+            # Same honest-empty-state rule as the foreground load in
+            # ``get_board``: an absent identity file is a fresh workspace
+            # (0 tasks, no groups), never a raise. Evaluate existence ONCE so
+            # tasks / groups / the flag describe the same snapshot.
+            store_exists = resolved.exists()
+            tasks = _load_global_tasks(resolved) if store_exists else []
             task_ids = {t["id"] for t in tasks if isinstance(t, dict) and t.get("id")}
-            groups = load_groups(resolved, task_ids=task_ids)
+            groups = (
+                load_groups(resolved, task_ids=task_ids) if store_exists else []
+            )
             fresh = BoardState(
                 tasks=tasks,
                 store_path=resolved,
@@ -205,6 +220,7 @@ def _kick_board_refresh(key, resolved, effective_mtime, effective_sig) -> None:
                 sig=effective_sig,
                 groups=groups,
                 lane_paths=[],
+                empty_store=not store_exists,
             )
             _board_cache[key] = (fresh, time.time())
         except Exception:  # noqa: BLE001 — never break the served board
@@ -282,8 +298,20 @@ def get_board(
     _cleanup_expired()
 
     resolved = resolve_tasks_path(tasks_path)
+    # HONEST EMPTY STATE (hub card hub-cards-board-data-404, second half;
+    # adapted from unpushed 9db9146b): a RESOLVED identity path that does not
+    # exist yet is a legitimate fresh workspace (0 tasks), not an error. Every
+    # read below already treats it that way (`if store_exists else …`);
+    # calling ``load_groups`` on the absent file was the one leftover raise
+    # (FileNotFoundError → api_dispatch 400 "No task store found." / a
+    # /timeline 500) that turned a brand-new tenant's board into an error
+    # banner. Existence is evaluated ONCE so tasks / groups / the
+    # ``empty_store`` flag describe the same snapshot. Loud paths are
+    # unchanged: unknown endpoint stays 404, a mid-load raise still reaches
+    # the api_dispatch 400 backstop, handler exceptions stay 500.
+    store_exists = resolved.exists()
     # REPORTED value only (the /rev wire contract); never the cache key.
-    effective_mtime = resolved.stat().st_mtime if resolved.exists() else 0.0
+    effective_mtime = resolved.stat().st_mtime if store_exists else 0.0
 
     # CACHE IDENTITY: the DB's logical-content version (the load-bearing signal
     # — a DB write self-invalidates even though it never touches the identity
@@ -293,7 +321,7 @@ def get_board(
     # and a plain read never writes the identity file. See BoardState.sig.
     effective_sig = (
         store_generation(resolved),
-        _stat_sig(resolved) if resolved.exists() else (0, 0, 0),
+        _stat_sig(resolved) if store_exists else (0, 0, 0),
     )
 
     key = str(resolved)
@@ -320,10 +348,10 @@ def get_board(
             _kick_board_refresh(key, resolved, effective_mtime, effective_sig)
             return board
 
-    tasks = _load_global_tasks(resolved) if resolved.exists() else []
+    tasks = _load_global_tasks(resolved) if store_exists else []
 
     task_ids = {t["id"] for t in tasks if isinstance(t, dict) and t.get("id")}
-    groups = load_groups(resolved, task_ids=task_ids)
+    groups = load_groups(resolved, task_ids=task_ids) if store_exists else []
 
     board = BoardState(
         tasks=tasks,
@@ -332,6 +360,7 @@ def get_board(
         sig=effective_sig,
         groups=groups,
         lane_paths=[],
+        empty_store=not store_exists,
     )
     _board_cache[key] = (board, time.time())
     logger.info(

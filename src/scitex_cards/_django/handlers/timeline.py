@@ -351,6 +351,12 @@ def timeline_view(request: HttpRequest) -> HttpResponse:
 
     payload = _build_payload(tasks, window_hours=window_hours, lane_by=lane_by)
     payload["store_path"] = str(board.store_path)
+    # HONEST EMPTY STATE (hub card hub-cards-board-data-404): a resolved
+    # store file that does not exist yet is a brand-new workspace's
+    # legitimate 0-event timeline, not an error (see BoardState.empty_store).
+    # Fail-loud stays intact for everything else: an unreadable EXISTING
+    # store still raises into Django's 500 handler.
+    payload["empty_store"] = board.empty_store
     return JsonResponse(payload, json_dumps_params={"default": str})
 
 

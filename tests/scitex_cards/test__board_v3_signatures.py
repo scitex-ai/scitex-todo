@@ -933,10 +933,13 @@ class TestStaleReviewPanel:
         assert "_renderStaleView(canvas)" in board_js
 
     def test_stale_fetch_target_endpoint(self, board_js):
+        # Mount-aware (P1 sub-path fix): the dispatcher registers plain
+        # "stale" — the old "/scitex-todo/stale" literal 404'd even at a
+        # root mount, and every fetch is API_BASE-prefixed now.
         # Arrange
         # Act
         # Assert
-        assert '"/scitex-todo/stale?"' in board_js
+        assert 'API_BASE + "/stale?"' in board_js
 
     def test_archive_helper_defined(self, board_js):
         # Arrange
@@ -945,10 +948,13 @@ class TestStaleReviewPanel:
         assert "async function archiveStaleCard" in board_js
 
     def test_archive_post_target_endpoint(self, board_js):
+        # Mount-aware (P1 sub-path fix): the dispatcher registers plain
+        # "archive" — the old "/scitex-todo/archive" literal 404'd even at
+        # a root mount, and every fetch is API_BASE-prefixed now.
         # Arrange
         # Act
         # Assert
-        assert '"/scitex-todo/archive"' in board_js
+        assert 'API_BASE + "/archive"' in board_js
 
     def test_archive_requires_reason(self, board_js):
         # Arrange
