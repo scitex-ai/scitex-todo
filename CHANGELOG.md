@@ -2,11 +2,25 @@
 
 ## [Unreleased]
 
-Hub-mount integration follow-ups to #556 (board mount-awareness), completing
-hub card `hub-cards-board-data-404`.
+## [0.17.6] - 2026-07-24
+
+Overdue-alarm correctness and store-export integrity, plus the hub-mount
+integration follow-ups to #556.
 
 ### Fixed
 
+- **`overdue=True` honours the time-of-day in datetime deadlines** (#563).
+  `is_overdue` flattened every deadline to a bare date before comparing, so a
+  deadline carrying a time (`2026-07-23T09:00`) was not overdue until its whole
+  day had passed — and that filter is the only thing that surfaces an overdue
+  card, so a timed deadline was a silent no-op alarm. A timed deadline is now
+  overdue the moment its timestamp passes (aware-normalised, so naive-vs-aware
+  never raises); a date-only deadline keeps its whole-day semantics; a recurring
+  deadline stays never-overdue; the board date-pill is unchanged. A stored
+  deadline the parser cannot read now logs loudly instead of silently reading
+  as "not overdue".
+- **Store export + verify-count come from ONE snapshot** (#562), killing a
+  TOCTOU that could report a false `INCOMPLETE`.
 - **The chat page is mount-aware.** `chat.js` fetched root-absolute `/dm/*`
   paths, so the DM page's data calls escaped a sub-path mount (the hub's
   `/apps/cards/`) exactly like the board's did before #556. `chat_page` now
