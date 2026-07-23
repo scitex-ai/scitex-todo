@@ -1,0 +1,12 @@
+............                                                             [100%]
+=============================== warnings summary ===============================
+tests/scitex_cards/test__edge_subscribes_waiter.py::test_an_ownerless_waiter_subscribes_nobody_and_says_so
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-10/src/scitex_cards/_store_write.py:241: UserWarning: [scitex-todo] TOLERATED (read-side): <save_tasks>: task 'orphan' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(tasks, source="<save_tasks>")  # hook-bypass: line-limit
+
+tests/scitex_cards/test__edge_subscribes_waiter.py::test_an_ownerless_waiter_subscribes_nobody_and_says_so
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-10/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-430/store10/tasks.yaml>: task 'orphan' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+12 passed, 2 warnings in 86.43s (0:01:26)

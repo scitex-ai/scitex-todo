@@ -19,6 +19,7 @@ THE RULE: the owner of the WAITING card is subscribed to the card they WAIT ON.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -28,7 +29,7 @@ from scitex_cards import _store
 
 @pytest.fixture()
 def store(tmp_path: Path) -> Path:
-    path = tmp_path / "tasks.yaml"
+    path = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _store.add_task(
         path, id="gate", title="the blocker", status="in_progress", agent="agent-b"
     )
@@ -182,7 +183,7 @@ def test_an_ownerless_waiter_subscribes_nobody_and_says_so(tmp_path: Path):
     # Arrange — there is nobody to tell. We do NOT invent a recipient:
     # `subscribed: None` says so plainly instead of letting the caller believe
     # delivery is wired.
-    path = tmp_path / "tasks.yaml"
+    path = os.environ["SCITEX_CARDS_TASKS_YAML_SHARED"]
     _store.add_task(
         path, id="gate", title="gate", status="in_progress", agent="agent-b"
     )
