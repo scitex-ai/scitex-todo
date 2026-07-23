@@ -1,0 +1,12 @@
+..............                                                           [100%]
+=============================== warnings summary ===============================
+tests/scitex_cards/test__health_zombie_cards.py::test_closed_at_on_a_BLOCKED_card_is_caught
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-9/src/scitex_cards/_store_write.py:241: UserWarning: [scitex-todo] TOLERATED (read-side): <save_tasks>: task 'live' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(tasks, source="<save_tasks>")  # hook-bypass: line-limit
+
+tests/scitex_cards/test__health_zombie_cards.py::test_closed_at_on_a_BLOCKED_card_is_caught
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-9/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-437/store5/tasks.yaml>: task 'live' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+14 passed, 2 warnings in 141.47s (0:02:21)
