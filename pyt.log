@@ -1,0 +1,44 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-17
+configfile: pyproject.toml
+plugins: cov-7.1.0
+collected 13 items
+
+tests/scitex_cards/test__index.py .............                          [100%]
+
+=============================== warnings summary ===============================
+tests/scitex_cards/test__index.py::TestRebuildGlobalOnly::test_populates_global_tasks
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-17/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-455/test_populates_global_tasks0/global.yaml>: task 'g1': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__index.py::TestRebuildWithLanes::test_lane_card_appears_in_index
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-17/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-455/test_lane_card_appears_in_inde0/global.yaml>: task 'g1': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__index.py::TestRebuildWithLanes::test_lane_card_appears_in_index
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-17/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-455/test_lane_card_appears_in_inde0/global.yaml>: task 'lan1': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__index.py::TestInfo::test_info_reports_row_count_after_rebuild
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-17/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-455/test_info_reports_row_count_af0/global.yaml>: task 'a': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__index.py::TestQueryTasks::test_filter_by_project
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-17/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-455/test_filter_by_project0/global.yaml>: task 'x': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__index.py::TestQueryTasks::test_filter_by_project
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-17/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-455/test_filter_by_project0/global.yaml>: task 'y': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__index.py::TestQueryTasks::test_filter_by_status
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-17/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-455/test_filter_by_status0/global.yaml>: task 'x': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__index.py::TestCliRebuildAndInfo::test_rebuild_then_info_reports_rows
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-17/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-455/store10/tasks.yaml>: task 'a': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================== 13 passed, 8 warnings in 70.33s (0:01:10) ===================
