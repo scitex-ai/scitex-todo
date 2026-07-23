@@ -1,0 +1,289 @@
+........................................................................ [ 98%]
+.                                                                        [100%]
+=============================== warnings summary ===============================
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store0/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('assignee', 'agent-a')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store1/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('assignee', 'nobody')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store2/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('agent', 'agent-b')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store3/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('status', 'blocked')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store4/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('status', 'done')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store5/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('statuses', ['done', 'goal'])]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store6/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('status', 'blocked'), ('statuses', ['done'])]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store7/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('project', 'proj-x')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store8/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('host', 'hostA')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store9/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('repo', 'own/repo-x')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store10/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('scope', 'agent:agent-a')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store11/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('scope', '')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store12/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('blocker', 'operator-decision')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store13/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('blocker', 'none')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store14/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('blocker', '__none')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store15/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('kind', 'task')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store16/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('kind', 'compute')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store17/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('id_prefix', 'alpha')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store18/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('id_prefix', 'beta_')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store19/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('id_prefix', 'beta')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store20/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('blocking_me', True)]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store21/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_each_filter_alone_is_identical[[('overdue', True)]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store22/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('assignee', 'agent-a')]-[('status', 'blocked')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store23/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('assignee', 'agent-a')]-[('kind', 'task')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store24/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('assignee', 'agent-a')]-[('blocker', '__none')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store25/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('assignee', 'agent-a')]-[('id_prefix', 'alpha')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store26/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('assignee', 'agent-a')]-[('scope', 'agent:agent-a')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store27/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('assignee', 'agent-a')]-[('overdue', True)]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store28/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('assignee', 'agent-a')]-[('blocking_me', True)]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store29/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('status', 'blocked')]-[('kind', 'task')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store30/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('status', 'blocked')]-[('blocker', '__none')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store31/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('status', 'blocked')]-[('id_prefix', 'alpha')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store32/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('status', 'blocked')]-[('scope', 'agent:agent-a')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store33/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('status', 'blocked')]-[('overdue', True)]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store34/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('status', 'blocked')]-[('blocking_me', True)]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store35/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('kind', 'task')]-[('blocker', '__none')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store36/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('kind', 'task')]-[('id_prefix', 'alpha')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store37/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('kind', 'task')]-[('scope', 'agent:agent-a')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store38/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('kind', 'task')]-[('overdue', True)]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store39/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('kind', 'task')]-[('blocking_me', True)]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store40/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('blocker', '__none')]-[('id_prefix', 'alpha')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store41/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('blocker', '__none')]-[('scope', 'agent:agent-a')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store42/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('blocker', '__none')]-[('overdue', True)]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store43/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('blocker', '__none')]-[('blocking_me', True)]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store44/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('id_prefix', 'alpha')]-[('scope', 'agent:agent-a')]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store45/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('id_prefix', 'alpha')]-[('overdue', True)]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store46/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('id_prefix', 'alpha')]-[('blocking_me', True)]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store47/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('scope', 'agent:agent-a')]-[('overdue', True)]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store48/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('scope', 'agent:agent-a')]-[('blocking_me', True)]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store49/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filter_combinations_are_identical[[('overdue', True)]-[('blocking_me', True)]]
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store50/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_unknown_deferred_at_field_survives_the_round_trip
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store51/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_unknown_subagent_field_survives_the_round_trip
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store52/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_ad_hoc_note_field_survives_the_round_trip
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store53/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_unknown_blocked_by_field_survives_the_round_trip
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store54/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_key_order_survives_the_round_trip
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store55/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_the_fixture_really_declares_status_before_id
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store56/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_document_order_is_preserved
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store57/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_a_card_with_no_blocker_key_matches_the_none_token
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store58/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_blocker___none__is_not_the_enum_none
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store59/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_a_named_blocker_does_not_match_the_none_token
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store60/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_filtering_on_the_none_enum_member_returns_only_that_card
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store61/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_id_prefix_underscore_is_not_a_sql_wildcard
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store62/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_explicit_kind_task_matches_the_task_filter
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store63/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_kind_task_matches_absent_kinds_too
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store64/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_a_compute_card_is_excluded_from_the_task_filter
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store65/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_overdue_excludes_recurring_and_terminal
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store66/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_scope_none_honours_the_env_default
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store67/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_an_explicit_empty_scope_opts_out_of_the_env_default
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store68/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_an_older_build_still_serves_correct_cards
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store70/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__store_read_sqlite.py::test_refusal_is_logged_once_not_per_call
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-1/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-442/store72/tasks.yaml>: task 'beta_1' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+73 passed, 71 warnings in 399.02s (0:06:39)
