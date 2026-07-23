@@ -1,0 +1,104 @@
+...........................                                              [100%]
+=============================== warnings summary ===============================
+tests/scitex_cards/test__reconcile_prs.py::test_dry_run_reports_the_merged_card_as_a_candidate
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store16/tasks.yaml>: task 'open-pr-card' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_dry_run_reports_the_merged_card_as_a_candidate
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store16/tasks.yaml>: task 'unknown-pr-card': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_dry_run_closes_nothing
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store17/tasks.yaml>: task 'open-pr-card' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_dry_run_closes_nothing
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store17/tasks.yaml>: task 'unknown-pr-card': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_dry_run_leaves_the_store_untouched
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store18/tasks.yaml>: task 'open-pr-card' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_dry_run_leaves_the_store_untouched
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store18/tasks.yaml>: task 'unknown-pr-card': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_apply_closes_merged_card_and_comments
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store19/tasks.yaml>: task 'open-pr-card' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_apply_closes_merged_card_and_comments
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store19/tasks.yaml>: task 'unknown-pr-card': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_apply_closes_merged_card_and_comments
+tests/scitex_cards/test__reconcile_prs.py::test_apply_appends_auto_close_comment
+tests/scitex_cards/test__reconcile_prs.py::test_idempotent_second_run_closes_nothing_new
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_store_write.py:241: UserWarning: [scitex-todo] TOLERATED (read-side): <save_tasks>: task 'open-pr-card' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(tasks, source="<save_tasks>")  # hook-bypass: line-limit
+
+tests/scitex_cards/test__reconcile_prs.py::test_apply_closes_merged_card_and_comments
+tests/scitex_cards/test__reconcile_prs.py::test_apply_appends_auto_close_comment
+tests/scitex_cards/test__reconcile_prs.py::test_idempotent_second_run_closes_nothing_new
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_store_write.py:241: UserWarning: [scitex-todo] TOLERATED (read-side): <save_tasks>: task 'unknown-pr-card': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(tasks, source="<save_tasks>")  # hook-bypass: line-limit
+
+tests/scitex_cards/test__reconcile_prs.py::test_apply_leaves_open_pr_card_untouched
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store20/tasks.yaml>: task 'open-pr-card' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_apply_leaves_open_pr_card_untouched
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store20/tasks.yaml>: task 'unknown-pr-card': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_apply_appends_auto_close_comment
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store21/tasks.yaml>: task 'open-pr-card' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_apply_appends_auto_close_comment
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store21/tasks.yaml>: task 'unknown-pr-card': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_already_done_card_is_skipped
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store22/tasks.yaml>: task 'open-pr-card' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_already_done_card_is_skipped
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store22/tasks.yaml>: task 'unknown-pr-card': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_missing_pr_url_card_is_skipped
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store23/tasks.yaml>: task 'open-pr-card' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_missing_pr_url_card_is_skipped
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store23/tasks.yaml>: task 'unknown-pr-card': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_unknown_merge_state_never_closes
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store24/tasks.yaml>: task 'open-pr-card' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_unknown_merge_state_never_closes
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store24/tasks.yaml>: task 'unknown-pr-card': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_seam_exception_is_treated_as_unknown
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store25/tasks.yaml>: task 'open-pr-card' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_seam_exception_is_treated_as_unknown
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store25/tasks.yaml>: task 'unknown-pr-card': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_idempotent_second_run_closes_nothing_new
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store26/tasks.yaml>: task 'open-pr-card' is 'blocked' but names no blocker. A blocked card must state its gate so someone can clear it. Set blocker to one of ('compute', 'dependency', 'dep', 'operator-decision', 'agent-wait', 'none'), or use a status that reflects reality: 'in_progress' if you are working it, 'deferred' if it can wait.
+    _validate_tasks(
+
+tests/scitex_cards/test__reconcile_prs.py::test_idempotent_second_run_closes_nothing_new
+  /home/ywatanabe/proj/scitex-cards/.worktrees/wf_ddd0e1f5-88c-16/src/scitex_cards/_model.py:121: UserWarning: [scitex-todo] TOLERATED (read-side): <sqlite:/uvwork/tmp/pytest-of-agent/pytest-440/store26/tasks.yaml>: task 'unknown-pr-card': status 'pending' was abolished 2026-07-10 — a card must carry a decision. Choose: 'in_progress' if you are working it, 'blocked' with a blocker naming the gate, or 'deferred' if it can wait.
+    _validate_tasks(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+27 passed, 28 warnings in 169.91s (0:02:49)
